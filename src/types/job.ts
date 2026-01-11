@@ -2,7 +2,8 @@ export type JobType = 'ASK' | 'IMPLEMENT' | 'MENTION';
 
 export type RepoConfig = {
   sshUrl: string;
-  projectId: number;
+  projectId?: number;
+  baseBranch?: string;
 };
 
 export type SlackContext = {

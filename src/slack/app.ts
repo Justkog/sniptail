@@ -14,7 +14,7 @@ import {
 import { logger } from '../logger.js';
 import type { JobSettings, JobSpec } from '../types/job.js';
 import { buildSlackIds } from './ids.js';
-import { buildAskModal, buildImplementModal } from './modals.js';
+import { buildAskModal, buildImplementModal, resolveDefaultBaseBranch } from './modals.js';
 import { postMessage, uploadFile } from './helpers.js';
 
 const recentRequests = new Map<string, number>();
@@ -97,6 +97,21 @@ async function persistJobSpec(job: JobSpec): Promise<string | null> {
     return jobSpecPath;
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to write job spec artifact');
+    return null;
+  }
+}
+
+async function persistSlackUploadSpec(job: JobSpec): Promise<string | null> {
+  const jobRoot = join(config.jobWorkRoot, job.jobId);
+  const artifactsRoot = join(jobRoot, 'artifacts');
+  const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
+  try {
+    await mkdir(artifactsRoot, { recursive: true });
+    const { requestText: _requestText, ...jobSpec } = job;
+    await writeFile(jobSpecPath, `${JSON.stringify(jobSpec, null, 2)}\n`, 'utf8');
+    return jobSpecPath;
+  } catch (err) {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to write job spec upload artifact');
     return null;
   }
 }
@@ -396,7 +411,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       ? (JSON.parse(view.private_metadata) as { channelId: string; userId: string; threadTs?: string })
       : undefined;
     const repoKeys = state.repos?.repo_keys?.selected_options?.map((opt) => opt.value) ?? [];
-    const gitRef = state.branch?.git_ref?.value ?? 'experimental';
+    const gitRef =
+      state.branch?.git_ref?.value?.trim() ||
+      resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
     const requestText = state.question?.request_text?.value ?? '';
     const resumeFromJobId = state.resume?.resume_from?.value?.trim() || undefined;
 
@@ -445,18 +462,33 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     });
 
     const ackThreadTs = metadata?.threadTs ?? ackResponse?.ts;
-    if (jobSpecPath) {
-      const jobSpecOptions = {
+    if (ackThreadTs) {
+      const requestSummary = requestText.trim() || 'No request text provided.';
+      await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        filePath: jobSpecPath,
-        title: `sniptail-${job.jobId}-job-spec.json`,
-      };
-      await uploadFile(
-        app,
-        ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
-      ).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
+        text: `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``,
+        threadTs: ackThreadTs,
+      }).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
+    }
+    if (jobSpecPath) {
+      const uploadSpecPath = await persistSlackUploadSpec(job);
+      if (!uploadSpecPath) {
+        logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
+      } else {
+        const jobSpecOptions = {
+          channel: metadata?.channelId ?? body.user.id,
+          filePath: uploadSpecPath,
+          title: `sniptail-${job.jobId}-job-spec.json`,
+        };
+        await uploadFile(
+          app,
+          ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
+        ).catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
+        });
+      }
     }
 
     if (!metadata?.threadTs && ackResponse?.ts) {
@@ -482,7 +514,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       ? (JSON.parse(view.private_metadata) as { channelId: string; userId: string; threadTs?: string })
       : undefined;
     const repoKeys = state.repos?.repo_keys?.selected_options?.map((opt) => opt.value) ?? [];
-    const gitRef = state.branch?.git_ref?.value ?? 'experimental';
+    const gitRef =
+      state.branch?.git_ref?.value?.trim() ||
+      resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
     const requestText = state.change?.request_text?.value ?? '';
     const reviewers = parseCommaList(state.reviewers?.reviewers?.value ?? undefined);
     const labels = parseCommaList(state.labels?.labels?.value ?? undefined);
@@ -538,18 +572,33 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     });
 
     const ackThreadTs = metadata?.threadTs ?? ackResponse?.ts;
-    if (jobSpecPath) {
-      const jobSpecOptions = {
+    if (ackThreadTs) {
+      const requestSummary = requestText.trim() || 'No request text provided.';
+      await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        filePath: jobSpecPath,
-        title: `sniptail-${job.jobId}-job-spec.json`,
-      };
-      await uploadFile(
-        app,
-        ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
-      ).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
+        text: `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``,
+        threadTs: ackThreadTs,
+      }).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
+    }
+    if (jobSpecPath) {
+      const uploadSpecPath = await persistSlackUploadSpec(job);
+      if (!uploadSpecPath) {
+        logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
+      } else {
+        const jobSpecOptions = {
+          channel: metadata?.channelId ?? body.user.id,
+          filePath: uploadSpecPath,
+          title: `sniptail-${job.jobId}-job-spec.json`,
+        };
+        await uploadFile(
+          app,
+          ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
+        ).catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
+        });
+      }
     }
 
     if (!metadata?.threadTs && ackResponse?.ts) {
