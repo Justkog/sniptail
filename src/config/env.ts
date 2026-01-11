@@ -16,6 +16,10 @@ export type AppConfig = {
     baseUrl: string;
     token: string;
   };
+  github?: {
+    apiBaseUrl: string;
+    token: string;
+  };
   repoCacheRoot: string;
   jobWorkRoot: string;
   jobRegistryPath: string;
@@ -53,8 +57,11 @@ function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
       throw new Error('Repo allowlist must be a JSON object.');
     }
     for (const [key, value] of Object.entries(parsed)) {
-      if (!value?.sshUrl || !value?.projectId) {
+      if (!value?.sshUrl) {
         throw new Error(`Repo allowlist entry invalid for ${key}.`);
+      }
+      if (value.baseBranch !== undefined && typeof value.baseBranch !== 'string') {
+        throw new Error(`Repo allowlist entry baseBranch invalid for ${key}.`);
       }
     }
     return parsed;
@@ -83,6 +90,8 @@ export function loadConfig(): AppConfig {
   const dockerBuildContext = process.env.CODEX_DOCKER_BUILD_CONTEXT?.trim();
 
   const jobRootCopyGlob = process.env.JOB_ROOT_COPY_GLOB?.trim();
+  const githubToken = process.env.GITHUB_TOKEN?.trim();
+  const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim();
 
   return {
     botName,
@@ -97,6 +106,12 @@ export function loadConfig(): AppConfig {
     gitlab: {
       baseUrl: requireEnv('GITLAB_BASE_URL'),
       token: requireEnv('GITLAB_TOKEN'),
+    },
+    ...githubToken && {
+      github: {
+        apiBaseUrl: githubApiBaseUrl || 'https://api.github.com',
+        token: githubToken,
+      },
     },
     repoCacheRoot: requireEnv('REPO_CACHE_ROOT'),
     jobWorkRoot: requireEnv('JOB_WORK_ROOT'),

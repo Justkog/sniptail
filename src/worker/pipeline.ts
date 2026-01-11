@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import { ensureClone } from '../git/mirror.js';
 import { addWorktree, removeWorktree } from '../git/worktree.js';
 import { runCodex } from '../codex/index.js';
+import { createPullRequest } from '../github/client.js';
 import { createMergeRequest } from '../gitlab/client.js';
 import { commitAndPush, ensureCleanRepo, runChecks } from '../git/jobOps.js';
 import { buildCompletionBlocks } from '../slack/blocks.js';
@@ -16,6 +17,7 @@ import type { JobSpec, JobResult, MergeRequestResult } from '../types/job.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
 import { join } from 'node:path';
 import { runCommand } from '../runner/commandRunner.js';
+import { isGitHubSshUrl, parseGitHubRepo } from '../git/ssh.js';
 
 const branchPrefix = 'sniptail';
 
@@ -87,7 +89,7 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
     ...(config.jobRootCopyGlob ? { JOB_ROOT_COPY_GLOB: config.jobRootCopyGlob } : {}),
   };
 
-  const redactionPatterns = [config.gitlab.token, config.openAiKey ?? ''].filter(Boolean);
+  const redactionPatterns = [config.gitlab.token, config.github?.token ?? '', config.openAiKey ?? ''].filter(Boolean);
 
   const repoWorktrees = new Map<string, { clonePath: string; worktreePath: string; branch?: string }>();
   const branchByRepo: Record<string, string> = {};
@@ -257,18 +259,53 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
 
       const title = `${config.botName}: ${job.requestText.slice(0, 60)}`;
       const description = summary || `${config.botName} job ${job.jobId}`;
-      const reviewerIds = parseReviewerIds(job.settings?.reviewers);
+      const reviewers = job.settings?.reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
 
-      const mr = await createMergeRequest({
-        config: config.gitlab,
-        projectId: repoConfig.projectId,
-        sourceBranch: repo.branch,
-        targetBranch: job.gitRef,
-        title,
-        description,
-        ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
-        ...(reviewerIds ? { reviewerIds } : {}),
-      });
+      const mr = isGitHubSshUrl(repoConfig.sshUrl)
+        ? await (async () => {
+            if (!config.github) {
+              throw new Error('GITHUB_TOKEN is required to create GitHub pull requests.');
+            }
+            const repoInfo = parseGitHubRepo(repoConfig.sshUrl);
+            if (!repoInfo) {
+              throw new Error(`Unable to parse GitHub repo from sshUrl: ${repoConfig.sshUrl}`);
+            }
+            const pr = await createPullRequest({
+              config: config.github,
+              owner: repoInfo.owner,
+              repo: repoInfo.repo,
+              head: repo.branch,
+              base: job.gitRef,
+              title,
+              body: description,
+              ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
+              ...(reviewers && reviewers.length ? { reviewers } : {}),
+            });
+            return {
+              url: pr.url,
+              iid: pr.number,
+            };
+          })()
+        : await (async () => {
+            if (!repoConfig.projectId) {
+              throw new Error(`Missing projectId for GitLab repo ${repoKey}.`);
+            }
+            const reviewerIds = parseReviewerIds(job.settings?.reviewers);
+            const gitlabMr = await createMergeRequest({
+              config: config.gitlab,
+              projectId: repoConfig.projectId,
+              sourceBranch: repo.branch,
+              targetBranch: job.gitRef,
+              title,
+              description,
+              ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
+              ...(reviewerIds ? { reviewerIds } : {}),
+            });
+            return {
+              url: gitlabMr.url,
+              iid: gitlabMr.iid,
+            };
+          })();
 
       mergeRequests.push({
         repoKey,

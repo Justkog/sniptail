@@ -1,5 +1,28 @@
 import type { RepoConfig } from '../types/job.js';
 
+export function resolveDefaultBaseBranch(
+  repoAllowlist: Record<string, RepoConfig>,
+  repoKey?: string,
+): string {
+  if (repoKey) {
+    const branch = repoAllowlist[repoKey]?.baseBranch?.trim();
+    if (branch) {
+      return branch;
+    }
+  }
+  const branches = new Set<string>();
+  for (const repo of Object.values(repoAllowlist)) {
+    const branch = repo.baseBranch?.trim();
+    if (branch) {
+      branches.add(branch);
+    }
+  }
+  if (branches.size === 1) {
+    return Array.from(branches)[0]!;
+  }
+  return 'staging';
+}
+
 export function buildAskModal(
   repoAllowlist: Record<string, RepoConfig>,
   botName: string,
@@ -36,7 +59,7 @@ export function buildAskModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: 'experimental',
+          initial_value: resolveDefaultBaseBranch(repoAllowlist),
         },
       },
       {
@@ -100,7 +123,7 @@ export function buildImplementModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: 'experimental',
+          initial_value: resolveDefaultBaseBranch(repoAllowlist),
         },
       },
       {
@@ -117,7 +140,7 @@ export function buildImplementModal(
         type: 'input' as const,
         block_id: 'reviewers',
         optional: true,
-        label: { type: 'plain_text' as const, text: 'Reviewers (comma-separated GitLab user IDs)' },
+        label: { type: 'plain_text' as const, text: 'Reviewers (GitLab IDs or GitHub usernames)' },
         element: {
           type: 'plain_text_input' as const,
           action_id: 'reviewers',
