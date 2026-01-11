@@ -28,32 +28,42 @@ export async function ensureClone(
     await runCommand('git', ['fetch', '--prune', 'origin', gitRef], { ...common, cwd: clonePath });
   }
 
-  const localRef = `refs/heads/${gitRef}`;
   const remoteRef = `refs/remotes/origin/${gitRef}`;
-  const localRefCheck = await runCommand(
-    'git',
-    ['show-ref', '--verify', localRef],
-    {
+  const remoteRefCheck = await runCommand('git', ['show-ref', '--verify', remoteRef], {
+    ...common,
+    cwd: clonePath,
+    allowFailure: true,
+  });
+
+  if ((remoteRefCheck.exitCode ?? 1) === 0) {
+    const headRef = await runCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
       ...common,
       cwd: clonePath,
       allowFailure: true,
-    },
-  );
+    });
+    const currentBranch = headRef.stdout.trim();
+    if (currentBranch === gitRef) {
+      await runCommand('git', ['reset', '--hard', remoteRef], {
+        ...common,
+        cwd: clonePath,
+      });
+    } else {
+      await runCommand('git', ['branch', '--force', gitRef, remoteRef], {
+        ...common,
+        cwd: clonePath,
+      });
+    }
+    return;
+  }
+
+  const localRef = `refs/heads/${gitRef}`;
+  const localRefCheck = await runCommand('git', ['show-ref', '--verify', localRef], {
+    ...common,
+    cwd: clonePath,
+    allowFailure: true,
+  });
 
   if ((localRefCheck.exitCode ?? 1) !== 0) {
-    const remoteRefCheck = await runCommand('git', ['show-ref', '--verify', remoteRef], {
-      ...common,
-      cwd: clonePath,
-      allowFailure: true,
-    });
-
-    if ((remoteRefCheck.exitCode ?? 1) !== 0) {
-      throw new Error(`Branch not found in clone: ${gitRef}`);
-    }
-
-    await runCommand('git', ['branch', '--force', gitRef, remoteRef], {
-      ...common,
-      cwd: clonePath,
-    });
+    throw new Error(`Branch not found in clone: ${gitRef}`);
   }
 }
