@@ -11,7 +11,7 @@ export type PullRequestResponse = {
 async function requestGitHub(
   config: GitHubConfig,
   path: string,
-  body?: Record<string, unknown>,
+  body: Record<string, unknown> | null = null,
 ): Promise<Response> {
   const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, '')}${path}`, {
     method: 'POST',
@@ -21,7 +21,7 @@ async function requestGitHub(
       'X-GitHub-Api-Version': '2022-11-28',
       Accept: 'application/vnd.github+json',
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? JSON.stringify(body) : null,
   });
 
   if (!response.ok) {
