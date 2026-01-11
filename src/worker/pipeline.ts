@@ -229,7 +229,7 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
     }
 
     const summaryPath = join(paths.artifactsRoot, 'summary.md');
-    const summary = await readFile(summaryPath, 'utf8').catch(() => '');
+    const summary = await readFile(summaryPath, 'utf8');
 
     const mergeRequests: MergeRequestResult[] = [];
 
@@ -318,13 +318,29 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
       ? mergeRequests.map((mr) => `${mr.repoKey}: ${mr.url}`).join('\n')
       : 'No merge requests created.';
 
+    const threadTs = await resolveThreadTs(job);
+    await uploadFile(
+      app,
+      threadTs
+        ? {
+            channel: job.slack.channelId,
+            filePath: summaryPath,
+            title: `sniptail-${job.jobId}-summary.md`,
+            threadTs,
+          }
+        : {
+            channel: job.slack.channelId,
+            filePath: summaryPath,
+            title: `sniptail-${job.jobId}-summary.md`,
+          },
+    );
+
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
     const implMessage = {
       channel: job.slack.channelId,
       text: implText,
       blocks: buildCompletionBlocks(implText, job.jobId, slackIds.actions),
     };
-    const threadTs = await resolveThreadTs(job);
     await postMessage(app, threadTs ? { ...implMessage, threadTs } : implMessage);
 
     await updateJobRecord(job.jobId, {
