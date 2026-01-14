@@ -37,6 +37,9 @@ Notable variables:
   "repo-key": {
     "sshUrl": "git@gitlab.com:org/repo.git",
     "projectId": 12345
+  },
+  "local-repo": {
+    "localPath": "/srv/repos/my-local-repo"
   }
 }
 ```

@@ -232,6 +232,7 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
     const summary = await readFile(summaryPath, 'utf8');
 
     const mergeRequests: MergeRequestResult[] = [];
+    const localBranchMessages: string[] = [];
 
     for (const [repoKey, repo] of repoWorktrees.entries()) {
       const repoConfig = config.repoAllowlist[repoKey];
@@ -260,6 +261,15 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
       const title = `${config.botName}: ${job.requestText.slice(0, 60)}`;
       const description = summary || `${config.botName} job ${job.jobId}`;
       const reviewers = job.settings?.reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
+
+      if (repoConfig.localPath) {
+        localBranchMessages.push(`${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`);
+        continue;
+      }
+
+      if (!repoConfig.sshUrl) {
+        throw new Error(`Missing sshUrl for repo ${repoKey}.`);
+      }
 
       const mr = isGitHubSshUrl(repoConfig.sshUrl)
         ? await (async () => {
@@ -314,9 +324,14 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
       });
     }
 
-    const mrText = mergeRequests.length
-      ? mergeRequests.map((mr) => `${mr.repoKey}: ${mr.url}`).join('\n')
-      : 'No merge requests created.';
+    const mrTextParts: string[] = [];
+    if (mergeRequests.length) {
+      mrTextParts.push(mergeRequests.map((mr) => `${mr.repoKey}: ${mr.url}`).join('\n'));
+    }
+    if (localBranchMessages.length) {
+      mrTextParts.push(localBranchMessages.join('\n'));
+    }
+    const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
     const threadTs = await resolveThreadTs(job);
     await uploadFile(
