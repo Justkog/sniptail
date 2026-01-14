@@ -13,6 +13,7 @@ import {
 } from '../jobs/registry.js';
 import { logger } from '../logger.js';
 import type { JobSettings, JobSpec } from '../types/job.js';
+import { fetchCodexUsageMessage } from '../codex/status.js';
 import { buildSlackIds } from './ids.js';
 import { buildAskModal, buildImplementModal, resolveDefaultBaseBranch } from './modals.js';
 import { addReaction, postMessage, uploadFile } from './helpers.js';
@@ -252,6 +253,34 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         channel: body.channel_id,
         user: userId,
         text: `Failed to clear jobs before ${cutoff.toISOString()}.`,
+      });
+    }
+  });
+
+  app.command(slackIds.commands.usage, async ({ ack, body, client }) => {
+    await ack({
+      response_type: 'ephemeral',
+      text: 'Checking Codex usage...',
+    });
+
+    const userId = body.user_id;
+    if (!userId) {
+      return;
+    }
+
+    try {
+      const { message } = await fetchCodexUsageMessage();
+      await client.chat.postEphemeral({
+        channel: body.channel_id,
+        user: userId,
+        text: message,
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to fetch Codex usage status');
+      await client.chat.postEphemeral({
+        channel: body.channel_id,
+        user: userId,
+        text: 'Failed to fetch Codex usage status. Please try again shortly.',
       });
     }
   });
