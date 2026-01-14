@@ -188,9 +188,14 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
         : {}),
     });
     if (codexResult.threadId) {
+      const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for Codex thread id update');
+        return undefined;
+      });
+      const existingJob = existingRecord?.job ?? job;
       await updateJobRecord(job.jobId, {
         job: {
-          ...job,
+          ...existingJob,
           codexThreadId: codexResult.threadId,
         },
       }).catch((err) => {
