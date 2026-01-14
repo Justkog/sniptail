@@ -47,3 +47,22 @@ export async function uploadFile(app: App, options: {
     throw err;
   }
 }
+
+export async function addReaction(app: App, options: {
+  channel: string;
+  name: string;
+  timestamp: string;
+}) {
+  try {
+    await app.client.reactions.add({
+      channel: options.channel,
+      name: options.name,
+      timestamp: options.timestamp,
+    });
+  } catch (err) {
+    const error = err as { data?: { error?: string } };
+    if (error.data?.error !== 'already_reacted') {
+      logger.warn({ err, channel: options.channel }, 'Failed to add Slack reaction');
+    }
+  }
+}

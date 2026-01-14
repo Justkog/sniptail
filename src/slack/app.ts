@@ -15,7 +15,7 @@ import { logger } from '../logger.js';
 import type { JobSettings, JobSpec } from '../types/job.js';
 import { buildSlackIds } from './ids.js';
 import { buildAskModal, buildImplementModal, resolveDefaultBaseBranch } from './modals.js';
-import { postMessage, uploadFile } from './helpers.js';
+import { addReaction, postMessage, uploadFile } from './helpers.js';
 
 const recentRequests = new Map<string, number>();
 const dedupeWindowMs = 2 * 60 * 1000;
@@ -353,6 +353,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     const text = (event as { text?: string }).text ?? '';
     const threadTs = (event as { thread_ts?: string; ts?: string }).thread_ts
       ?? (event as { ts?: string }).ts;
+    const eventTs = (event as { ts?: string }).ts;
     const botId = (event as { bot_id?: string }).bot_id;
     const userId = (event as { user?: string }).user;
 
@@ -365,6 +366,14 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     const dedupeKey = `${channelId}:${threadTs}:mention`;
     if (dedupe(dedupeKey)) {
       return;
+    }
+
+    if (channelId && eventTs) {
+      await addReaction(app, {
+        channel: channelId,
+        name: 'eyes',
+        timestamp: eventTs,
+      });
     }
 
     const requestText = stripSlackMentions(text) || 'Say hello and ask how you can help.';
