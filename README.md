@@ -84,10 +84,10 @@ Create a Slack app (Socket Mode enabled) and add the following manifest (edit th
 
 ```yaml
 display_information:
-  name: Snatch
+  name: sniptail
 features:
   bot_user:
-    display_name: Snatchy
+    display_name: Sniptail
     always_online: true
   slash_commands:
     - command: /snatchy-ask
