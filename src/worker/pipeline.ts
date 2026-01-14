@@ -11,7 +11,7 @@ import { commitAndPush, ensureCleanRepo, runChecks } from '../git/jobOps.js';
 import { buildCompletionBlocks } from '../slack/blocks.js';
 import { buildSlackIds } from '../slack/ids.js';
 import { postMessage, uploadFile } from '../slack/helpers.js';
-import { findLatestJobBySlackThread, loadJobRecord, updateJobRecord } from '../jobs/registry.js';
+import { findLatestJobBySlackThread, findLatestJobBySlackThreadAndTypes, loadJobRecord, updateJobRecord } from '../jobs/registry.js';
 import type { App } from '@slack/bolt';
 import type { JobSpec, JobResult, MergeRequestResult } from '../types/job.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
@@ -70,6 +70,16 @@ async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
   if (job.codexThreadId) {
     return job.codexThreadId;
   }
+  if (job.resumeFromJobId) {
+    try {
+      const record = await loadJobRecord(job.resumeFromJobId);
+      if (record?.job?.codexThreadId) {
+        return record.job.codexThreadId;
+      }
+    } catch (err) {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to resolve Codex thread id from resumed job');
+    }
+  }
   const threadTs = await resolveThreadTs(job);
   if (!threadTs) return undefined;
   try {
@@ -78,6 +88,20 @@ async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to resolve Codex thread id');
     return undefined;
+  }
+}
+
+async function resolveMentionWorkingDirectory(job: JobSpec, fallback: string): Promise<string> {
+  if (job.type !== 'MENTION') return fallback;
+  const threadTs = await resolveThreadTs(job);
+  if (!threadTs) return fallback;
+  try {
+    const record = await findLatestJobBySlackThreadAndTypes(job.slack.channelId, threadTs, ['ASK', 'IMPLEMENT']);
+    if (!record) return fallback;
+    return buildJobPaths(record.job.jobId).root;
+  } catch (err) {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to resolve working directory from previous job');
+    return fallback;
   }
 }
 
@@ -151,7 +175,8 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
     logger.info({ jobId: job.jobId, repoKeys: job.repoKeys }, 'Running Codex');
 
     const codexThreadId = await resolveCodexThreadId(job);
-    const codexResult = await runCodex(job, job.type === 'MENTION' ? config.repoCacheRoot : paths.root, env, {
+    const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot);
+    const codexResult = await runCodex(job, job.type === 'MENTION' ? mentionWorkDir : paths.root, env, {
       botName: config.botName,
       ...(codexThreadId ? { resumeThreadId: codexThreadId } : {}),
       onEvent: async (event) => {
