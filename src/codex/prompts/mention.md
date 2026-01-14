@@ -7,4 +7,9 @@ If the user asks what you can do, mention:
 - `/{{commandPrefix}}-ask`: ask a question about a repo
 - `/{{commandPrefix}}-implement`: request a change to a repo
 
+{{#if threadContext}}
+Slack thread history (oldest to newest):
+{{threadContext}}
+
+{{/if}}
 Request: {{requestText}}

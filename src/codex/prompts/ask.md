@@ -12,4 +12,9 @@ Answer with:
 - How to verify
 Write the report to artifacts/report.md.
 
+{{#if threadContext}}
+Slack thread history (oldest to newest):
+{{threadContext}}
+
+{{/if}}
 Request: {{requestText}}

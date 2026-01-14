@@ -11,7 +11,7 @@ import { commitAndPush, ensureCleanRepo, runChecks } from '../git/jobOps.js';
 import { buildCompletionBlocks } from '../slack/blocks.js';
 import { buildSlackIds } from '../slack/ids.js';
 import { postMessage, uploadFile } from '../slack/helpers.js';
-import { loadJobRecord, updateJobRecord } from '../jobs/registry.js';
+import { findLatestJobBySlackThread, loadJobRecord, updateJobRecord } from '../jobs/registry.js';
 import type { App } from '@slack/bolt';
 import type { JobSpec, JobResult, MergeRequestResult } from '../types/job.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
@@ -63,6 +63,21 @@ async function resolveThreadTs(job: JobSpec): Promise<string | undefined> {
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to resolve job thread timestamp');
     return job.slack.threadTs;
+  }
+}
+
+async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
+  if (job.codexThreadId) {
+    return job.codexThreadId;
+  }
+  const threadTs = await resolveThreadTs(job);
+  if (!threadTs) return undefined;
+  try {
+    const record = await findLatestJobBySlackThread(job.slack.channelId, threadTs);
+    return record?.job?.codexThreadId;
+  } catch (err) {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to resolve Codex thread id');
+    return undefined;
   }
 }
 
@@ -135,8 +150,10 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
 
     logger.info({ jobId: job.jobId, repoKeys: job.repoKeys }, 'Running Codex');
 
+    const codexThreadId = await resolveCodexThreadId(job);
     const codexResult = await runCodex(job, job.type === 'MENTION' ? config.repoCacheRoot : paths.root, env, {
       botName: config.botName,
+      ...(codexThreadId ? { resumeThreadId: codexThreadId } : {}),
       onEvent: async (event) => {
         try {
           await appendFile(paths.logFile, formatCodexEvent(event));
@@ -170,6 +187,16 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
           }
         : {}),
     });
+    if (codexResult.threadId) {
+      await updateJobRecord(job.jobId, {
+        job: {
+          ...job,
+          codexThreadId: codexResult.threadId,
+        },
+      }).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record Codex thread id');
+      });
+    }
 
     if (job.type === 'MENTION') {
       const replyText = codexResult.finalResponse || 'Thanks for the mention! How can I help?';
