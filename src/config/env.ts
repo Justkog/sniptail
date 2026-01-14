@@ -12,7 +12,7 @@ export type AppConfig = {
   adminUserIds: string[];
   redisUrl: string;
   openAiKey?: string;
-  gitlab: {
+  gitlab?: {
     baseUrl: string;
     token: string;
   };
@@ -101,6 +101,16 @@ export function loadConfig(): AppConfig {
   const jobRootCopyGlob = process.env.JOB_ROOT_COPY_GLOB?.trim();
   const githubToken = process.env.GITHUB_TOKEN?.trim();
   const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim();
+  const gitlabBaseUrl = process.env.GITLAB_BASE_URL?.trim();
+  const gitlabToken = process.env.GITLAB_TOKEN?.trim();
+  if (gitlabBaseUrl || gitlabToken) {
+    if (!gitlabBaseUrl) {
+      throw new Error('GITLAB_BASE_URL is required when GITLAB_TOKEN is set.');
+    }
+    if (!gitlabToken) {
+      throw new Error('GITLAB_TOKEN is required when GITLAB_BASE_URL is set.');
+    }
+  }
 
   return {
     botName,
@@ -112,9 +122,11 @@ export function loadConfig(): AppConfig {
     adminUserIds: parseCommaList(process.env.ADMIN_USER_IDS),
     redisUrl: requireEnv('REDIS_URL'),
     ...openAiKey && { openAiKey },
-    gitlab: {
-      baseUrl: requireEnv('GITLAB_BASE_URL'),
-      token: requireEnv('GITLAB_TOKEN'),
+    ...gitlabBaseUrl && gitlabToken && {
+      gitlab: {
+        baseUrl: gitlabBaseUrl,
+        token: gitlabToken,
+      },
     },
     ...githubToken && {
       github: {
