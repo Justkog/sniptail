@@ -90,18 +90,18 @@ features:
     display_name: Sniptail
     always_online: true
   slash_commands:
-    - command: /snatchy-ask
-      description: Ask Snatchy to analyze one or more repos and return a Markdown report.
+    - command: /sniptail-ask
+      description: Ask Sniptail to analyze one or more repos and return a Markdown report.
       usage_hint: "[repo keys] [branch] [request text]"
       should_escape: false
-    - command: /snatchy-implement
-      description: Ask Snatchy to implement changes, run checks, and open GitLab MRs.
+    - command: /sniptail-implement
+      description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
       should_escape: false
-    - command: /snatchy-clear-before
-      description: Ask Snatchy to clear jobs data created before a certain date
+    - command: /sniptail-clear-before
+      description: Ask Sniptail to clear jobs data created before a certain date
       should_escape: false
-    - command: /snatchy-usage
+    - command: /sniptail-usage
       description: shows your current Codex usage for the day and week, plus when each quota resets.
       should_escape: false
 oauth_config:
