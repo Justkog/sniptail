@@ -6,6 +6,7 @@ import type { JobSpec } from '../types/job.js';
 
 export type CodexRunResult = {
   finalResponse: string;
+  threadId?: string;
 };
 
 export type CodexRunOptions = {
@@ -17,6 +18,7 @@ export type CodexRunOptions = {
   networkAccessEnabled?: boolean;
   webSearchEnabled?: boolean;
   botName?: string;
+  resumeThreadId?: string;
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;
@@ -68,7 +70,7 @@ export async function runCodex(
     env: codexEnv,
     ...(useDocker ? { codexPathOverride: resolve(process.cwd(), 'scripts', 'codex-docker.sh') } : {}),
   });
-  const thread = codex.startThread({
+  const threadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
     sandboxMode: options.sandboxMode ?? 'workspace-write',
@@ -76,7 +78,10 @@ export async function runCodex(
     ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
     ...(options.networkAccessEnabled !== undefined ? { networkAccessEnabled: options.networkAccessEnabled } : {}),
     ...(options.webSearchEnabled !== undefined ? { webSearchEnabled: options.webSearchEnabled } : {}),
-  });
+  };
+  const thread = options.resumeThreadId
+    ? codex.resumeThread(options.resumeThreadId, threadOptions)
+    : codex.startThread(threadOptions);
 
   const botName = options.botName?.trim() || 'Sniptail';
   const prompt =
@@ -87,10 +92,15 @@ export async function runCodex(
         : buildMentionPrompt(job, botName);
   const { events } = await thread.runStreamed(prompt);
   let finalResponse = '';
+  let threadId = options.resumeThreadId;
 
   for await (const event of events) {
     if (options.onEvent) {
       await options.onEvent(event);
+    }
+
+    if (event.type === 'thread.started') {
+      threadId = event.thread_id;
     }
 
     if (event.type === 'item.completed') {
@@ -108,5 +118,6 @@ export async function runCodex(
 
   return {
     finalResponse,
+    ...(threadId ? { threadId } : {}),
   };
 }

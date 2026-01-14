@@ -114,6 +114,29 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
   return updated;
 }
 
+export async function findLatestJobBySlackThread(
+  channelId: string,
+  threadTs: string,
+): Promise<JobRecord | undefined> {
+  await ensureDbReady();
+  let latestWithThreadId: JobRecord | undefined;
+  let latestTime = -1;
+
+  for await (const [, record] of levelDb.iterator({ gte: 'job:', lt: 'job;' })) {
+    const slack = record?.job?.slack;
+    if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
+    if (!record.job?.codexThreadId) continue;
+    const createdTime = Date.parse(record.createdAt);
+    if (Number.isNaN(createdTime)) continue;
+    if (createdTime > latestTime) {
+      latestWithThreadId = record;
+      latestTime = createdTime;
+    }
+  }
+
+  return latestWithThreadId;
+}
+
 export async function clearJobsBefore(cutoff: Date): Promise<number> {
   await ensureDbReady();
   const cutoffTime = cutoff.getTime();

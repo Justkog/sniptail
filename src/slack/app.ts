@@ -20,6 +20,8 @@ import { addReaction, postMessage, uploadFile } from './helpers.js';
 const recentRequests = new Map<string, number>();
 const dedupeWindowMs = 2 * 60 * 1000;
 const worktreeBranchPrefix = 'sniptail';
+const maxThreadHistoryMessages = 20;
+const maxThreadHistoryChars = 4000;
 
 function dedupe(key: string): boolean {
   const now = Date.now();
@@ -87,6 +89,50 @@ function buildWorktreeCommandsText(jobId: string, repoKeys: string[], branchByRe
   return lines.join('\n');
 }
 
+async function fetchSlackThreadContext(
+  client: App['client'],
+  channelId: string,
+  threadTs: string,
+  excludeTs?: string,
+): Promise<string | undefined> {
+  try {
+    const response = await client.conversations.replies({
+      channel: channelId,
+      ts: threadTs,
+      limit: 200,
+    });
+    const messages = (response as { messages?: Array<{
+      ts?: string;
+      text?: string;
+      user?: string;
+      bot_id?: string;
+      subtype?: string;
+    }> }).messages ?? [];
+    const filtered = messages
+      .filter((message) => message.ts && message.text)
+      .filter((message) => message.ts !== excludeTs)
+      .filter((message) => message.subtype !== 'bot_message')
+      .slice(-maxThreadHistoryMessages);
+    const lines = filtered
+      .map((message) => {
+        const author = message.user ?? message.bot_id ?? 'unknown';
+        const text = stripSlackMentions(message.text ?? '').trim();
+        if (!text) return null;
+        return `${author}: ${text}`;
+      })
+      .filter((line): line is string => Boolean(line));
+    if (!lines.length) return undefined;
+    const joined = lines.join('\n');
+    if (joined.length <= maxThreadHistoryChars) {
+      return joined;
+    }
+    return `...${joined.slice(-maxThreadHistoryChars)}`;
+  } catch (err) {
+    logger.warn({ err, channelId, threadTs }, 'Failed to fetch Slack thread history');
+    return undefined;
+  }
+}
+
 async function persistJobSpec(job: JobSpec): Promise<string | null> {
   const jobRoot = join(config.jobWorkRoot, job.jobId);
   const artifactsRoot = join(jobRoot, 'artifacts');
@@ -107,7 +153,7 @@ async function persistSlackUploadSpec(job: JobSpec): Promise<string | null> {
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
   try {
     await mkdir(artifactsRoot, { recursive: true });
-    const { requestText: _requestText, ...jobSpec } = job;
+    const { requestText: _requestText, slackThreadContext: _slackThreadContext, ...jobSpec } = job;
     await writeFile(jobSpecPath, `${JSON.stringify(jobSpec, null, 2)}\n`, 'utf8');
     return jobSpecPath;
   } catch (err) {
@@ -348,7 +394,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     }
   });
 
-  app.event('app_mention', async ({ event }) => {
+  app.event('app_mention', async ({ event, client }) => {
     const channelId = (event as { channel?: string }).channel;
     const text = (event as { text?: string }).text ?? '';
     const threadTs = (event as { thread_ts?: string; ts?: string }).thread_ts
@@ -363,7 +409,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       return;
     }
 
-    const dedupeKey = `${channelId}:${threadTs}:mention`;
+    const dedupeKey = `${channelId}:${eventTs ?? threadTs}:mention`;
     if (dedupe(dedupeKey)) {
       return;
     }
@@ -376,7 +422,13 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       });
     }
 
-    const requestText = stripSlackMentions(text) || 'Say hello and ask how you can help.';
+    const slackThreadContext = threadTs
+      ? await fetchSlackThreadContext(client, channelId, threadTs, eventTs)
+      : undefined;
+    const strippedText = stripSlackMentions(text);
+    const requestText = strippedText
+      || (slackThreadContext ? 'Please answer based on the Slack thread history.' : '')
+      || 'Say hello and ask how you can help.';
     const job: JobSpec = {
       jobId: createJobId('mention'),
       type: 'MENTION',
@@ -388,6 +440,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         userId: userId ?? 'unknown',
         ...(threadTs ? { threadTs } : {}),
       },
+      ...(slackThreadContext ? { slackThreadContext } : {}),
     };
 
     try {
@@ -412,7 +465,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     // });
   });
 
-  app.view(slackIds.actions.askSubmit, async ({ ack, body, view }) => {
+  app.view(slackIds.actions.askSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
     const state = view.state.values;
@@ -434,6 +487,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       return;
     }
 
+    const slackThreadContext = metadata?.threadTs && metadata?.channelId
+      ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadTs)
+      : undefined;
     const job: JobSpec = {
       jobId: createJobId('ask'),
       type: 'ASK',
@@ -446,6 +502,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         userId: metadata?.userId ?? body.user.id,
         ...(metadata?.threadTs ? { threadTs: metadata.threadTs } : {}),
       },
+      ...(slackThreadContext ? { slackThreadContext } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
 
@@ -515,7 +572,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     }
   });
 
-  app.view(slackIds.actions.implementSubmit, async ({ ack, body, view }) => {
+  app.view(slackIds.actions.implementSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
     const state = view.state.values;
@@ -543,6 +600,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     if (reviewers) settings.reviewers = reviewers;
     if (labels) settings.labels = labels;
 
+    const slackThreadContext = metadata?.threadTs && metadata?.channelId
+      ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadTs)
+      : undefined;
     const jobBase: JobSpec = {
       jobId: createJobId('implement'),
       type: 'IMPLEMENT',
@@ -555,6 +615,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         userId: metadata?.userId ?? body.user.id,
         ...(metadata?.threadTs ? { threadTs: metadata.threadTs } : {}),
       },
+      ...(slackThreadContext ? { slackThreadContext } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
     const job: JobSpec = Object.keys(settings).length ? { ...jobBase, settings } : jobBase;

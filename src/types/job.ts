@@ -27,6 +27,8 @@ export type JobSpec = {
   gitRef: string;
   requestText: string;
   slack: SlackContext;
+  codexThreadId?: string;
+  slackThreadContext?: string;
   resumeFromJobId?: string;
   settings?: JobSettings;
 };
