@@ -1,7 +1,8 @@
 export type JobType = 'ASK' | 'IMPLEMENT' | 'MENTION';
 
 export type RepoConfig = {
-  sshUrl: string;
+  sshUrl?: string;
+  localPath?: string;
   projectId?: number;
   baseBranch?: string;
 };

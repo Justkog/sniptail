@@ -67,7 +67,7 @@ function buildWorktreeCommandsText(jobId: string, repoKeys: string[], branchByRe
   for (const repoKey of repoKeys) {
     const branch = branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${jobId}`;
     const repoConfig = config.repoAllowlist[repoKey];
-    const cloneUrl = repoConfig?.sshUrl ?? '<repo-ssh-url>';
+    const cloneUrl = repoConfig?.localPath ?? repoConfig?.sshUrl ?? '<repo-url>';
 
     lines.push('');
     lines.push(`*${repoKey}*`);

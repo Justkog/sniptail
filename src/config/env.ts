@@ -57,8 +57,17 @@ function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
       throw new Error('Repo allowlist must be a JSON object.');
     }
     for (const [key, value] of Object.entries(parsed)) {
-      if (!value?.sshUrl) {
+      if (!value || typeof value !== 'object') {
         throw new Error(`Repo allowlist entry invalid for ${key}.`);
+      }
+      if (value.sshUrl !== undefined && typeof value.sshUrl !== 'string') {
+        throw new Error(`Repo allowlist entry sshUrl invalid for ${key}.`);
+      }
+      if (value.localPath !== undefined && typeof value.localPath !== 'string') {
+        throw new Error(`Repo allowlist entry localPath invalid for ${key}.`);
+      }
+      if (!value.sshUrl && !value.localPath) {
+        throw new Error(`Repo allowlist entry missing sshUrl or localPath for ${key}.`);
       }
       if (value.baseBranch !== undefined && typeof value.baseBranch !== 'string') {
         throw new Error(`Repo allowlist entry baseBranch invalid for ${key}.`);

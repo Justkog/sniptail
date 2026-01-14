@@ -22,8 +22,13 @@ export async function ensureClone(
     timeoutMs: 60_000,
   } as const;
 
+  const source = repo.localPath ?? repo.sshUrl;
+  if (!source) {
+    throw new Error(`Repo ${repoKey} missing sshUrl or localPath.`);
+  }
+
   if (!existsSync(clonePath)) {
-    await runCommand('git', ['clone', '--single-branch', '-b', gitRef, repo.sshUrl, clonePath], common);
+    await runCommand('git', ['clone', '--single-branch', '-b', gitRef, source, clonePath], common);
   } else {
     await runCommand('git', ['fetch', '--prune', 'origin', gitRef], { ...common, cwd: clonePath });
   }
