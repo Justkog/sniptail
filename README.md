@@ -29,6 +29,10 @@ Create a JSON file (ex: `repo-allowlist.json`) and point `REPO_ALLOWLIST_PATH` t
     "projectId": 123456,
     "baseBranch": "main"
   },
+  "local-tools": {
+    "localPath": "/srv/repos/local-tools",
+    "baseBranch": "main"
+  },
   "docs-site": {
     "sshUrl": "git@github.com:your-org/docs-site.git",
     "baseBranch": "main"
@@ -37,7 +41,8 @@ Create a JSON file (ex: `repo-allowlist.json`) and point `REPO_ALLOWLIST_PATH` t
 ```
 
 Notes:
-- `sshUrl` is required for every entry.
+- Use `sshUrl` or `localPath` for every entry.
+- `localPath` points at a local repo source on the same machine.
 - `projectId` is required for GitLab merge requests.
 - `baseBranch` is optional; it is used as the default branch in Slack modals.
 
