@@ -48,8 +48,6 @@ Required:
 - `SLACK_APP_TOKEN` (Socket Mode app-level token)
 - `SLACK_SIGNING_SECRET`
 - `REDIS_URL`
-- `GITLAB_BASE_URL`
-- `GITLAB_TOKEN`
 - `REPO_ALLOWLIST_PATH`
 - `REPO_CACHE_ROOT` (path where bare mirrors are stored)
 - `JOB_WORK_ROOT` (path where job worktrees + artifacts live)
@@ -60,6 +58,8 @@ Optional:
 - `BOT_NAME` (defaults to `Sniptail`; also controls slash command prefix)
 - `ADMIN_USER_IDS` (comma-separated user IDs allowed to run clear-before)
 - `JOB_ROOT_COPY_GLOB` (glob of files/folders to seed into each job root)
+- `GITLAB_BASE_URL` (required for GitLab merge requests)
+- `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_TOKEN` (required to create GitHub PRs)
 - `GITHUB_API_BASE_URL` (defaults to `https://api.github.com`)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
@@ -101,6 +101,9 @@ features:
     - command: /sniptail-clear-before
       description: Ask Sniptail to clear jobs data created before a certain date
       should_escape: false
+    - command: /sniptail-usage
+      description: shows your current Codex usage for the day and week, plus when each quota resets.
+      should_escape: false
 oauth_config:
   scopes:
     bot:
@@ -111,8 +114,10 @@ oauth_config:
       - files:write
       - groups:history
       - groups:read
-      - im:write
       - im:history
+      - im:write
+      - mpim:history
+      - reactions:write
 settings:
   event_subscriptions:
     bot_events:
@@ -148,6 +153,7 @@ npm run start
 - `/sniptail-ask`: Generates a Markdown report, uploads it to Slack, and posts a completion message.
 - `/sniptail-implement`: Runs Codex to implement changes, runs checks, pushes branches, and opens GitLab MRs or GitHub PRs.
 - `/sniptail-clear-before`: Admin-only cleanup of historical job data.
+- `/sniptail-usage`: Shows Codex usage for the day/week and quota reset timing.
 
 ## Repo execution notes
 
