@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { ClassicLevel } from 'classic-level';
 import { config } from '../config/index.js';
 import { logger } from '../logger.js';
-import type { JobSpec, MergeRequestResult } from '../types/job.js';
+import type { JobSpec, JobType, MergeRequestResult } from '../types/job.js';
 
 export type JobStatus = 'queued' | 'running' | 'ok' | 'failed';
 
@@ -135,6 +135,30 @@ export async function findLatestJobBySlackThread(
   }
 
   return latestWithThreadId;
+}
+
+export async function findLatestJobBySlackThreadAndTypes(
+  channelId: string,
+  threadTs: string,
+  types: JobType[],
+): Promise<JobRecord | undefined> {
+  await ensureDbReady();
+  let latest: JobRecord | undefined;
+  let latestTime = -1;
+
+  for await (const [, record] of levelDb.iterator({ gte: 'job:', lt: 'job;' })) {
+    const slack = record?.job?.slack;
+    if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
+    if (!types.includes(record.job.type)) continue;
+    const createdTime = Date.parse(record.createdAt);
+    if (Number.isNaN(createdTime)) continue;
+    if (createdTime > latestTime) {
+      latest = record;
+      latestTime = createdTime;
+    }
+  }
+
+  return latest;
 }
 
 export async function clearJobsBefore(cutoff: Date): Promise<number> {

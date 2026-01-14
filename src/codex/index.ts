@@ -84,12 +84,15 @@ export async function runCodex(
     : codex.startThread(threadOptions);
 
   const botName = options.botName?.trim() || 'Sniptail';
-  const prompt =
+  const basePrompt =
     job.type === 'ASK'
       ? buildAskPrompt(job, botName)
       : job.type === 'IMPLEMENT'
         ? buildImplementPrompt(job, botName)
         : buildMentionPrompt(job, botName);
+  const prompt = options.resumeThreadId
+    ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
+    : basePrompt;
   const { events } = await thread.runStreamed(prompt);
   let finalResponse = '';
   let threadId = options.resumeThreadId;
