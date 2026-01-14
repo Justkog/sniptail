@@ -104,7 +104,7 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
     ...(config.jobRootCopyGlob ? { JOB_ROOT_COPY_GLOB: config.jobRootCopyGlob } : {}),
   };
 
-  const redactionPatterns = [config.gitlab.token, config.github?.token ?? '', config.openAiKey ?? ''].filter(Boolean);
+  const redactionPatterns = [config.gitlab?.token ?? '', config.github?.token ?? '', config.openAiKey ?? ''].filter(Boolean);
 
   const repoWorktrees = new Map<string, { clonePath: string; worktreePath: string; branch?: string }>();
   const branchByRepo: Record<string, string> = {};
@@ -326,6 +326,9 @@ export async function runJob(app: App, job: JobSpec): Promise<JobResult> {
         : await (async () => {
             if (!repoConfig.projectId) {
               throw new Error(`Missing projectId for GitLab repo ${repoKey}.`);
+            }
+            if (!config.gitlab) {
+              throw new Error('GITLAB_BASE_URL and GITLAB_TOKEN are required to create GitLab merge requests.');
             }
             const reviewerIds = parseReviewerIds(job.settings?.reviewers);
             const gitlabMr = await createMergeRequest({
