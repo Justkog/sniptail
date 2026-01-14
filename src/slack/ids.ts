@@ -6,6 +6,7 @@ export type SlackIds = {
     ask: string;
     implement: string;
     clearBefore: string;
+    usage: string;
   };
   actions: {
     askFromJob: string;
@@ -26,6 +27,7 @@ export function buildSlackIds(botName: string): SlackIds {
       ask: `/${commandPrefix}-ask`,
       implement: `/${commandPrefix}-implement`,
       clearBefore: `/${commandPrefix}-clear-before`,
+      usage: `/${commandPrefix}-usage`,
     },
     actions: {
       askFromJob: `${commandPrefix}-ask-from-job`,
