@@ -82,6 +82,14 @@ Optional:
 
 Create a Slack app (Socket Mode enabled) and add the following manifest (edit the name if desired). The slash commands are derived from `BOT_NAME` (default prefix is `sniptail`).
 
+To generate the manifest automatically, run:
+
+```bash
+node scripts/generate-slack-manifest.mjs "My Bot"
+```
+
+This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `BOT_NAME` in `.env` and omit the argument.
+
 ```yaml
 display_information:
   name: sniptail
