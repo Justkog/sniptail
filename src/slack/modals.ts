@@ -30,6 +30,11 @@ export function buildAskModal(
   privateMetadata: string,
   resumeFromJobId?: string,
 ) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -46,10 +51,8 @@ export function buildAskModal(
           type: 'multi_static_select' as const,
           action_id: 'repo_keys',
           placeholder: { type: 'plain_text' as const, text: 'Select repos' },
-          options: Object.keys(repoAllowlist).map((key) => ({
-            text: { type: 'plain_text' as const, text: key },
-            value: key,
-          })),
+          options: repoOptions,
+          ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
         },
       },
       {
@@ -94,6 +97,11 @@ export function buildImplementModal(
   privateMetadata: string,
   resumeFromJobId?: string,
 ) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -110,10 +118,8 @@ export function buildImplementModal(
           type: 'multi_static_select' as const,
           action_id: 'repo_keys',
           placeholder: { type: 'plain_text' as const, text: 'Select repos' },
-          options: Object.keys(repoAllowlist).map((key) => ({
-            text: { type: 'plain_text' as const, text: key },
-            value: key,
-          })),
+          options: repoOptions,
+          ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
         },
       },
       {
