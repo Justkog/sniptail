@@ -62,6 +62,14 @@ vi.mock('../slack/blocks.js', () => ({
   buildCompletionBlocks: vi.fn(),
 }));
 
+vi.mock('../logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock('../github/client.js', () => ({
   createPullRequest: vi.fn(),
 }));
