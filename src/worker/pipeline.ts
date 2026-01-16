@@ -21,7 +21,7 @@ import { isGitHubSshUrl, parseGitHubRepo } from '../git/ssh.js';
 
 const branchPrefix = 'sniptail';
 
-async function copyJobRootSeed(
+export async function copyJobRootSeed(
   jobRootCopyGlob: string | undefined,
   jobRootPath: string,
   env: NodeJS.ProcessEnv,
@@ -66,7 +66,7 @@ async function resolveThreadTs(job: JobSpec): Promise<string | undefined> {
   }
 }
 
-async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
+export async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
   if (job.codexThreadId) {
     return job.codexThreadId;
   }
@@ -91,7 +91,7 @@ async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
   }
 }
 
-async function resolveMentionWorkingDirectory(job: JobSpec, fallback: string): Promise<string> {
+export async function resolveMentionWorkingDirectory(job: JobSpec, fallback: string): Promise<string> {
   if (job.type !== 'MENTION') return fallback;
   const threadTs = await resolveThreadTs(job);
   if (!threadTs) return fallback;
