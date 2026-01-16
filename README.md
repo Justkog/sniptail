@@ -14,11 +14,18 @@ Sniptail is a Slack bot that accepts slash commands, runs Codex jobs against app
 - Node.js (tested with Node 22)
 - Redis (for job queue)
 - Git + SSH access to your repos
-- Docker (optional, for running Codex in container mode)
+- Codex CLI in `PATH` (required when `CODEX_EXECUTION_MODE=local`, e.g. `npm install -g @openai/codex`)
+- Docker (required when `CODEX_EXECUTION_MODE=docker`)
 
-## Setup
+## Installation (step by step)
 
-### 1) Create a repo allowlist
+### 1) Install and run dependencies
+
+- Install Node.js, Redis, Git, and SSH keys for repo access.
+- If using `CODEX_EXECUTION_MODE=local`, install the Codex CLI so `codex` is available in `PATH`.
+- If using `CODEX_EXECUTION_MODE=docker`, install and run Docker.
+
+### 2) Create a repo allowlist
 
 Create a JSON file (ex: `repo-allowlist.json`) and point `REPO_ALLOWLIST_PATH` to it. The keys are short repo names that users select in Slack.
 
@@ -46,7 +53,7 @@ Notes:
 - `projectId` is required for GitLab merge requests.
 - `baseBranch` is optional; it is used as the default branch in Slack modals.
 
-### 2) Configure environment variables
+### 3) Configure environment variables
 
 Required:
 - `SLACK_BOT_TOKEN`
@@ -57,6 +64,14 @@ Required:
 - `REPO_CACHE_ROOT` (path where bare mirrors are stored)
 - `JOB_WORK_ROOT` (path where job worktrees + artifacts live)
 - `JOB_REGISTRY_PATH` (path for job registry LevelDB)
+
+Sniptail creates `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, and the parent directory of `JOB_REGISTRY_PATH` if they do not exist. Example values:
+
+```bash
+REPO_CACHE_ROOT=/home/your-user/sniptail/repo-cache
+JOB_WORK_ROOT=/home/your-user/sniptail/jobs
+JOB_REGISTRY_PATH=/home/your-user/sniptail/registry
+```
 
 Optional:
 - `OPENAI_API_KEY` (required in practice for Codex execution)
@@ -73,7 +88,7 @@ Optional:
 - `CODEX_DOCKER_BUILD_CONTEXT` (optional build context path)
 - `CODEX_DOCKER_HOST_HOME` (optional; defaults to host home dir)
 
-### 3) Choose local vs docker Codex execution
+### 4) Choose local vs docker Codex execution
 
 - `CODEX_EXECUTION_MODE=local`
   - Runs Codex directly on the host.
@@ -83,7 +98,7 @@ Optional:
   - Useful for consistent tooling and sandboxed execution.
   - Configure `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, and `CODEX_DOCKER_BUILD_CONTEXT` if you want the image to auto-build.
 
-### 4) Slack app setup
+### 5) Slack app setup
 
 Create a Slack app (Socket Mode enabled) and add the following manifest (edit the name if desired). The slash commands are derived from `BOT_NAME` (default prefix is `sniptail`).
 
@@ -147,7 +162,7 @@ After installing the app to your workspace, set:
 - `SLACK_APP_TOKEN`
 - `SLACK_SIGNING_SECRET`
 
-### 5) Run the bot
+### 6) Run the bot
 
 ```bash
 npm install
