@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "es2022",
+    "types": ["node"],
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@sniptail/core": ["packages/core/src/index.ts"],
+      "@sniptail/core/*.js": ["packages/core/src/*.ts"],
+      "@sniptail/core/*": ["packages/core/src/*"],
+      "@sniptail/bot": ["apps/bot/src/index.ts"],
+      "@sniptail/bot/*.js": ["apps/bot/src/*.ts"],
+      "@sniptail/bot/*": ["apps/bot/src/*"],
+      "@sniptail/worker": ["apps/worker/src/index.ts"],
+      "@sniptail/worker/*.js": ["apps/worker/src/*.ts"],
+      "@sniptail/worker/*": ["apps/worker/src/*"]
+    }
+  }
+}
