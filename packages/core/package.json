@@ -10,7 +10,7 @@
     "./*": "./dist/*"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../../scripts/copy-prompts.mjs",
+    "build": "tsc -p tsconfig.build.json && node ../../scripts/copy-prompts.mjs",
     "clean": "rm -rf dist",
     "lint": "eslint . --ignore-pattern **/dist/**",
     "format": "prettier . --ignore-path ../../.prettierignore --write",

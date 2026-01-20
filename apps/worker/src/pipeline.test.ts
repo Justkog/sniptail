@@ -37,6 +37,27 @@ vi.mock('@sniptail/core/jobs/registry.js', () => ({
   updateJobRecord: vi.fn(),
 }));
 
+vi.mock('@sniptail/core/jobs/utils.js', () => {
+  const jobWorkRoot = '/tmp/sniptail/job-root';
+  return {
+    validateJob: vi.fn(),
+    buildJobPaths: (jobId: string) => ({
+      root: `${jobWorkRoot}/${jobId}`,
+      reposRoot: `${jobWorkRoot}/${jobId}/repos`,
+      artifactsRoot: `${jobWorkRoot}/${jobId}/artifacts`,
+      logsRoot: `${jobWorkRoot}/${jobId}/logs`,
+      logFile: `${jobWorkRoot}/${jobId}/logs/runner.log`,
+    }),
+    parseReviewerIds: (values?: string[]) => {
+      if (!values) return undefined;
+      const ids = values
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isFinite(value));
+      return ids.length ? ids : undefined;
+    },
+  };
+});
+
 vi.mock('@sniptail/core/codex/index.js', () => ({
   runCodex: vi.fn(),
 }));
@@ -134,7 +155,7 @@ describe('worker/pipeline helpers', () => {
     ]);
 
     expect(runCommandMock).toHaveBeenCalledTimes(1);
-    const [command, args, options] = runCommandMock.mock.calls[0];
+    const [command, args, options] = runCommandMock.mock.calls[0]!;
     expect(command).toBe('bash');
     expect(args).toEqual(['-lc', expect.any(String)]);
     expect(options).toEqual(
