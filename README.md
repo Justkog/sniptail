@@ -9,9 +9,18 @@ Sniptail is a Slack bot that accepts slash commands, runs Codex jobs against app
 3. A worker pulls the job, prepares repo worktrees, and runs Codex with the request.
 4. Results are posted back to Slack as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
+## Repo layout
+
+Sniptail is a PNPM monorepo with two apps and one shared package:
+
+- `apps/bot`: Slack Bolt app (Socket Mode), slash commands, Slack events
+- `apps/worker`: job runner and pipeline execution
+- `packages/core`: shared queue wiring, Codex execution, Git/GitLab/GitHub integrations, config
+
 ## Dependencies
 
 - Node.js (tested with Node 22)
+- PNPM (workspace tooling)
 - Redis (for job queue)
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `CODEX_EXECUTION_MODE=local`, e.g. `npm install -g @openai/codex`)
@@ -166,15 +175,15 @@ After installing the app to your workspace, set:
 ### 6) Run the bot
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 For production:
 
 ```bash
-npm run build
-npm run start
+pnpm run build
+pnpm run start
 ```
 
 ## Command overview
@@ -189,3 +198,14 @@ npm run start
 - Repos are mirrored into `REPO_CACHE_ROOT` and checked out as worktrees under `JOB_WORK_ROOT`.
 - Only repos listed in the allowlist are selectable in Slack.
 - GitHub repos require `GITHUB_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
+
+## Key paths
+
+- `apps/bot/src/index.ts`: Slack app bootstrap (Socket Mode)
+- `apps/worker/src/index.ts`: worker bootstrap
+- `packages/core/src/slack/`: Slack commands, modals, and event handlers
+- `packages/core/src/queue/`: BullMQ queue wiring
+- `packages/core/src/git/`: Git operations and repo management
+- `packages/core/src/codex/`: Codex SDK integration and execution
+- `packages/core/src/config/env.ts`: env var schema + validation
+- `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)

@@ -1,31 +1,21 @@
 {
   "name": "sniptail",
   "private": true,
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "dev": "node --watch --import ./scripts/register-loaders.mjs src/index.ts",
-    "build": "tsc && node scripts/copy-prompts.mjs",
-    "start": "node --import ./scripts/register-loaders.mjs dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint .",
-    "format": "prettier . --write",
-    "check": "npm run lint && prettier . --check"
-  },
-  "keywords": [],
-  "license": "UNLICENSED",
   "type": "module",
-  "dependencies": {
-    "@openai/codex-sdk": "^0.79.0",
-    "@slack/bolt": "^4.6.0",
-    "bullmq": "^5.51.0",
-    "classic-level": "^3.0.0",
-    "dotenv": "^17.2.3",
-    "handlebars": "^4.7.8",
-    "pino": "^10.1.0"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "test": "vitest",
+    "test:run": "vitest run --config vitest.workspace.ts",
+    "build": "pnpm -r --filter \"./packages/*\" build && pnpm -r --filter \"./apps/*\" build",
+    "start": "pnpm -r --parallel --filter \"./apps/*\" start",
+    "clean": "pnpm -r clean",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "check": "pnpm -r check"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -38,6 +28,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.52.0",
+    "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^4.0.17"
   }
 }

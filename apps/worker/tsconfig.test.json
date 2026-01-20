@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // For tests, widen rootDir so both src and tests are under it
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts"]
+}
