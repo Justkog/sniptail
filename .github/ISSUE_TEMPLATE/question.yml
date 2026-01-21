@@ -1,0 +1,32 @@
+name: "❓ Question"
+description: "Ask a question (consider Discussions if enabled)"
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: "If this is a general question, Discussions may be a better fit if enabled."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: "If relevant, share steps or context to help us understand your question."
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual behavior
+      description: "What you expected vs what you are seeing or unsure about."
+      placeholder: "Expected: ...\nActual: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment info
+      description: "OS, Node.js version, and any other relevant details."
+      placeholder: "OS: ...\nNode: ...\nOther: ..."
+    validations:
+      required: true
