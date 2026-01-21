@@ -1,0 +1,90 @@
+import type { App } from '@slack/bolt';
+import type { ChatPostMessageResponse, FilesUploadV2Arguments } from '@slack/web-api';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { logger } from '@sniptail/core/logger.js';
+
+export async function postMessage(
+  app: App,
+  options: {
+    channel: string;
+    text: string;
+    threadTs?: string;
+    blocks?: unknown[];
+  },
+): Promise<ChatPostMessageResponse> {
+  const payload = {
+    channel: options.channel,
+    text: options.text,
+    ...(options.threadTs && { thread_ts: options.threadTs }),
+    ...(options.blocks && { blocks: options.blocks }),
+  };
+
+  return app.client.chat.postMessage(payload);
+}
+
+export async function uploadFile(
+  app: App,
+  options: {
+    channel: string;
+    filePath: string;
+    title: string;
+    threadTs?: string;
+  },
+) {
+  try {
+    let fileSize: number | undefined;
+    try {
+      const fileStat = await stat(options.filePath);
+      fileSize = fileStat.size;
+    } catch (err) {
+      logger.warn({ err, filePath: options.filePath }, 'Failed to stat Slack upload file');
+    }
+
+    logger.info(
+      {
+        channel: options.channel,
+        threadTs: options.threadTs,
+        threadTsType: typeof options.threadTs,
+        filePath: options.filePath,
+        fileSize,
+      },
+      'Uploading Slack file',
+    );
+
+    const payload = {
+      channel_id: options.channel,
+      file: createReadStream(options.filePath),
+      filename: options.title,
+      title: options.title,
+      ...(options.threadTs && { thread_ts: options.threadTs }),
+    };
+
+    await app.client.files.uploadV2(payload as FilesUploadV2Arguments);
+  } catch (err) {
+    logger.error({ err }, 'Failed to upload Slack file');
+    throw err;
+  }
+}
+
+export async function addReaction(
+  app: App,
+  options: {
+    channel: string;
+    name: string;
+    timestamp: string;
+  },
+) {
+  try {
+    await app.client.reactions.add({
+      channel: options.channel,
+      name: options.name,
+      timestamp: options.timestamp,
+    });
+  } catch (err) {
+    const error = err as { data?: { error?: string } };
+    if (error.data?.error !== 'already_reacted') {
+      logger.warn({ err, channel: options.channel }, 'Failed to add Slack reaction');
+    }
+  }
+}
