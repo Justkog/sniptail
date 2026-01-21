@@ -10,9 +10,9 @@
     "test:run": "vitest run",
     "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
     "clean": "rm -rf dist",
-    "lint": "eslint .",
-    "format": "prettier . --write",
-    "check": "pnpm run lint && prettier . --check"
+    "lint": "eslint . --ignore-pattern **/dist/**",
+    "format": "prettier . --ignore-path ../../.prettierignore --write",
+    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
   },
   "dependencies": {
     "@sniptail/core": "workspace:*",
