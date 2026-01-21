@@ -1,0 +1,32 @@
+name: "✨ Feature request"
+description: "Suggest a new feature or improvement"
+title: "[Feature]: "
+labels: ["enhancement", "documentation", "good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for the idea. Please share the details below."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: "If this request addresses a pain point, describe how to reproduce it."
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual behavior
+      description: "What you expected vs what happens today."
+      placeholder: "Expected: ...\nActual: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment info
+      description: "OS, Node.js version, and any other relevant details."
+      placeholder: "OS: ...\nNode: ...\nOther: ..."
+    validations:
+      required: true
