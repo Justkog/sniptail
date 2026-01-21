@@ -2,6 +2,7 @@
   "name": "sniptail",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.5.0",
   "workspaces": [
     "apps/*",
     "packages/*"
