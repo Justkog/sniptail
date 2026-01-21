@@ -1,0 +1,22 @@
+{
+  "name": "@sniptail/worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
+    "clean": "rm -rf dist",
+    "lint": "eslint .",
+    "format": "prettier . --write",
+    "check": "pnpm run lint && prettier . --check"
+  },
+  "dependencies": {
+    "@sniptail/core": "workspace:*",
+    "bullmq": "^5.51.0",
+    "dotenv": "^17.2.3"
+  }
+}

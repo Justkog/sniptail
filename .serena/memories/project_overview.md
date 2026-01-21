@@ -1,7 +1,13 @@
-# Snatchy project overview
-
-Purpose: Slack bot/service that accepts /snatchy-ask and /snatchy-implement commands, queues jobs in BullMQ, and runs Codex-based workflows against repo allowlist, posting results back to Slack (reports/MRs).
-
-Tech stack: Node.js (ESM), TypeScript, Slack Bolt, BullMQ (Redis), Git/GitLab integration, OpenAI Codex SDK, Pino logging, dotenv.
-
-Entrypoint: `src/index.ts` starts Slack app (Socket Mode), creates queue, starts worker.
+# Sniptail overview
+- Purpose: Slack bot that queues and runs Codex-backed jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
+- Entrypoints: `apps/bot/src/index.ts` (Slack app via Socket Mode), `apps/worker/src/index.ts` (worker).
+- Stack: Node.js + TypeScript (ESM), PNPM workspaces, Slack Bolt, BullMQ, Redis, OpenAI Codex SDK.
+- Repo structure:
+  - `apps/bot/` Slack app runtime
+  - `apps/worker/` worker runtime
+  - `packages/core/src/slack/` Slack commands, modals, events
+  - `packages/core/src/queue/` BullMQ wiring
+  - `packages/core/src/git/` Git operations & repo management
+  - `packages/core/src/codex/` Codex SDK integration & execution
+  - `packages/core/src/config/env.ts` env schema + validation
+  - `scripts/` helper scripts (notably `scripts/codex-docker.sh`)

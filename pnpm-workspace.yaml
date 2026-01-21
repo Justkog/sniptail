@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+ignoredBuiltDependencies:
+  - classic-level
+  - esbuild
+  - msgpackr-extract
+
+onlyBuiltDependencies:
+  - better-sqlite3
