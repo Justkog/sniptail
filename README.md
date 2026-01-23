@@ -171,6 +171,9 @@ features:
       description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
       should_escape: false
+    - command: /sniptail-bootstrap
+      description: Create a new repository and add it to the allowlist.
+      should_escape: false
     - command: /sniptail-clear-before
       description: Ask Sniptail to clear jobs data created before a certain date
       should_escape: false
@@ -225,6 +228,7 @@ pnpm run start
 
 - `/sniptail-ask`: Generates a Markdown report, uploads it to Slack, and posts a completion message.
 - `/sniptail-implement`: Runs Codex to implement changes, runs checks, pushes branches, and opens GitLab MRs or GitHub PRs.
+- `/sniptail-bootstrap`: Creates a GitHub/GitLab repository and appends it to the allowlist.
 - `/sniptail-clear-before`: Admin-only cleanup of historical job data.
 - `/sniptail-usage`: Shows Codex usage for the day/week and quota reset timing.
 

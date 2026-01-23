@@ -1,9 +1,13 @@
 import { App, type CodedError } from '@slack/bolt';
 import type { Queue } from 'bullmq';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { loadBotConfig } from '@sniptail/core/config/index.js';
+import type { GitHubConfig } from '@sniptail/core/github/client.js';
+import { createRepository } from '@sniptail/core/github/client.js';
+import type { GitLabConfig } from '@sniptail/core/gitlab/client.js';
+import { createProject } from '@sniptail/core/gitlab/client.js';
 import {
   clearJobsBefore,
   loadJobRecord,
@@ -14,9 +18,15 @@ import {
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/index.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
-import type { JobSettings, JobSpec } from '@sniptail/core/types/job.js';
+import type { JobSettings, JobSpec, RepoConfig } from '@sniptail/core/types/job.js';
 import { addReaction, postMessage, uploadFile } from './helpers.js';
-import { buildAskModal, buildImplementModal, resolveDefaultBaseBranch } from './modals.js';
+import {
+  buildAskModal,
+  buildImplementModal,
+  buildRepoBootstrapModal,
+  resolveDefaultBaseBranch,
+  type RepoBootstrapService,
+} from './modals.js';
 
 const config = loadBotConfig();
 
@@ -64,6 +74,58 @@ function stripSlackMentions(text: string): string {
     .replace(/<@[^>]+>/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const repoKeySanitizePattern = /[^A-Za-z0-9._-]+/g;
+
+function sanitizeRepoKey(value: string): string {
+  return value
+    .trim()
+    .replace(repoKeySanitizePattern, '-')
+    .replace(/^-+/, '')
+    .replace(/-+$/, '');
+}
+
+function parseOptionalInt(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function resolveGitHubConfig(): GitHubConfig | null {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) return null;
+  return {
+    token,
+    apiBaseUrl: process.env.GITHUB_API_BASE_URL?.trim() || 'https://api.github.com',
+  };
+}
+
+function resolveGitLabConfig(): GitLabConfig | null {
+  const baseUrl = process.env.GITLAB_BASE_URL?.trim();
+  const token = process.env.GITLAB_TOKEN?.trim();
+  if (!baseUrl || !token) return null;
+  return { baseUrl, token };
+}
+
+function resolveBootstrapServices(): RepoBootstrapService[] {
+  const services: RepoBootstrapService[] = [];
+  if (resolveGitHubConfig()) services.push('github');
+  if (resolveGitLabConfig()) services.push('gitlab');
+  return services;
+}
+
+async function readAllowlist(path: string): Promise<Record<string, RepoConfig>> {
+  const raw = await readFile(path, 'utf8');
+  const parsed = JSON.parse(raw) as Record<string, RepoConfig>;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Repo allowlist must be a JSON object.');
+  }
+  return parsed;
+}
+
+async function writeAllowlist(path: string, allowlist: Record<string, RepoConfig>): Promise<void> {
+  await writeFile(path, `${JSON.stringify(allowlist, null, 2)}\n`, 'utf8');
 }
 
 function createJobId(prefix: string): string {
@@ -226,6 +288,39 @@ export function createSlackApp(queue: Queue<JobSpec>) {
           channelId: body.channel_id,
           userId: body.user_id,
           threadTs: (body.thread_ts as string) ?? undefined,
+        }),
+      ),
+    });
+  });
+
+  app.command(slackIds.commands.bootstrap, async ({ ack, body, client }) => {
+    await ack();
+    const dedupeKey = `${body.team_id}:${body.trigger_id}:bootstrap`;
+    if (dedupe(dedupeKey)) {
+      return;
+    }
+
+    const services = resolveBootstrapServices();
+    if (!services.length) {
+      if (body.channel_id && body.user_id) {
+        await client.chat.postEphemeral({
+          channel: body.channel_id,
+          user: body.user_id,
+          text: 'Repository bootstrap is not configured. Set GITHUB_TOKEN or GITLAB_BASE_URL + GITLAB_TOKEN.',
+        });
+      }
+      return;
+    }
+
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: buildRepoBootstrapModal(
+        services,
+        config.botName,
+        slackIds.actions.bootstrapSubmit,
+        JSON.stringify({
+          channelId: body.channel_id,
+          userId: body.user_id,
         }),
       ),
     });
@@ -511,6 +606,154 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     //   text: `Got it! I'm working on that now.`,
     //   threadTs,
     // });
+  });
+
+  app.view(slackIds.actions.bootstrapSubmit, async ({ ack, body, view, client }) => {
+    const state = view.state.values;
+    const metadata = view.private_metadata
+      ? (JSON.parse(view.private_metadata) as { channelId: string; userId: string })
+      : undefined;
+    const repoName = state.repo_name?.repo_name?.value?.trim() ?? '';
+    const repoKeyInput = state.repo_key?.repo_key?.value?.trim() ?? '';
+    const service = state.service?.service?.selected_option?.value as RepoBootstrapService | undefined;
+    const owner = state.owner?.owner?.value?.trim() || undefined;
+    const description = state.description?.description?.value?.trim() || undefined;
+    const visibility = state.visibility?.visibility?.selected_option?.value as
+      | 'private'
+      | 'public'
+      | undefined;
+    const quickstart = Boolean(
+      state.quickstart?.quickstart?.selected_options?.some((option) => option.value === 'readme'),
+    );
+    const namespaceIdRaw = state.gitlab_namespace_id?.gitlab_namespace_id?.value?.trim();
+    const namespaceId = parseOptionalInt(namespaceIdRaw);
+    const repoKey = sanitizeRepoKey(repoKeyInput || repoName);
+    const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
+
+    const errors: Record<string, string> = {};
+    if (!repoName) {
+      errors.repo_name = 'Repository name is required.';
+    }
+    if (!repoKey) {
+      errors.repo_key = 'Allowlist key must include letters or numbers.';
+    }
+    if (!service) {
+      errors.service = 'Choose a repository service.';
+    }
+    if (namespaceIdRaw && namespaceId === undefined) {
+      errors.gitlab_namespace_id = 'Namespace ID must be a number.';
+    }
+    if (!allowlistPath) {
+      errors.repo_name = 'REPO_ALLOWLIST_PATH is not set.';
+    }
+
+    const githubConfig = service === 'github' ? resolveGitHubConfig() : null;
+    const gitlabConfig = service === 'gitlab' ? resolveGitLabConfig() : null;
+    if (service === 'github' && !githubConfig) {
+      errors.service = 'GitHub is not configured. Set GITHUB_TOKEN (and optional GITHUB_API_BASE_URL).';
+    }
+    if (service === 'gitlab' && !gitlabConfig) {
+      errors.service = 'GitLab is not configured. Set GITLAB_BASE_URL and GITLAB_TOKEN.';
+    }
+
+    let allowlist: Record<string, RepoConfig> | null = null;
+    if (allowlistPath && !Object.keys(errors).length) {
+      try {
+        allowlist = await readAllowlist(allowlistPath);
+        if (allowlist[repoKey]) {
+          errors.repo_key = `Allowlist key "${repoKey}" already exists.`;
+        }
+      } catch (err) {
+        logger.warn({ err, allowlistPath }, 'Failed to read repo allowlist');
+        errors.repo_name = 'Unable to read REPO_ALLOWLIST_PATH. Check JSON formatting.';
+      }
+    }
+
+    if (Object.keys(errors).length) {
+      await ack({ response_action: 'errors', errors });
+      return;
+    }
+
+    await ack();
+
+    const responseChannel = metadata?.channelId ?? body.user.id;
+    const responseUser = metadata?.userId ?? body.user.id;
+
+    try {
+      if (!allowlistPath || !allowlist || !service) {
+        throw new Error('Missing allowlist or service selection.');
+      }
+
+      let allowlistEntry: RepoConfig;
+      let repoUrl: string;
+      let repoLabel: string;
+      if (service === 'github') {
+        const repo = await createRepository({
+          config: githubConfig!,
+          name: repoName,
+          owner,
+          description,
+          private: visibility === 'private' ? true : visibility === 'public' ? false : undefined,
+          autoInit: quickstart,
+        });
+        allowlistEntry = {
+          sshUrl: repo.sshUrl,
+          ...(repo.defaultBranch ? { baseBranch: repo.defaultBranch } : {}),
+        };
+        repoUrl = repo.url;
+        repoLabel = repo.fullName;
+      } else {
+        const project = await createProject({
+          config: gitlabConfig!,
+          name: repoName,
+          path: sanitizeRepoKey(repoName) || undefined,
+          namespaceId,
+          description,
+          visibility,
+          initializeWithReadme: quickstart,
+        });
+        allowlistEntry = {
+          sshUrl: project.sshUrl,
+          projectId: project.id,
+          ...(project.defaultBranch ? { baseBranch: project.defaultBranch } : {}),
+        };
+        repoUrl = project.webUrl;
+        repoLabel = project.pathWithNamespace;
+      }
+
+      allowlist[repoKey] = allowlistEntry;
+      await writeAllowlist(allowlistPath, allowlist);
+      config.repoAllowlist[repoKey] = allowlistEntry;
+
+      const serviceName = service === 'github' ? 'GitHub' : 'GitLab';
+      await postMessage(app, {
+        channel: responseChannel,
+        text: `Created ${serviceName} repo ${repoLabel} and added allowlist entry ${repoKey}.`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*${serviceName} repo created*\n• Repo: <${repoUrl}|${repoLabel}>\n• Allowlist key: \`${repoKey}\``,
+            },
+          },
+        ],
+      });
+    } catch (err) {
+      logger.error({ err, repoName, service }, 'Failed to bootstrap repository');
+      if (responseChannel && responseUser) {
+        await client.chat.postEphemeral({
+          channel: responseChannel,
+          user: responseUser,
+          text: `Failed to create repository: ${(err as Error).message}`,
+        });
+      } else {
+        await postMessage(app, {
+          channel: responseChannel,
+          text: `Failed to create repository: ${(err as Error).message}`,
+        });
+      }
+    }
   });
 
   app.view(slackIds.actions.askSubmit, async ({ ack, body, view, client }) => {

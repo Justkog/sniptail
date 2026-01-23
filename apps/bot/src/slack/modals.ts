@@ -1,5 +1,7 @@
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 
+export type RepoBootstrapService = 'github' | 'gitlab';
+
 export function resolveDefaultBaseBranch(
   repoAllowlist: Record<string, RepoConfig>,
   repoKey?: string,
@@ -171,6 +173,131 @@ export function buildImplementModal(
           type: 'plain_text_input' as const,
           action_id: 'resume_from',
           ...(resumeFromJobId ? { initial_value: resumeFromJobId } : {}),
+        },
+      },
+    ],
+  };
+}
+
+export function buildRepoBootstrapModal(
+  services: RepoBootstrapService[],
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+) {
+  const serviceOptions = services.map((service) => ({
+    text: {
+      type: 'plain_text' as const,
+      text: service === 'github' ? 'GitHub' : 'GitLab',
+    },
+    value: service,
+  }));
+  const defaultService = serviceOptions.length === 1 ? serviceOptions[0] : undefined;
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Bootstrap` },
+    submit: { type: 'plain_text' as const, text: 'Create' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'repo_name',
+        label: { type: 'plain_text' as const, text: 'Repository name' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'repo_name',
+          placeholder: { type: 'plain_text' as const, text: 'my-new-repo' },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'repo_key',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Allowlist key (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'repo_key',
+          placeholder: { type: 'plain_text' as const, text: 'Defaults to repository name' },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'service',
+        label: { type: 'plain_text' as const, text: 'Repository service' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'service',
+          placeholder: { type: 'plain_text' as const, text: 'Choose a service' },
+          options: serviceOptions,
+          ...(defaultService ? { initial_option: defaultService } : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'owner',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Owner/namespace (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'owner',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'GitHub org/user or GitLab group path',
+          },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'gitlab_namespace_id',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'GitLab namespace ID (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'gitlab_namespace_id',
+          placeholder: { type: 'plain_text' as const, text: 'Numeric namespace id' },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'description',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Description (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'description',
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'visibility',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Visibility (optional)' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'visibility',
+          placeholder: { type: 'plain_text' as const, text: 'Private (default)' },
+          options: [
+            { text: { type: 'plain_text' as const, text: 'Private' }, value: 'private' },
+            { text: { type: 'plain_text' as const, text: 'Public' }, value: 'public' },
+          ],
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'quickstart',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Quickstart' },
+        element: {
+          type: 'checkboxes' as const,
+          action_id: 'quickstart',
+          options: [
+            {
+              text: { type: 'plain_text' as const, text: 'Initialize with README' },
+              value: 'readme',
+            },
+          ],
         },
       },
     ],
