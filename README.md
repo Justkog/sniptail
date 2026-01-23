@@ -2,6 +2,41 @@
 
 Sniptail is a Slack bot that accepts slash commands, runs Codex jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
+## Project direction
+
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Codex + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+
+### Mediums (chat surfaces)
+
+| Medium | Status | Notes |
+| --- | --- | --- |
+| Slack | Supported | Current production target |
+| Discord | Planned | |
+| WhatsApp | Planned | |
+| Telegram | Planned | |
+| Microsoft Teams | Planned | |
+
+### Coding agents
+
+| Agent | Status | Notes |
+| --- | --- | --- |
+| OpenAI Codex | Supported | Current execution engine |
+| GitHub Copilot CLI | Planned | |
+| Claude Code | Planned | |
+| OpenCode | Planned | |
+| Gemini CLI | Planned | |
+| Aider | Planned | |
+
+### Git services
+
+| Service | Status | Notes |
+| --- | --- | --- |
+| GitHub | Supported | PR creation supported |
+| GitLab | Supported | MR creation supported |
+| Bitbucket | Planned | |
+| Azure DevOps | Planned | |
+| Gitea / Forgejo | Planned | |
+
 ## How it works (high level)
 
 1. A user triggers a slash command or mentions the bot in Slack.
