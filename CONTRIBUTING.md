@@ -3,6 +3,10 @@
 Thanks for helping improve Sniptail! This guide covers local setup, workflows,
 and what to expect when contributing.
 
+## Project direction
+
+Sniptail is designed to expand along three axes: the medium (where jobs are requested), the coding agent (what executes jobs), and the Git service (where changes land). Today the stack is Slack + Codex + GitHub/GitLab. Contributions that add new integrations in any of these areas are especially welcome; see the tables in `README.md` for the current support matrix.
+
 ## Local setup
 
 Prereqs:
