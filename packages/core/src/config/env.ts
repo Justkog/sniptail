@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
+import type { GitHubConfig } from '../github/client.js';
+import type { GitLabConfig } from '../gitlab/client.js';
 
 export type CoreConfig = {
   repoAllowlist: Record<string, RepoConfig>;
@@ -17,20 +19,16 @@ export type BotConfig = CoreConfig & {
   };
   adminUserIds: string[];
   redisUrl: string;
+  gitlab?: GitLabConfig;
+  github?: GitHubConfig;
 };
 
 export type WorkerConfig = CoreConfig & {
   botName: string;
   redisUrl: string;
   openAiKey?: string;
-  gitlab?: {
-    baseUrl: string;
-    token: string;
-  };
-  github?: {
-    apiBaseUrl: string;
-    token: string;
-  };
+  gitlab?: GitLabConfig;
+  github?: GitHubConfig;
   repoCacheRoot: string;
   jobRootCopyGlob?: string;
   codex: {
@@ -66,7 +64,7 @@ function resolveBotName(): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
-function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
+export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
   try {
     const raw = readFileSync(filePath, 'utf8');
     const parsed = JSON.parse(raw) as Record<string, RepoConfig>;
@@ -97,6 +95,33 @@ function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
   }
 }
 
+export function resolveGitHubConfig(): GitHubConfig | undefined {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) return undefined;
+  return {
+    apiBaseUrl: process.env.GITHUB_API_BASE_URL?.trim() || 'https://api.github.com',
+    token,
+  };
+}
+
+export function resolveGitLabConfig(): GitLabConfig | undefined {
+  const gitlabBaseUrl = process.env.GITLAB_BASE_URL?.trim();
+  const gitlabToken = process.env.GITLAB_TOKEN?.trim();
+  if (gitlabBaseUrl || gitlabToken) {
+    if (!gitlabBaseUrl) {
+      throw new Error('GITLAB_BASE_URL is required when GITLAB_TOKEN is set.');
+    }
+    if (!gitlabToken) {
+      throw new Error('GITLAB_TOKEN is required when GITLAB_BASE_URL is set.');
+    }
+    return {
+      baseUrl: gitlabBaseUrl,
+      token: gitlabToken,
+    };
+  }
+  return undefined;
+}
+
 export function resetConfigCaches() {
   coreConfigCache = null;
   botConfigCache = null;
@@ -119,6 +144,8 @@ export function loadBotConfig(): BotConfig {
   if (botConfigCache) return botConfigCache;
   const core = loadCoreConfig();
   const botName = resolveBotName();
+  const gitlab = resolveGitLabConfig();
+  const github = resolveGitHubConfig();
 
   botConfigCache = {
     ...core,
@@ -130,6 +157,8 @@ export function loadBotConfig(): BotConfig {
     },
     adminUserIds: parseCommaList(process.env.ADMIN_USER_IDS),
     redisUrl: requireEnv('REDIS_URL'),
+    ...(gitlab && { gitlab }),
+    ...(github && { github }),
   };
   return botConfigCache;
 }
@@ -152,37 +181,16 @@ export function loadWorkerConfig(): WorkerConfig {
   if (!openAiKey) {
     logger.warn('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
   }
-  const githubToken = process.env.GITHUB_TOKEN?.trim();
-  const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim();
-  const gitlabBaseUrl = process.env.GITLAB_BASE_URL?.trim();
-  const gitlabToken = process.env.GITLAB_TOKEN?.trim();
-  if (gitlabBaseUrl || gitlabToken) {
-    if (!gitlabBaseUrl) {
-      throw new Error('GITLAB_BASE_URL is required when GITLAB_TOKEN is set.');
-    }
-    if (!gitlabToken) {
-      throw new Error('GITLAB_TOKEN is required when GITLAB_BASE_URL is set.');
-    }
-  }
+  const gitlab = resolveGitLabConfig();
+  const github = resolveGitHubConfig();
 
   workerConfigCache = {
     ...core,
     botName,
     redisUrl: requireEnv('REDIS_URL'),
     ...(openAiKey && { openAiKey }),
-    ...(gitlabBaseUrl &&
-      gitlabToken && {
-        gitlab: {
-          baseUrl: gitlabBaseUrl,
-          token: gitlabToken,
-        },
-      }),
-    ...(githubToken && {
-      github: {
-        apiBaseUrl: githubApiBaseUrl || 'https://api.github.com',
-        token: githubToken,
-      },
-    }),
+    ...(gitlab && { gitlab }),
+    ...(github && { github }),
     repoCacheRoot: requireEnv('REPO_CACHE_ROOT'),
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
     codex: {

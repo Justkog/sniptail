@@ -1,12 +1,10 @@
 import { App, type CodedError } from '@slack/bolt';
 import type { Queue } from 'bullmq';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
-import { loadBotConfig } from '@sniptail/core/config/index.js';
-import type { GitHubConfig } from '@sniptail/core/github/client.js';
+import { loadBotConfig, parseRepoAllowlist } from '@sniptail/core/config/index.js';
 import { createRepository } from '@sniptail/core/github/client.js';
-import type { GitLabConfig } from '@sniptail/core/gitlab/client.js';
 import { createProject } from '@sniptail/core/gitlab/client.js';
 import {
   clearJobsBefore,
@@ -92,36 +90,11 @@ function parseOptionalInt(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function resolveGitHubConfig(): GitHubConfig | null {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) return null;
-  return {
-    token,
-    apiBaseUrl: process.env.GITHUB_API_BASE_URL?.trim() || 'https://api.github.com',
-  };
-}
-
-function resolveGitLabConfig(): GitLabConfig | null {
-  const baseUrl = process.env.GITLAB_BASE_URL?.trim();
-  const token = process.env.GITLAB_TOKEN?.trim();
-  if (!baseUrl || !token) return null;
-  return { baseUrl, token };
-}
-
 function resolveBootstrapServices(): RepoBootstrapService[] {
   const services: RepoBootstrapService[] = [];
-  if (resolveGitHubConfig()) services.push('github');
-  if (resolveGitLabConfig()) services.push('gitlab');
+  if (config.github) services.push('github');
+  if (config.gitlab) services.push('gitlab');
   return services;
-}
-
-async function readAllowlist(path: string): Promise<Record<string, RepoConfig>> {
-  const raw = await readFile(path, 'utf8');
-  const parsed = JSON.parse(raw) as Record<string, RepoConfig>;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Repo allowlist must be a JSON object.');
-  }
-  return parsed;
 }
 
 async function writeAllowlist(path: string, allowlist: Record<string, RepoConfig>): Promise<void> {
@@ -647,8 +620,8 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       errors.repo_name = 'REPO_ALLOWLIST_PATH is not set.';
     }
 
-    const githubConfig = service === 'github' ? resolveGitHubConfig() : null;
-    const gitlabConfig = service === 'gitlab' ? resolveGitLabConfig() : null;
+    const githubConfig = service === 'github' ? config.github : undefined;
+    const gitlabConfig = service === 'gitlab' ? config.gitlab : undefined;
     if (service === 'github' && !githubConfig) {
       errors.service = 'GitHub is not configured. Set GITHUB_TOKEN (and optional GITHUB_API_BASE_URL).';
     }
@@ -659,7 +632,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     let allowlist: Record<string, RepoConfig> | null = null;
     if (allowlistPath && !Object.keys(errors).length) {
       try {
-        allowlist = await readAllowlist(allowlistPath);
+        allowlist = parseRepoAllowlist(allowlistPath);
         if (allowlist[repoKey]) {
           errors.repo_key = `Allowlist key "${repoKey}" already exists.`;
         }
