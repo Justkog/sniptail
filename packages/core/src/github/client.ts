@@ -8,6 +8,15 @@ export type PullRequestResponse = {
   number: number;
 };
 
+export type CreateRepositoryResponse = {
+  url: string;
+  sshUrl: string;
+  fullName: string;
+  defaultBranch?: string;
+  owner: string;
+  name: string;
+};
+
 async function requestGitHub(
   config: GitHubConfig,
   path: string,
@@ -30,6 +39,40 @@ async function requestGitHub(
   }
 
   return response;
+}
+
+export async function createRepository(options: {
+  config: GitHubConfig;
+  name: string;
+  owner?: string;
+  description?: string;
+  private?: boolean;
+  autoInit?: boolean;
+}): Promise<CreateRepositoryResponse> {
+  const { config, name, owner, description, private: isPrivate, autoInit } = options;
+  const path = owner ? `/orgs/${owner}/repos` : '/user/repos';
+  const response = await requestGitHub(config, path, {
+    name,
+    description,
+    private: isPrivate,
+    auto_init: autoInit,
+  });
+  const data = (await response.json()) as {
+    html_url: string;
+    ssh_url: string;
+    full_name: string;
+    default_branch?: string;
+    owner?: { login?: string };
+    name?: string;
+  };
+  return {
+    url: data.html_url,
+    sshUrl: data.ssh_url,
+    fullName: data.full_name,
+    defaultBranch: data.default_branch,
+    owner: data.owner?.login ?? owner ?? '',
+    name: data.name ?? name,
+  };
 }
 
 export async function createPullRequest(options: {
