@@ -77,11 +77,7 @@ function stripSlackMentions(text: string): string {
 const repoKeySanitizePattern = /[^A-Za-z0-9._-]+/g;
 
 function sanitizeRepoKey(value: string): string {
-  return value
-    .trim()
-    .replace(repoKeySanitizePattern, '-')
-    .replace(/^-+/, '')
-    .replace(/-+$/, '');
+  return value.trim().replace(repoKeySanitizePattern, '-').replace(/^-+/, '').replace(/-+$/, '');
 }
 
 function parseOptionalInt(value?: string): number | undefined {
@@ -588,7 +584,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       : undefined;
     const repoName = state.repo_name?.repo_name?.value?.trim() ?? '';
     const repoKeyInput = state.repo_key?.repo_key?.value?.trim() ?? '';
-    const service = state.service?.service?.selected_option?.value as RepoBootstrapService | undefined;
+    const service = state.service?.service?.selected_option?.value as
+      | RepoBootstrapService
+      | undefined;
     const owner = state.owner?.owner?.value?.trim() || undefined;
     const description = state.description?.description?.value?.trim() || undefined;
     const visibility = state.visibility?.visibility?.selected_option?.value as
@@ -623,7 +621,8 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     const githubConfig = service === 'github' ? config.github : undefined;
     const gitlabConfig = service === 'gitlab' ? config.gitlab : undefined;
     if (service === 'github' && !githubConfig) {
-      errors.service = 'GitHub is not configured. Set GITHUB_TOKEN (and optional GITHUB_API_BASE_URL).';
+      errors.service =
+        'GitHub is not configured. Set GITHUB_TOKEN (and optional GITHUB_API_BASE_URL).';
     }
     if (service === 'gitlab' && !gitlabConfig) {
       errors.service = 'GitLab is not configured. Set GITLAB_BASE_URL and GITLAB_TOKEN.';
