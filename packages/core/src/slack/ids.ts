@@ -5,6 +5,7 @@ export type SlackIds = {
   commands: {
     ask: string;
     implement: string;
+    bootstrap: string;
     clearBefore: string;
     usage: string;
   };
@@ -15,6 +16,7 @@ export type SlackIds = {
     clearJob: string;
     askSubmit: string;
     implementSubmit: string;
+    bootstrapSubmit: string;
   };
 };
 
@@ -26,6 +28,7 @@ export function buildSlackIds(botName: string): SlackIds {
     commands: {
       ask: `/${commandPrefix}-ask`,
       implement: `/${commandPrefix}-implement`,
+      bootstrap: `/${commandPrefix}-bootstrap`,
       clearBefore: `/${commandPrefix}-clear-before`,
       usage: `/${commandPrefix}-usage`,
     },
@@ -36,6 +39,7 @@ export function buildSlackIds(botName: string): SlackIds {
       clearJob: `${commandPrefix}-clear-job`,
       askSubmit: `${commandPrefix}-ask-submit`,
       implementSubmit: `${commandPrefix}-implement-submit`,
+      bootstrapSubmit: `${commandPrefix}-bootstrap-submit`,
     },
   };
 }
