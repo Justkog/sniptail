@@ -7,7 +7,7 @@
     "dev": "DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "lint": "eslint . --ignore-pattern **/dist/**",
     "format": "prettier . --ignore-path ../../.prettierignore --write",
     "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
