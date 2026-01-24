@@ -68,7 +68,7 @@ export async function runBootstrap(
         repoPath: resolved.path,
         repoName: request.repoName,
         baseBranch: defaultLocalBaseBranch,
-        quickstart: request.quickstart,
+        quickstart: Boolean(request.quickstart),
         env: process.env,
       });
       allowlistEntry = {
