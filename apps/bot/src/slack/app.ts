@@ -1,7 +1,8 @@
 import { App, type CodedError } from '@slack/bolt';
 import type { Queue } from 'bullmq';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { loadBotConfig, parseRepoAllowlist } from '@sniptail/core/config/index.js';
 import { createRepository } from '@sniptail/core/github/client.js';
@@ -33,6 +34,7 @@ const dedupeWindowMs = 2 * 60 * 1000;
 const worktreeBranchPrefix = 'sniptail';
 const maxThreadHistoryMessages = 20;
 const maxThreadHistoryChars = 4000;
+const defaultLocalBaseBranch = 'main';
 
 function dedupe(key: string): boolean {
   const now = Date.now();
@@ -86,8 +88,79 @@ function parseOptionalInt(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+async function ensureEmptyRepoPath(repoPath: string): Promise<void> {
+  try {
+    const stats = await stat(repoPath);
+    if (!stats.isDirectory()) {
+      throw new Error(`Local repo path is not a directory: ${repoPath}`);
+    }
+    const entries = await readdir(repoPath);
+    if (entries.length) {
+      throw new Error(`Local repo path already exists and is not empty: ${repoPath}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  await mkdir(repoPath, { recursive: true });
+}
+
+async function runGitCommand(args: string[], cwd: string): Promise<void> {
+  const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr?.on('data', (chunk: Buffer<ArrayBufferLike>) => {
+    stderr += chunk.toString('utf8');
+  });
+  child.stdout?.resume();
+  const exitCode = await new Promise<number | null>((resolveExit, reject) => {
+    child.on('error', reject);
+    child.on('close', resolveExit);
+  });
+  if ((exitCode ?? 1) !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${stderr.trim() || 'unknown error'}`);
+  }
+}
+
+async function bootstrapLocalRepository(options: {
+  repoPath: string;
+  repoName: string;
+  baseBranch: string;
+  quickstart: boolean;
+}): Promise<void> {
+  const { repoPath, repoName, baseBranch, quickstart } = options;
+  await ensureEmptyRepoPath(repoPath);
+
+  try {
+    await runGitCommand(['init', '-b', baseBranch], repoPath);
+  } catch {
+    await runGitCommand(['init'], repoPath);
+    await runGitCommand(['checkout', '-b', baseBranch], repoPath);
+  }
+
+  if (quickstart) {
+    await writeFile(join(repoPath, 'README.md'), `# ${repoName}\n`, 'utf8');
+  }
+
+  await runGitCommand(['add', '-A'], repoPath);
+  await runGitCommand(
+    [
+      '-c',
+      'user.name=Sniptail',
+      '-c',
+      'user.email=sniptail@local',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'Initial commit',
+    ],
+    repoPath,
+  );
+}
+
 function resolveBootstrapServices(): RepoBootstrapService[] {
   const services: RepoBootstrapService[] = [];
+  services.push('local');
   if (config.github) services.push('github');
   if (config.gitlab) services.push('gitlab');
   return services;
@@ -291,6 +364,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
           channelId: body.channel_id,
           userId: body.user_id,
         }),
+        process.env.LOCAL_REPO_ROOT?.trim(),
       ),
     });
   });
@@ -587,6 +661,8 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     const service = state.service?.service?.selected_option?.value as
       | RepoBootstrapService
       | undefined;
+    const localPathInput = state.local_path?.local_path?.value?.trim() ?? '';
+    const localRepoRoot = process.env.LOCAL_REPO_ROOT?.trim();
     const owner = state.owner?.owner?.value?.trim() || undefined;
     const description = state.description?.description?.value?.trim() || undefined;
     const visibility = state.visibility?.visibility?.selected_option?.value as
@@ -617,6 +693,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     if (!allowlistPath) {
       errors.repo_name = 'REPO_ALLOWLIST_PATH is not set.';
     }
+    if (service === 'local' && !localPathInput) {
+      errors.local_path = 'Local directory path is required.';
+    }
 
     const githubConfig = service === 'github' ? config.github : undefined;
     const gitlabConfig = service === 'gitlab' ? config.gitlab : undefined;
@@ -626,6 +705,28 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     }
     if (service === 'gitlab' && !gitlabConfig) {
       errors.service = 'GitLab is not configured. Set GITLAB_BASE_URL and GITLAB_TOKEN.';
+    }
+
+    let resolvedLocalPath: string | undefined;
+    if (service === 'local' && localPathInput) {
+      if (localRepoRoot) {
+        if (isAbsolute(localPathInput)) {
+          errors.local_path = 'Local path must be relative to the configured root.';
+        } else {
+          const rootResolved = resolve(localRepoRoot);
+          const fullPath = resolve(rootResolved, localPathInput);
+          const relativePath = relative(rootResolved, fullPath);
+          if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+            errors.local_path = 'Local path must stay within the configured root.';
+          } else {
+            resolvedLocalPath = fullPath;
+          }
+        }
+      } else {
+        resolvedLocalPath = isAbsolute(localPathInput)
+          ? localPathInput
+          : resolve(localPathInput);
+      }
     }
 
     let allowlist: Record<string, RepoConfig> | null = null;
@@ -659,7 +760,24 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       let allowlistEntry: RepoConfig;
       let repoUrl: string;
       let repoLabel: string;
-      if (service === 'github') {
+      if (service === 'local') {
+        const repoPath = resolvedLocalPath ?? '';
+        if (!repoPath) {
+          throw new Error('Local repo path was not resolved.');
+        }
+        await bootstrapLocalRepository({
+          repoPath,
+          repoName,
+          baseBranch: defaultLocalBaseBranch,
+          quickstart,
+        });
+        allowlistEntry = {
+          localPath: repoPath,
+          baseBranch: defaultLocalBaseBranch,
+        };
+        repoUrl = repoPath;
+        repoLabel = repoPath;
+      } else if (service === 'github') {
         const repo = await createRepository({
           config: githubConfig!,
           name: repoName,
