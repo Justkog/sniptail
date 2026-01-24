@@ -1,6 +1,5 @@
+import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
-
-export type RepoBootstrapService = 'github' | 'gitlab';
 
 export function resolveDefaultBaseBranch(
   repoAllowlist: Record<string, RepoConfig>,
@@ -184,15 +183,24 @@ export function buildRepoBootstrapModal(
   botName: string,
   callbackId: string,
   privateMetadata: string,
+  localRepoRoot?: string,
 ) {
   const serviceOptions = services.map((service) => ({
     text: {
       type: 'plain_text' as const,
-      text: service === 'github' ? 'GitHub' : 'GitLab',
+      text: service === 'github' ? 'GitHub' : service === 'gitlab' ? 'GitLab' : 'Local',
     },
     value: service,
   }));
   const defaultService = serviceOptions.length === 1 ? serviceOptions[0] : undefined;
+  const localRepoRootHint = localRepoRoot?.trim() || '';
+  const localPathLabel = localRepoRootHint
+    ? `Local directory path (relative to ${localRepoRootHint})`
+    : 'Local directory path';
+  const localPathPlaceholder = localRepoRootHint ? 'team/my-repo' : '/srv/repos/my-repo';
+  const localPathHint = localRepoRootHint
+    ? `Local only. Path will be created under ${localRepoRootHint}.`
+    : 'Local only. Provide an absolute or relative path.';
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -232,6 +240,18 @@ export function buildRepoBootstrapModal(
           placeholder: { type: 'plain_text' as const, text: 'Choose a service' },
           options: serviceOptions,
           ...(defaultService ? { initial_option: defaultService } : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'local_path',
+        optional: true,
+        label: { type: 'plain_text' as const, text: localPathLabel },
+        hint: { type: 'plain_text' as const, text: localPathHint },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'local_path',
+          placeholder: { type: 'plain_text' as const, text: localPathPlaceholder },
         },
       },
       {

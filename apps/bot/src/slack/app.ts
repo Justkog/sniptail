@@ -4,8 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { loadBotConfig, parseRepoAllowlist } from '@sniptail/core/config/index.js';
-import { createRepository } from '@sniptail/core/github/client.js';
-import { createProject } from '@sniptail/core/gitlab/client.js';
+import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import {
   clearJobsBefore,
   loadJobRecord,
@@ -14,8 +13,9 @@ import {
   updateJobRecord,
 } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueJob } from '@sniptail/core/queue/index.js';
+import { enqueueBootstrap, enqueueJob } from '@sniptail/core/queue/index.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
+import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { JobSettings, JobSpec, RepoConfig } from '@sniptail/core/types/job.js';
 import { addReaction, postMessage, uploadFile } from './helpers.js';
 import {
@@ -23,7 +23,6 @@ import {
   buildImplementModal,
   buildRepoBootstrapModal,
   resolveDefaultBaseBranch,
-  type RepoBootstrapService,
 } from './modals.js';
 
 const config = loadBotConfig();
@@ -74,12 +73,6 @@ function stripSlackMentions(text: string): string {
     .trim();
 }
 
-const repoKeySanitizePattern = /[^A-Za-z0-9._-]+/g;
-
-function sanitizeRepoKey(value: string): string {
-  return value.trim().replace(repoKeySanitizePattern, '-').replace(/^-+/, '').replace(/-+$/, '');
-}
-
 function parseOptionalInt(value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
@@ -88,13 +81,22 @@ function parseOptionalInt(value?: string): number | undefined {
 
 function resolveBootstrapServices(): RepoBootstrapService[] {
   const services: RepoBootstrapService[] = [];
+  services.push('local');
   if (config.github) services.push('github');
   if (config.gitlab) services.push('gitlab');
   return services;
 }
 
-async function writeAllowlist(path: string, allowlist: Record<string, RepoConfig>): Promise<void> {
-  await writeFile(path, `${JSON.stringify(allowlist, null, 2)}\n`, 'utf8');
+function refreshRepoAllowlist() {
+  const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
+  if (!allowlistPath) {
+    return;
+  }
+  try {
+    config.repoAllowlist = parseRepoAllowlist(allowlistPath);
+  } catch (err) {
+    logger.warn({ err, allowlistPath }, 'Failed to refresh repo allowlist');
+  }
 }
 
 function createJobId(prefix: string): string {
@@ -209,7 +211,10 @@ async function persistSlackUploadSpec(job: JobSpec): Promise<string | null> {
   }
 }
 
-export function createSlackApp(queue: Queue<JobSpec>) {
+export function createSlackApp(
+  queue: Queue<JobSpec>,
+  bootstrapQueue: Queue<BootstrapRequest>,
+) {
   const slackIds = buildSlackIds(config.botName);
   const app = new App({
     token: config.slack.botToken,
@@ -225,6 +230,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       return;
     }
 
+    refreshRepoAllowlist();
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildAskModal(
@@ -247,6 +253,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       return;
     }
 
+    refreshRepoAllowlist();
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildImplementModal(
@@ -281,6 +288,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
       return;
     }
 
+    refreshRepoAllowlist();
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildRepoBootstrapModal(
@@ -291,6 +299,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
           channelId: body.channel_id,
           userId: body.user_id,
         }),
+        process.env.LOCAL_REPO_ROOT?.trim(),
       ),
     });
   });
@@ -587,6 +596,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     const service = state.service?.service?.selected_option?.value as
       | RepoBootstrapService
       | undefined;
+    const localPathInput = state.local_path?.local_path?.value?.trim() ?? '';
     const owner = state.owner?.owner?.value?.trim() || undefined;
     const description = state.description?.description?.value?.trim() || undefined;
     const visibility = state.visibility?.visibility?.selected_option?.value as
@@ -617,15 +627,8 @@ export function createSlackApp(queue: Queue<JobSpec>) {
     if (!allowlistPath) {
       errors.repo_name = 'REPO_ALLOWLIST_PATH is not set.';
     }
-
-    const githubConfig = service === 'github' ? config.github : undefined;
-    const gitlabConfig = service === 'gitlab' ? config.gitlab : undefined;
-    if (service === 'github' && !githubConfig) {
-      errors.service =
-        'GitHub is not configured. Set GITHUB_TOKEN (and optional GITHUB_API_BASE_URL).';
-    }
-    if (service === 'gitlab' && !gitlabConfig) {
-      errors.service = 'GitLab is not configured. Set GITLAB_BASE_URL and GITLAB_TOKEN.';
+    if (service === 'local' && !localPathInput) {
+      errors.local_path = 'Local directory path is required.';
     }
 
     let allowlist: Record<string, RepoConfig> | null = null;
@@ -656,60 +659,29 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         throw new Error('Missing allowlist or service selection.');
       }
 
-      let allowlistEntry: RepoConfig;
-      let repoUrl: string;
-      let repoLabel: string;
-      if (service === 'github') {
-        const repo = await createRepository({
-          config: githubConfig!,
-          name: repoName,
-          ...(owner !== undefined && { owner }),
-          ...(description !== undefined && { description }),
-          ...(visibility !== undefined && { private: visibility === 'private' }),
-          autoInit: quickstart,
-        });
-        allowlistEntry = {
-          sshUrl: repo.sshUrl,
-          ...(repo.defaultBranch ? { baseBranch: repo.defaultBranch } : {}),
-        };
-        repoUrl = repo.url;
-        repoLabel = repo.fullName;
-      } else {
-        const project = await createProject({
-          config: gitlabConfig!,
-          name: repoName,
-          path: sanitizeRepoKey(repoName),
-          ...(namespaceId !== undefined && { namespaceId }),
-          ...(description !== undefined && { description }),
-          ...(visibility !== undefined && { visibility }),
-          initializeWithReadme: quickstart,
-        });
-        allowlistEntry = {
-          sshUrl: project.sshUrl,
-          projectId: project.id,
-          ...(project.defaultBranch ? { baseBranch: project.defaultBranch } : {}),
-        };
-        repoUrl = project.webUrl;
-        repoLabel = project.pathWithNamespace;
-      }
+      const requestId = createJobId('bootstrap');
+      const bootstrapRequest: BootstrapRequest = {
+        requestId,
+        repoName,
+        repoKey,
+        service,
+        ...(owner ? { owner } : {}),
+        ...(description ? { description } : {}),
+        ...(visibility ? { visibility } : {}),
+        ...(quickstart ? { quickstart } : {}),
+        ...(namespaceId !== undefined ? { gitlabNamespaceId: namespaceId } : {}),
+        ...(service === 'local' && localPathInput ? { localPath: localPathInput } : {}),
+        slack: {
+          channelId: responseChannel,
+          userId: responseUser,
+        },
+      };
 
-      allowlist[repoKey] = allowlistEntry;
-      await writeAllowlist(allowlistPath, allowlist);
-      config.repoAllowlist[repoKey] = allowlistEntry;
+      await enqueueBootstrap(bootstrapQueue, bootstrapRequest);
 
-      const serviceName = service === 'github' ? 'GitHub' : 'GitLab';
       await postMessage(app, {
         channel: responseChannel,
-        text: `Created ${serviceName} repo ${repoLabel} and added allowlist entry ${repoKey}.`,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*${serviceName} repo created*\n• Repo: <${repoUrl}|${repoLabel}>\n• Allowlist key: \`${repoKey}\``,
-            },
-          },
-        ],
+        text: `Queued bootstrap for ${repoName}. I'll post updates here shortly.`,
       });
     } catch (err) {
       logger.error({ err, repoName, service }, 'Failed to bootstrap repository');
