@@ -69,27 +69,25 @@ export async function bootstrapLocalRepository(options: {
 
   await ensureEmptyRepoPath(repoPath);
 
-  const runOptions: RunOptions = { cwd: repoPath };
-  if (env !== undefined) runOptions.env = env;
-  if (logFilePath !== undefined) runOptions.logFilePath = logFilePath;
-  if (redact !== undefined) runOptions.redact = redact;
+  const runOptions: RunOptions = {
+    cwd: repoPath,
+    ...(env !== undefined ? { env } : {}),
+    ...(logFilePath !== undefined ? { logFilePath } : {}),
+    ...(redact !== undefined ? { redact } : {}),
+  };
 
   try {
-    await runCommand('git', ['init', '-b', baseBranch], {
-      ...runOptions,
-    });
+    await runCommand('git', ['init', '-b', baseBranch], runOptions);
   } catch {
-    await runCommand('git', ['init'], { ...runOptions });
-    await runCommand('git', ['checkout', '-b', baseBranch], {
-      ...runOptions,
-    });
+    await runCommand('git', ['init'], runOptions);
+    await runCommand('git', ['checkout', '-b', baseBranch], runOptions);
   }
 
   if (quickstart) {
     await writeFile(join(repoPath, 'README.md'), `# ${repoName}\n`, 'utf8');
   }
 
-  await runCommand('git', ['add', '-A'], { ...runOptions });
+  await runCommand('git', ['add', '-A'], runOptions);
   await runCommand(
     'git',
     [
@@ -102,6 +100,6 @@ export async function bootstrapLocalRepository(options: {
       '-m',
       'Initial commit',
     ],
-    { ...runOptions },
+    runOptions,
   );
 }
