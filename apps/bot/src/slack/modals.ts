@@ -1,6 +1,5 @@
+import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
-
-export type RepoBootstrapService = 'github' | 'gitlab' | 'local';
 
 export function resolveDefaultBaseBranch(
   repoAllowlist: Record<string, RepoConfig>,

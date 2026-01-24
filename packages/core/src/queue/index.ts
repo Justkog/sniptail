@@ -1,9 +1,11 @@
 import { Queue, type ConnectionOptions } from 'bullmq';
 import type { BotEvent } from '../types/bot-event.js';
+import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 
 export const jobQueueName = 'sniptail-jobs';
 export const botEventQueueName = 'sniptail-bot-events';
+export const bootstrapQueueName = 'sniptail-bootstrap';
 
 export function createConnectionOptions(redisUrl: string): ConnectionOptions {
   const url = new URL(redisUrl);
@@ -32,6 +34,21 @@ export function createJobQueue(
 export async function enqueueJob(queue: Queue<JobSpec>, job: JobSpec) {
   return queue.add(jobQueueName, job, {
     jobId: job.jobId,
+    removeOnComplete: 100,
+    removeOnFail: 100,
+  });
+}
+
+export function createBootstrapQueue(
+  redisUrl: string,
+): Queue<BootstrapRequest, unknown, string, BootstrapRequest, unknown, string> {
+  const connection = createConnectionOptions(redisUrl);
+  return new Queue<BootstrapRequest>(bootstrapQueueName, { connection });
+}
+
+export async function enqueueBootstrap(queue: Queue<BootstrapRequest>, request: BootstrapRequest) {
+  return queue.add(bootstrapQueueName, request, {
+    jobId: request.requestId,
     removeOnComplete: 100,
     removeOnFail: 100,
   });

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
 import type { GitHubConfig } from '../github/client.js';
@@ -104,6 +105,13 @@ export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig>
     logger.error({ err, filePath }, 'Failed to parse REPO_ALLOWLIST_PATH');
     throw err;
   }
+}
+
+export async function writeRepoAllowlist(
+  filePath: string,
+  allowlist: Record<string, RepoConfig>,
+): Promise<void> {
+  await writeFile(filePath, `${JSON.stringify(allowlist, null, 2)}\n`, 'utf8');
 }
 
 export function resolveGitHubConfig(): GitHubConfig | undefined {
