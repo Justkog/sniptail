@@ -16,7 +16,6 @@ import {
 } from '@sniptail/core/jobs/registry.js';
 import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueBotEvent } from '@sniptail/core/queue/index.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
@@ -24,14 +23,11 @@ import type { JobSpec, JobResult, MergeRequestResult } from '@sniptail/core/type
 import { join } from 'node:path';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { isGitHubSshUrl, parseGitHubRepo } from '@sniptail/core/git/ssh.js';
+import { sendBotEvent } from './botEvents.js';
 
 const config = loadWorkerConfig();
 
 const branchPrefix = 'sniptail';
-
-async function sendBotEvent(queue: Queue<BotEvent>, event: BotEvent) {
-  await enqueueBotEvent(queue, event);
-}
 
 export async function copyJobRootSeed(
   jobRootCopyGlob: string | undefined,

@@ -123,6 +123,7 @@ Optional:
 - `ADMIN_USER_IDS` (comma-separated user IDs allowed to run clear-before)
 - `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)
 - `JOB_ROOT_COPY_GLOB` (glob of files/folders to seed into each job root)
+- `LOCAL_REPO_ROOT` (optional; when set, local bootstrap paths are relative to this root)
 - `GITLAB_BASE_URL` (required for GitLab merge requests)
 - `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_TOKEN` (required to create GitHub PRs)
