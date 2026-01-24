@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node ../../scripts/copy-prompts.mjs",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "lint": "eslint . --ignore-pattern **/dist/**",
     "format": "prettier . --ignore-path ../../.prettierignore --write",
     "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
