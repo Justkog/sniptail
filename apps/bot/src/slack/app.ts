@@ -7,7 +7,7 @@ import { loadBotConfig, parseRepoAllowlist } from '@sniptail/core/config/index.j
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import {
   clearJobsBefore,
-  findEarliestJobBySlackThreadAndTypes,
+  findLatestJobBySlackThreadAndTypes,
   loadJobRecord,
   markJobForDeletion,
   saveJobQueued,
@@ -478,24 +478,24 @@ export function createSlackApp(
     }
 
     const resolvedThreadTs = threadTs ?? record.job.slack.threadTs;
-    const earliestImplement = resolvedThreadTs
-      ? await findEarliestJobBySlackThreadAndTypes(channelId, resolvedThreadTs, ['IMPLEMENT']).catch(
+    const latestImplement = resolvedThreadTs
+      ? await findLatestJobBySlackThreadAndTypes(channelId, resolvedThreadTs, ['IMPLEMENT']).catch(
           (err) => {
-            logger.warn({ err, jobId }, 'Failed to resolve earliest implement job');
+            logger.warn({ err, jobId }, 'Failed to resolve latest implement job');
             return undefined;
           },
         )
       : undefined;
     const targetRepoKeys =
-      earliestImplement?.job?.repoKeys?.length && earliestImplement.job.repoKeys.length
-        ? earliestImplement.job.repoKeys
+      latestImplement?.job?.repoKeys?.length && latestImplement.job.repoKeys.length
+        ? latestImplement.job.repoKeys
         : record.job.repoKeys;
-    const messageText = earliestImplement
+    const messageText = latestImplement
       ? buildWorktreeCommandsText({
           mode: 'branch',
-          jobId: earliestImplement.job.jobId,
+          jobId: latestImplement.job.jobId,
           repoKeys: targetRepoKeys,
-          branchByRepo: earliestImplement.branchByRepo,
+          branchByRepo: latestImplement.branchByRepo,
         })
       : buildWorktreeCommandsText({
           mode: 'base',
@@ -503,7 +503,7 @@ export function createSlackApp(
           repoKeys: record.job.repoKeys,
           baseRef: record.job.gitRef,
         });
-    const messageJobId = earliestImplement?.job?.jobId ?? record.job.jobId;
+    const messageJobId = latestImplement?.job?.jobId ?? record.job.jobId;
     await postMessage(app, {
       channel: channelId,
       text: `Worktree commands for job ${messageJobId}.`,
