@@ -11,7 +11,7 @@
     "dev": "pnpm -r --parallel dev",
     "test": "vitest",
     "test:run": "vitest run --config vitest.workspace.ts",
-    "build": "pnpm -r --filter \"./packages/*\" build && pnpm -r --filter \"./apps/*\" build",
+    "build": "pnpm -r build",
     "start": "pnpm -r --parallel --filter \"./apps/*\" start",
     "clean": "pnpm -r clean",
     "lint": "pnpm -r lint",
