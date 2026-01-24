@@ -13,8 +13,9 @@
     "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
   },
   "dependencies": {
-    "@sniptail/core": "workspace:*",
     "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.13.0",
+    "@sniptail/core": "workspace:*",
     "bullmq": "^5.51.0",
     "dotenv": "^17.2.3"
   }
