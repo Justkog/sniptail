@@ -78,6 +78,31 @@ async function resolveThreadTs(job: JobSpec): Promise<string | undefined> {
   }
 }
 
+function buildCodeFence(content: string): { open: string; close: string } {
+  const matches = content.match(/`+/g);
+  const maxBackticks = matches ? Math.max(...matches.map((match) => match.length)) : 0;
+  const fence = '`'.repeat(Math.max(3, maxBackticks + 1));
+  return { open: `${fence}text`, close: fence };
+}
+
+function buildMergeRequestDescription(
+  summary: string,
+  requestText: string,
+  botName: string,
+  jobId: string,
+): string {
+  const trimmedRequest = requestText.trim();
+  const trimmedSummary = summary.trim();
+  const baseSummary = trimmedSummary || `${botName} job ${jobId}`;
+  if (!trimmedRequest) {
+    return baseSummary;
+  }
+  const fence = buildCodeFence(trimmedRequest);
+  return ['User request (raw):', fence.open, trimmedRequest, fence.close, '', baseSummary].join(
+    '\n',
+  );
+}
+
 export async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
   if (job.codexThreadId) {
     return job.codexThreadId;
@@ -382,7 +407,9 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       }
 
       const title = `${config.botName}: ${job.requestText.slice(0, 60)}`;
-      const description = summary || `${config.botName} job ${job.jobId}`;
+      const description = config.includeRawRequestInMr
+        ? buildMergeRequestDescription(summary, job.requestText, config.botName, job.jobId)
+        : summary || `${config.botName} job ${job.jobId}`;
       const reviewers = job.settings?.reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
 
       if (repoConfig.localPath) {

@@ -663,9 +663,9 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         const repo = await createRepository({
           config: githubConfig!,
           name: repoName,
-          owner,
-          description,
-          private: visibility === 'private' ? true : visibility === 'public' ? false : undefined,
+          ...(owner !== undefined && { owner }),
+          ...(description !== undefined && { description }),
+          ...(visibility !== undefined && { private: visibility === 'private' }),
           autoInit: quickstart,
         });
         allowlistEntry = {
@@ -678,10 +678,10 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         const project = await createProject({
           config: gitlabConfig!,
           name: repoName,
-          path: sanitizeRepoKey(repoName) || undefined,
-          namespaceId,
-          description,
-          visibility,
+          path: sanitizeRepoKey(repoName),
+          ...(namespaceId !== undefined && { namespaceId }),
+          ...(description !== undefined && { description }),
+          ...(visibility !== undefined && { visibility }),
           initializeWithReadme: quickstart,
         });
         allowlistEntry = {
