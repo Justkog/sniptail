@@ -47,6 +47,4 @@ jobs:
         run: pnpm run build
 
       - name: Smoke test (dry run)
-        env:
-          SNIPTAIL_DRY_RUN: "1"
-        run: node --import ./scripts/register-loaders.mjs apps/bot/dist/index.js
+        run: pnpm run smoke:bot
