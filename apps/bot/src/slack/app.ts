@@ -495,7 +495,9 @@ export function createSlackApp(
           mode: 'branch',
           jobId: latestImplement.job.jobId,
           repoKeys: targetRepoKeys,
-          branchByRepo: latestImplement.branchByRepo,
+          ...(latestImplement.branchByRepo
+            ? { branchByRepo: latestImplement.branchByRepo }
+            : {}),
         })
       : buildWorktreeCommandsText({
           mode: 'base',
