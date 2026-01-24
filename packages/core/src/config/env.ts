@@ -31,6 +31,7 @@ export type WorkerConfig = CoreConfig & {
   github?: GitHubConfig;
   repoCacheRoot: string;
   jobRootCopyGlob?: string;
+  includeRawRequestInMr: boolean;
   codex: {
     executionMode: 'local' | 'docker';
     dockerfilePath?: string;
@@ -57,6 +58,15 @@ function parseCommaList(value?: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function resolveOptionalFlag(name: string, defaultValue = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  const normalized = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  throw new Error(`Invalid ${name} value: ${raw}. Use true/false.`);
 }
 
 function resolveBotName(): string {
@@ -177,6 +187,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const dockerBuildContext = process.env.CODEX_DOCKER_BUILD_CONTEXT?.trim();
 
   const jobRootCopyGlob = process.env.JOB_ROOT_COPY_GLOB?.trim();
+  const includeRawRequestInMr = resolveOptionalFlag('INCLUDE_RAW_REQUEST_IN_MR', false);
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
     logger.warn('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
@@ -193,6 +204,7 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(github && { github }),
     repoCacheRoot: requireEnv('REPO_CACHE_ROOT'),
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
+    includeRawRequestInMr,
     codex: {
       executionMode: executionMode,
       ...(dockerfilePath && { dockerfilePath }),
