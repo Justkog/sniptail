@@ -12,6 +12,7 @@ export type CoreConfig = {
 
 export type BotConfig = CoreConfig & {
   botName: string;
+  debugJobSpecMessages: boolean;
   slack: {
     botToken: string;
     appToken: string;
@@ -154,12 +155,14 @@ export function loadBotConfig(): BotConfig {
   if (botConfigCache) return botConfigCache;
   const core = loadCoreConfig();
   const botName = resolveBotName();
+  const debugJobSpecMessages = resolveOptionalFlag('DEBUG_JOB_SPEC_MESSAGES', false);
   const gitlab = resolveGitLabConfig();
   const github = resolveGitHubConfig();
 
   botConfigCache = {
     ...core,
     botName,
+    debugJobSpecMessages,
     slack: {
       botToken: requireEnv('SLACK_BOT_TOKEN'),
       appToken: requireEnv('SLACK_APP_TOKEN'),

@@ -17,6 +17,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
   const optionalKeys = [
     'OPENAI_API_KEY',
     'BOT_NAME',
+    'DEBUG_JOB_SPEC_MESSAGES',
     'ADMIN_USER_IDS',
     'CODEX_EXECUTION_MODE',
     'CODEX_DOCKERFILE_PATH',

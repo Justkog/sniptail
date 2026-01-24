@@ -806,7 +806,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
     }
-    if (jobSpecPath) {
+    if (config.debugJobSpecMessages && jobSpecPath) {
       const uploadSpecPath = await persistSlackUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
@@ -925,7 +925,7 @@ export function createSlackApp(queue: Queue<JobSpec>) {
         logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
     }
-    if (jobSpecPath) {
+    if (config.debugJobSpecMessages && jobSpecPath) {
       const uploadSpecPath = await persistSlackUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
