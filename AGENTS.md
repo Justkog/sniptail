@@ -28,6 +28,7 @@ Notable variables:
 - `GITLAB_BASE_URL`, `GITLAB_TOKEN`
 - `REPO_ALLOWLIST_PATH` (JSON file; see below)
 - `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `JOB_REGISTRY_PATH`
+- `LOCAL_REPO_ROOT` (optional; restricts local bootstrap paths)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
 - `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`
 
