@@ -4,6 +4,7 @@ export {
   loadWorkerConfig,
   resetConfigCaches,
   parseRepoAllowlist,
+  writeRepoAllowlist,
   resolveGitHubConfig,
   resolveGitLabConfig,
 } from './env.js';
