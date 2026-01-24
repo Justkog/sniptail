@@ -50,6 +50,9 @@ importers:
       '@slack/bolt':
         specifier: ^4.6.0
         version: 4.6.0(@types/express@5.0.6)
+      '@slack/web-api':
+        specifier: ^7.13.0
+        version: 7.13.0
       '@sniptail/core':
         specifier: workspace:*
         version: link:../../packages/core
