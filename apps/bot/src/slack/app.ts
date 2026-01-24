@@ -7,6 +7,7 @@ import { loadBotConfig, parseRepoAllowlist } from '@sniptail/core/config/index.j
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import {
   clearJobsBefore,
+  findEarliestJobBySlackThreadAndTypes,
   loadJobRecord,
   markJobForDeletion,
   saveJobQueued,
@@ -103,14 +104,31 @@ function createJobId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildWorktreeCommandsText(
-  jobId: string,
-  repoKeys: string[],
-  branchByRepo?: Record<string, string>,
-) {
-  const lines: string[] = [`*Worktree branch commands for job ${jobId}*`];
-  for (const repoKey of repoKeys) {
-    const branch = branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${jobId}`;
+type WorktreeCommandsTarget =
+  | {
+      mode: 'branch';
+      jobId: string;
+      repoKeys: string[];
+      branchByRepo?: Record<string, string>;
+    }
+  | {
+      mode: 'base';
+      jobId: string;
+      repoKeys: string[];
+      baseRef: string;
+    };
+
+function buildWorktreeCommandsText(target: WorktreeCommandsTarget) {
+  const lines: string[] = [
+    target.mode === 'branch'
+      ? `*Worktree branch commands for job ${target.jobId}*`
+      : `*Base branch commands for job ${target.jobId} (${target.baseRef})*`,
+  ];
+  for (const repoKey of target.repoKeys) {
+    const ref =
+      target.mode === 'branch'
+        ? target.branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${target.jobId}`
+        : target.baseRef;
     const repoConfig = config.repoAllowlist[repoKey];
     const cloneUrl = repoConfig?.localPath ?? repoConfig?.sshUrl ?? '<repo-url>';
 
@@ -121,12 +139,12 @@ function buildWorktreeCommandsText(
     }
     lines.push('Already cloned:');
     lines.push('```');
-    lines.push(`git fetch origin ${branch}`);
-    lines.push(`git checkout --track origin/${branch}`);
+    lines.push(`git fetch origin ${ref}`);
+    lines.push(`git checkout --track origin/${ref}`);
     lines.push('```');
     lines.push('Not cloned yet:');
     lines.push('```');
-    lines.push(`git clone --single-branch -b ${branch} ${cloneUrl}`);
+    lines.push(`git clone --single-branch -b ${ref} ${cloneUrl}`);
     lines.push('```');
   }
   return lines.join('\n');
@@ -459,10 +477,36 @@ export function createSlackApp(
       return;
     }
 
-    const messageText = buildWorktreeCommandsText(jobId, record.job.repoKeys, record.branchByRepo);
+    const resolvedThreadTs = threadTs ?? record.job.slack.threadTs;
+    const earliestImplement = resolvedThreadTs
+      ? await findEarliestJobBySlackThreadAndTypes(channelId, resolvedThreadTs, ['IMPLEMENT']).catch(
+          (err) => {
+            logger.warn({ err, jobId }, 'Failed to resolve earliest implement job');
+            return undefined;
+          },
+        )
+      : undefined;
+    const targetRepoKeys =
+      earliestImplement?.job?.repoKeys?.length && earliestImplement.job.repoKeys.length
+        ? earliestImplement.job.repoKeys
+        : record.job.repoKeys;
+    const messageText = earliestImplement
+      ? buildWorktreeCommandsText({
+          mode: 'branch',
+          jobId: earliestImplement.job.jobId,
+          repoKeys: targetRepoKeys,
+          branchByRepo: earliestImplement.branchByRepo,
+        })
+      : buildWorktreeCommandsText({
+          mode: 'base',
+          jobId: record.job.jobId,
+          repoKeys: record.job.repoKeys,
+          baseRef: record.job.gitRef,
+        });
+    const messageJobId = earliestImplement?.job?.jobId ?? record.job.jobId;
     await postMessage(app, {
       channel: channelId,
-      text: `Worktree commands for job ${jobId}.`,
+      text: `Worktree commands for job ${messageJobId}.`,
       blocks: [
         {
           type: 'section',
