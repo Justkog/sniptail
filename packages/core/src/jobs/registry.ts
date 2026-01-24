@@ -246,6 +246,7 @@ export async function findLatestJobBySlackThreadAndTypes(
   return latest;
 }
 
+
 export async function clearJobsBefore(cutoff: Date): Promise<number> {
   await ensureDbReady();
   const cutoffTime = cutoff.getTime();
