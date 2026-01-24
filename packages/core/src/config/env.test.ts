@@ -48,10 +48,19 @@ describe('config loaders', () => {
     const config = loadBotConfig();
 
     expect(config.botName).toBe('Sniptail');
+    expect(config.debugJobSpecMessages).toBe(false);
     expect(config.repoAllowlist['repo-one']).toEqual({
       sshUrl: 'git@example.com:org/repo.git',
       projectId: 123,
     });
+  });
+
+  it('enables job spec messages when debug flag is set', () => {
+    applyRequiredEnv({ DEBUG_JOB_SPEC_MESSAGES: 'true' });
+
+    const config = loadBotConfig();
+
+    expect(config.debugJobSpecMessages).toBe(true);
   });
 
   it('does not require worker-only env vars for bot config', () => {
