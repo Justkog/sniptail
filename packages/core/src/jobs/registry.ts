@@ -246,33 +246,6 @@ export async function findLatestJobBySlackThreadAndTypes(
   return latest;
 }
 
-export async function findEarliestJobBySlackThreadAndTypes(
-  channelId: string,
-  threadTs: string,
-  types: JobType[],
-): Promise<JobRecord | undefined> {
-  await ensureDbReady();
-  let earliest: JobRecord | undefined;
-  let earliestTime = Number.POSITIVE_INFINITY;
-
-  const rows = getStatements().getAll.all({ prefix: `${JOB_KEY_PREFIX}%` }) as
-    | { record: string }[]
-    | undefined;
-  for (const row of rows ?? []) {
-    const record = parseRecord(row);
-    const slack = record?.job?.slack;
-    if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
-    if (!types.includes(record.job.type)) continue;
-    const createdTime = Date.parse(record.createdAt);
-    if (Number.isNaN(createdTime)) continue;
-    if (createdTime < earliestTime) {
-      earliest = record;
-      earliestTime = createdTime;
-    }
-  }
-
-  return earliest;
-}
 
 export async function clearJobsBefore(cutoff: Date): Promise<number> {
   await ensureDbReady();
