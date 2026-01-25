@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BotConfig } from '@sniptail/core/config/index.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -26,11 +27,9 @@ export async function persistJobSpec(
 }
 
 export async function persistSlackUploadSpec(
-  config: BotConfig,
   job: JobSpec,
 ): Promise<string | null> {
-  const jobRoot = join(config.jobWorkRoot, job.jobId);
-  const artifactsRoot = join(jobRoot, 'artifacts');
+  const artifactsRoot = join(tmpdir(), 'sniptail', job.jobId);
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
   try {
     await mkdir(artifactsRoot, { recursive: true });
