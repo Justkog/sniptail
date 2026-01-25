@@ -5,6 +5,7 @@ import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { registerClearBeforeCommand } from './features/commands/clearBefore.js';
 import { registerAskCommand } from './features/commands/ask.js';
 import { registerBootstrapCommand } from './features/commands/bootstrap.js';
@@ -22,6 +23,7 @@ import { registerImplementSubmitView } from './features/views/implementSubmit.js
 export function createSlackApp(
   queue: Queue<JobSpec>,
   bootstrapQueue: Queue<BootstrapRequest>,
+  workerEventQueue: Queue<WorkerEvent>,
 ) {
   const config = loadBotConfig();
   const slackIds = buildSlackIds(config.botName);
@@ -38,6 +40,7 @@ export function createSlackApp(
     config,
     queue,
     bootstrapQueue,
+    workerEventQueue,
   };
 
   registerAskCommand(context);

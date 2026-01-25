@@ -5,7 +5,7 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackAppContext } from '../context.js';
 import { addReaction, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
-import { createJobId, persistJobSpec } from '../../lib/jobs.js';
+import { createJobId } from '../../lib/jobs.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 
 export function registerAppMentionEvent({ app, config, queue }: SlackAppContext) {
@@ -61,7 +61,6 @@ export function registerAppMentionEvent({ app, config, queue }: SlackAppContext)
 
     try {
       await saveJobQueued(job);
-      await persistJobSpec(config, job);
     } catch (err) {
       logger.error({ err, jobId: job.jobId }, 'Failed to persist mention job');
       await postMessage(app, {

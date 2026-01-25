@@ -8,11 +8,14 @@ import {
   createBotQueue,
   createConnectionOptions,
   jobQueueName,
+  workerEventQueueName,
 } from '@sniptail/core/queue/index.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
+import { handleWorkerEvent } from './workerEvents.js';
 
 const config = loadWorkerConfig();
 const connection = createConnectionOptions(config.redisUrl);
@@ -36,6 +39,15 @@ const bootstrapWorker = new Worker<BootstrapRequest>(
   { connection, concurrency: 2 },
 );
 
+const workerEventWorker = new Worker<WorkerEvent>(
+  workerEventQueueName,
+  async (job) => {
+    logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
+    await handleWorkerEvent(job.data);
+  },
+  { connection, concurrency: 2 },
+);
+
 worker.on('failed', (job: Job<JobSpec> | undefined, err: Error) => {
   logger.error({ jobId: job?.id, err }, 'Job failed');
 });
@@ -50,4 +62,12 @@ bootstrapWorker.on('failed', (job: Job<BootstrapRequest> | undefined, err: Error
 
 bootstrapWorker.on('completed', (job: Job<BootstrapRequest> | undefined) => {
   logger.info({ requestId: job?.id }, 'Bootstrap request completed');
+});
+
+workerEventWorker.on('failed', (job: Job<WorkerEvent> | undefined, err: Error) => {
+  logger.error({ requestId: job?.data?.requestId, err }, 'Worker event failed');
+});
+
+workerEventWorker.on('completed', (job: Job<WorkerEvent> | undefined) => {
+  logger.info({ requestId: job?.data?.requestId, type: job?.data?.type }, 'Worker event completed');
 });
