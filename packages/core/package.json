@@ -17,6 +17,7 @@
     "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^0.1.18",
     "@openai/codex-sdk": "^0.79.0",
     "better-sqlite3": "^12.6.2",
     "bullmq": "^5.51.0",
