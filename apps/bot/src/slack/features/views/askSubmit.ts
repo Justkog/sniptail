@@ -2,6 +2,7 @@ import { enqueueJob } from '@sniptail/core/queue/index.js';
 import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import { rm } from 'node:fs/promises';
 import type { SlackAppContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
 import { resolveDefaultBaseBranch } from '../../modals.js';
@@ -88,7 +89,7 @@ export function registerAskSubmitView({ app, slackIds, config, queue }: SlackApp
       });
     }
     if (config.debugJobSpecMessages && jobSpecPath) {
-      const uploadSpecPath = await persistSlackUploadSpec(config, job);
+      const uploadSpecPath = await persistSlackUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
       } else {
@@ -97,12 +98,18 @@ export function registerAskSubmitView({ app, slackIds, config, queue }: SlackApp
           filePath: uploadSpecPath,
           title: `sniptail-${job.jobId}-job-spec.json`,
         };
-        await uploadFile(
-          app,
-          ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
-        ).catch((err) => {
+        try {
+          await uploadFile(
+            app,
+            ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
+          );
+        } catch (err) {
           logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
-        });
+        } finally {
+          await rm(uploadSpecPath, { force: true }).catch((err) => {
+            logger.warn({ err, jobId: job.jobId }, 'Failed to remove job spec upload artifact');
+          });
+        }
       }
     }
 
