@@ -487,21 +487,15 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
     const threadTs = await resolveThreadTs(job);
+    const summaryOptions = {
+      channel: job.slack.channelId,
+      filePath: summaryPath,
+      title: `sniptail-${job.jobId}-summary.md`,
+    };
     await sendBotEvent(botQueue, {
       type: 'uploadFile',
       jobId: job.jobId,
-      payload: threadTs
-        ? {
-            channel: job.slack.channelId,
-            filePath: summaryPath,
-            title: `sniptail-${job.jobId}-summary.md`,
-            threadTs,
-          }
-        : {
-            channel: job.slack.channelId,
-            filePath: summaryPath,
-            title: `sniptail-${job.jobId}-summary.md`,
-          },
+      payload: threadTs ? { ...summaryOptions, threadTs } : summaryOptions,
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
