@@ -6,7 +6,7 @@ import { rm } from 'node:fs/promises';
 import type { SlackAppContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
 import { resolveDefaultBaseBranch } from '../../modals.js';
-import { createJobId, persistJobSpec, persistSlackUploadSpec } from '../../lib/jobs.js';
+import { createJobId, persistSlackUploadSpec } from '../../lib/jobs.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 
 export function registerAskSubmitView({ app, slackIds, config, queue }: SlackAppContext) {
@@ -56,10 +56,8 @@ export function registerAskSubmitView({ app, slackIds, config, queue }: SlackApp
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
 
-    let jobSpecPath: string | null = null;
     try {
       await saveJobQueued(job);
-      jobSpecPath = await persistJobSpec(config, job);
     } catch (err) {
       logger.error({ err, jobId: job.jobId }, 'Failed to persist job');
       await postMessage(app, {
@@ -88,7 +86,7 @@ export function registerAskSubmitView({ app, slackIds, config, queue }: SlackApp
         logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
     }
-    if (config.debugJobSpecMessages && jobSpecPath) {
+    if (config.debugJobSpecMessages) {
       const uploadSpecPath = await persistSlackUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');

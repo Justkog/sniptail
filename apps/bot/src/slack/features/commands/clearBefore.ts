@@ -1,9 +1,9 @@
-import { clearJobsBefore } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
+import { enqueueWorkerEvent } from '@sniptail/core/queue/index.js';
 import type { SlackAppContext } from '../context.js';
 import { parseCutoffDateInput } from '../../lib/parsing.js';
 
-export function registerClearBeforeCommand({ app, slackIds, config }: SlackAppContext) {
+export function registerClearBeforeCommand({ app, slackIds, config, workerEventQueue }: SlackAppContext) {
   app.command(slackIds.commands.clearBefore, async ({ ack, body, client }) => {
     const userId = body.user_id;
     if (!userId || !config.adminUserIds.includes(userId)) {
@@ -29,11 +29,16 @@ export function registerClearBeforeCommand({ app, slackIds, config }: SlackAppCo
     });
 
     try {
-      const cleared = await clearJobsBefore(cutoff);
+      await enqueueWorkerEvent(workerEventQueue, {
+        type: 'clearJobsBefore',
+        payload: {
+          cutoffIso: cutoff.toISOString(),
+        },
+      });
       await client.chat.postEphemeral({
         channel: body.channel_id,
         user: userId,
-        text: `Cleared ${cleared} job(s) created before ${cutoff.toISOString()}.`,
+        text: `Scheduled clearing jobs created before ${cutoff.toISOString()}.`,
       });
     } catch (err) {
       logger.error({ err, cutoff: cutoff.toISOString() }, 'Failed to clear jobs before cutoff');
