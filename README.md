@@ -126,7 +126,7 @@ Optional:
 - `LOCAL_REPO_ROOT` (optional; when set, local bootstrap paths are relative to this root)
 - `GITLAB_BASE_URL` (required for GitLab merge requests)
 - `GITLAB_TOKEN` (required for GitLab merge requests)
-- `GITHUB_TOKEN` (required to create GitHub PRs)
+- `GITHUB_API_TOKEN` (required to create GitHub PRs)
 - `GITHUB_API_BASE_URL` (defaults to `https://api.github.com`)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
 - `CODEX_DOCKERFILE_PATH` (path to a Dockerfile for Codex)
@@ -237,7 +237,7 @@ pnpm run start
 
 - Repos are mirrored into `REPO_CACHE_ROOT` and checked out as worktrees under `JOB_WORK_ROOT`.
 - Only repos listed in the allowlist are selectable in Slack.
-- GitHub repos require `GITHUB_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
+- GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
 
 ## Key paths
 

@@ -79,7 +79,7 @@ export async function runBootstrap(
       repoLabel = resolved.path;
     } else if (request.service === 'github') {
       if (!config.github) {
-        throw new Error('GitHub is not configured. Set GITHUB_TOKEN.');
+        throw new Error('GitHub is not configured. Set GITHUB_API_TOKEN.');
       }
       const repo = await createRepository({
         config: config.github,

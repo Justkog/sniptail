@@ -1,4 +1,5 @@
 export type JobType = 'ASK' | 'IMPLEMENT' | 'MENTION';
+export type AgentId = 'codex' | 'copilot';
 
 export type RepoConfig = {
   sshUrl?: string;
@@ -27,7 +28,8 @@ export type JobSpec = {
   gitRef: string;
   requestText: string;
   slack: SlackContext;
-  codexThreadId?: string;
+  agent?: AgentId;
+  agentThreadIds?: Partial<Record<AgentId, string>>;
   slackThreadContext?: string;
   resumeFromJobId?: string;
   settings?: JobSettings;

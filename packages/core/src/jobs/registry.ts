@@ -4,7 +4,7 @@ import Database, { type Statement } from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { loadCoreConfig } from '../config/index.js';
 import { logger } from '../logger.js';
-import type { JobSpec, JobType, MergeRequestResult } from '../types/job.js';
+import type { AgentId, JobSpec, JobType, MergeRequestResult } from '../types/job.js';
 
 const config = loadCoreConfig();
 
@@ -194,6 +194,7 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
 export async function findLatestJobBySlackThread(
   channelId: string,
   threadTs: string,
+  agentId: AgentId,
 ): Promise<JobRecord | undefined> {
   await ensureDbReady();
   let latestWithThreadId: JobRecord | undefined;
@@ -206,7 +207,8 @@ export async function findLatestJobBySlackThread(
     const record = parseRecord(row);
     const slack = record?.job?.slack;
     if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
-    if (!record.job?.codexThreadId) continue;
+    const agentThreadId = record.job?.agentThreadIds?.[agentId];
+    if (!agentThreadId) continue;
     const createdTime = Date.parse(record.createdAt);
     if (Number.isNaN(createdTime)) continue;
     if (createdTime > latestTime) {
