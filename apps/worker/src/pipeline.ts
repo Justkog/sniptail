@@ -1,8 +1,8 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import type { Queue } from 'bullmq';
 import { loadWorkerConfig } from '@sniptail/core/config/index.js';
-import { runCodex } from '@sniptail/core/codex/index.js';
-import { formatCodexEvent, summarizeCodexEvent } from '@sniptail/core/codex/logging.js';
+import { AGENT_REGISTRY } from '@sniptail/core/agents/index.js';
+import type { AgentId } from '@sniptail/core/types/job.js';
 import { createPullRequest } from '@sniptail/core/github/client.js';
 import { createMergeRequest } from '@sniptail/core/gitlab/client.js';
 import { commitAndPush, ensureCleanRepo, runChecks } from '@sniptail/core/git/jobOps.js';
@@ -99,27 +99,42 @@ function buildMergeRequestDescription(
   );
 }
 
-export async function resolveCodexThreadId(job: JobSpec): Promise<string | undefined> {
-  if (job.codexThreadId) {
-    return job.codexThreadId;
+function getAgentThreadId(job: JobSpec, agentId: AgentId): string | undefined {
+  if (job.agentThreadIds?.[agentId]) {
+    return job.agentThreadIds[agentId];
+  }
+  return undefined;
+}
+
+export async function resolveAgentThreadId(
+  job: JobSpec,
+  agentId: AgentId,
+): Promise<string | undefined> {
+  const jobThreadId = getAgentThreadId(job, agentId);
+  if (jobThreadId) {
+    return jobThreadId;
   }
   if (job.resumeFromJobId) {
     try {
       const record = await loadJobRecord(job.resumeFromJobId);
-      if (record?.job?.codexThreadId) {
-        return record.job.codexThreadId;
+      const resumeThreadId = record?.job ? getAgentThreadId(record.job, agentId) : undefined;
+      if (resumeThreadId) {
+        return resumeThreadId;
       }
     } catch (err) {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to resolve Codex thread id from resumed job');
+      logger.warn(
+        { err, jobId: job.jobId, agentId },
+        'Failed to resolve agent thread id from resumed job',
+      );
     }
   }
   const threadTs = await resolveThreadTs(job);
   if (!threadTs) return undefined;
   try {
-    const record = await findLatestJobBySlackThread(job.slack.channelId, threadTs);
-    return record?.job?.codexThreadId;
+    const record = await findLatestJobBySlackThread(job.slack.channelId, threadTs, agentId);
+    return record?.job ? getAgentThreadId(record.job, agentId) : undefined;
   } catch (err) {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to resolve Codex thread id');
+    logger.warn({ err, jobId: job.jobId, agentId }, 'Failed to resolve agent thread id');
     return undefined;
   }
 }
@@ -235,25 +250,30 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       });
     }
 
-    logger.info({ jobId: job.jobId, repoKeys: job.repoKeys }, 'Running Codex');
+    const agentId = (job.agent ?? config.primaryAgent);
+    const agent = AGENT_REGISTRY[agentId];
 
-    const codexThreadId = await resolveCodexThreadId(job);
+    logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
+
+    const agentThreadId = await resolveAgentThreadId(job, agentId);
     const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot);
-    const codexResult = await runCodex(
+    const agentResult = await agent.run(
       job,
       job.type === 'MENTION' ? mentionWorkDir : paths.root,
       env,
       {
         botName: config.botName,
-        ...(codexThreadId ? { resumeThreadId: codexThreadId } : {}),
+        ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
         onEvent: async (event) => {
-          try {
-            await appendFile(paths.logFile, formatCodexEvent(event));
-          } catch (err) {
-            logger.warn({ err }, 'Failed to append Codex event to log');
+          if (agent.formatEvent) {
+            try {
+              await appendFile(paths.logFile, agent.formatEvent(event));
+            } catch (err) {
+              logger.warn({ err }, 'Failed to append agent event to log');
+            }
           }
 
-          const summary = summarizeCodexEvent(event);
+          const summary = agent.summarizeEvent ? agent.summarizeEvent(event) : null;
           if (!summary) return;
 
           if (summary.isError) {
@@ -262,7 +282,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
             logger.info({ jobId: job.jobId }, summary.text);
           }
         },
-        ...(config.codex.executionMode === 'docker'
+        ...(agentId === 'codex' && config.codex.executionMode === 'docker'
           ? {
               docker: {
                 enabled: true,
@@ -282,11 +302,11 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
           : {}),
       },
     );
-    if (codexResult.threadId) {
+    if (agentResult.threadId) {
       const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
         logger.warn(
           { err, jobId: job.jobId },
-          'Failed to load job record for Codex thread id update',
+          'Failed to load job record for agent thread id update',
         );
         return undefined;
       });
@@ -294,15 +314,19 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       await updateJobRecord(job.jobId, {
         job: {
           ...existingJob,
-          codexThreadId: codexResult.threadId,
+          agentThreadIds: {
+            ...(existingJob.agentThreadIds ?? {}),
+            [agentId]: agentResult.threadId,
+          },
         },
       }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record Codex thread id');
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
       });
     }
 
     if (job.type === 'MENTION') {
-      const replyText = codexResult.finalResponse || 'Thanks for the mention! How can I help?';
+      const replyText =
+        agentResult.finalResponse || 'Thanks for the mention! How can I help?';
       const threadTs = await resolveThreadTs(job);
       await sendBotEvent(botQueue, {
         type: 'postMessage',
@@ -422,7 +446,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       const mr = isGitHubSshUrl(repoConfig.sshUrl)
         ? await (async () => {
             if (!config.github) {
-              throw new Error('GITHUB_TOKEN is required to create GitHub pull requests.');
+              throw new Error('GITHUB_API_TOKEN is required to create GitHub pull requests.');
             }
             const repoInfo = parseGitHubRepo(repoConfig.sshUrl!);
             if (!repoInfo) {

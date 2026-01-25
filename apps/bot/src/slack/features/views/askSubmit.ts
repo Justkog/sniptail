@@ -47,6 +47,7 @@ export function registerAskSubmitView({ app, slackIds, config, queue }: SlackApp
       primaryRepoKey: repoKeys[0]!,
       gitRef,
       requestText,
+      agent: config.primaryAgent,
       slack: {
         channelId: metadata?.channelId ?? body.user.id,
         userId: metadata?.userId ?? body.user.id,

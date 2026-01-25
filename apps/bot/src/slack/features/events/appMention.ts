@@ -51,6 +51,7 @@ export function registerAppMentionEvent({ app, config, queue }: SlackAppContext)
       repoKeys: [],
       gitRef: 'main',
       requestText,
+      agent: config.primaryAgent,
       slack: {
         channelId,
         userId: userId ?? 'unknown',

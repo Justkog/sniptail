@@ -17,6 +17,10 @@ vi.mock('@sniptail/core/config/index.js', () => ({
     gitlab: undefined,
     github: undefined,
     redisUrl: 'redis://localhost:6379/0',
+    primaryAgent: 'codex',
+    copilot: {
+      executionMode: 'local',
+    },
     codex: {
       executionMode: 'local',
       dockerfilePath: undefined,
@@ -58,8 +62,11 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
   };
 });
 
-vi.mock('@sniptail/core/codex/index.js', () => ({
-  runCodex: vi.fn(),
+vi.mock('@sniptail/core/agents/index.js', () => ({
+  AGENT_REGISTRY: {
+    codex: { run: vi.fn() },
+    copilot: { run: vi.fn() },
+  },
 }));
 
 vi.mock('@sniptail/core/git/mirror.js', () => ({
@@ -115,8 +122,7 @@ vi.mock('node:fs/promises', () => ({
 
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import type { Queue } from 'bullmq';
-import { runCodex } from '@sniptail/core/codex/index.js';
-import type { CodexRunResult } from '@sniptail/core/codex/index.js';
+import { AGENT_REGISTRY } from '@sniptail/core/agents/index.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import {
@@ -133,7 +139,7 @@ import type { SlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import {
   copyJobRootSeed,
-  resolveCodexThreadId,
+  resolveAgentThreadId,
   resolveMentionWorkingDirectory,
   runJob,
 } from './pipeline.js';
@@ -173,7 +179,7 @@ describe('worker/pipeline helpers', () => {
     );
   });
 
-  it('resolveCodexThreadId returns explicit thread id', async () => {
+  it('resolveAgentThreadId returns explicit thread id', async () => {
     const loadJobRecordMock = vi.mocked(loadJobRecord);
 
     const job = {
@@ -183,19 +189,19 @@ describe('worker/pipeline helpers', () => {
       gitRef: 'main',
       requestText: 'Hello',
       slack: { channelId: 'C1', userId: 'U1' },
-      codexThreadId: 'thread-explicit',
+      agentThreadIds: { codex: 'thread-explicit' },
     };
 
-    await expect(resolveCodexThreadId(job)).resolves.toBe('thread-explicit');
+    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-explicit');
     expect(loadJobRecordMock).not.toHaveBeenCalled();
   });
 
-  it('resolveCodexThreadId resolves from resume job record', async () => {
+  it('resolveAgentThreadId resolves from resume job record', async () => {
     const loadJobRecordMock = vi.mocked(loadJobRecord);
     const findLatestJobBySlackThreadMock = vi.mocked(findLatestJobBySlackThread);
 
     loadJobRecordMock.mockResolvedValueOnce({
-      job: { codexThreadId: 'thread-resumed' },
+      job: { agentThreadIds: { codex: 'thread-resumed' } },
     } as JobRecord);
 
     const job = {
@@ -208,18 +214,18 @@ describe('worker/pipeline helpers', () => {
       resumeFromJobId: 'job-1',
     };
 
-    await expect(resolveCodexThreadId(job)).resolves.toBe('thread-resumed');
+    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-resumed');
     expect(loadJobRecordMock).toHaveBeenCalledWith('job-1');
     expect(findLatestJobBySlackThreadMock).not.toHaveBeenCalled();
   });
 
-  it('resolveCodexThreadId falls back to latest thread record', async () => {
+  it('resolveAgentThreadId falls back to latest thread record', async () => {
     const loadJobRecordMock = vi.mocked(loadJobRecord);
     const findLatestJobBySlackThreadMock = vi.mocked(findLatestJobBySlackThread);
 
     loadJobRecordMock.mockResolvedValueOnce(undefined);
     findLatestJobBySlackThreadMock.mockResolvedValueOnce({
-      job: { codexThreadId: 'thread-latest' },
+      job: { agentThreadIds: { codex: 'thread-latest' } },
     } as JobRecord);
 
     const job = {
@@ -231,8 +237,8 @@ describe('worker/pipeline helpers', () => {
       slack: { channelId: 'C1', userId: 'U1', threadTs: '123.456' },
     };
 
-    await expect(resolveCodexThreadId(job)).resolves.toBe('thread-latest');
-    expect(findLatestJobBySlackThreadMock).toHaveBeenCalledWith('C1', '123.456');
+    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-latest');
+    expect(findLatestJobBySlackThreadMock).toHaveBeenCalledWith('C1', '123.456', 'codex');
   });
 
   it('resolveMentionWorkingDirectory uses fallback for non-mention jobs', async () => {
@@ -303,7 +309,7 @@ describe('worker/pipeline runJob', () => {
   it('runs a mention job and posts the response', async () => {
     const loadJobRecordMock = vi.mocked(loadJobRecord);
     const updateJobRecordMock = vi.mocked(updateJobRecord);
-    const runCodexMock = vi.mocked(runCodex);
+    const runAgentMock = vi.mocked(AGENT_REGISTRY.codex.run);
     const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
     const buildSlackIdsMock = vi.mocked(buildSlackIds);
     const mkdirMock = vi.mocked(mkdir);
@@ -322,7 +328,7 @@ describe('worker/pipeline runJob', () => {
 
     loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
     updateJobRecordMock.mockResolvedValue({} as JobRecord);
-    const codexResult: CodexRunResult = {
+    const agentResult = {
       threadId: 'thread-1',
       finalResponse: 'Hello there!',
     };
@@ -344,7 +350,7 @@ describe('worker/pipeline runJob', () => {
       },
     };
 
-    runCodexMock.mockResolvedValue(codexResult);
+    runAgentMock.mockResolvedValue(agentResult);
     buildSlackIdsMock.mockReturnValue(slackIds);
     mkdirMock.mockResolvedValue(undefined);
     writeFileMock.mockResolvedValue(undefined);
@@ -358,7 +364,7 @@ describe('worker/pipeline runJob', () => {
       status: 'ok',
       summary: 'Hello there!',
     });
-    expect(runCodexMock).toHaveBeenCalledWith(
+    expect(runAgentMock).toHaveBeenCalledWith(
       job,
       '/tmp/sniptail/repo-cache',
       expect.any(Object),

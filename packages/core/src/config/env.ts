@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
+import type { AgentId } from '../types/job.js';
 import type { GitHubConfig } from '../github/client.js';
 import type { GitLabConfig } from '../gitlab/client.js';
 
@@ -14,6 +15,10 @@ export type CoreConfig = {
 export type BotConfig = CoreConfig & {
   botName: string;
   debugJobSpecMessages: boolean;
+  primaryAgent: AgentId;
+  copilot: {
+    executionMode: 'local';
+  };
   slack: {
     botToken: string;
     appToken: string;
@@ -29,6 +34,10 @@ export type WorkerConfig = CoreConfig & {
   botName: string;
   redisUrl: string;
   openAiKey?: string;
+  primaryAgent: AgentId;
+  copilot: {
+    executionMode: 'local';
+  };
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
   repoCacheRoot: string;
@@ -76,6 +85,24 @@ function resolveBotName(): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
+function resolvePrimaryAgent(): AgentId {
+  const raw = (process.env.PRIMARY_AGENT || 'codex').trim().toLowerCase();
+  if (raw !== 'codex' && raw !== 'copilot') {
+    throw new Error(`Invalid PRIMARY_AGENT: ${process.env.PRIMARY_AGENT}`);
+  }
+  return raw;
+}
+
+function resolveCopilotExecutionMode(): 'local' {
+  const raw = (process.env.GH_COPILOT_EXECUTION_MODE || 'local').trim().toLowerCase();
+  if (raw !== 'local') {
+    throw new Error(
+      `Invalid GH_COPILOT_EXECUTION_MODE: ${process.env.GH_COPILOT_EXECUTION_MODE}`,
+    );
+  }
+  return 'local';
+}
+
 export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
   try {
     const raw = readFileSync(filePath, 'utf8');
@@ -115,7 +142,7 @@ export async function writeRepoAllowlist(
 }
 
 export function resolveGitHubConfig(): GitHubConfig | undefined {
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = process.env.GITHUB_API_TOKEN?.trim();
   if (!token) return undefined;
   return {
     apiBaseUrl: process.env.GITHUB_API_BASE_URL?.trim() || 'https://api.github.com',
@@ -163,6 +190,8 @@ export function loadBotConfig(): BotConfig {
   if (botConfigCache) return botConfigCache;
   const core = loadCoreConfig();
   const botName = resolveBotName();
+  const primaryAgent = resolvePrimaryAgent();
+  const copilotExecutionMode = resolveCopilotExecutionMode();
   const debugJobSpecMessages = resolveOptionalFlag('DEBUG_JOB_SPEC_MESSAGES', false);
   const gitlab = resolveGitLabConfig();
   const github = resolveGitHubConfig();
@@ -170,6 +199,10 @@ export function loadBotConfig(): BotConfig {
   botConfigCache = {
     ...core,
     botName,
+    primaryAgent,
+    copilot: {
+      executionMode: copilotExecutionMode,
+    },
     debugJobSpecMessages,
     slack: {
       botToken: requireEnv('SLACK_BOT_TOKEN'),
@@ -188,6 +221,8 @@ export function loadWorkerConfig(): WorkerConfig {
   if (workerConfigCache) return workerConfigCache;
   const core = loadCoreConfig();
   const botName = resolveBotName();
+  const primaryAgent = resolvePrimaryAgent();
+  const copilotExecutionMode = resolveCopilotExecutionMode();
 
   const executionMode = (process.env.CODEX_EXECUTION_MODE || 'local').toLowerCase();
   if (executionMode !== 'local' && executionMode !== 'docker') {
@@ -200,7 +235,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const jobRootCopyGlob = process.env.JOB_ROOT_COPY_GLOB?.trim();
   const includeRawRequestInMr = resolveOptionalFlag('INCLUDE_RAW_REQUEST_IN_MR', false);
   const openAiKey = process.env.OPENAI_API_KEY;
-  if (!openAiKey) {
+  if (!openAiKey && primaryAgent === 'codex') {
     logger.warn('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
   }
   const gitlab = resolveGitLabConfig();
@@ -210,6 +245,10 @@ export function loadWorkerConfig(): WorkerConfig {
     ...core,
     botName,
     redisUrl: requireEnv('REDIS_URL'),
+    primaryAgent,
+    copilot: {
+      executionMode: copilotExecutionMode,
+    },
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),
     ...(github && { github }),
