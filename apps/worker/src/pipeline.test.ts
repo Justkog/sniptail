@@ -20,6 +20,7 @@ vi.mock('@sniptail/core/config/index.js', () => ({
     primaryAgent: 'codex',
     copilot: {
       executionMode: 'local',
+      idleRetries: 2,
     },
     codex: {
       executionMode: 'local',

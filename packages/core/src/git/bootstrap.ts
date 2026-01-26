@@ -8,7 +8,10 @@ export type LocalRepoPathResolution = {
   path: string;
 };
 
-export function resolveLocalRepoPath(inputPath: string, repoRoot?: string): LocalRepoPathResolution {
+export function resolveLocalRepoPath(
+  inputPath: string,
+  repoRoot?: string,
+): LocalRepoPathResolution {
   const trimmed = inputPath.trim();
   if (!trimmed) {
     throw new Error('Local directory path is required.');

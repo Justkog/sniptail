@@ -72,7 +72,7 @@ export async function createProject(options: {
     webUrl: data.web_url,
     sshUrl: data.ssh_url_to_repo,
     pathWithNamespace: data.path_with_namespace,
-    ...data.default_branch && { defaultBranch: data.default_branch },
+    ...(data.default_branch && { defaultBranch: data.default_branch }),
   };
 }
 

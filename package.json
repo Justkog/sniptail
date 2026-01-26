@@ -17,7 +17,11 @@
     "clean": "pnpm -r clean",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format",
-    "check": "pnpm -r check"
+    "check": "pnpm -r check",
+    "db:generate:sqlite": "pnpm --filter @sniptail/core db:generate:sqlite",
+    "db:migrate:sqlite": "pnpm --filter @sniptail/core db:migrate:sqlite",
+    "db:generate:pg": "pnpm --filter @sniptail/core db:generate:pg",
+    "db:migrate:pg": "pnpm --filter @sniptail/core db:migrate:pg"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

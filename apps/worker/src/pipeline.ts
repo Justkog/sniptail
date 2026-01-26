@@ -20,7 +20,7 @@ import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { JobSpec, JobResult, MergeRequestResult } from '@sniptail/core/types/job.js';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { isGitHubSshUrl, parseGitHubRepo } from '@sniptail/core/git/ssh.js';
 import { sendBotEvent } from './botEvents.js';
@@ -250,7 +250,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       });
     }
 
-    const agentId = (job.agent ?? config.primaryAgent);
+    const agentId = job.agent ?? config.primaryAgent;
     const agent = AGENT_REGISTRY[agentId];
 
     logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
@@ -282,6 +282,24 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
             logger.info({ jobId: job.jobId }, summary.text);
           }
         },
+        ...(agentId === 'copilot' ? { copilotIdleRetries: config.copilot.idleRetries } : {}),
+        ...(agentId === 'copilot' && config.copilot.executionMode === 'docker'
+          ? {
+              copilot: {
+                cliPath: resolve(process.cwd(), 'scripts', 'copilot-docker.sh'),
+                docker: {
+                  enabled: true,
+                  ...(config.copilot.dockerfilePath && {
+                    dockerfilePath: config.copilot.dockerfilePath,
+                  }),
+                  ...(config.copilot.dockerImage && { image: config.copilot.dockerImage }),
+                  ...(config.copilot.dockerBuildContext && {
+                    buildContext: config.copilot.dockerBuildContext,
+                  }),
+                },
+              },
+            }
+          : {}),
         ...(agentId === 'codex' && config.codex.executionMode === 'docker'
           ? {
               docker: {
@@ -325,8 +343,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     }
 
     if (job.type === 'MENTION') {
-      const replyText =
-        agentResult.finalResponse || 'Thanks for the mention! How can I help?';
+      const replyText = agentResult.finalResponse || 'Thanks for the mention! How can I help?';
       const threadTs = await resolveThreadTs(job);
       await sendBotEvent(botQueue, {
         type: 'postMessage',

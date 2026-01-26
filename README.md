@@ -21,7 +21,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 | Agent | Status | Notes |
 | --- | --- | --- |
 | OpenAI Codex | Supported | Current execution engine |
-| GitHub Copilot CLI | Planned | |
+| GitHub Copilot CLI | Supported | SDK-backed CLI execution |
 | Claude Code | Planned | |
 | OpenCode | Planned | |
 | Gemini CLI | Planned | |
@@ -41,7 +41,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 
 1. A user triggers a slash command or mentions the bot in Slack.
 2. The bot queues a job in Redis and records metadata in a local job registry.
-3. A worker pulls the job, prepares repo worktrees, and runs Codex with the request.
+3. A worker pulls the job, prepares repo worktrees, and runs the configured agent (Codex or Copilot).
 4. Results are posted back to Slack as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
 ## Repo layout
@@ -59,7 +59,8 @@ Sniptail is a PNPM monorepo with two apps and one shared package:
 - Redis (for job queue)
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `CODEX_EXECUTION_MODE=local`, e.g. `npm install -g @openai/codex`)
-- Docker (required when `CODEX_EXECUTION_MODE=docker`)
+- Copilot CLI in `PATH` (required when `GH_COPILOT_EXECUTION_MODE=local`, e.g. `npm install -g @github/copilot`)
+- Docker (required when `CODEX_EXECUTION_MODE=docker` or `GH_COPILOT_EXECUTION_MODE=docker`)
 
 ## Installation (step by step)
 
@@ -128,11 +129,16 @@ Optional:
 - `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_API_TOKEN` (required to create GitHub PRs)
 - `GITHUB_API_BASE_URL` (defaults to `https://api.github.com`)
+- `COPILOT_IDLE_RETRIES` (defaults to 2; idle retry count for Copilot sessions)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
 - `CODEX_DOCKERFILE_PATH` (path to a Dockerfile for Codex)
 - `CODEX_DOCKER_IMAGE` (image name to use/build)
 - `CODEX_DOCKER_BUILD_CONTEXT` (optional build context path)
 - `CODEX_DOCKER_HOST_HOME` (optional; defaults to host home dir)
+- `GH_COPILOT_EXECUTION_MODE` (`local` or `docker`)
+- `GH_COPILOT_DOCKERFILE_PATH` (path to a Dockerfile for Copilot)
+- `GH_COPILOT_DOCKER_IMAGE` (image name to use/build)
+- `GH_COPILOT_DOCKER_BUILD_CONTEXT` (optional build context path)
 
 ### 4) Choose local vs docker Codex execution
 
@@ -143,6 +149,15 @@ Optional:
   - Runs Codex inside a container via `scripts/codex-docker.sh`.
   - Useful for consistent tooling and sandboxed execution.
   - Configure `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, and `CODEX_DOCKER_BUILD_CONTEXT` if you want the image to auto-build.
+
+### 4b) Choose local vs docker Copilot execution
+
+- `GH_COPILOT_EXECUTION_MODE=local`
+  - Runs Copilot CLI directly on the host.
+  - Requires `@github/copilot` available in `PATH`.
+- `GH_COPILOT_EXECUTION_MODE=docker`
+  - Runs Copilot CLI inside a container via `apps/worker/scripts/copilot-docker.sh`.
+  - Configure `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, and `GH_COPILOT_DOCKER_BUILD_CONTEXT` if you want the image to auto-build.
 
 ### 5) Slack app setup
 

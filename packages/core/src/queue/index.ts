@@ -26,9 +26,7 @@ export function createConnectionOptions(redisUrl: string): ConnectionOptions {
   return options as ConnectionOptions;
 }
 
-export function createJobQueue(
-  redisUrl: string,
-): Queue<JobSpec> {
+export function createJobQueue(redisUrl: string): Queue<JobSpec> {
   const connection = createConnectionOptions(redisUrl);
   return new Queue<JobSpec>(jobQueueName, { connection });
 }
@@ -41,9 +39,7 @@ export async function enqueueJob(queue: Queue<JobSpec>, job: JobSpec) {
   });
 }
 
-export function createBootstrapQueue(
-  redisUrl: string,
-): Queue<BootstrapRequest> {
+export function createBootstrapQueue(redisUrl: string): Queue<BootstrapRequest> {
   const connection = createConnectionOptions(redisUrl);
   return new Queue<BootstrapRequest>(bootstrapQueueName, { connection });
 }
@@ -56,9 +52,7 @@ export async function enqueueBootstrap(queue: Queue<BootstrapRequest>, request: 
   });
 }
 
-export function createBotQueue(
-  redisUrl: string,
-): Queue<BotEvent> {
+export function createBotQueue(redisUrl: string): Queue<BotEvent> {
   const connection = createConnectionOptions(redisUrl);
   return new Queue<BotEvent>(botEventQueueName, { connection });
 }
@@ -70,9 +64,7 @@ export async function enqueueBotEvent(queue: Queue<BotEvent>, event: BotEvent) {
   });
 }
 
-export function createWorkerEventQueue(
-  redisUrl: string,
-): Queue<WorkerEvent> {
+export function createWorkerEventQueue(redisUrl: string): Queue<WorkerEvent> {
   const connection = createConnectionOptions(redisUrl);
   return new Queue<WorkerEvent>(workerEventQueueName, { connection });
 }
