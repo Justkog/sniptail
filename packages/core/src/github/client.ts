@@ -69,7 +69,7 @@ export async function createRepository(options: {
     url: data.html_url,
     sshUrl: data.ssh_url,
     fullName: data.full_name,
-    ...data.default_branch && { defaultBranch: data.default_branch },
+    ...(data.default_branch && { defaultBranch: data.default_branch }),
     owner: data.owner?.login ?? owner ?? '',
     name: data.name ?? name,
   };

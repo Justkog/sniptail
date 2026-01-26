@@ -25,7 +25,7 @@ export function buildWorktreeCommandsText(config: BotConfig, target: WorktreeCom
   for (const repoKey of target.repoKeys) {
     const ref =
       target.mode === 'branch'
-        ? target.branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${target.jobId}`
+        ? (target.branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${target.jobId}`)
         : target.baseRef;
     const repoConfig = config.repoAllowlist[repoKey];
     const cloneUrl = repoConfig?.localPath ?? repoConfig?.sshUrl ?? '<repo-url>';

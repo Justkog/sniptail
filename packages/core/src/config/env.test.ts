@@ -68,4 +68,10 @@ describe('config loaders', () => {
 
     expect(() => loadBotConfig()).not.toThrow();
   });
+
+  it('throws when COPILOT_IDLE_RETRIES is invalid', () => {
+    applyRequiredEnv({ COPILOT_IDLE_RETRIES: 'nope' });
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid COPILOT_IDLE_RETRIES');
+  });
 });

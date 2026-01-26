@@ -10,6 +10,8 @@ export type CoreConfig = {
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
   jobRegistryPath: string;
+  jobRegistryDriver: 'sqlite' | 'pg';
+  jobRegistryPgUrl?: string;
 };
 
 export type BotConfig = CoreConfig & {
@@ -17,7 +19,7 @@ export type BotConfig = CoreConfig & {
   debugJobSpecMessages: boolean;
   primaryAgent: AgentId;
   copilot: {
-    executionMode: 'local';
+    executionMode: 'local' | 'docker';
   };
   slack: {
     botToken: string;
@@ -36,7 +38,11 @@ export type WorkerConfig = CoreConfig & {
   openAiKey?: string;
   primaryAgent: AgentId;
   copilot: {
-    executionMode: 'local';
+    executionMode: 'local' | 'docker';
+    idleRetries: number;
+    dockerfilePath?: string;
+    dockerImage?: string;
+    dockerBuildContext?: string;
   };
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
@@ -85,6 +91,19 @@ function resolveBotName(): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
+function resolveJobRegistryDriver(): 'sqlite' | 'pg' {
+  const raw = (process.env.JOB_REGISTRY_DB || 'sqlite').trim().toLowerCase();
+  if (raw !== 'sqlite' && raw !== 'pg') {
+    throw new Error(`Invalid JOB_REGISTRY_DB: ${process.env.JOB_REGISTRY_DB}`);
+  }
+  return raw;
+}
+
+function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg'): string | undefined {
+  if (driver !== 'pg') return undefined;
+  return requireEnv('JOB_REGISTRY_PG_URL');
+}
+
 function resolvePrimaryAgent(): AgentId {
   const raw = (process.env.PRIMARY_AGENT || 'codex').trim().toLowerCase();
   if (raw !== 'codex' && raw !== 'copilot') {
@@ -93,14 +112,26 @@ function resolvePrimaryAgent(): AgentId {
   return raw;
 }
 
-function resolveCopilotExecutionMode(): 'local' {
+function resolveCopilotExecutionMode(): 'local' | 'docker' {
   const raw = (process.env.GH_COPILOT_EXECUTION_MODE || 'local').trim().toLowerCase();
-  if (raw !== 'local') {
-    throw new Error(
-      `Invalid GH_COPILOT_EXECUTION_MODE: ${process.env.GH_COPILOT_EXECUTION_MODE}`,
-    );
+  if (raw !== 'local' && raw !== 'docker') {
+    throw new Error(`Invalid GH_COPILOT_EXECUTION_MODE: ${process.env.GH_COPILOT_EXECUTION_MODE}`);
   }
-  return 'local';
+  return raw;
+}
+
+function resolveCopilotIdleRetries(): number {
+  const raw = process.env.COPILOT_IDLE_RETRIES;
+  if (raw === undefined || raw.trim() === '') return 2;
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`Invalid COPILOT_IDLE_RETRIES: ${raw}`);
+  }
+  const value = Number.parseInt(normalized, 10);
+  if (Number.isNaN(value)) {
+    throw new Error(`Invalid COPILOT_IDLE_RETRIES: ${raw}`);
+  }
+  return value;
 }
 
 export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
@@ -177,11 +208,15 @@ export function resetConfigCaches() {
 export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const repoAllowlist = parseRepoAllowlist(requireEnv('REPO_ALLOWLIST_PATH'));
+  const jobRegistryDriver = resolveJobRegistryDriver();
+  const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
 
   coreConfigCache = {
     repoAllowlist,
     jobWorkRoot: requireEnv('JOB_WORK_ROOT'),
     jobRegistryPath: requireEnv('JOB_REGISTRY_PATH'),
+    jobRegistryDriver,
+    ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
   };
   return coreConfigCache;
 }
@@ -223,6 +258,10 @@ export function loadWorkerConfig(): WorkerConfig {
   const botName = resolveBotName();
   const primaryAgent = resolvePrimaryAgent();
   const copilotExecutionMode = resolveCopilotExecutionMode();
+  const copilotIdleRetries = resolveCopilotIdleRetries();
+  const copilotDockerfilePath = process.env.GH_COPILOT_DOCKERFILE_PATH?.trim();
+  const copilotDockerImage = process.env.GH_COPILOT_DOCKER_IMAGE?.trim();
+  const copilotDockerBuildContext = process.env.GH_COPILOT_DOCKER_BUILD_CONTEXT?.trim();
 
   const executionMode = (process.env.CODEX_EXECUTION_MODE || 'local').toLowerCase();
   if (executionMode !== 'local' && executionMode !== 'docker') {
@@ -248,6 +287,10 @@ export function loadWorkerConfig(): WorkerConfig {
     primaryAgent,
     copilot: {
       executionMode: copilotExecutionMode,
+      idleRetries: copilotIdleRetries,
+      ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
+      ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
+      ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
     },
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),

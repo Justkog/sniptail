@@ -32,9 +32,7 @@ export function summarizeCopilotEvent(
   }
   if (event.type === 'tool.execution_complete') {
     const toolCallId = event.data?.toolCallId;
-    const toolName =
-      toolCallId && 
-      toolCallNameMap.get(toolCallId);
+    const toolName = toolCallId && toolCallNameMap.get(toolCallId);
     const success = event.data?.success;
     if (typeof toolCallId === 'string') {
       toolCallNameMap.delete(toolCallId);

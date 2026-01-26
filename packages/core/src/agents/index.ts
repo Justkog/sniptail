@@ -8,11 +8,15 @@ export const AGENT_REGISTRY: AgentRegistry = {
   codex: {
     run: runCodex,
     formatEvent: formatCodexEvent as (event: unknown) => string,
-    summarizeEvent: summarizeCodexEvent as (event: unknown) => { text: string; isError: boolean; } | null,
+    summarizeEvent: summarizeCodexEvent as (
+      event: unknown,
+    ) => { text: string; isError: boolean } | null,
   },
   copilot: {
     run: runCopilot,
     formatEvent: formatCopilotEvent as (event: unknown) => string,
-    summarizeEvent: summarizeCopilotEvent as (event: unknown) => { text: string; isError: boolean; } | null,
+    summarizeEvent: summarizeCopilotEvent as (
+      event: unknown,
+    ) => { text: string; isError: boolean } | null,
   },
 };

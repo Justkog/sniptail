@@ -14,7 +14,8 @@ Prereqs:
 - PNPM
 - Redis (for the job queue)
 - Git + SSH access for repo operations
-- Codex CLI or Docker (depending on execution mode)
+- Codex CLI and/or Copilot CLI (depending on execution mode)
+- Docker (required when running agents in docker mode)
 
 Steps:
 1. Install dependencies:

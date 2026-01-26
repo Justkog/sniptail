@@ -9,10 +9,7 @@ export function createJobId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export async function persistJobSpec(
-  config: BotConfig,
-  job: JobSpec,
-): Promise<string | null> {
+export async function persistJobSpec(config: BotConfig, job: JobSpec): Promise<string | null> {
   const jobRoot = join(config.jobWorkRoot, job.jobId);
   const artifactsRoot = join(jobRoot, 'artifacts');
   const jobSpecPath = join(artifactsRoot, 'job-spec.json');
@@ -26,9 +23,7 @@ export async function persistJobSpec(
   }
 }
 
-export async function persistSlackUploadSpec(
-  job: JobSpec,
-): Promise<string | null> {
+export async function persistSlackUploadSpec(job: JobSpec): Promise<string | null> {
   const artifactsRoot = join(tmpdir(), 'sniptail', job.jobId);
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
   try {

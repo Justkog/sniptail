@@ -15,6 +15,16 @@ export type AgentRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  copilotIdleRetries?: number;
+  copilot?: {
+    cliPath?: string;
+    docker?: {
+      enabled?: boolean;
+      dockerfilePath?: string;
+      image?: string;
+      buildContext?: string;
+    };
+  };
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;

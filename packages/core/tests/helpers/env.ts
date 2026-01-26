@@ -19,8 +19,13 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'BOT_NAME',
     'DEBUG_JOB_SPEC_MESSAGES',
     'ADMIN_USER_IDS',
+    'JOB_REGISTRY_DB',
+    'JOB_REGISTRY_PG_URL',
     'PRIMARY_AGENT',
     'GH_COPILOT_EXECUTION_MODE',
+    'GH_COPILOT_DOCKERFILE_PATH',
+    'GH_COPILOT_DOCKER_IMAGE',
+    'GH_COPILOT_DOCKER_BUILD_CONTEXT',
     'CODEX_EXECUTION_MODE',
     'CODEX_DOCKERFILE_PATH',
     'CODEX_DOCKER_IMAGE',
@@ -30,6 +35,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'GITHUB_API_BASE_URL',
     'GITLAB_BASE_URL',
     'GITLAB_TOKEN',
+    'COPILOT_IDLE_RETRIES',
   ];
   for (const key of optionalKeys) {
     delete process.env[key];

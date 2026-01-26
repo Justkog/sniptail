@@ -24,7 +24,11 @@ function formatUserMention(userId?: string) {
   return userId ? `<@${userId}> ` : '';
 }
 
-function buildRepoDisplay(service: BootstrapRequest['service'], repoLabel: string, repoUrl: string) {
+function buildRepoDisplay(
+  service: BootstrapRequest['service'],
+  repoLabel: string,
+  repoUrl: string,
+) {
   if (service === 'local') {
     return repoLabel;
   }

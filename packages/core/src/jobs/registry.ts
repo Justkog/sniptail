@@ -1,16 +1,16 @@
-import { mkdir, rm, stat } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
-import Database, { type Statement } from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { eq, inArray, like } from 'drizzle-orm';
 import { loadCoreConfig } from '../config/index.js';
+import { getJobRegistryDb, type JobRegistryClient } from '../db/index.js';
+import { jobs as pgJobs } from '../db/pg/schema.js';
+import { jobs as sqliteJobs } from '../db/sqlite/schema.js';
 import { logger } from '../logger.js';
 import type { AgentId, JobSpec, JobType, MergeRequestResult } from '../types/job.js';
 
 const config = loadCoreConfig();
 
 const JOB_KEY_PREFIX = 'job:';
-const JOB_REGISTRY_FILENAME = 'job-registry.sqlite';
-const SQLITE_BUSY_TIMEOUT_MS = 5000;
 
 export type JobStatus = 'queued' | 'running' | 'ok' | 'failed';
 
@@ -25,77 +25,6 @@ export type JobRecord = {
   mergeRequests?: MergeRequestResult[];
   error?: string;
 };
-
-let dbReady: Promise<void> | null = null;
-let sqliteDb: Database.Database | null = null;
-let dbFilePath: string | null = null;
-let statements: {
-  getJob: Statement<{ jobId: string }>;
-  getAll: Statement<{ prefix: string }>;
-  putJob: Statement<{ jobId: string; record: string }>;
-  deleteJob: Statement<{ jobId: string }>;
-} | null = null;
-
-function getSqliteDb(): Database.Database {
-  if (!sqliteDb) {
-    throw new Error('Job registry database is not initialized.');
-  }
-  return sqliteDb;
-}
-
-function getStatements() {
-  if (!statements) {
-    throw new Error('Job registry statements are not initialized.');
-  }
-  return statements;
-}
-
-async function resolveDbFilePath(): Promise<string> {
-  const configured = config.jobRegistryPath;
-  if (configured.endsWith('/')) {
-    return join(configured, JOB_REGISTRY_FILENAME);
-  }
-  try {
-    const stats = await stat(configured);
-    if (stats.isDirectory()) {
-      return join(configured, JOB_REGISTRY_FILENAME);
-    }
-    return configured;
-  } catch {
-    const ext = extname(configured).toLowerCase();
-    if (ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') {
-      return configured;
-    }
-    return join(configured, JOB_REGISTRY_FILENAME);
-  }
-}
-
-async function ensureDbReady() {
-  if (!dbReady) {
-    dbReady = (async () => {
-      dbFilePath = await resolveDbFilePath();
-      await mkdir(dirname(dbFilePath), { recursive: true });
-      const sqlite = new Database(dbFilePath);
-      sqlite.pragma('journal_mode = WAL');
-      sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
-      const drizzleDb = drizzle({ client: sqlite });
-      drizzleDb.run(
-        `CREATE TABLE IF NOT EXISTS jobs (jobId TEXT PRIMARY KEY, record TEXT NOT NULL)`,
-      );
-      sqliteDb = sqlite;
-      statements = {
-        getJob: sqlite.prepare('SELECT record FROM jobs WHERE jobId = @jobId'),
-        getAll: sqlite.prepare('SELECT record FROM jobs WHERE jobId LIKE @prefix'),
-        putJob: sqlite.prepare(
-          'INSERT INTO jobs (jobId, record) VALUES (@jobId, @record) ' +
-            'ON CONFLICT(jobId) DO UPDATE SET record = excluded.record',
-        ),
-        deleteJob: sqlite.prepare('DELETE FROM jobs WHERE jobId = @jobId'),
-      };
-    })();
-  }
-  await dbReady;
-}
 
 function jobKey(jobId: string) {
   return `${JOB_KEY_PREFIX}${jobId}`;
@@ -116,26 +45,73 @@ function removeJobRoot(jobId: string) {
     });
 }
 
-function parseRecord(row?: { record: string } | null): JobRecord | undefined {
-  if (!row?.record) return undefined;
-  try {
-    return JSON.parse(row.record) as JobRecord;
-  } catch (err) {
-    logger.warn({ err, dbFilePath }, 'Failed to parse job record JSON');
-    return undefined;
+function parseRecordValue(value: unknown): JobRecord | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as JobRecord;
+    } catch (err) {
+      logger.warn({ err }, 'Failed to parse job record JSON');
+      return undefined;
+    }
   }
+  if (typeof value === 'object') {
+    return value as JobRecord;
+  }
+  return undefined;
+}
+
+function serializeRecord(kind: JobRegistryClient['kind'], record: JobRecord): unknown {
+  return kind === 'pg' ? record : JSON.stringify(record);
+}
+
+async function getDbContext() {
+  const client = await getJobRegistryDb();
+  if (client.kind === 'pg') {
+    return { kind: 'pg' as const, client, jobsTable: pgJobs };
+  }
+  return { kind: 'sqlite' as const, client, jobsTable: sqliteJobs };
+}
+
+async function loadAllRecords(): Promise<JobRecord[]> {
+  const ctx = await getDbContext();
+  const rows =
+    ctx.kind === 'pg'
+      ? await ctx.client.db
+          .select({ record: ctx.jobsTable.record })
+          .from(ctx.jobsTable)
+          .where(like(ctx.jobsTable.jobId, `${JOB_KEY_PREFIX}%`))
+      : await ctx.client.db
+          .select({ record: ctx.jobsTable.record })
+          .from(ctx.jobsTable)
+          .where(like(ctx.jobsTable.jobId, `${JOB_KEY_PREFIX}%`));
+  const records: JobRecord[] = [];
+  for (const row of rows ?? []) {
+    const record = parseRecordValue(row.record);
+    if (record) records.push(record);
+  }
+  return records;
 }
 
 export async function loadJobRecord(jobId: string): Promise<JobRecord | undefined> {
-  await ensureDbReady();
-  const row = getStatements().getJob.get({ jobId: jobKey(jobId) }) as
-    | { record: string }
-    | undefined;
-  return parseRecord(row);
+  const ctx = await getDbContext();
+  const rows =
+    ctx.kind === 'pg'
+      ? await ctx.client.db
+          .select({ record: ctx.jobsTable.record })
+          .from(ctx.jobsTable)
+          .where(eq(ctx.jobsTable.jobId, jobKey(jobId)))
+          .limit(1)
+      : await ctx.client.db
+          .select({ record: ctx.jobsTable.record })
+          .from(ctx.jobsTable)
+          .where(eq(ctx.jobsTable.jobId, jobKey(jobId)))
+          .limit(1);
+  return parseRecordValue(rows[0]?.record);
 }
 
 export async function saveJobQueued(job: JobSpec): Promise<JobRecord> {
-  await ensureDbReady();
+  const ctx = await getDbContext();
   const now = new Date().toISOString();
   const record: JobRecord = {
     job,
@@ -143,7 +119,25 @@ export async function saveJobQueued(job: JobSpec): Promise<JobRecord> {
     createdAt: now,
     updatedAt: now,
   };
-  getStatements().putJob.run({ jobId: jobKey(job.jobId), record: JSON.stringify(record) });
+  const key = jobKey(job.jobId);
+  const serialized = serializeRecord(ctx.client.kind, record);
+  if (ctx.kind === 'pg') {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized },
+      });
+  } else {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized as string })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized as string },
+      });
+  }
   return record;
 }
 
@@ -151,7 +145,7 @@ export async function updateJobRecord(
   jobId: string,
   patch: Partial<JobRecord>,
 ): Promise<JobRecord> {
-  await ensureDbReady();
+  const ctx = await getDbContext();
   const existing = await loadJobRecord(jobId);
   if (!existing) {
     throw new Error(`Job record not found for ${jobId}`);
@@ -162,12 +156,30 @@ export async function updateJobRecord(
     job: patch.job ?? existing.job,
     updatedAt: new Date().toISOString(),
   };
-  getStatements().putJob.run({ jobId: jobKey(jobId), record: JSON.stringify(updated) });
+  const key = jobKey(jobId);
+  const serialized = serializeRecord(ctx.client.kind, updated);
+  if (ctx.kind === 'pg') {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized },
+      });
+  } else {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized as string })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized as string },
+      });
+  }
   return updated;
 }
 
 export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<JobRecord> {
-  await ensureDbReady();
+  const ctx = await getDbContext();
   const existing = await loadJobRecord(jobId);
   if (!existing) {
     throw new Error(`Job record not found for ${jobId}`);
@@ -179,12 +191,37 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
     updatedAt: new Date().toISOString(),
   };
   const key = jobKey(jobId);
-  getStatements().putJob.run({ jobId: key, record: JSON.stringify(updated) });
+  const serialized = serializeRecord(ctx.client.kind, updated);
+  if (ctx.kind === 'pg') {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized },
+      });
+  } else {
+    await ctx.client.db
+      .insert(ctx.jobsTable)
+      .values({ jobId: key, record: serialized as string })
+      .onConflictDoUpdate({
+        target: ctx.jobsTable.jobId,
+        set: { record: serialized as string },
+      });
+  }
   setTimeout(() => {
-    ensureDbReady()
-      .then(() => {
-        getStatements().deleteJob.run({ jobId: key });
-        return removeJobRoot(jobId);
+    getDbContext()
+      .then(async (timerCtx) => {
+        if (timerCtx.kind === 'pg') {
+          await timerCtx.client.db
+            .delete(timerCtx.jobsTable)
+            .where(eq(timerCtx.jobsTable.jobId, key));
+        } else {
+          await timerCtx.client.db
+            .delete(timerCtx.jobsTable)
+            .where(eq(timerCtx.jobsTable.jobId, key));
+        }
+        await removeJobRoot(jobId);
       })
       .catch((err) => logger.warn({ err, jobId }, 'Failed to delete expired job record'));
   }, ttlMs);
@@ -196,15 +233,11 @@ export async function findLatestJobBySlackThread(
   threadTs: string,
   agentId: AgentId,
 ): Promise<JobRecord | undefined> {
-  await ensureDbReady();
+  const records = await loadAllRecords();
   let latestWithThreadId: JobRecord | undefined;
   let latestTime = -1;
 
-  const rows = getStatements().getAll.all({ prefix: `${JOB_KEY_PREFIX}%` }) as
-    | { record: string }[]
-    | undefined;
-  for (const row of rows ?? []) {
-    const record = parseRecord(row);
+  for (const record of records) {
     const slack = record?.job?.slack;
     if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
     const agentThreadId = record.job?.agentThreadIds?.[agentId];
@@ -225,15 +258,11 @@ export async function findLatestJobBySlackThreadAndTypes(
   threadTs: string,
   types: JobType[],
 ): Promise<JobRecord | undefined> {
-  await ensureDbReady();
+  const records = await loadAllRecords();
   let latest: JobRecord | undefined;
   let latestTime = -1;
 
-  const rows = getStatements().getAll.all({ prefix: `${JOB_KEY_PREFIX}%` }) as
-    | { record: string }[]
-    | undefined;
-  for (const row of rows ?? []) {
-    const record = parseRecord(row);
+  for (const record of records) {
     const slack = record?.job?.slack;
     if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
     if (!types.includes(record.job.type)) continue;
@@ -248,21 +277,16 @@ export async function findLatestJobBySlackThreadAndTypes(
   return latest;
 }
 
-
 export async function clearJobsBefore(cutoff: Date): Promise<number> {
-  await ensureDbReady();
+  const ctx = await getDbContext();
   const cutoffTime = cutoff.getTime();
   if (Number.isNaN(cutoffTime)) {
     throw new Error('Invalid cutoff date.');
   }
 
   const keysToDelete: string[] = [];
-  const rows = getStatements().getAll.all({ prefix: `${JOB_KEY_PREFIX}%` }) as
-    | { record: string }[]
-    | undefined;
-  for (const row of rows ?? []) {
-    const record = parseRecord(row);
-    if (!record) continue;
+  const records = await loadAllRecords();
+  for (const record of records) {
     const key = jobKey(record.job.jobId);
     const createdAt = record?.createdAt;
     if (!createdAt) continue;
@@ -277,12 +301,11 @@ export async function clearJobsBefore(cutoff: Date): Promise<number> {
     return 0;
   }
 
-  const sqlite = getSqliteDb();
-  sqlite.transaction(() => {
-    for (const key of keysToDelete) {
-      getStatements().deleteJob.run({ jobId: key });
-    }
-  })();
+  if (ctx.kind === 'pg') {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  } else {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  }
   await Promise.all(keysToDelete.map((key) => removeJobRoot(jobIdFromKey(key))));
   return keysToDelete.length;
 }

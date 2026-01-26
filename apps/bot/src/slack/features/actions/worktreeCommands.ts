@@ -1,7 +1,4 @@
-import {
-  findLatestJobBySlackThreadAndTypes,
-  loadJobRecord,
-} from '@sniptail/core/jobs/registry.js';
+import { findLatestJobBySlackThreadAndTypes, loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackAppContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
@@ -52,9 +49,7 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackA
           mode: 'branch',
           jobId: latestImplement.job.jobId,
           repoKeys: targetRepoKeys,
-          ...(latestImplement.branchByRepo
-            ? { branchByRepo: latestImplement.branchByRepo }
-            : {}),
+          ...(latestImplement.branchByRepo ? { branchByRepo: latestImplement.branchByRepo } : {}),
         })
       : buildWorktreeCommandsText(config, {
           mode: 'base',
