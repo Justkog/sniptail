@@ -116,7 +116,10 @@ async function registerDiscordCommands(appId: string, token: string, guildId?: s
 
 function buildImplementRepoSelect(repoKeys: string[]) {
   const options = repoKeys.map((key) =>
-    new StringSelectMenuOptionBuilder().setLabel(key).setValue(key).setDefault(repoKeys.length === 1),
+    new StringSelectMenuOptionBuilder()
+      .setLabel(key)
+      .setValue(key)
+      .setDefault(repoKeys.length === 1),
   );
 
   const select = new StringSelectMenuBuilder()
@@ -131,7 +134,10 @@ function buildImplementRepoSelect(repoKeys: string[]) {
 
 function buildAskRepoSelect(repoKeys: string[]) {
   const options = repoKeys.map((key) =>
-    new StringSelectMenuOptionBuilder().setLabel(key).setValue(key).setDefault(repoKeys.length === 1),
+    new StringSelectMenuOptionBuilder()
+      .setLabel(key)
+      .setValue(key)
+      .setDefault(repoKeys.length === 1),
   );
 
   const select = new StringSelectMenuBuilder()
@@ -173,9 +179,7 @@ function buildAskModal(
   modal.addLabelComponents(
     new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput),
     new LabelBuilder().setLabel('Question').setTextInputComponent(questionInput),
-    new LabelBuilder()
-      .setLabel('Resume from job ID (optional)')
-      .setTextInputComponent(resumeInput),
+    new LabelBuilder().setLabel('Resume from job ID (optional)').setTextInputComponent(resumeInput),
   );
 
   if (repoKeys.length > 1) {
@@ -277,9 +281,7 @@ function buildImplementModal(
       .setLabel('Reviewers (GitLab IDs or GitHub usernames)')
       .setTextInputComponent(reviewersInput),
     new LabelBuilder().setLabel('Labels (comma-separated)').setTextInputComponent(labelsInput),
-    new LabelBuilder()
-      .setLabel('Resume from job ID (optional)')
-      .setTextInputComponent(resumeInput),
+    new LabelBuilder().setLabel('Resume from job ID (optional)').setTextInputComponent(resumeInput),
   );
 
   if (repoKeys.length > 1) {
@@ -313,7 +315,8 @@ async function handleImplementStart(interaction: ChatInputCommandInteraction) {
   }
   if (repoKeys.length > 25) {
     await interaction.reply({
-      content: 'Too many repositories to list in Discord (max 25). Use Slack or narrow the allowlist.',
+      content:
+        'Too many repositories to list in Discord (max 25). Use Slack or narrow the allowlist.',
       ephemeral: true,
     });
     return;
@@ -351,7 +354,8 @@ async function handleAskStart(interaction: ChatInputCommandInteraction) {
   }
   if (repoKeys.length > 25) {
     await interaction.reply({
-      content: 'Too many repositories to list in Discord (max 25). Use Slack or narrow the allowlist.',
+      content:
+        'Too many repositories to list in Discord (max 25). Use Slack or narrow the allowlist.',
       ephemeral: true,
     });
     return;
