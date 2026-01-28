@@ -21,7 +21,7 @@ export function registerAskCommand({ app, slackIds, config }: SlackAppContext) {
         JSON.stringify({
           channelId: body.channel_id,
           userId: body.user_id,
-          threadTs: (body.thread_ts as string) ?? undefined,
+          threadId: (body.thread_ts as string) ?? undefined,
         }),
       ),
     });

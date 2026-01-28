@@ -1,4 +1,7 @@
-import { findLatestJobBySlackThreadAndTypes, loadJobRecord } from '@sniptail/core/jobs/registry.js';
+import {
+  findLatestJobByChannelThreadAndTypes,
+  loadJobRecord,
+} from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackAppContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
@@ -9,7 +12,7 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackA
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
     const channelId = (body as { channel?: { id?: string } }).channel?.id;
-    const threadTs =
+    const threadId =
       (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
       (body as { message?: { ts?: string } }).message?.ts;
 
@@ -26,19 +29,19 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackA
       await postMessage(app, {
         channel: channelId,
         text: `Unable to build worktree commands for job ${jobId}.`,
-        ...(threadTs ? { threadTs } : {}),
+        ...(threadId ? { threadTs: threadId } : {}),
       });
       return;
     }
 
-    const resolvedThreadTs = threadTs ?? record.job.slack.threadTs;
-    const latestImplement = resolvedThreadTs
-      ? await findLatestJobBySlackThreadAndTypes(channelId, resolvedThreadTs, ['IMPLEMENT']).catch(
-          (err) => {
-            logger.warn({ err, jobId }, 'Failed to resolve latest implement job');
-            return undefined;
-          },
-        )
+    const resolvedThreadId = threadId ?? record.job.channel?.threadId;
+    const latestImplement = resolvedThreadId
+      ? await findLatestJobByChannelThreadAndTypes('slack', channelId, resolvedThreadId, [
+          'IMPLEMENT',
+        ]).catch((err) => {
+          logger.warn({ err, jobId }, 'Failed to resolve latest implement job');
+          return undefined;
+        })
       : undefined;
     const targetRepoKeys =
       latestImplement?.job?.repoKeys?.length && latestImplement.job.repoKeys.length
@@ -70,7 +73,7 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackA
           },
         },
       ],
-      ...(threadTs ? { threadTs } : {}),
+      ...(threadId ? { threadTs: threadId } : {}),
     });
   });
 }

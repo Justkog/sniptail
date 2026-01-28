@@ -56,7 +56,9 @@ export async function runCopilot(
       `snatch-copilot-${sanitizedJobId}-${process.pid}-${Date.now()}`;
   }
   const containerName =
-    docker?.enabled && copilotEnv[containerNameEnvKey] ? copilotEnv[containerNameEnvKey] : undefined;
+    docker?.enabled && copilotEnv[containerNameEnvKey]
+      ? copilotEnv[containerNameEnvKey]
+      : undefined;
 
   const client = new CopilotClient({
     cwd: workDir,

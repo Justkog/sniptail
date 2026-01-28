@@ -14,7 +14,7 @@ Repositories are located under the job root:
   Write the report to artifacts/report.md.
 
 {{#if threadContext}}
-Slack thread history (oldest to newest):
+Thread history (oldest to newest):
 {{threadContext}}
 
 {{/if}}

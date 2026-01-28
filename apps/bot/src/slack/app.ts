@@ -26,6 +26,9 @@ export function createSlackApp(
   workerEventQueue: Queue<WorkerEvent>,
 ) {
   const config = loadBotConfig();
+  if (!config.slack) {
+    throw new Error('Slack is not configured. Set SLACK_ENABLED=true and required Slack env vars.');
+  }
   const slackIds = buildSlackIds(config.botName);
   const app = new App({
     token: config.slack.botToken,

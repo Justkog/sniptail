@@ -21,10 +21,18 @@ export type BotConfig = CoreConfig & {
   copilot: {
     executionMode: 'local' | 'docker';
   };
-  slack: {
+  slackEnabled: boolean;
+  discordEnabled: boolean;
+  slack?: {
     botToken: string;
     appToken: string;
     signingSecret: string;
+  };
+  discord?: {
+    botToken: string;
+    appId: string;
+    guildId?: string;
+    channelIds?: string[];
   };
   adminUserIds: string[];
   redisUrl: string;
@@ -230,6 +238,12 @@ export function loadBotConfig(): BotConfig {
   const debugJobSpecMessages = resolveOptionalFlag('DEBUG_JOB_SPEC_MESSAGES', false);
   const gitlab = resolveGitLabConfig();
   const github = resolveGitHubConfig();
+  const slackEnabled = resolveOptionalFlag('SLACK_ENABLED', false);
+  const discordEnabled = resolveOptionalFlag('DISCORD_ENABLED', false);
+  const discordGuildId = process.env.DISCORD_GUILD_ID?.trim();
+  const discordChannelIds = parseCommaList(process.env.DISCORD_CHANNEL_IDS);
+  const discordBotToken = process.env.DISCORD_BOT_TOKEN?.trim();
+  const discordAppId = process.env.DISCORD_APP_ID?.trim();
 
   botConfigCache = {
     ...core,
@@ -239,11 +253,23 @@ export function loadBotConfig(): BotConfig {
       executionMode: copilotExecutionMode,
     },
     debugJobSpecMessages,
-    slack: {
-      botToken: requireEnv('SLACK_BOT_TOKEN'),
-      appToken: requireEnv('SLACK_APP_TOKEN'),
-      signingSecret: requireEnv('SLACK_SIGNING_SECRET'),
-    },
+    slackEnabled,
+    discordEnabled,
+    ...(slackEnabled && {
+      slack: {
+        botToken: requireEnv('SLACK_BOT_TOKEN'),
+        appToken: requireEnv('SLACK_APP_TOKEN'),
+        signingSecret: requireEnv('SLACK_SIGNING_SECRET'),
+      },
+    }),
+    ...(discordEnabled && {
+      discord: {
+        botToken: discordBotToken || requireEnv('DISCORD_BOT_TOKEN'),
+        appId: discordAppId || requireEnv('DISCORD_APP_ID'),
+        ...(discordGuildId ? { guildId: discordGuildId } : {}),
+        ...(discordChannelIds.length ? { channelIds: discordChannelIds } : {}),
+      },
+    }),
     adminUserIds: parseCommaList(process.env.ADMIN_USER_IDS),
     redisUrl: requireEnv('REDIS_URL'),
     ...(gitlab && { gitlab }),

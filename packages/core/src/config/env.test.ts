@@ -10,7 +10,7 @@ describe('config loaders', () => {
   });
 
   it('throws when required bot env vars are missing', () => {
-    applyRequiredEnv({ SLACK_BOT_TOKEN: undefined });
+    applyRequiredEnv({ SLACK_ENABLED: 'true', SLACK_BOT_TOKEN: undefined });
 
     expect(() => loadBotConfig()).toThrow('Missing required env var: SLACK_BOT_TOKEN');
   });

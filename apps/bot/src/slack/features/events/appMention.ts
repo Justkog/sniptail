@@ -5,26 +5,26 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackAppContext } from '../context.js';
 import { addReaction, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
-import { createJobId } from '../../lib/jobs.js';
+import { createJobId } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 
 export function registerAppMentionEvent({ app, config, queue }: SlackAppContext) {
   app.event('app_mention', async ({ event, client }) => {
     const channelId = (event as { channel?: string }).channel;
     const text = (event as { text?: string }).text ?? '';
-    const threadTs =
+    const threadId =
       (event as { thread_ts?: string; ts?: string }).thread_ts ?? (event as { ts?: string }).ts;
     const eventTs = (event as { ts?: string }).ts;
     const botId = (event as { bot_id?: string }).bot_id;
     const userId = (event as { user?: string }).user;
 
-    logger.info({ channelId, threadTs, botId, text }, 'Received app_mention event');
+    logger.info({ channelId, threadId, botId, text }, 'Received app_mention event');
 
-    if (!channelId || !threadTs || botId) {
+    if (!channelId || !threadId || botId) {
       return;
     }
 
-    const dedupeKey = `${channelId}:${eventTs ?? threadTs}:mention`;
+    const dedupeKey = `${channelId}:${eventTs ?? threadId}:mention`;
     if (dedupe(dedupeKey)) {
       return;
     }
@@ -37,13 +37,13 @@ export function registerAppMentionEvent({ app, config, queue }: SlackAppContext)
       });
     }
 
-    const slackThreadContext = threadTs
-      ? await fetchSlackThreadContext(client, channelId, threadTs, eventTs)
+    const threadContext = threadId
+      ? await fetchSlackThreadContext(client, channelId, threadId, eventTs)
       : undefined;
     const strippedText = stripSlackMentions(text);
     const requestText =
       strippedText ||
-      (slackThreadContext ? 'Please answer based on the Slack thread history.' : '') ||
+      (threadContext ? 'Please answer based on the thread history.' : '') ||
       'Say hello and ask how you can help.';
     const job: JobSpec = {
       jobId: createJobId('mention'),
@@ -52,12 +52,13 @@ export function registerAppMentionEvent({ app, config, queue }: SlackAppContext)
       gitRef: 'main',
       requestText,
       agent: config.primaryAgent,
-      slack: {
+      channel: {
+        provider: 'slack',
         channelId,
         userId: userId ?? 'unknown',
-        ...(threadTs ? { threadTs } : {}),
+        ...(threadId ? { threadId } : {}),
       },
-      ...(slackThreadContext ? { slackThreadContext } : {}),
+      ...(threadContext ? { threadContext } : {}),
     };
 
     try {
@@ -67,7 +68,7 @@ export function registerAppMentionEvent({ app, config, queue }: SlackAppContext)
       await postMessage(app, {
         channel: channelId,
         text: `I couldn't start that request. Please try again.`,
-        threadTs,
+        threadTs: threadId,
       });
       return;
     }

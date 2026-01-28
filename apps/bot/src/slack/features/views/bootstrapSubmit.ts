@@ -6,7 +6,7 @@ import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/type
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 import type { SlackAppContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
-import { createJobId } from '../../lib/jobs.js';
+import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
 
 export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: SlackAppContext) {
@@ -95,7 +95,8 @@ export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: S
         ...(quickstart ? { quickstart } : {}),
         ...(namespaceId !== undefined ? { gitlabNamespaceId: namespaceId } : {}),
         ...(service === 'local' && localPathInput ? { localPath: localPathInput } : {}),
-        slack: {
+        channel: {
+          provider: 'slack',
           channelId: responseChannel,
           userId: responseUser,
         },

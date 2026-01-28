@@ -1,3 +1,5 @@
+import type { ChannelContext } from './channel.js';
+
 export type RepoBootstrapService = 'github' | 'gitlab' | 'local';
 
 export type BootstrapRequest = {
@@ -11,8 +13,5 @@ export type BootstrapRequest = {
   quickstart?: boolean;
   gitlabNamespaceId?: number;
   localPath?: string;
-  slack: {
-    channelId: string;
-    userId: string;
-  };
+  channel: ChannelContext;
 };

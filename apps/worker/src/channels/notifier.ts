@@ -1,7 +1,4 @@
-export type ChannelRef = {
-  channelId: string;
-  threadId?: string;
-};
+import type { ChannelRef } from '@sniptail/core/types/channel.js';
 
 export type FileUpload = {
   title: string;
