@@ -1,7 +1,7 @@
 import type { AgentRegistry } from './types.js';
-import { runCodex } from '../codex/index.js';
+import { runCodex } from '../codex/codex.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
-import { runCopilot } from '../copilot/index.js';
+import { runCopilot } from '../copilot/copilot.js';
 import { formatCopilotEvent, summarizeCopilotEvent } from '../copilot/logging.js';
 
 export const AGENT_REGISTRY: AgentRegistry = {

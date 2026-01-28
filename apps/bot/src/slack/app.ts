@@ -1,6 +1,6 @@
 import { App, type CodedError } from '@slack/bolt';
 import type { Queue } from 'bullmq';
-import { loadBotConfig } from '@sniptail/core/config/index.js';
+import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';

@@ -1,7 +1,7 @@
-import { parseRepoAllowlist } from '@sniptail/core/config/index.js';
+import { parseRepoAllowlist } from '@sniptail/core/config/config.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueBootstrap } from '@sniptail/core/queue/index.js';
+import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 import type { SlackAppContext } from '../context.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/index.js', () => ({
+vi.mock('../config/config.js', () => ({
   loadCoreConfig: () => ({
     repoAllowlist: {
       'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },

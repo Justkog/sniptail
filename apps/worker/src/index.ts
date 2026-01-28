@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
-import { loadWorkerConfig } from '@sniptail/core/config/index.js';
+import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import {
   bootstrapQueueName,
@@ -9,7 +9,7 @@ import {
   createConnectionOptions,
   jobQueueName,
   workerEventQueueName,
-} from '@sniptail/core/queue/index.js';
+} from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';

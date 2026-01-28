@@ -3,7 +3,7 @@ import {
   loadWorkerConfig,
   parseRepoAllowlist,
   writeRepoAllowlist,
-} from '@sniptail/core/config/index.js';
+} from '@sniptail/core/config/config.js';
 import {
   bootstrapLocalRepository,
   defaultLocalBaseBranch,
@@ -16,7 +16,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
-import { sendBotEvent } from './botEvents.js';
+import { createNotifier } from './channels/createNotifier.js';
 
 const config = loadWorkerConfig();
 
@@ -41,14 +41,10 @@ export async function runBootstrap(
 ): Promise<void> {
   const responseChannel = request.slack.channelId;
   const userPrefix = formatUserMention(request.slack.userId);
+  const notifier = createNotifier(botQueue);
+  const channelRef = { channelId: responseChannel };
 
-  await sendBotEvent(botQueue, {
-    type: 'postMessage',
-    payload: {
-      channel: responseChannel,
-      text: `${userPrefix}Bootstrapping ${request.repoName}...`,
-    },
-  });
+  await notifier.postMessage(channelRef, `${userPrefix}Bootstrapping ${request.repoName}...`);
 
   try {
     const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
@@ -129,30 +125,22 @@ export async function runBootstrap(
       request.service === 'github' ? 'GitHub' : request.service === 'gitlab' ? 'GitLab' : 'Local';
     const repoDisplay = buildRepoDisplay(request.service, repoLabel, repoUrl);
 
-    await sendBotEvent(botQueue, {
-      type: 'postMessage',
-      payload: {
-        channel: responseChannel,
-        text: `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*${serviceName} repo created*\n• Repo: ${repoDisplay}\n• Allowlist key: \`${request.repoKey}\``,
-            },
+    await notifier.postMessage(channelRef, `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`, {
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${serviceName} repo created*\n• Repo: ${repoDisplay}\n• Allowlist key: \`${request.repoKey}\``,
           },
-        ],
-      },
+        },
+      ],
     });
   } catch (err) {
     logger.error({ err, requestId: request.requestId }, 'Failed to bootstrap repository');
-    await sendBotEvent(botQueue, {
-      type: 'postMessage',
-      payload: {
-        channel: responseChannel,
-        text: `${userPrefix}Failed to create repository: ${(err as Error).message}`,
-      },
-    });
+    await notifier.postMessage(
+      channelRef,
+      `${userPrefix}Failed to create repository: ${(err as Error).message}`,
+    );
   }
 }

@@ -4,7 +4,7 @@ import {
   createBootstrapQueue,
   createJobQueue,
   createWorkerEventQueue,
-} from '@sniptail/core/queue/index.js';
+} from '@sniptail/core/queue/queue.js';
 
 const isDryRun = process.env.SNIPTAIL_DRY_RUN === '1';
 
@@ -20,7 +20,7 @@ void (async () => {
     return;
   }
 
-  const { loadBotConfig } = await import('@sniptail/core/config/index.js');
+  const { loadBotConfig } = await import('@sniptail/core/config/config.js');
   const { createSlackApp } = await import('./slack/app.js');
   const { startBotEventWorker } = await import('./botEventWorker.js');
 

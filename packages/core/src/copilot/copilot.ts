@@ -1,4 +1,5 @@
 import { CopilotClient, type SessionEvent } from '@github/copilot-sdk';
+import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { buildAskPrompt, buildImplementPrompt, buildMentionPrompt } from '../codex/prompts.js';
 import { logger } from '../logger.js';
@@ -38,6 +39,7 @@ export async function runCopilot(
 ): Promise<AgentRunResult> {
   const copilotEnv = toEnvRecord(env);
   const docker = options.copilot?.docker;
+  const containerNameEnvKey = 'GH_COPILOT_DOCKER_CONTAINER_NAME';
   if (docker?.enabled) {
     if (docker.dockerfilePath) {
       copilotEnv.GH_COPILOT_DOCKERFILE_PATH = resolve(docker.dockerfilePath);
@@ -48,16 +50,24 @@ export async function runCopilot(
     if (docker.buildContext) {
       copilotEnv.GH_COPILOT_DOCKER_BUILD_CONTEXT = resolve(docker.buildContext);
     }
+    const sanitizedJobId = job.jobId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    copilotEnv.GH_COPILOT_DOCKER_CONTAINER_NAME =
+      copilotEnv.GH_COPILOT_DOCKER_CONTAINER_NAME ||
+      `snatch-copilot-${sanitizedJobId}-${process.pid}-${Date.now()}`;
   }
+  const containerName =
+    docker?.enabled && copilotEnv[containerNameEnvKey] ? copilotEnv[containerNameEnvKey] : undefined;
 
   const client = new CopilotClient({
     cwd: workDir,
     env: copilotEnv,
+    autoRestart: false,
     ...(options.copilot?.cliPath ? { cliPath: options.copilot.cliPath } : {}),
   });
   let sessionId: string | undefined;
   let finalResponse = '';
   let started = false;
+  let fatalError: Error | undefined;
 
   try {
     await client.start();
@@ -83,6 +93,11 @@ export async function runCopilot(
         if (event.type === 'assistant.message') {
           finalResponse = event.data.content ?? finalResponse;
         }
+        if (event.type === 'session.error') {
+          const message =
+            typeof event.data?.message === 'string' ? event.data.message : 'unknown error';
+          fatalError = new Error(`Copilot session error: ${message}`);
+        }
       });
     };
 
@@ -99,6 +114,9 @@ export async function runCopilot(
         response = await session.sendAndWait({
           prompt: attempt === 0 ? prompt : continuationPrompt,
         });
+        if (fatalError) {
+          throw fatalError;
+        }
         break;
       } catch (err) {
         if (isIdleTimeout(err) && sessionId && attempt < maxIdleRetries) {
@@ -128,7 +146,30 @@ export async function runCopilot(
     await session.destroy();
   } finally {
     if (started) {
-      await client.stop();
+      // Copilot CLI can linger after a stop request, so enforce a timeout and force-stop if needed.
+      const stopTimeoutMs = 5_000;
+      const stopErrors = await Promise.race([
+        client.stop(),
+        new Promise<Error[]>((resolve) => {
+          setTimeout(() => resolve([new Error('Copilot stop timeout')]), stopTimeoutMs);
+        }),
+      ]);
+      if (stopErrors.length > 0) {
+        try {
+          await client.forceStop();
+        } catch {
+          // Ignore force stop errors; cleanup continues below.
+        }
+      }
+      if (docker?.enabled && containerName) {
+        // Ensure the named container is stopped/removed even if the CLI doesn't exit cleanly.
+        await new Promise<void>((resolve) => {
+          execFile('docker', ['stop', containerName], () => resolve());
+        });
+        await new Promise<void>((resolve) => {
+          execFile('docker', ['rm', '-f', containerName], () => resolve());
+        });
+      }
     }
   }
 

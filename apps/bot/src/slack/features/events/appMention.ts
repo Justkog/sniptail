@@ -1,4 +1,4 @@
-import { enqueueJob } from '@sniptail/core/queue/index.js';
+import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
