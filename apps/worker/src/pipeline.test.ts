@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@sniptail/core/config/index.js', () => ({
+vi.mock('@sniptail/core/config/config.js', () => ({
   loadCoreConfig: () => ({
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
@@ -63,7 +63,7 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
   };
 });
 
-vi.mock('@sniptail/core/agents/index.js', () => ({
+vi.mock('@sniptail/core/agents/agentRegistry.js', () => ({
   AGENT_REGISTRY: {
     codex: { run: vi.fn() },
     copilot: { run: vi.fn() },
@@ -85,7 +85,7 @@ vi.mock('@sniptail/core/git/jobOps.js', () => ({
   runChecks: vi.fn(),
 }));
 
-vi.mock('@sniptail/core/queue/index.js', () => ({
+vi.mock('@sniptail/core/queue/queue.js', () => ({
   enqueueBotEvent: vi.fn(),
 }));
 
@@ -123,7 +123,7 @@ vi.mock('node:fs/promises', () => ({
 
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import type { Queue } from 'bullmq';
-import { AGENT_REGISTRY } from '@sniptail/core/agents/index.js';
+import { AGENT_REGISTRY } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import {
@@ -132,7 +132,7 @@ import {
   loadJobRecord,
   updateJobRecord,
 } from '@sniptail/core/jobs/registry.js';
-import { enqueueBotEvent } from '@sniptail/core/queue/index.js';
+import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';

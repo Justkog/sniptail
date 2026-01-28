@@ -1,4 +1,4 @@
-import type { BotConfig } from '@sniptail/core/config/index.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 
 export function resolveBootstrapServices(config: BotConfig): RepoBootstrapService[] {

@@ -1,5 +1,5 @@
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/index.js';
+import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { SlackAppContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 

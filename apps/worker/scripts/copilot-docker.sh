@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ts() {
+  date +'%Y-%m-%dT%H:%M:%S%z'
+}
+
+log() {
+  echo "copilot-docker[$(ts)] $*" >&2
+}
+
 image="${GH_COPILOT_DOCKER_IMAGE:-snatch-copilot:local}"
 dockerfile="${GH_COPILOT_DOCKERFILE_PATH:-}"
 build_context="${GH_COPILOT_DOCKER_BUILD_CONTEXT:-}"
 host_home="${GH_COPILOT_DOCKER_HOST_HOME:-${HOME:-}}"
+container_name="${GH_COPILOT_DOCKER_CONTAINER_NAME:-snatch-copilot-${USER:-user}}"
 stamp_dir="${host_home}/.copilot/docker-build"
 stamp_file=""
 
@@ -29,6 +38,7 @@ if [[ -n "$dockerfile" ]]; then
   fi
 
   if [[ "$rebuild_image" == "true" ]]; then
+    log "building image=$image dockerfile=$dockerfile context=$build_context"
     docker build -f "$dockerfile" -t "$image" "$build_context"
     mkdir -p "$stamp_dir"
     echo "$dockerfile_mtime" > "$stamp_file"
@@ -46,7 +56,7 @@ add_mount() {
   fi
 
   if [[ ! -e "$path" ]]; then
-    echo "copilot-docker: path does not exist: $path" >&2
+    log "path does not exist: $path"
     exit 1
   fi
 
@@ -135,4 +145,35 @@ for key in "${env_keys[@]}"; do
   docker_args+=( -e "$key" )
 done
 
+log "argv: $*"
+log "image=$image container_name=$container_name workdir=$workdir"
+
+is_server=false
+for arg in "$@"; do
+  if [[ "$arg" == "--server" ]]; then
+    is_server=true
+    break
+  fi
+done
+
+cleanup_done="false"
+cleanup_container() {
+  if [[ "$cleanup_done" == "true" ]]; then
+    return
+  fi
+  cleanup_done="true"
+  # Ensure the container is stopped even if the CLI ignores SIGTERM.
+  log "cleanup -> container_name=$container_name"
+  docker stop "$container_name" >/dev/null 2>&1 || true
+  docker rm -f "$container_name" >/dev/null 2>&1 || true
+}
+
+if [[ "$is_server" == "true" ]]; then
+  trap 'cleanup_container' EXIT INT TERM
+  log "docker run (server) -> container_name=$container_name"
+  docker run --name "$container_name" "${docker_args[@]}" "$image" "$@"
+  exit $?
+fi
+
+log "docker run (one-shot) -> container_name=$container_name"
 exec docker run "${docker_args[@]}" "$image" "$@"

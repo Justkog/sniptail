@@ -1,4 +1,4 @@
-import type { BotConfig } from '@sniptail/core/config/index.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 
 const worktreeBranchPrefix = 'sniptail';
 

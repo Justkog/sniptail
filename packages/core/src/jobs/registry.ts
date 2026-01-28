@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq, inArray, like } from 'drizzle-orm';
-import { loadCoreConfig } from '../config/index.js';
+import { loadCoreConfig } from '../config/config.js';
 import { getJobRegistryDb, type JobRegistryClient } from '../db/index.js';
 import { jobs as pgJobs } from '../db/pg/schema.js';
 import { jobs as sqliteJobs } from '../db/sqlite/schema.js';

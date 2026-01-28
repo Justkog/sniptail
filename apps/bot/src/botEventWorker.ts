@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import type { App } from '@slack/bolt';
 import { logger } from '@sniptail/core/logger.js';
-import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/index.js';
+import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import { addReaction, postMessage, uploadFile } from './slack/helpers.js';
 

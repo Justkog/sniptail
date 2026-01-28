@@ -1,4 +1,4 @@
-import { loadCoreConfig } from '../config/index.js';
+import { loadCoreConfig } from '../config/config.js';
 import { createPgClient } from './pg/client.js';
 import { createSqliteClient } from './sqlite/client.js';
 

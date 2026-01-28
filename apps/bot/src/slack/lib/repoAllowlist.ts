@@ -1,5 +1,5 @@
-import type { BotConfig } from '@sniptail/core/config/index.js';
-import { parseRepoAllowlist } from '@sniptail/core/config/index.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
+import { parseRepoAllowlist } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 
 export function refreshRepoAllowlist(config: BotConfig) {
