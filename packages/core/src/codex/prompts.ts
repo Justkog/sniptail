@@ -14,7 +14,7 @@ export function buildAskPrompt(job: JobSpec, botName: string): string {
     botName,
     repoKeys: job.repoKeys,
     requestText: job.requestText,
-    threadContext: job.slackThreadContext,
+    threadContext: job.threadContext,
   });
 }
 
@@ -23,7 +23,7 @@ export function buildImplementPrompt(job: JobSpec, botName: string): string {
     botName,
     repoKeys: job.repoKeys,
     requestText: job.requestText,
-    threadContext: job.slackThreadContext,
+    threadContext: job.threadContext,
   });
 }
 
@@ -32,6 +32,6 @@ export function buildMentionPrompt(job: JobSpec, botName: string): string {
     botName,
     commandPrefix: toSlackCommandPrefix(botName),
     requestText: job.requestText,
-    threadContext: job.slackThreadContext,
+    threadContext: job.threadContext,
   });
 }

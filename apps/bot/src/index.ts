@@ -22,15 +22,35 @@ void (async () => {
 
   const { loadBotConfig } = await import('@sniptail/core/config/config.js');
   const { createSlackApp } = await import('./slack/app.js');
+  const { startDiscordBot } = await import('./discord/app.js');
   const { startBotEventWorker } = await import('./botEventWorker.js');
 
   const config = loadBotConfig();
   const jobQueue = createJobQueue(config.redisUrl);
   const bootstrapQueue = createBootstrapQueue(config.redisUrl);
   const workerEventQueue = createWorkerEventQueue(config.redisUrl);
-  const app = createSlackApp(jobQueue, bootstrapQueue, workerEventQueue);
+  let slackApp;
+  let discordClient;
 
-  await app.start();
-  startBotEventWorker(app, config.redisUrl);
-  logger.info(`⚡️ ${config.botName} is running (Socket Mode)`);
+  if (config.slackEnabled) {
+    slackApp = createSlackApp(jobQueue, bootstrapQueue, workerEventQueue);
+    await slackApp.start();
+    logger.info(`⚡️ ${config.botName} Slack bot is running (Socket Mode)`);
+  }
+
+  if (config.discordEnabled) {
+    discordClient = await startDiscordBot(jobQueue, bootstrapQueue);
+  }
+
+  if (!slackApp && !discordClient) {
+    logger.error('No bot providers enabled. Set SLACK_ENABLED or DISCORD_ENABLED.');
+    process.exitCode = 1;
+    return;
+  }
+
+  startBotEventWorker({
+    redisUrl: config.redisUrl,
+    ...(slackApp && { slackApp }),
+    ...(discordClient && { discordClient }),
+  });
 })();

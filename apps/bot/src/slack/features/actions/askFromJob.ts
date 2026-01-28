@@ -7,7 +7,7 @@ export function registerAskFromJobAction({ app, slackIds, config }: SlackAppCont
     const jobId = (action as { value?: string }).value?.trim();
     const triggerId = (body as { trigger_id?: string }).trigger_id;
     const channelId = (body as { channel?: { id?: string } }).channel?.id;
-    const threadTs =
+    const threadId =
       (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
       (body as { message?: { ts?: string } }).message?.ts;
     const userId = (body as { user?: { id?: string } }).user?.id;
@@ -25,7 +25,7 @@ export function registerAskFromJobAction({ app, slackIds, config }: SlackAppCont
         JSON.stringify({
           channelId,
           userId,
-          threadTs: threadTs ?? undefined,
+          threadId: threadId ?? undefined,
         }),
         jobId,
       ),

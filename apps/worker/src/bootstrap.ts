@@ -15,6 +15,7 @@ import { createProject } from '@sniptail/core/gitlab/client.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
+import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 import { createNotifier } from './channels/createNotifier.js';
 
@@ -39,10 +40,14 @@ export async function runBootstrap(
   botQueue: Queue<BotEvent>,
   request: BootstrapRequest,
 ): Promise<void> {
-  const responseChannel = request.slack.channelId;
-  const userPrefix = formatUserMention(request.slack.userId);
+  const responseChannel = request.channel.channelId;
+  const userPrefix = formatUserMention(request.channel.userId);
   const notifier = createNotifier(botQueue);
-  const channelRef = { channelId: responseChannel };
+  const channelRef: ChannelRef = {
+    provider: request.channel.provider,
+    channelId: responseChannel,
+    ...(request.channel.threadId ? { threadId: request.channel.threadId } : {}),
+  };
 
   await notifier.postMessage(channelRef, `${userPrefix}Bootstrapping ${request.repoName}...`);
 
@@ -125,17 +130,28 @@ export async function runBootstrap(
       request.service === 'github' ? 'GitHub' : request.service === 'gitlab' ? 'GitLab' : 'Local';
     const repoDisplay = buildRepoDisplay(request.service, repoLabel, repoUrl);
 
-    await notifier.postMessage(channelRef, `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`, {
-      blocks: [
+    if (request.channel.provider === 'slack') {
+      await notifier.postMessage(
+        channelRef,
+        `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`,
         {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*${serviceName} repo created*\n• Repo: ${repoDisplay}\n• Allowlist key: \`${request.repoKey}\``,
-          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*${serviceName} repo created*\\n• Repo: ${repoDisplay}\\n• Allowlist key: \`${request.repoKey}\``,
+              },
+            },
+          ],
         },
-      ],
-    });
+      );
+    } else {
+      await notifier.postMessage(
+        channelRef,
+        `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`,
+      );
+    }
   } catch (err) {
     logger.error({ err, requestId: request.requestId }, 'Failed to bootstrap repository');
     await notifier.postMessage(

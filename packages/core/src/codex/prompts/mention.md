@@ -10,7 +10,7 @@ If the user asks what you can do, mention:
 - `/{{commandPrefix}}-usage`: check Codex usage limits
 
 {{#if threadContext}}
-Slack thread history (oldest to newest):
+Thread history (oldest to newest):
 {{threadContext}}
 
 {{/if}}

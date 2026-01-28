@@ -228,9 +228,10 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
   return updated;
 }
 
-export async function findLatestJobBySlackThread(
+export async function findLatestJobByChannelThread(
+  provider: 'slack' | 'discord',
   channelId: string,
-  threadTs: string,
+  threadId: string,
   agentId: AgentId,
 ): Promise<JobRecord | undefined> {
   const records = await loadAllRecords();
@@ -238,8 +239,9 @@ export async function findLatestJobBySlackThread(
   let latestTime = -1;
 
   for (const record of records) {
-    const slack = record?.job?.slack;
-    if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
+    const channel = record?.job?.channel;
+    if (!channel || channel.provider !== provider) continue;
+    if (channel.channelId !== channelId || channel.threadId !== threadId) continue;
     const agentThreadId = record.job?.agentThreadIds?.[agentId];
     if (!agentThreadId) continue;
     const createdTime = Date.parse(record.createdAt);
@@ -253,9 +255,10 @@ export async function findLatestJobBySlackThread(
   return latestWithThreadId;
 }
 
-export async function findLatestJobBySlackThreadAndTypes(
+export async function findLatestJobByChannelThreadAndTypes(
+  provider: 'slack' | 'discord',
   channelId: string,
-  threadTs: string,
+  threadId: string,
   types: JobType[],
 ): Promise<JobRecord | undefined> {
   const records = await loadAllRecords();
@@ -263,8 +266,9 @@ export async function findLatestJobBySlackThreadAndTypes(
   let latestTime = -1;
 
   for (const record of records) {
-    const slack = record?.job?.slack;
-    if (!slack || slack.channelId !== channelId || slack.threadTs !== threadTs) continue;
+    const channel = record?.job?.channel;
+    if (!channel || channel.provider !== provider) continue;
+    if (channel.channelId !== channelId || channel.threadId !== threadId) continue;
     if (!types.includes(record.job.type)) continue;
     const createdTime = Date.parse(record.createdAt);
     if (Number.isNaN(createdTime)) continue;

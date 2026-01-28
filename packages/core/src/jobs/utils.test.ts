@@ -37,7 +37,7 @@ describe('jobs/utils', () => {
       repoKeys: ['repo-one'],
       gitRef: 'main',
       requestText: 'Do the thing',
-      slack: { channelId: 'C123', userId: 'U123' },
+      channel: { provider: 'slack', channelId: 'C123', userId: 'U123' },
     };
 
     expect(() => validateJob(baseJob)).not.toThrow();
@@ -57,7 +57,7 @@ describe('jobs/utils', () => {
         repoKeys: [],
         gitRef: 'not-checked',
         requestText: 'Hey',
-        slack: { channelId: 'C123', userId: 'U123' },
+        channel: { provider: 'slack', channelId: 'C123', userId: 'U123' },
       }),
     ).not.toThrow();
   });

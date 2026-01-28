@@ -2,20 +2,17 @@ import { join } from 'node:path';
 import type { Queue } from 'bullmq';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/jobs/utils.js';
-import {
-  loadJobRecord,
-  updateJobRecord,
-} from '@sniptail/core/jobs/registry.js';
+import { loadJobRecord, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
+import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { isGitHubSshUrl } from '@sniptail/core/git/ssh.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import { createGitHubPullRequest } from '../merge-requests/github.js';
 import { createGitLabMergeRequest } from '../merge-requests/gitlab.js';
 import { createNotifier } from '../channels/createNotifier.js';
-import type { ChannelRef } from '../channels/notifier.js';
 import { buildSlackCompletionPayload } from '../slack/completion.js';
 import {
   copyJobRootSeed,
@@ -24,7 +21,7 @@ import {
   readJobSummary,
   writeJobSpecArtifact,
 } from './artifacts.js';
-import { resolveThreadTs } from './records.js';
+import { resolveThreadId } from './records.js';
 import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
 import { commitRepoChanges } from '../repos/commit.js';
@@ -35,16 +32,13 @@ const branchPrefix = 'sniptail';
 
 function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
   return {
-    channelId: job.slack.channelId,
+    provider: job.channel.provider,
+    channelId: job.channel.channelId,
     ...(threadId ? { threadId } : {}),
   };
 }
 
-async function recordAgentThreadId(
-  job: JobSpec,
-  agentId: string,
-  threadId: string,
-): Promise<void> {
+async function recordAgentThreadId(job: JobSpec, agentId: string, threadId: string): Promise<void> {
   const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
     return undefined;
@@ -65,7 +59,6 @@ async function recordAgentThreadId(
 
 export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<JobResult> {
   validateJob(job);
-  const slackIds = buildSlackIds(config.botName);
   const notifier = createNotifier(botQueue);
 
   await updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
@@ -94,7 +87,13 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
   }
 
   try {
-    await copyJobRootSeed(config.jobRootCopyGlob, paths.root, env, paths.logFile, redactionPatterns);
+    await copyJobRootSeed(
+      config.jobRootCopyGlob,
+      paths.root,
+      env,
+      paths.logFile,
+      redactionPatterns,
+    );
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
       job,
@@ -120,8 +119,8 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
 
     if (job.type === 'MENTION') {
       const replyText = agentRun.result.finalResponse || 'Thanks for the mention! How can I help?';
-      const threadTs = await resolveThreadTs(job);
-      const channelRef = buildChannelRef(job, threadTs);
+      const threadId = await resolveThreadId(job);
+      const channelRef = buildChannelRef(job, threadId);
       await notifier.postMessage(channelRef, replyText);
       await updateJobRecord(job.jobId, {
         status: 'ok',
@@ -142,15 +141,20 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
         await ensureRepoClean(repo.worktreePath, env, paths.logFile, redactionPatterns);
       }
       const reportPath = join(paths.artifactsRoot, 'report.md');
-      const threadTs = await resolveThreadTs(job);
-      const channelRef = buildChannelRef(job, threadTs);
+      const threadId = await resolveThreadId(job);
+      const channelRef = buildChannelRef(job, threadId);
       await notifier.uploadFile(channelRef, {
         filePath: reportPath,
         title: `sniptail-${job.jobId}-report.md`,
       });
       const askText = `All set! I finished job ${job.jobId}.`;
-      const askMessage = buildSlackCompletionPayload(askText, job.jobId, slackIds);
-      await notifier.postMessage(channelRef, askMessage.text, { blocks: askMessage.blocks });
+      if (job.channel.provider === 'slack') {
+        const slackIds = buildSlackIds(config.botName);
+        const askMessage = buildSlackCompletionPayload(askText, job.jobId, slackIds);
+        await notifier.postMessage(channelRef, askMessage.text, { blocks: askMessage.blocks });
+      } else {
+        await notifier.postMessage(channelRef, askText);
+      }
       await updateJobRecord(job.jobId, {
         status: 'ok',
         summary: report.slice(0, 500),
@@ -268,16 +272,21 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
     const summaryPath = join(paths.artifactsRoot, 'summary.md');
-    const threadTs = await resolveThreadTs(job);
-    const channelRef = buildChannelRef(job, threadTs);
+    const threadId = await resolveThreadId(job);
+    const channelRef = buildChannelRef(job, threadId);
     await notifier.uploadFile(channelRef, {
       filePath: summaryPath,
       title: `sniptail-${job.jobId}-summary.md`,
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
-    const implMessage = buildSlackCompletionPayload(implText, job.jobId, slackIds);
-    await notifier.postMessage(channelRef, implMessage.text, { blocks: implMessage.blocks });
+    if (job.channel.provider === 'slack') {
+      const slackIds = buildSlackIds(config.botName);
+      const implMessage = buildSlackCompletionPayload(implText, job.jobId, slackIds);
+      await notifier.postMessage(channelRef, implMessage.text, { blocks: implMessage.blocks });
+    } else {
+      await notifier.postMessage(channelRef, implText);
+    }
 
     await updateJobRecord(job.jobId, {
       status: 'ok',
@@ -294,9 +303,12 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     };
   } catch (err) {
     logger.error({ err, jobId: job.jobId }, 'Job failed');
-    const threadTs = await resolveThreadTs(job);
-    const channelRef = buildChannelRef(job, threadTs);
-    await notifier.postMessage(channelRef, `I hit an issue with job ${job.jobId}: ${(err as Error).message}`);
+    const threadId = await resolveThreadId(job);
+    const channelRef = buildChannelRef(job, threadId);
+    await notifier.postMessage(
+      channelRef,
+      `I hit an issue with job ${job.jobId}: ${(err as Error).message}`,
+    );
     await updateJobRecord(job.jobId, {
       status: 'failed',
       error: (err as Error).message,

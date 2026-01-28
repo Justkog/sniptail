@@ -23,13 +23,13 @@ export async function persistJobSpec(config: BotConfig, job: JobSpec): Promise<s
   }
 }
 
-export async function persistSlackUploadSpec(job: JobSpec): Promise<string | null> {
+export async function persistUploadSpec(job: JobSpec): Promise<string | null> {
   const artifactsRoot = join(tmpdir(), 'sniptail', job.jobId);
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
   try {
     await mkdir(artifactsRoot, { recursive: true });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { requestText: _requestText, slackThreadContext: _slackThreadContext, ...jobSpec } = job;
+    const { requestText: _requestText, threadContext: _threadContext, ...jobSpec } = job;
     await writeFile(jobSpecPath, `${JSON.stringify(jobSpec, null, 2)}\n`, 'utf8');
     return jobSpecPath;
   } catch (err) {

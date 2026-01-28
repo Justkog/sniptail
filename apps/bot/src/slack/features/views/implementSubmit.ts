@@ -6,7 +6,7 @@ import { rm } from 'node:fs/promises';
 import type { SlackAppContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
 import { resolveDefaultBaseBranch } from '../../modals.js';
-import { createJobId, persistSlackUploadSpec } from '../../lib/jobs.js';
+import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
 import { parseCommaList } from '../../lib/parsing.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 
@@ -19,7 +19,7 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
       ? (JSON.parse(view.private_metadata) as {
           channelId: string;
           userId: string;
-          threadTs?: string;
+          threadId?: string;
         })
       : undefined;
     const repoKeys = state.repos?.repo_keys?.selected_options?.map((opt) => opt.value) ?? [];
@@ -43,9 +43,9 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
     if (reviewers) settings.reviewers = reviewers;
     if (labels) settings.labels = labels;
 
-    const slackThreadContext =
-      metadata?.threadTs && metadata?.channelId
-        ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadTs)
+    const threadContext =
+      metadata?.threadId && metadata?.channelId
+        ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadId)
         : undefined;
     const jobBase: JobSpec = {
       jobId: createJobId('implement'),
@@ -55,12 +55,13 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
       gitRef,
       requestText,
       agent: config.primaryAgent,
-      slack: {
+      channel: {
+        provider: 'slack',
         channelId: metadata?.channelId ?? body.user.id,
         userId: metadata?.userId ?? body.user.id,
-        ...(metadata?.threadTs ? { threadTs: metadata.threadTs } : {}),
+        ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
       },
-      ...(slackThreadContext ? { slackThreadContext } : {}),
+      ...(threadContext ? { threadContext } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
     const job: JobSpec = Object.keys(settings).length ? { ...jobBase, settings } : jobBase;
@@ -81,22 +82,22 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
       text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
-      ...(metadata?.threadTs ? { threadTs: metadata.threadTs } : {}),
+      ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
 
-    const ackThreadTs = metadata?.threadTs ?? ackResponse?.ts;
-    if (ackThreadTs) {
+    const ackThreadId = metadata?.threadId ?? ackResponse?.ts;
+    if (ackThreadId) {
       const requestSummary = requestText.trim() || 'No request text provided.';
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
         text: `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``,
-        threadTs: ackThreadTs,
+        threadTs: ackThreadId,
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
       });
     }
     if (config.debugJobSpecMessages) {
-      const uploadSpecPath = await persistSlackUploadSpec(job);
+      const uploadSpecPath = await persistUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
       } else {
@@ -108,7 +109,7 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
         try {
           await uploadFile(
             app,
-            ackThreadTs ? { ...jobSpecOptions, threadTs: ackThreadTs } : jobSpecOptions,
+            ackThreadId ? { ...jobSpecOptions, threadTs: ackThreadId } : jobSpecOptions,
           );
         } catch (err) {
           logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
@@ -120,13 +121,13 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
       }
     }
 
-    if (!metadata?.threadTs && ackResponse?.ts) {
+    if (!metadata?.threadId && ackResponse?.ts) {
       await updateJobRecord(job.jobId, {
         job: {
           ...job,
-          slack: {
-            ...job.slack,
-            threadTs: ackResponse.ts,
+          channel: {
+            ...job.channel,
+            threadId: ackResponse.ts,
           },
         },
       }).catch((err) => {

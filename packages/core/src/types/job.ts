@@ -1,3 +1,5 @@
+import type { ChannelContext } from './channel.js';
+
 export type JobType = 'ASK' | 'IMPLEMENT' | 'MENTION';
 export type AgentId = 'codex' | 'copilot';
 
@@ -6,12 +8,6 @@ export type RepoConfig = {
   localPath?: string;
   projectId?: number;
   baseBranch?: string;
-};
-
-export type SlackContext = {
-  channelId: string;
-  threadTs?: string;
-  userId: string;
 };
 
 export type JobSettings = {
@@ -27,10 +23,10 @@ export type JobSpec = {
   primaryRepoKey?: string;
   gitRef: string;
   requestText: string;
-  slack: SlackContext;
+  channel: ChannelContext;
   agent?: AgentId;
   agentThreadIds?: Partial<Record<AgentId, string>>;
-  slackThreadContext?: string;
+  threadContext?: string;
   resumeFromJobId?: string;
   settings?: JobSettings;
 };

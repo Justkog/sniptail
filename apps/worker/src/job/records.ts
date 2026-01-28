@@ -1,19 +1,19 @@
 import { logger } from '@sniptail/core/logger.js';
 import {
-  findLatestJobBySlackThread,
-  findLatestJobBySlackThreadAndTypes,
+  findLatestJobByChannelThread,
+  findLatestJobByChannelThreadAndTypes,
   loadJobRecord,
 } from '@sniptail/core/jobs/registry.js';
 import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
 
-export async function resolveThreadTs(job: JobSpec): Promise<string | undefined> {
+export async function resolveThreadId(job: JobSpec): Promise<string | undefined> {
   try {
     const record = await loadJobRecord(job.jobId);
-    return record?.job?.slack?.threadTs ?? job.slack.threadTs;
+    return record?.job?.channel?.threadId ?? job.channel.threadId;
   } catch (err) {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to resolve job thread timestamp');
-    return job.slack.threadTs;
+    logger.warn({ err, jobId: job.jobId }, 'Failed to resolve job thread id');
+    return job.channel.threadId;
   }
 }
 
@@ -46,10 +46,15 @@ export async function resolveAgentThreadId(
       );
     }
   }
-  const threadTs = await resolveThreadTs(job);
-  if (!threadTs) return undefined;
+  const threadId = await resolveThreadId(job);
+  if (!threadId) return undefined;
   try {
-    const record = await findLatestJobBySlackThread(job.slack.channelId, threadTs, agentId);
+    const record = await findLatestJobByChannelThread(
+      job.channel.provider,
+      job.channel.channelId,
+      threadId,
+      agentId,
+    );
     return record?.job ? getAgentThreadId(record.job, agentId) : undefined;
   } catch (err) {
     logger.warn({ err, jobId: job.jobId, agentId }, 'Failed to resolve agent thread id');
@@ -62,13 +67,15 @@ export async function resolveMentionWorkingDirectory(
   fallback: string,
 ): Promise<string> {
   if (job.type !== 'MENTION') return fallback;
-  const threadTs = await resolveThreadTs(job);
-  if (!threadTs) return fallback;
+  const threadId = await resolveThreadId(job);
+  if (!threadId) return fallback;
   try {
-    const record = await findLatestJobBySlackThreadAndTypes(job.slack.channelId, threadTs, [
-      'ASK',
-      'IMPLEMENT',
-    ]);
+    const record = await findLatestJobByChannelThreadAndTypes(
+      job.channel.provider,
+      job.channel.channelId,
+      threadId,
+      ['ASK', 'IMPLEMENT'],
+    );
     if (!record) return fallback;
     return buildJobPaths(record.job.jobId).root;
   } catch (err) {
