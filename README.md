@@ -1,17 +1,17 @@
 # Sniptail
 
-Sniptail is a Slack bot that accepts slash commands, runs Codex jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
+Sniptail is a Slack and Discord bot that accepts slash commands, runs Codex jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Codex + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Discord + Codex + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 ### Mediums (chat surfaces)
 
 | Medium | Status | Notes |
 | --- | --- | --- |
 | Slack | Supported | Current production target |
-| Discord | Planned | |
+| Discord | Supported | |
 | WhatsApp | Planned | |
 | Telegram | Planned | |
 | Microsoft Teams | Planned | |
@@ -39,10 +39,10 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 
 ## How it works (high level)
 
-1. A user triggers a slash command or mentions the bot in Slack.
+1. A user triggers a slash command or mentions the bot in Slack or Discord.
 2. The bot queues a job in Redis and records metadata in a local job registry.
 3. A worker pulls the job, prepares repo worktrees, and runs the configured agent (Codex or Copilot).
-4. Results are posted back to Slack as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
+4. Results are posted back to Slack or Discord as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
 ## Repo layout
 
