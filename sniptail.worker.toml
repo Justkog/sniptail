@@ -1,0 +1,116 @@
+# Sniptail worker configuration
+# All values can be overridden by environment variables.
+# Comments note: default value, whether optional, and an example.
+
+[core]
+# Path to the repo allowlist JSON file.
+# Required. No default. Example: "/srv/sniptail/allowlist.json"
+repo_allowlist_path = "/srv/sniptail/allowlist.json"
+
+# Path to the job working root.
+# Required. No default. Example: "/srv/sniptail/jobs"
+job_work_root = "/srv/sniptail/jobs"
+
+# Path to the job registry database file (used for sqlite).
+# Required. No default. Example: "/srv/sniptail/job-registry"
+job_registry_path = "/srv/sniptail/job-registry"
+
+# Registry backend: "sqlite" or "pg".
+# Optional. Default: "sqlite". Example: "pg"
+job_registry_db = "sqlite"
+
+# When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
+# Optional. No default. Example: "postgres://user:pass@host:5432/db"
+# job_registry_pg_url is read from env only.
+
+[worker]
+# Friendly bot name shown in UIs.
+# Optional. Default: "Sniptail". Example: "Sniptail Worker"
+bot_name = "Sniptail"
+
+# Primary agent for jobs: "codex" or "copilot".
+# Optional. Default: "codex". Example: "copilot"
+primary_agent = "codex"
+
+# Redis connection URL.
+# Required. No default. Example: "redis://localhost:6379"
+redis_url = "redis://localhost:6379"
+
+# Root directory for cached repos.
+# Required. No default. Example: "/srv/sniptail/repo-cache"
+repo_cache_root = "/srv/sniptail/repo-cache"
+
+# Optional glob of paths to copy into each job root.
+# Optional. No default. Example: "/srv/sniptail/common/**"
+# job_root_copy_glob = "/srv/sniptail/common/**"
+
+# Include raw user request in MR/PR descriptions.
+# Optional. Default: false. Example: true
+# include_raw_request_in_mr = false
+
+[copilot]
+# Execution mode for GitHub Copilot agent.
+# Optional. Default: "local". Example: "docker"
+execution_mode = "local"
+
+# Idle retry count for Copilot agent.
+# Optional. Default: 2. Example: 3
+idle_retries = 2
+
+# Dockerfile path for Copilot execution (if execution_mode = "docker").
+# Optional. No default. Example: "./Dockerfile.copilot"
+# dockerfile_path = "./Dockerfile.copilot"
+
+# Docker image name for Copilot execution (if execution_mode = "docker").
+# Optional. No default. Example: "sniptail/copilot:latest"
+# docker_image = "sniptail/copilot:latest"
+
+# Docker build context for Copilot execution (if execution_mode = "docker").
+# Optional. No default. Example: "."
+# docker_build_context = "."
+
+[copilot.models]
+# Optional per-command model overrides.
+# Keys: ASK, IMPLEMENT, MENTION. Values: model identifiers.
+# ASK = "gpt-5-mini"
+# IMPLEMENT = "gpt-5"
+# MENTION = "gpt-5-mini"
+
+[codex]
+# Execution mode for OpenAI Codex agent.
+# Optional. Default: "local". Example: "docker"
+execution_mode = "local"
+
+# Dockerfile path for Codex execution (if execution_mode = "docker").
+# Optional. No default. Example: "./Dockerfile.codex"
+# dockerfile_path = "./Dockerfile.codex"
+
+# Docker image name for Codex execution (if execution_mode = "docker").
+# Optional. No default. Example: "sniptail/codex:latest"
+# docker_image = "sniptail/codex:latest"
+
+# Docker build context for Codex execution (if execution_mode = "docker").
+# Optional. No default. Example: "."
+# docker_build_context = "."
+
+[codex.models]
+# Optional per-command model overrides.
+# Keys: ASK, IMPLEMENT, MENTION. Values: model identifiers.
+# ASK = "gpt-5-mini"
+# IMPLEMENT = "gpt-5"
+# MENTION = "gpt-5-mini"
+
+[github]
+# GitHub API base URL.
+# Optional. Default: "https://api.github.com". Example: "https://api.github.com"
+# Requires GITHUB_API_TOKEN in env to be enabled.
+# api_base_url = "https://api.github.com"
+
+[gitlab]
+# GitLab base URL.
+# Optional. No default. Example: "https://gitlab.com"
+# Requires GITLAB_TOKEN in env when set.
+# base_url = "https://gitlab.com"
+
+# OpenAI API key is read from env only: OPENAI_API_KEY (required for Codex).
+# Repo allowlist token paths are also read from env where applicable.

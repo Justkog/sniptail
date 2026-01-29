@@ -1,211 +1,43 @@
-import { readFileSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
 import { logger } from '../logger.js';
-import type { RepoConfig } from '../types/job.js';
-import type { AgentId } from '../types/job.js';
-import type { GitHubConfig } from '../github/client.js';
-import type { GitLabConfig } from '../gitlab/client.js';
-
-export type CoreConfig = {
-  repoAllowlist: Record<string, RepoConfig>;
-  jobWorkRoot: string;
-  jobRegistryPath: string;
-  jobRegistryDriver: 'sqlite' | 'pg';
-  jobRegistryPgUrl?: string;
-};
-
-export type BotConfig = CoreConfig & {
-  botName: string;
-  debugJobSpecMessages: boolean;
-  primaryAgent: AgentId;
-  copilot: {
-    executionMode: 'local' | 'docker';
-  };
-  slackEnabled: boolean;
-  discordEnabled: boolean;
-  slack?: {
-    botToken: string;
-    appToken: string;
-    signingSecret: string;
-  };
-  discord?: {
-    botToken: string;
-    appId: string;
-    guildId?: string;
-    channelIds?: string[];
-  };
-  adminUserIds: string[];
-  redisUrl: string;
-  gitlab?: GitLabConfig;
-  github?: GitHubConfig;
-};
-
-export type WorkerConfig = CoreConfig & {
-  botName: string;
-  redisUrl: string;
-  openAiKey?: string;
-  primaryAgent: AgentId;
-  copilot: {
-    executionMode: 'local' | 'docker';
-    idleRetries: number;
-    dockerfilePath?: string;
-    dockerImage?: string;
-    dockerBuildContext?: string;
-  };
-  gitlab?: GitLabConfig;
-  github?: GitHubConfig;
-  repoCacheRoot: string;
-  jobRootCopyGlob?: string;
-  includeRawRequestInMr: boolean;
-  codex: {
-    executionMode: 'local' | 'docker';
-    dockerfilePath?: string;
-    dockerImage?: string;
-    dockerBuildContext?: string;
-  };
-};
+import type { TomlTable } from './toml.js';
+import { loadTomlConfig, getTomlTable, getTomlString } from './toml.js';
+import type { CoreConfig, BotConfig, WorkerConfig } from './types.js';
+import type { JobType } from '../types/job.js';
+import {
+  BOT_CONFIG_PATH_ENV,
+  WORKER_CONFIG_PATH_ENV,
+  DEFAULT_BOT_CONFIG_PATH,
+  DEFAULT_WORKER_CONFIG_PATH,
+} from './types.js';
+import {
+  requireEnv,
+  resolveBotName,
+  resolveJobRegistryDriver,
+  resolveJobRegistryPgUrl,
+  resolvePrimaryAgent,
+  resolveCopilotExecutionMode,
+  resolveCopilotIdleRetries,
+  resolveCodexExecutionMode,
+  resolveOptionalFlagFromSources,
+  resolveStringArrayFromSources,
+  resolveStringValue,
+} from './resolve.js';
+import { parseRepoAllowlist } from './repoAllowlist.js';
+import { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
 
 let coreConfigCache: CoreConfig | null = null;
 let botConfigCache: BotConfig | null = null;
 let workerConfigCache: WorkerConfig | null = null;
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
-}
-
-function parseCommaList(value?: string): string[] {
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function resolveOptionalFlag(name: string, defaultValue = false): boolean {
-  const raw = process.env[name];
-  if (raw === undefined) return defaultValue;
-  const normalized = raw.trim().toLowerCase();
-  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
-  throw new Error(`Invalid ${name} value: ${raw}. Use true/false.`);
-}
-
-function resolveBotName(): string {
-  const rawBotName = process.env.BOT_NAME?.trim();
-  return rawBotName ? rawBotName : 'Sniptail';
-}
-
-function resolveJobRegistryDriver(): 'sqlite' | 'pg' {
-  const raw = (process.env.JOB_REGISTRY_DB || 'sqlite').trim().toLowerCase();
-  if (raw !== 'sqlite' && raw !== 'pg') {
-    throw new Error(`Invalid JOB_REGISTRY_DB: ${process.env.JOB_REGISTRY_DB}`);
-  }
-  return raw;
-}
-
-function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg'): string | undefined {
-  if (driver !== 'pg') return undefined;
-  return requireEnv('JOB_REGISTRY_PG_URL');
-}
-
-function resolvePrimaryAgent(): AgentId {
-  const raw = (process.env.PRIMARY_AGENT || 'codex').trim().toLowerCase();
-  if (raw !== 'codex' && raw !== 'copilot') {
-    throw new Error(`Invalid PRIMARY_AGENT: ${process.env.PRIMARY_AGENT}`);
-  }
-  return raw;
-}
-
-function resolveCopilotExecutionMode(): 'local' | 'docker' {
-  const raw = (process.env.GH_COPILOT_EXECUTION_MODE || 'local').trim().toLowerCase();
-  if (raw !== 'local' && raw !== 'docker') {
-    throw new Error(`Invalid GH_COPILOT_EXECUTION_MODE: ${process.env.GH_COPILOT_EXECUTION_MODE}`);
-  }
-  return raw;
-}
-
-function resolveCopilotIdleRetries(): number {
-  const raw = process.env.COPILOT_IDLE_RETRIES;
-  if (raw === undefined || raw.trim() === '') return 2;
-  const normalized = raw.trim();
-  if (!/^\d+$/.test(normalized)) {
-    throw new Error(`Invalid COPILOT_IDLE_RETRIES: ${raw}`);
-  }
-  const value = Number.parseInt(normalized, 10);
-  if (Number.isNaN(value)) {
-    throw new Error(`Invalid COPILOT_IDLE_RETRIES: ${raw}`);
-  }
-  return value;
-}
-
-export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig> {
-  try {
-    const raw = readFileSync(filePath, 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, RepoConfig>;
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Repo allowlist must be a JSON object.');
-    }
-    for (const [key, value] of Object.entries(parsed)) {
-      if (!value || typeof value !== 'object') {
-        throw new Error(`Repo allowlist entry invalid for ${key}.`);
-      }
-      if (value.sshUrl !== undefined && typeof value.sshUrl !== 'string') {
-        throw new Error(`Repo allowlist entry sshUrl invalid for ${key}.`);
-      }
-      if (value.localPath !== undefined && typeof value.localPath !== 'string') {
-        throw new Error(`Repo allowlist entry localPath invalid for ${key}.`);
-      }
-      if (!value.sshUrl && !value.localPath) {
-        throw new Error(`Repo allowlist entry missing sshUrl or localPath for ${key}.`);
-      }
-      if (value.baseBranch !== undefined && typeof value.baseBranch !== 'string') {
-        throw new Error(`Repo allowlist entry baseBranch invalid for ${key}.`);
-      }
-    }
-    return parsed;
-  } catch (err) {
-    logger.error({ err, filePath }, 'Failed to parse REPO_ALLOWLIST_PATH');
-    throw err;
-  }
-}
-
-export async function writeRepoAllowlist(
-  filePath: string,
-  allowlist: Record<string, RepoConfig>,
-): Promise<void> {
-  await writeFile(filePath, `${JSON.stringify(allowlist, null, 2)}\n`, 'utf8');
-}
-
-export function resolveGitHubConfig(): GitHubConfig | undefined {
-  const token = process.env.GITHUB_API_TOKEN?.trim();
-  if (!token) return undefined;
-  return {
-    apiBaseUrl: process.env.GITHUB_API_BASE_URL?.trim() || 'https://api.github.com',
-    token,
-  };
-}
-
-export function resolveGitLabConfig(): GitLabConfig | undefined {
-  const gitlabBaseUrl = process.env.GITLAB_BASE_URL?.trim();
-  const gitlabToken = process.env.GITLAB_TOKEN?.trim();
-  if (gitlabBaseUrl || gitlabToken) {
-    if (!gitlabBaseUrl) {
-      throw new Error('GITLAB_BASE_URL is required when GITLAB_TOKEN is set.');
-    }
-    if (!gitlabToken) {
-      throw new Error('GITLAB_TOKEN is required when GITLAB_BASE_URL is set.');
-    }
-    return {
-      baseUrl: gitlabBaseUrl,
-      token: gitlabToken,
-    };
-  }
-  return undefined;
-}
+export { parseRepoAllowlist, writeRepoAllowlist } from './repoAllowlist.js';
+export { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
+export type { CoreConfig, BotConfig, WorkerConfig } from './types.js';
+export {
+  BOT_CONFIG_PATH_ENV,
+  WORKER_CONFIG_PATH_ENV,
+  DEFAULT_BOT_CONFIG_PATH,
+  DEFAULT_WORKER_CONFIG_PATH,
+} from './types.js';
 
 export function resetConfigCaches() {
   coreConfigCache = null;
@@ -213,45 +45,107 @@ export function resetConfigCaches() {
   workerConfigCache = null;
 }
 
-export function loadCoreConfig(): CoreConfig {
-  if (coreConfigCache) return coreConfigCache;
-  const repoAllowlist = parseRepoAllowlist(requireEnv('REPO_ALLOWLIST_PATH'));
-  const jobRegistryDriver = resolveJobRegistryDriver();
+function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
+  if (!modelsToml) return undefined;
+  const entries = Object.entries(modelsToml);
+  if (!entries.length) return undefined;
+  const allowed = new Set<JobType>(['ASK', 'IMPLEMENT', 'MENTION']);
+  const models: Partial<Record<JobType, string>> = {};
+  for (const [key, value] of entries) {
+    if (!allowed.has(key as JobType)) {
+      throw new Error(`Invalid ${label} key: ${key}. Expected ASK, IMPLEMENT, MENTION.`);
+    }
+    const rawModel = getTomlString(value, `${label}.${key}`);
+    const model = rawModel?.trim();
+    if (!model) {
+      throw new Error(`Invalid ${label}.${key} in TOML. Expected a non-empty string.`);
+    }
+    models[key as JobType] = model;
+  }
+  return Object.keys(models).length ? models : undefined;
+}
+
+function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
+  const repoAllowlistPath = resolveStringValue(
+    'REPO_ALLOWLIST_PATH',
+    coreToml?.repo_allowlist_path,
+    {
+      required: true,
+    },
+  );
+  const repoAllowlist = parseRepoAllowlist(repoAllowlistPath as string);
+  const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
   const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
 
-  coreConfigCache = {
+  return {
+    repoAllowlistPath: repoAllowlistPath as string,
     repoAllowlist,
-    jobWorkRoot: requireEnv('JOB_WORK_ROOT'),
-    jobRegistryPath: requireEnv('JOB_REGISTRY_PATH'),
+    jobWorkRoot: resolveStringValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
+      required: true,
+    }) as string,
+    jobRegistryPath: resolveStringValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
+      required: true,
+    }) as string,
     jobRegistryDriver,
     ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
   };
+}
+
+export function loadCoreConfig(): CoreConfig {
+  if (coreConfigCache) return coreConfigCache;
+  const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
+  const coreToml = getTomlTable(toml.core, 'core');
+  coreConfigCache = loadCoreConfigFromToml(coreToml);
   return coreConfigCache;
 }
 
 export function loadBotConfig(): BotConfig {
   if (botConfigCache) return botConfigCache;
-  const core = loadCoreConfig();
-  const botName = resolveBotName();
-  const primaryAgent = resolvePrimaryAgent();
-  const copilotExecutionMode = resolveCopilotExecutionMode();
-  const debugJobSpecMessages = resolveOptionalFlag('DEBUG_JOB_SPEC_MESSAGES', false);
-  const gitlab = resolveGitLabConfig();
-  const github = resolveGitHubConfig();
-  const slackEnabled = resolveOptionalFlag('SLACK_ENABLED', false);
-  const discordEnabled = resolveOptionalFlag('DISCORD_ENABLED', false);
-  const discordGuildId = process.env.DISCORD_GUILD_ID?.trim();
-  const discordChannelIds = parseCommaList(process.env.DISCORD_CHANNEL_IDS);
+  const toml = loadTomlConfig(BOT_CONFIG_PATH_ENV, DEFAULT_BOT_CONFIG_PATH, 'bot');
+  const coreToml = getTomlTable(toml.core, 'core');
+  const botToml = getTomlTable(toml.bot, 'bot');
+  const slackToml = getTomlTable(toml.slack, 'slack');
+  const discordToml = getTomlTable(toml.discord, 'discord');
+
+  const core = loadCoreConfigFromToml(coreToml);
+  if (!coreConfigCache) coreConfigCache = core;
+
+  const botName = resolveBotName(botToml?.bot_name);
+  const primaryAgent = resolvePrimaryAgent(botToml?.primary_agent);
+  const debugJobSpecMessages = resolveOptionalFlagFromSources(
+    'DEBUG_JOB_SPEC_MESSAGES',
+    botToml?.debug_job_spec_messages,
+    false,
+  );
+  const bootstrapServices = resolveStringArrayFromSources(
+    'BOOTSTRAP_SERVICES',
+    botToml?.bootstrap_services,
+  ) as Array<'local' | 'github' | 'gitlab'>;
+  const slackEnabled = resolveOptionalFlagFromSources('SLACK_ENABLED', slackToml?.enabled, false);
+  const discordEnabled = resolveOptionalFlagFromSources(
+    'DISCORD_ENABLED',
+    discordToml?.enabled,
+    false,
+  );
+  const discordGuildId = resolveStringValue('DISCORD_GUILD_ID', discordToml?.guild_id);
+  const discordChannelIds = resolveStringArrayFromSources(
+    'DISCORD_CHANNEL_IDS',
+    discordToml?.channel_ids,
+  );
   const discordBotToken = process.env.DISCORD_BOT_TOKEN?.trim();
-  const discordAppId = process.env.DISCORD_APP_ID?.trim();
+  const discordAppId = resolveStringValue('DISCORD_APP_ID', discordToml?.app_id, {
+    required: false,
+  });
+  const adminUserIds = resolveStringArrayFromSources('ADMIN_USER_IDS', botToml?.admin_user_ids);
+  const redisUrl = resolveStringValue('REDIS_URL', botToml?.redis_url, {
+    required: true,
+  }) as string;
 
   botConfigCache = {
     ...core,
     botName,
     primaryAgent,
-    copilot: {
-      executionMode: copilotExecutionMode,
-    },
+    bootstrapServices,
     debugJobSpecMessages,
     slackEnabled,
     discordEnabled,
@@ -265,51 +159,83 @@ export function loadBotConfig(): BotConfig {
     ...(discordEnabled && {
       discord: {
         botToken: discordBotToken || requireEnv('DISCORD_BOT_TOKEN'),
-        appId: discordAppId || requireEnv('DISCORD_APP_ID'),
+        appId: resolveStringValue('DISCORD_APP_ID', discordAppId, { required: true }) as string,
         ...(discordGuildId ? { guildId: discordGuildId } : {}),
         ...(discordChannelIds.length ? { channelIds: discordChannelIds } : {}),
       },
     }),
-    adminUserIds: parseCommaList(process.env.ADMIN_USER_IDS),
-    redisUrl: requireEnv('REDIS_URL'),
-    ...(gitlab && { gitlab }),
-    ...(github && { github }),
+    adminUserIds,
+    redisUrl,
   };
   return botConfigCache;
 }
 
 export function loadWorkerConfig(): WorkerConfig {
   if (workerConfigCache) return workerConfigCache;
-  const core = loadCoreConfig();
-  const botName = resolveBotName();
-  const primaryAgent = resolvePrimaryAgent();
-  const copilotExecutionMode = resolveCopilotExecutionMode();
-  const copilotIdleRetries = resolveCopilotIdleRetries();
-  const copilotDockerfilePath = process.env.GH_COPILOT_DOCKERFILE_PATH?.trim();
-  const copilotDockerImage = process.env.GH_COPILOT_DOCKER_IMAGE?.trim();
-  const copilotDockerBuildContext = process.env.GH_COPILOT_DOCKER_BUILD_CONTEXT?.trim();
+  const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
+  const coreToml = getTomlTable(toml.core, 'core');
+  const workerToml = getTomlTable(toml.worker, 'worker');
+  const copilotToml = getTomlTable(toml.copilot, 'copilot');
+  const codexToml = getTomlTable(toml.codex, 'codex');
+  const githubToml = getTomlTable(toml.github, 'github');
+  const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
 
-  const executionMode = (process.env.CODEX_EXECUTION_MODE || 'local').toLowerCase();
-  if (executionMode !== 'local' && executionMode !== 'docker') {
-    throw new Error(`Invalid CODEX_EXECUTION_MODE: ${process.env.CODEX_EXECUTION_MODE}`);
-  }
-  const dockerfilePath = process.env.CODEX_DOCKERFILE_PATH?.trim();
-  const dockerImage = process.env.CODEX_DOCKER_IMAGE?.trim();
-  const dockerBuildContext = process.env.CODEX_DOCKER_BUILD_CONTEXT?.trim();
+  const core = loadCoreConfigFromToml(coreToml);
+  if (!coreConfigCache) coreConfigCache = core;
 
-  const jobRootCopyGlob = process.env.JOB_ROOT_COPY_GLOB?.trim();
-  const includeRawRequestInMr = resolveOptionalFlag('INCLUDE_RAW_REQUEST_IN_MR', false);
+  const botName = resolveBotName(workerToml?.bot_name);
+  const primaryAgent = resolvePrimaryAgent(workerToml?.primary_agent);
+  const copilotExecutionMode = resolveCopilotExecutionMode(copilotToml?.execution_mode);
+  const copilotIdleRetries = resolveCopilotIdleRetries(copilotToml?.idle_retries);
+  const copilotDockerfilePath = resolveStringValue(
+    'GH_COPILOT_DOCKERFILE_PATH',
+    copilotToml?.dockerfile_path,
+  );
+  const copilotDockerImage = resolveStringValue(
+    'GH_COPILOT_DOCKER_IMAGE',
+    copilotToml?.docker_image,
+  );
+  const copilotDockerBuildContext = resolveStringValue(
+    'GH_COPILOT_DOCKER_BUILD_CONTEXT',
+    copilotToml?.docker_build_context,
+  );
+  const copilotModels = parseModelMap(
+    getTomlTable(copilotToml?.models, 'copilot.models'),
+    'copilot.models',
+  );
+
+  const executionMode = resolveCodexExecutionMode(codexToml?.execution_mode);
+  const dockerfilePath = resolveStringValue('CODEX_DOCKERFILE_PATH', codexToml?.dockerfile_path);
+  const dockerImage = resolveStringValue('CODEX_DOCKER_IMAGE', codexToml?.docker_image);
+  const dockerBuildContext = resolveStringValue(
+    'CODEX_DOCKER_BUILD_CONTEXT',
+    codexToml?.docker_build_context,
+  );
+  const codexModels = parseModelMap(
+    getTomlTable(codexToml?.models, 'codex.models'),
+    'codex.models',
+  );
+
+  const jobRootCopyGlob = resolveStringValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
+  const includeRawRequestInMr = resolveOptionalFlagFromSources(
+    'INCLUDE_RAW_REQUEST_IN_MR',
+    workerToml?.include_raw_request_in_mr,
+    false,
+  );
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey && primaryAgent === 'codex') {
     logger.warn('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
   }
-  const gitlab = resolveGitLabConfig();
-  const github = resolveGitHubConfig();
+  const gitlab = resolveGitLabConfig(gitlabToml);
+  const github = resolveGitHubConfig(githubToml);
+  const redisUrl = resolveStringValue('REDIS_URL', workerToml?.redis_url, {
+    required: true,
+  }) as string;
 
   workerConfigCache = {
     ...core,
     botName,
-    redisUrl: requireEnv('REDIS_URL'),
+    redisUrl,
     primaryAgent,
     copilot: {
       executionMode: copilotExecutionMode,
@@ -317,11 +243,14 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
       ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
+      ...(copilotModels && { models: copilotModels }),
     },
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),
     ...(github && { github }),
-    repoCacheRoot: requireEnv('REPO_CACHE_ROOT'),
+    repoCacheRoot: resolveStringValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
+      required: true,
+    }) as string,
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
     includeRawRequestInMr,
     codex: {
@@ -329,6 +258,7 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(dockerfilePath && { dockerfilePath }),
       ...(dockerImage && { dockerImage }),
       ...(dockerBuildContext && { dockerBuildContext }),
+      ...(codexModels && { models: codexModels }),
     },
   };
   return workerConfigCache;

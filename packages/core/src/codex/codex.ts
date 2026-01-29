@@ -4,6 +4,7 @@ import {
   type SandboxMode,
   type ThreadEvent,
   type ThreadItem,
+  type ThreadOptions,
 } from '@openai/codex-sdk';
 import { resolve } from 'node:path';
 import os from 'node:os';
@@ -25,6 +26,7 @@ export type CodexRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  model?: string;
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;
@@ -78,7 +80,7 @@ export async function runCodex(
       ? { codexPathOverride: resolve(process.cwd(), 'scripts', 'codex-docker.sh') }
       : {}),
   });
-  const threadOptions = {
+  const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
     sandboxMode: options.sandboxMode ?? 'workspace-write',
@@ -92,6 +94,7 @@ export async function runCodex(
     ...(options.webSearchEnabled !== undefined
       ? { webSearchEnabled: options.webSearchEnabled }
       : {}),
+      ...options.model && { model: options.model },
   };
   const thread = options.resumeThreadId
     ? codex.resumeThread(options.resumeThreadId, threadOptions)

@@ -3,7 +3,7 @@ import { parseRepoAllowlist } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 
 export function refreshRepoAllowlist(config: BotConfig) {
-  const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
+  const allowlistPath = config.repoAllowlistPath;
   if (!allowlistPath) {
     return;
   }

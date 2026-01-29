@@ -52,9 +52,9 @@ export async function runBootstrap(
   await notifier.postMessage(channelRef, `${userPrefix}Bootstrapping ${request.repoName}...`);
 
   try {
-    const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
+    const allowlistPath = config.repoAllowlistPath;
     if (!allowlistPath) {
-      throw new Error('REPO_ALLOWLIST_PATH is not set.');
+      throw new Error('Repo allowlist path is not set in config.');
     }
 
     const allowlist = parseRepoAllowlist(allowlistPath);
