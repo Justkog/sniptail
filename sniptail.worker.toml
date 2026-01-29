@@ -44,6 +44,14 @@ repo_cache_root = "/srv/sniptail/repo-cache"
 # Optional. No default. Example: "/srv/sniptail/common/**"
 # job_root_copy_glob = "/srv/sniptail/common/**"
 
+# Cleanup jobs past a max age (duration string like "30m", "12h", "7d").
+# Optional. No default. Example: "7d"
+# cleanup_max_age = "7d"
+
+# Keep only the most recent N jobs in history; older entries are eligible for cleanup.
+# Optional. No default. Example: 20
+# cleanup_max_entries = 20
+
 # Include raw user request in MR/PR descriptions.
 # Optional. Default: false. Example: true
 # include_raw_request_in_mr = false

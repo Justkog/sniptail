@@ -50,6 +50,8 @@ export type WorkerConfig = CoreConfig & {
   github?: GitHubConfig;
   repoCacheRoot: string;
   jobRootCopyGlob?: string;
+  cleanupMaxAge?: string;
+  cleanupMaxEntries?: number;
   includeRawRequestInMr: boolean;
   codex: {
     executionMode: 'local' | 'docker';
