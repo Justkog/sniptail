@@ -14,6 +14,9 @@ export function createNotifier(queue: Queue<BotEvent>): Notifier {
           text,
           ...(ref.threadId ? { threadId: ref.threadId } : {}),
           ...(ref.provider === 'slack' && options?.blocks ? { blocks: options.blocks } : {}),
+          ...(ref.provider === 'discord' && options?.components
+            ? { components: options.components }
+            : {}),
         },
       });
     },

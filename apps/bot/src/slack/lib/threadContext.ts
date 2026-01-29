@@ -38,7 +38,7 @@ export async function fetchSlackThreadContext(
     const filtered = messages
       .filter((message) => message.ts && message.text)
       .filter((message) => message.ts !== excludeTs)
-      .filter((message) => message.subtype !== 'bot_message')
+      // .filter((message) => message.subtype !== 'bot_message')
       .slice(-maxThreadHistoryMessages);
     const lines = filtered
       .map((message) => {

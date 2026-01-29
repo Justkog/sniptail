@@ -39,7 +39,7 @@ void (async () => {
   }
 
   if (config.discordEnabled) {
-    discordClient = await startDiscordBot(jobQueue, bootstrapQueue);
+    discordClient = await startDiscordBot(jobQueue, bootstrapQueue, workerEventQueue);
   }
 
   if (!slackApp && !discordClient) {

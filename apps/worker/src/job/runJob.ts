@@ -5,6 +5,7 @@ import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/job
 import { loadJobRecord, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
+import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
@@ -152,6 +153,9 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
         const slackIds = buildSlackIds(config.botName);
         const askMessage = buildSlackCompletionPayload(askText, job.jobId, slackIds);
         await notifier.postMessage(channelRef, askMessage.text, { blocks: askMessage.blocks });
+      } else if (job.channel.provider === 'discord') {
+        const components = buildDiscordCompletionComponents(job.jobId);
+        await notifier.postMessage(channelRef, askText, { components });
       } else {
         await notifier.postMessage(channelRef, askText);
       }
@@ -284,6 +288,9 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       const slackIds = buildSlackIds(config.botName);
       const implMessage = buildSlackCompletionPayload(implText, job.jobId, slackIds);
       await notifier.postMessage(channelRef, implMessage.text, { blocks: implMessage.blocks });
+    } else if (job.channel.provider === 'discord') {
+      const components = buildDiscordCompletionComponents(job.jobId);
+      await notifier.postMessage(channelRef, implText, { components });
     } else {
       await notifier.postMessage(channelRef, implText);
     }
