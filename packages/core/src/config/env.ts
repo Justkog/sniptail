@@ -1,6 +1,6 @@
 import { logger } from '../logger.js';
 import type { TomlTable } from './toml.js';
-import { loadTomlConfig, getTomlTable, getTomlString } from './toml.js';
+import { loadTomlConfig, getTomlTable, getTomlString, getTomlNumber } from './toml.js';
 import type { CoreConfig, BotConfig, WorkerConfig } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
@@ -217,6 +217,19 @@ export function loadWorkerConfig(): WorkerConfig {
   );
 
   const jobRootCopyGlob = resolveStringValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
+  const cleanupMaxAge = resolveStringValue('CLEANUP_MAX_AGE', workerToml?.cleanup_max_age);
+  const cleanupMaxEntriesEnv = process.env.CLEANUP_MAX_ENTRIES?.trim();
+  let cleanupMaxEntries = getTomlNumber(
+    workerToml?.cleanup_max_entries,
+    'worker.cleanup_max_entries',
+  );
+  if (cleanupMaxEntriesEnv) {
+    const parsed = Number.parseInt(cleanupMaxEntriesEnv, 10);
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      throw new Error('Invalid CLEANUP_MAX_ENTRIES. Expected a non-negative integer.');
+    }
+    cleanupMaxEntries = parsed;
+  }
   const includeRawRequestInMr = resolveOptionalFlagFromSources(
     'INCLUDE_RAW_REQUEST_IN_MR',
     workerToml?.include_raw_request_in_mr,
@@ -252,6 +265,8 @@ export function loadWorkerConfig(): WorkerConfig {
       required: true,
     }) as string,
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
+    ...(cleanupMaxAge && { cleanupMaxAge }),
+    ...(cleanupMaxEntries !== undefined && { cleanupMaxEntries }),
     includeRawRequestInMr,
     codex: {
       executionMode: executionMode,
