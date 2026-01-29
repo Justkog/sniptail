@@ -4,7 +4,9 @@ import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Queue } from 'bullmq';
+import { parseDiscordCompletionCustomId } from '@sniptail/core/discord/components.js';
 import { registerDiscordCommands, buildCommandNames } from './lib/commands.js';
 import { isChannelAllowed } from './lib/channel.js';
 import { handleAskStart } from './features/commands/ask.js';
@@ -18,6 +20,14 @@ import { handleImplementModalSubmit } from './features/views/implementSubmit.js'
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
 import {
+  handleAskFromJobButton,
+  handleClearJobButton,
+  handleClearJobCancelButton,
+  handleClearJobConfirmButton,
+  handleImplementFromJobButton,
+  handleWorktreeCommandsButton,
+} from './features/actions/completionButtons.js';
+import {
   askModalCustomId,
   askRepoSelectCustomId,
   bootstrapModalCustomId,
@@ -28,6 +38,7 @@ import {
 export async function startDiscordBot(
   jobQueue: Queue<JobSpec>,
   bootstrapQueue: Queue<BootstrapRequest>,
+  workerEventQueue: Queue<WorkerEvent>,
 ) {
   const config = loadBotConfig();
   if (!config.discord) {
@@ -116,6 +127,33 @@ export async function startDiscordBot(
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isButton()) {
+      const parsed = parseDiscordCompletionCustomId(interaction.customId);
+      if (!parsed) return;
+      switch (parsed.action) {
+        case 'askFromJob':
+          await handleAskFromJobButton(interaction, parsed.jobId);
+          return;
+        case 'implementFromJob':
+          await handleImplementFromJobButton(interaction, parsed.jobId);
+          return;
+        case 'worktreeCommands':
+          await handleWorktreeCommandsButton(interaction, parsed.jobId);
+          return;
+        case 'clearJob':
+          await handleClearJobButton(interaction, parsed.jobId);
+          return;
+        case 'clearJobConfirm':
+          await handleClearJobConfirmButton(interaction, parsed.jobId, workerEventQueue);
+          return;
+        case 'clearJobCancel':
+          await handleClearJobCancelButton(interaction, parsed.jobId);
+          return;
+        default:
+          return;
+      }
+    }
+
     if (interaction.isStringSelectMenu() && interaction.customId === askRepoSelectCustomId) {
       try {
         await handleAskSelection(interaction);

@@ -7,6 +7,7 @@ export type FileUpload = {
 
 export type MessageOptions = {
   blocks?: unknown[];
+  components?: unknown[];
 };
 
 export interface Notifier {

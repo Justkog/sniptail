@@ -1,13 +1,20 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { PartialGroupDMChannel } from 'discord.js';
-import { type Client, type TextBasedChannel, AttachmentBuilder, ChannelType } from 'discord.js';
+import {
+  type Client,
+  type MessageCreateOptions,
+  type TextBasedChannel,
+  AttachmentBuilder,
+  ChannelType,
+} from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 
 type DiscordMessageOptions = {
   channelId: string;
   text: string;
   threadId?: string;
+  components?: unknown[];
 };
 
 type DiscordFileOptions = {
@@ -34,7 +41,13 @@ async function resolveChannel(client: Client, channelId: string): Promise<Sendab
 export async function postDiscordMessage(client: Client, options: DiscordMessageOptions) {
   const targetId = options.threadId ?? options.channelId;
   const channel = await resolveChannel(client, targetId);
-  await channel.send({ content: options.text });
+  const message: MessageCreateOptions = options.components
+    ? {
+        content: options.text,
+        components: options.components as NonNullable<MessageCreateOptions['components']>,
+      }
+    : { content: options.text };
+  await channel.send(message);
 }
 
 export async function uploadDiscordFile(client: Client, options: DiscordFileOptions) {

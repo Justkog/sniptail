@@ -24,7 +24,7 @@ export async function fetchDiscordThreadContext(
     const messages = await channel.messages.fetch({ limit: 50 });
     const filtered = Array.from(messages.values())
       .filter((message) => message.id !== excludeMessageId)
-      .filter((message) => message.content && !message.author?.bot)
+      // .filter((message) => message.content && !message.author?.bot)
       .slice(0, maxThreadHistoryMessages)
       .reverse();
 

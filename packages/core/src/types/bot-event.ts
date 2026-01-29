@@ -39,6 +39,7 @@ export type BotEvent =
         channelId: string;
         text: string;
         threadId?: string;
+        components?: unknown[];
       };
     })
   | (BotEventBase & {

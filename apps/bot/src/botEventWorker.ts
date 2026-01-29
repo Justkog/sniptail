@@ -65,6 +65,7 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
             channelId: event.payload.channelId,
             text: event.payload.text,
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+            ...(event.payload.components ? { components: event.payload.components } : {}),
           });
           break;
         case 'uploadFile':
