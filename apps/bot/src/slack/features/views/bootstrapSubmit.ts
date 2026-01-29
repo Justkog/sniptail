@@ -9,7 +9,12 @@ import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
 
-export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: SlackAppContext) {
+export function registerBootstrapSubmitView({
+  app,
+  slackIds,
+  bootstrapQueue,
+  config,
+}: SlackAppContext) {
   app.view(slackIds.actions.bootstrapSubmit, async ({ ack, body, view, client }) => {
     const state = view.state.values;
     const metadata = view.private_metadata
@@ -33,7 +38,7 @@ export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: S
     const namespaceIdRaw = state.gitlab_namespace_id?.gitlab_namespace_id?.value?.trim();
     const namespaceId = parseOptionalInt(namespaceIdRaw);
     const repoKey = sanitizeRepoKey(repoKeyInput || repoName);
-    const allowlistPath = process.env.REPO_ALLOWLIST_PATH?.trim();
+    const allowlistPath = config.repoAllowlistPath;
 
     const errors: Record<string, string> = {};
     if (!repoName) {
@@ -49,7 +54,7 @@ export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: S
       errors.gitlab_namespace_id = 'Namespace ID must be a number.';
     }
     if (!allowlistPath) {
-      errors.repo_name = 'REPO_ALLOWLIST_PATH is not set.';
+      errors.repo_name = 'Repo allowlist path is not set in config.';
     }
     if (service === 'local' && !localPathInput) {
       errors.local_path = 'Local directory path is required.';
@@ -64,7 +69,7 @@ export function registerBootstrapSubmitView({ app, slackIds, bootstrapQueue }: S
         }
       } catch (err) {
         logger.warn({ err, allowlistPath }, 'Failed to read repo allowlist');
-        errors.repo_name = 'Unable to read REPO_ALLOWLIST_PATH. Check JSON formatting.';
+        errors.repo_name = 'Unable to read repo allowlist. Check JSON formatting.';
       }
     }
 

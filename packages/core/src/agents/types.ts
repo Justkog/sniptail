@@ -15,6 +15,7 @@ export type AgentRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  model?: string;
   copilotIdleRetries?: number;
   copilot?: {
     cliPath?: string;

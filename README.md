@@ -58,21 +58,21 @@ Sniptail is a PNPM monorepo with two apps and one shared package:
 - PNPM (workspace tooling)
 - Redis (for job queue)
 - Git + SSH access to your repos
-- Codex CLI in `PATH` (required when `CODEX_EXECUTION_MODE=local`, e.g. `npm install -g @openai/codex`)
-- Copilot CLI in `PATH` (required when `GH_COPILOT_EXECUTION_MODE=local`, e.g. `npm install -g @github/copilot`)
-- Docker (required when `CODEX_EXECUTION_MODE=docker` or `GH_COPILOT_EXECUTION_MODE=docker`)
+- Codex CLI in `PATH` (required when `sniptail.worker.toml` sets `[codex].execution_mode = "local"`, e.g. `npm install -g @openai/codex`)
+- Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"`, e.g. `npm install -g @github/copilot`)
+- Docker (required when `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`)
 
 ## Installation (step by step)
 
 ### 1) Install and run dependencies
 
 - Install Node.js, Redis, Git, and SSH keys for repo access.
-- If using `CODEX_EXECUTION_MODE=local`, install the Codex CLI so `codex` is available in `PATH`.
-- If using `CODEX_EXECUTION_MODE=docker`, install and run Docker.
+- If using `sniptail.worker.toml` `[codex].execution_mode = "local"`, install the Codex CLI so `codex` is available in `PATH`.
+- If using `[codex].execution_mode = "docker"`, install and run Docker.
 
 ### 2) Create a repo allowlist
 
-Create a JSON file (ex: `repo-allowlist.json`) and point `REPO_ALLOWLIST_PATH` to it. The keys are short repo names that users select in Slack.
+Create a JSON file (ex: `repo-allowlist.json`) and set `repo_allowlist_path` in both `sniptail.bot.toml` and `sniptail.worker.toml` under the `[core]` section. The keys are short repo names that users select in Slack. You can override the path with `REPO_ALLOWLIST_PATH` if needed.
 
 ```json
 {
@@ -98,70 +98,60 @@ Notes:
 - `projectId` is required for GitLab merge requests.
 - `baseBranch` is optional; it is used as the default branch in Slack modals.
 
-### 3) Configure environment variables
+### 3) Configure TOML files
 
-Required:
+Sniptail uses two TOML config files so the bot and worker can be run on different machines.
+
+Default paths:
+- `./sniptail.bot.toml`
+- `./sniptail.worker.toml`
+
+Override paths with env vars:
+- `SNIPTAIL_BOT_CONFIG_PATH`
+- `SNIPTAIL_WORKER_CONFIG_PATH`
+
+The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (Codex/Copilot execution modes, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths).
+
+### 4) Configure environment variables
+
+Required (secrets):
 - `SLACK_BOT_TOKEN`
 - `SLACK_APP_TOKEN` (Socket Mode app-level token)
 - `SLACK_SIGNING_SECRET`
-- `REDIS_URL`
-- `REPO_ALLOWLIST_PATH`
-- `REPO_CACHE_ROOT` (path where bare mirrors are stored)
-- `JOB_WORK_ROOT` (path where job worktrees + artifacts live)
-- `JOB_REGISTRY_PATH` (path for job registry LevelDB)
+- `DISCORD_BOT_TOKEN` (if Discord is enabled)
 
-Sniptail creates `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, and the parent directory of `JOB_REGISTRY_PATH` if they do not exist. Example values:
-
-```bash
-REPO_CACHE_ROOT=/home/your-user/sniptail/repo-cache
-JOB_WORK_ROOT=/home/your-user/sniptail/jobs
-JOB_REGISTRY_PATH=/home/your-user/sniptail/registry
-```
-
-Optional:
+Worker secrets:
 - `OPENAI_API_KEY` (required in practice for Codex execution)
-- `BOT_NAME` (defaults to `Sniptail`; also controls slash command prefix)
-- `ADMIN_USER_IDS` (comma-separated user IDs allowed to run clear-before)
-- `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)
-- `JOB_ROOT_COPY_GLOB` (glob of files/folders to seed into each job root)
-- `LOCAL_REPO_ROOT` (optional; when set, local bootstrap paths are relative to this root)
-- `GITLAB_BASE_URL` (required for GitLab merge requests)
 - `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_API_TOKEN` (required to create GitHub PRs)
-- `GITHUB_API_BASE_URL` (defaults to `https://api.github.com`)
-- `COPILOT_IDLE_RETRIES` (defaults to 2; idle retry count for Copilot sessions)
-- `CODEX_EXECUTION_MODE` (`local` or `docker`)
-- `CODEX_DOCKERFILE_PATH` (path to a Dockerfile for Codex)
-- `CODEX_DOCKER_IMAGE` (image name to use/build)
-- `CODEX_DOCKER_BUILD_CONTEXT` (optional build context path)
-- `CODEX_DOCKER_HOST_HOME` (optional; defaults to host home dir)
-- `GH_COPILOT_EXECUTION_MODE` (`local` or `docker`)
-- `GH_COPILOT_DOCKERFILE_PATH` (path to a Dockerfile for Copilot)
-- `GH_COPILOT_DOCKER_IMAGE` (image name to use/build)
-- `GH_COPILOT_DOCKER_BUILD_CONTEXT` (optional build context path)
+- `JOB_REGISTRY_PG_URL` (required only when using Postgres registry)
 
-### 4) Choose local vs docker Codex execution
+Optional:
+- `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)
+- `LOCAL_REPO_ROOT` (optional; when set, local bootstrap paths are relative to this root)
 
-- `CODEX_EXECUTION_MODE=local`
+### 5) Choose local vs docker Codex execution
+
+- `[codex].execution_mode = "local"`
   - Runs Codex directly on the host.
   - Requires `@openai/codex` available in `PATH` and local tooling installed.
-- `CODEX_EXECUTION_MODE=docker`
+- `[codex].execution_mode = "docker"`
   - Runs Codex inside a container via `scripts/codex-docker.sh`.
   - Useful for consistent tooling and sandboxed execution.
-  - Configure `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, and `CODEX_DOCKER_BUILD_CONTEXT` if you want the image to auto-build.
+  - Configure `[codex].dockerfile_path`, `[codex].docker_image`, and `[codex].docker_build_context` if you want the image to auto-build.
 
-### 4b) Choose local vs docker Copilot execution
+### 5b) Choose local vs docker Copilot execution
 
-- `GH_COPILOT_EXECUTION_MODE=local`
+- `[copilot].execution_mode = "local"`
   - Runs Copilot CLI directly on the host.
   - Requires `@github/copilot` available in `PATH`.
-- `GH_COPILOT_EXECUTION_MODE=docker`
+- `[copilot].execution_mode = "docker"`
   - Runs Copilot CLI inside a container via `apps/worker/scripts/copilot-docker.sh`.
-  - Configure `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, and `GH_COPILOT_DOCKER_BUILD_CONTEXT` if you want the image to auto-build.
+  - Configure `[copilot].dockerfile_path`, `[copilot].docker_image`, and `[copilot].docker_build_context` if you want the image to auto-build.
 
-### 5) Slack app setup
+### 6) Slack app setup
 
-Create a Slack app (Socket Mode enabled) and add the following manifest (edit the name if desired). The slash commands are derived from `BOT_NAME` (default prefix is `sniptail`).
+Create a Slack app (Socket Mode enabled) and add the following manifest (edit the name if desired). The slash commands are derived from `sniptail.bot.toml` `[bot].bot_name` (default prefix is `sniptail`).
 
 To generate the manifest automatically, run:
 
@@ -169,7 +159,7 @@ To generate the manifest automatically, run:
 node scripts/generate-slack-manifest.mjs "My Bot"
 ```
 
-This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `BOT_NAME` in `.env` and omit the argument.
+This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `[bot].bot_name` in `sniptail.bot.toml` and omit the argument.
 
 ```yaml
 display_information:
@@ -226,7 +216,7 @@ After installing the app to your workspace, set:
 - `SLACK_APP_TOKEN`
 - `SLACK_SIGNING_SECRET`
 
-### 6) Run the bot
+### 7) Run the bot
 
 ```bash
 pnpm install
@@ -250,7 +240,7 @@ pnpm run start
 
 ## Repo execution notes
 
-- Repos are mirrored into `REPO_CACHE_ROOT` and checked out as worktrees under `JOB_WORK_ROOT`.
+- Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
 - Only repos listed in the allowlist are selectable in Slack.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
 

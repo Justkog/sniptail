@@ -2,15 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@sniptail/core/config/config.js', () => ({
   loadCoreConfig: () => ({
+    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
     jobRegistryPath: '/tmp/sniptail/registry',
+    jobRegistryDriver: 'sqlite',
   }),
   loadWorkerConfig: () => ({
     botName: 'sniptail',
+    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
     jobRegistryPath: '/tmp/sniptail/registry',
+    jobRegistryDriver: 'sqlite',
     repoCacheRoot: '/tmp/sniptail/repo-cache',
     jobRootCopyGlob: undefined,
     openAiKey: undefined,

@@ -17,9 +17,9 @@ type DiscordFileOptions = {
   threadId?: string;
 };
 
-type SendableTextChannel = Exclude<TextBasedChannel, PartialGroupDMChannel>;
+export type SendableTextChannel = Exclude<TextBasedChannel, PartialGroupDMChannel>;
 
-function isSendableTextChannel(channel: TextBasedChannel): channel is SendableTextChannel {
+export function isSendableTextChannel(channel: TextBasedChannel): channel is SendableTextChannel {
   return channel.type !== ChannelType.GroupDM || !channel.partial;
 }
 

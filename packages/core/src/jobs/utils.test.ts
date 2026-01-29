@@ -7,6 +7,7 @@ vi.mock('../config/config.js', () => ({
     },
     jobWorkRoot: '/tmp/sniptail/job-root',
     jobRegistryPath: '/tmp/sniptail/registry',
+    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     jobRegistryDriver: 'sqlite',
   }),
 }));

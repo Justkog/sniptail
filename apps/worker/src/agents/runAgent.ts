@@ -30,6 +30,12 @@ export async function runAgentJob(options: {
 
   const agentThreadId = await resolveAgentThreadId(job, agentId);
   const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot);
+  const modelOverride =
+    agentId === 'copilot'
+      ? config.copilot.models?.[job.type]
+      : agentId === 'codex'
+        ? config.codex.models?.[job.type]
+        : undefined;
 
   const agentResult = await agent.run(
     job,
@@ -38,6 +44,7 @@ export async function runAgentJob(options: {
     {
       botName: config.botName,
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
+      ...(modelOverride ? { model: modelOverride } : {}),
       onEvent: async (event) => {
         if (agent.formatEvent) {
           try {

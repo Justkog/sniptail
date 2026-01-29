@@ -1,0 +1,75 @@
+# Sniptail bot configuration
+# All values can be overridden by environment variables.
+# Comments note: default value, whether optional, and an example.
+
+[core]
+# Path to the repo allowlist JSON file.
+# Required. No default. Example: "/srv/sniptail/allowlist.json"
+repo_allowlist_path = "/srv/sniptail/allowlist.json"
+
+# Path to the job working root.
+# Required. No default. Example: "/srv/sniptail/jobs"
+job_work_root = "/srv/sniptail/jobs"
+
+# Path to the job registry database file (used for sqlite).
+# Required. No default. Example: "/srv/sniptail/job-registry"
+job_registry_path = "/srv/sniptail/job-registry"
+
+# Registry backend: "sqlite" or "pg".
+# Optional. Default: "sqlite". Example: "pg"
+job_registry_db = "sqlite"
+
+# When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
+# Optional. No default. Example: "postgres://user:pass@host:5432/db"
+# job_registry_pg_url is read from env only.
+
+[bot]
+# Friendly bot name shown in UIs.
+# Optional. Default: "Sniptail". Example: "Sniptail Staging"
+bot_name = "Sniptail"
+
+# Primary agent for jobs: "codex" or "copilot".
+# Optional. Default: "codex". Example: "copilot"
+primary_agent = "codex"
+
+# Include extra debug job spec messages in Slack.
+# Optional. Default: false. Example: true
+# debug_job_spec_messages = false
+
+# Services available for bootstrap operations.
+# Optional. Default: [] (empty). Example: ["local", "github", "gitlab"]
+# bootstrap_services = ["local", "github"]
+
+# Redis connection URL.
+# Required. No default. Example: "redis://localhost:6379"
+redis_url = "redis://localhost:6379"
+
+# Admin Slack/Discord user IDs.
+# Optional. Default: [] (empty). Example: ["U123", "U456"]
+# admin_user_ids = ["U12345678"]
+
+# Slack configuration toggle.
+# Optional. Default: false. Example: true
+# Set SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET in env when enabled.
+[slack]
+# enabled = false
+
+# Discord configuration toggle.
+# Optional. Default: false. Example: true
+# Set DISCORD_BOT_TOKEN in env when enabled.
+[discord]
+# enabled = false
+
+# Discord app ID.
+# Required when discord.enabled = true.
+# Optional otherwise. Example: "123456789012345678"
+# app_id = "123456789012345678"
+
+# Discord guild (server) ID.
+# Optional. No default. Example: "123456789012345678"
+# guild_id = "123456789012345678"
+
+# Discord channel IDs to allow.
+# Optional. Default: [] (empty). Example: ["123", "456"]
+# channel_ids = ["123456789012345678"]
+

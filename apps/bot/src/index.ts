@@ -43,7 +43,7 @@ void (async () => {
   }
 
   if (!slackApp && !discordClient) {
-    logger.error('No bot providers enabled. Set SLACK_ENABLED or DISCORD_ENABLED.');
+    logger.error('No bot providers enabled. Enable slack/discord in sniptail.bot.toml.');
     process.exitCode = 1;
     return;
   }

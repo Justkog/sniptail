@@ -1,4 +1,4 @@
-import { CopilotClient, type SessionEvent } from '@github/copilot-sdk';
+import { CopilotClient, type SessionConfig, type SessionEvent } from '@github/copilot-sdk';
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { buildAskPrompt, buildImplementPrompt, buildMentionPrompt } from '../codex/prompts.js';
@@ -79,11 +79,10 @@ export async function runCopilot(
       options.resumeThreadId ? 'Resuming Copilot session' : 'Creating new Copilot session',
     );
 
+    const createOptions: SessionConfig = options.model ? { model: options.model } : {};
     let session = options.resumeThreadId
       ? await client.resumeSession(options.resumeThreadId)
-      : await client.createSession({
-          // model: 'GPT-5 mini'
-        });
+      : await client.createSession(createOptions);
 
     sessionId = session.sessionId;
 
