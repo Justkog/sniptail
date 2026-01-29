@@ -656,6 +656,12 @@ async function handleMention(message: Message, queue: Queue<JobSpec>) {
   const dedupeKey = `${message.channelId}:${message.id}:mention`;
   if (dedupe(dedupeKey)) return;
 
+  try {
+    await message.react('👀');
+  } catch (err) {
+    logger.warn({ err, messageId: message.id }, 'Failed to add Discord mention reaction');
+  }
+
   const threadContext = await fetchDiscordThreadContext(
     message.client,
     message.channelId,
