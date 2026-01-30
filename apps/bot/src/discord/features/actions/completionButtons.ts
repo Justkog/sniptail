@@ -93,10 +93,7 @@ export async function handleImplementFromJobButton(interaction: ButtonInteractio
   await interaction.showModal(modal);
 }
 
-export async function handleAnswerQuestionsButton(
-  interaction: ButtonInteraction,
-  jobId: string,
-) {
+export async function handleAnswerQuestionsButton(interaction: ButtonInteraction, jobId: string) {
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for answer questions');
     return undefined;

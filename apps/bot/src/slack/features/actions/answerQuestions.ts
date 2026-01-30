@@ -5,11 +5,10 @@ import { postMessage } from '../../helpers.js';
 import { buildAnswerQuestionsModal } from '../../modals.js';
 
 export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackAppContext) {
-  app.action(slackIds.actions.answerQuestions, async ({ ack, body, client }) => {
+  app.action(slackIds.actions.answerQuestions, async ({ ack, body, action, client }) => {
     await ack();
 
-    const actionValue = (body as { actions?: Array<{ value?: string }> }).actions?.[0]?.value;
-    const jobId = actionValue?.trim();
+    const jobId = (action as { value?: string }).value?.trim();
     if (!jobId) return;
 
     const record = await loadJobRecord(jobId).catch((err) => {
@@ -26,12 +25,18 @@ export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackAp
       return;
     }
 
+    const triggerId = (body as { trigger_id?: string }).trigger_id;
     const channelId = (body as { channel?: { id?: string } }).channel?.id;
-    const threadId = (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts
-      ?? (body as { message?: { ts?: string } }).message?.ts;
+    const threadId =
+      (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
+      (body as { message?: { ts?: string } }).message?.ts;
+
+    if (!triggerId) {
+      return;
+    }
 
     await client.views.open({
-      trigger_id: body.trigger_id,
+      trigger_id: triggerId,
       view: buildAnswerQuestionsModal(
         config.botName,
         slackIds.actions.answerQuestionsSubmit,

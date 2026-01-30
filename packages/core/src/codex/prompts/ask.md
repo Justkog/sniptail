@@ -8,6 +8,7 @@ Repositories are located under the job root:
   {{/each}}
 
 Answer with:
+
 - Direct answer
 - Evidence (paths, symbols)
 - What is not supported
