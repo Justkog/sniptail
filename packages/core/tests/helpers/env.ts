@@ -42,6 +42,8 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'REPO_CACHE_ROOT',
     'JOB_ROOT_COPY_GLOB',
     'INCLUDE_RAW_REQUEST_IN_MR',
+    'CLEANUP_MAX_AGE',
+    'CLEANUP_MAX_ENTRIES',
     'GH_COPILOT_EXECUTION_MODE',
     'GH_COPILOT_DOCKERFILE_PATH',
     'GH_COPILOT_DOCKER_IMAGE',

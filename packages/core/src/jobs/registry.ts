@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq, inArray, like } from 'drizzle-orm';
-import { loadCoreConfig } from '../config/config.js';
+import { loadCoreConfig, loadWorkerConfig } from '../config/config.js';
 import { getJobRegistryDb, type JobRegistryClient } from '../db/index.js';
 import { jobs as pgJobs } from '../db/pg/schema.js';
 import { jobs as sqliteJobs } from '../db/sqlite/schema.js';
@@ -25,6 +25,48 @@ export type JobRecord = {
   mergeRequests?: MergeRequestResult[];
   error?: string;
 };
+
+export function parseCleanupDurationMs(raw: string): number {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error('cleanup_max_age must be a non-empty duration string.');
+  }
+  const match = value.match(/^(\d+)([smhd])$/i);
+  if (!match) {
+    throw new Error(`Invalid cleanup_max_age duration: ${raw}. Expected format like "7d".`);
+  }
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`Invalid cleanup_max_age duration: ${raw}. Expected a positive value.`);
+  }
+  const unit = match[2].toLowerCase();
+  switch (unit) {
+    case 's':
+      return amount * 1000;
+    case 'm':
+      return amount * 60_000;
+    case 'h':
+      return amount * 3_600_000;
+    case 'd':
+      return amount * 86_400_000;
+    default:
+      throw new Error(`Invalid cleanup_max_age duration unit: ${raw}.`);
+  }
+}
+
+export function selectJobIdsBeyondMaxEntries(records: JobRecord[], maxEntries: number): string[] {
+  if (!Number.isInteger(maxEntries) || maxEntries < 0) {
+    throw new Error('cleanup_max_entries must be a non-negative integer.');
+  }
+  const sorted = [...records].sort((a, b) => {
+    const aTime = Date.parse(a.createdAt);
+    const bTime = Date.parse(b.createdAt);
+    const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+    const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+    return safeBTime - safeATime;
+  });
+  return sorted.slice(maxEntries).map((record) => record.job.jobId);
+}
 
 function jobKey(jobId: string) {
   return `${JOB_KEY_PREFIX}${jobId}`;
@@ -138,6 +180,9 @@ export async function saveJobQueued(job: JobSpec): Promise<JobRecord> {
         set: { record: serialized as string },
       });
   }
+  await runRetentionCleanup().catch((err) => {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to run job retention cleanup');
+  });
   return record;
 }
 
@@ -312,4 +357,46 @@ export async function clearJobsBefore(cutoff: Date): Promise<number> {
   }
   await Promise.all(keysToDelete.map((key) => removeJobRoot(jobIdFromKey(key))));
   return keysToDelete.length;
+}
+
+export async function clearJobsAfterMaxEntries(maxEntries: number): Promise<number> {
+  const ctx = await getDbContext();
+  const jobIdsToDelete = selectJobIdsBeyondMaxEntries(await loadAllRecords(), maxEntries);
+  if (!jobIdsToDelete.length) {
+    return 0;
+  }
+  const keysToDelete = jobIdsToDelete.map((jobId) => jobKey(jobId));
+  if (ctx.kind === 'pg') {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  } else {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  }
+  await Promise.all(jobIdsToDelete.map((jobId) => removeJobRoot(jobId)));
+  return jobIdsToDelete.length;
+}
+
+async function runRetentionCleanup(): Promise<void> {
+  let cleanupConfig;
+  try {
+    cleanupConfig = loadWorkerConfig();
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load worker config for job retention cleanup');
+    return;
+  }
+  const { cleanupMaxAge, cleanupMaxEntries } = cleanupConfig;
+  if (!cleanupMaxAge && cleanupMaxEntries === undefined) {
+    return;
+  }
+  if (cleanupMaxAge) {
+    try {
+      const durationMs = parseCleanupDurationMs(cleanupMaxAge);
+      const cutoff = new Date(Date.now() - durationMs);
+      await clearJobsBefore(cutoff);
+    } catch (err) {
+      logger.warn({ err, cleanupMaxAge }, 'Invalid cleanup_max_age; skipping age cleanup');
+    }
+  }
+  if (cleanupMaxEntries !== undefined) {
+    await clearJobsAfterMaxEntries(cleanupMaxEntries);
+  }
 }
