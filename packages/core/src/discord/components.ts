@@ -2,6 +2,7 @@ export type DiscordCompletionAction =
   | 'askFromJob'
   | 'implementFromJob'
   | 'worktreeCommands'
+  | 'answerQuestions'
   | 'clearJob'
   | 'clearJobConfirm'
   | 'clearJobCancel';
@@ -22,15 +23,20 @@ const actionTokens = {
   askFromJob: 'ask',
   implementFromJob: 'implement',
   worktreeCommands: 'worktree',
+  answerQuestions: 'answer-questions',
   clearJob: 'clear',
   clearJobConfirm: 'clear-confirm',
   clearJobCancel: 'clear-cancel',
 } as const;
 
-const tokenToAction: Record<(typeof actionTokens)[DiscordCompletionAction], DiscordCompletionAction> = {
+const tokenToAction: Record<
+  (typeof actionTokens)[DiscordCompletionAction],
+  DiscordCompletionAction
+> = {
   [actionTokens.askFromJob]: 'askFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
   [actionTokens.worktreeCommands]: 'worktreeCommands',
+  [actionTokens.answerQuestions]: 'answerQuestions',
   [actionTokens.clearJob]: 'clearJob',
   [actionTokens.clearJobConfirm]: 'clearJobConfirm',
   [actionTokens.clearJobCancel]: 'clearJobCancel',
@@ -40,9 +46,9 @@ export function buildDiscordCompletionCustomId(action: DiscordCompletionAction, 
   return `${completionPrefix}:${actionTokens[action]}:${jobId}`;
 }
 
-export function parseDiscordCompletionCustomId(customId: string):
-  | { action: DiscordCompletionAction; jobId: string }
-  | undefined {
+export function parseDiscordCompletionCustomId(
+  customId: string,
+): { action: DiscordCompletionAction; jobId: string } | undefined {
   if (!customId.startsWith(`${completionPrefix}:`)) return undefined;
   const parts = customId.split(':');
   if (parts.length < 4) return undefined;
@@ -54,7 +60,11 @@ export function parseDiscordCompletionCustomId(customId: string):
   return { action, jobId };
 }
 
-export function buildDiscordCompletionComponents(jobId: string): DiscordActionRow[] {
+export function buildDiscordCompletionComponents(
+  jobId: string,
+  options?: { includeAnswerQuestions?: boolean },
+): DiscordActionRow[] {
+  const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
   return [
     {
       type: 1,
@@ -77,6 +87,16 @@ export function buildDiscordCompletionComponents(jobId: string): DiscordActionRo
           label: 'Take over',
           custom_id: buildDiscordCompletionCustomId('worktreeCommands', jobId),
         },
+        ...(includeAnswerQuestions
+          ? [
+              {
+                type: 2,
+                style: 1,
+                label: 'Answer questions',
+                custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
+              },
+            ]
+          : []),
         {
           type: 2,
           style: 4,

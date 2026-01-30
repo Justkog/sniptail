@@ -10,6 +10,9 @@ import {
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
+export const planRepoSelectCustomId = 'plan_repo_select';
+export const planModalCustomId = 'plan_modal';
+export const answerQuestionsModalCustomId = 'answer_questions_modal';
 export const implementRepoSelectCustomId = 'implement_repo_select';
 export const implementModalCustomId = 'implement_modal';
 export const bootstrapModalCustomId = 'bootstrap_modal';
@@ -42,6 +45,24 @@ export function buildAskRepoSelect(repoKeys: string[]) {
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(askRepoSelectCustomId)
+    .setPlaceholder('Select repositories')
+    .setMinValues(1)
+    .setMaxValues(Math.min(repoKeys.length, 25))
+    .addOptions(options);
+
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+}
+
+export function buildPlanRepoSelect(repoKeys: string[]) {
+  const options = repoKeys.map((key) =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(key)
+      .setValue(key)
+      .setDefault(repoKeys.length === 1),
+  );
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(planRepoSelectCustomId)
     .setPlaceholder('Select repositories')
     .setMinValues(1)
     .setMaxValues(Math.min(repoKeys.length, 25))
@@ -85,6 +106,72 @@ export function buildAskModal(
   if (repoKeys.length > 1) {
     modal.setTitle(`${botName} Ask (${repoKeys.length} repos)`);
   }
+
+  return modal;
+}
+
+export function buildPlanModal(
+  botName: string,
+  repoKeys: string[],
+  baseBranch: string,
+  resumeFromJobId?: string,
+) {
+  const modal = new ModalBuilder().setCustomId(planModalCustomId).setTitle(`${botName} Plan`);
+
+  const branchInput = new TextInputBuilder()
+    .setCustomId('git_ref')
+    .setStyle(TextInputStyle.Short)
+    .setValue(baseBranch);
+
+  const questionInput = new TextInputBuilder()
+    .setCustomId('question')
+    .setStyle(TextInputStyle.Paragraph);
+
+  const resumeInput = new TextInputBuilder()
+    .setCustomId('resume_from')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  if (resumeFromJobId) {
+    resumeInput.setValue(resumeFromJobId);
+  }
+
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput),
+    new LabelBuilder().setLabel('Plan request').setTextInputComponent(questionInput),
+    new LabelBuilder().setLabel('Resume from job ID (optional)').setTextInputComponent(resumeInput),
+  );
+
+  if (repoKeys.length > 1) {
+    modal.setTitle(`${botName} Plan (${repoKeys.length} repos)`);
+  }
+
+  return modal;
+}
+
+export function buildAnswerQuestionsModal(botName: string, openQuestions: string[]) {
+  const modal = new ModalBuilder()
+    .setCustomId(answerQuestionsModalCustomId)
+    .setTitle(`${botName} Questions`);
+
+  const questionsInput = new TextInputBuilder()
+    .setCustomId('questions')
+    .setStyle(TextInputStyle.Paragraph)
+    .setValue(
+      openQuestions.length
+        ? openQuestions.join('\n')
+        : 'No open questions were recorded for this job.',
+    )
+    .setRequired(false);
+
+  const answersInput = new TextInputBuilder()
+    .setCustomId('answers')
+    .setStyle(TextInputStyle.Paragraph);
+
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Open questions').setTextInputComponent(questionsInput),
+    new LabelBuilder().setLabel('Your answers').setTextInputComponent(answersInput),
+  );
 
   return modal;
 }

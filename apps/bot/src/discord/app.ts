@@ -10,12 +10,17 @@ import { parseDiscordCompletionCustomId } from '@sniptail/core/discord/component
 import { registerDiscordCommands, buildCommandNames } from './lib/commands.js';
 import { isChannelAllowed } from './lib/channel.js';
 import { handleAskStart } from './features/commands/ask.js';
+import { handlePlanStart } from './features/commands/plan.js';
 import { handleImplementStart } from './features/commands/implement.js';
 import { handleBootstrapStart } from './features/commands/bootstrap.js';
 import { handleUsage } from './features/commands/usage.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
+import { handlePlanSelection } from './features/actions/planSelection.js';
 import { handleImplementSelection } from './features/actions/implementSelection.js';
+import { handleAnswerQuestionsButton } from './features/actions/completionButtons.js';
 import { handleAskModalSubmit } from './features/views/askSubmit.js';
+import { handleAnswerQuestionsSubmit } from './features/views/answerQuestionsSubmit.js';
+import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
@@ -30,8 +35,11 @@ import {
 import {
   askModalCustomId,
   askRepoSelectCustomId,
+  answerQuestionsModalCustomId,
+  planRepoSelectCustomId,
   bootstrapModalCustomId,
   implementModalCustomId,
+  planModalCustomId,
   implementRepoSelectCustomId,
 } from './modals.js';
 
@@ -103,6 +111,16 @@ export async function startDiscordBot(
       return;
     }
 
+    if (interaction.commandName === commandNames.plan) {
+      try {
+        await handlePlanStart(interaction);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
     if (interaction.commandName === commandNames.bootstrap) {
       try {
         await handleBootstrapStart(interaction);
@@ -134,6 +152,14 @@ export async function startDiscordBot(
         case 'askFromJob':
           await handleAskFromJobButton(interaction, parsed.jobId);
           return;
+        case 'answerQuestions':
+          try {
+            await handleAnswerQuestionsButton(interaction, parsed.jobId);
+          } catch (err) {
+            logger.error({ err }, 'Discord answer questions failed');
+            await interaction.reply('Something went wrong handling that action.');
+          }
+          return;
         case 'implementFromJob':
           await handleImplementFromJobButton(interaction, parsed.jobId);
           return;
@@ -163,6 +189,15 @@ export async function startDiscordBot(
       return;
     }
 
+    if (interaction.isStringSelectMenu() && interaction.customId === planRepoSelectCustomId) {
+      try {
+        await handlePlanSelection(interaction);
+      } catch (err) {
+        logger.error({ err }, 'Discord plan selection failed');
+      }
+      return;
+    }
+
     if (interaction.isStringSelectMenu() && interaction.customId === implementRepoSelectCustomId) {
       try {
         await handleImplementSelection(interaction);
@@ -177,6 +212,24 @@ export async function startDiscordBot(
         await handleImplementModalSubmit(interaction, jobQueue);
       } catch (err) {
         logger.error({ err }, 'Discord implement modal submit failed');
+        await interaction.reply('Something went wrong handling that request.');
+      }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === planModalCustomId) {
+      try {
+        await handlePlanModalSubmit(interaction, jobQueue);
+      } catch (err) {
+        logger.error({ err }, 'Discord plan modal submit failed');
+        await interaction.reply('Something went wrong handling that request.');
+      }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === answerQuestionsModalCustomId) {
+      try {
+        await handleAnswerQuestionsSubmit(interaction, jobQueue);
+      } catch (err) {
+        logger.error({ err }, 'Discord answer questions modal submit failed');
         await interaction.reply('Something went wrong handling that request.');
       }
     }

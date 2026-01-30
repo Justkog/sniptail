@@ -8,7 +8,12 @@ import {
 } from '@openai/codex-sdk';
 import { resolve } from 'node:path';
 import os from 'node:os';
-import { buildAskPrompt, buildImplementPrompt, buildMentionPrompt } from './prompts.js';
+import {
+  buildAskPrompt,
+  buildImplementPrompt,
+  buildMentionPrompt,
+  buildPlanPrompt,
+} from './prompts.js';
 import type { JobSpec } from '../types/job.js';
 
 export type CodexRunResult = {
@@ -94,7 +99,7 @@ export async function runCodex(
     ...(options.webSearchEnabled !== undefined
       ? { webSearchEnabled: options.webSearchEnabled }
       : {}),
-      ...options.model && { model: options.model },
+    ...(options.model && { model: options.model }),
   };
   const thread = options.resumeThreadId
     ? codex.resumeThread(options.resumeThreadId, threadOptions)
@@ -106,7 +111,9 @@ export async function runCodex(
       ? buildAskPrompt(job, botName)
       : job.type === 'IMPLEMENT'
         ? buildImplementPrompt(job, botName)
-        : buildMentionPrompt(job, botName);
+        : job.type === 'PLAN'
+          ? buildPlanPrompt(job, botName)
+          : buildMentionPrompt(job, botName);
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;

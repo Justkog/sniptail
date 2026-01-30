@@ -49,11 +49,11 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   if (!modelsToml) return undefined;
   const entries = Object.entries(modelsToml);
   if (!entries.length) return undefined;
-  const allowed = new Set<JobType>(['ASK', 'IMPLEMENT', 'MENTION']);
+  const allowed = new Set<JobType>(['ASK', 'IMPLEMENT', 'PLAN', 'MENTION']);
   const models: Partial<Record<JobType, string>> = {};
   for (const [key, value] of entries) {
     if (!allowed.has(key as JobType)) {
-      throw new Error(`Invalid ${label} key: ${key}. Expected ASK, IMPLEMENT, MENTION.`);
+      throw new Error(`Invalid ${label} key: ${key}. Expected ASK, IMPLEMENT, PLAN, MENTION.`);
     }
     const rawModel = getTomlString(value, `${label}.${key}`);
     const model = rawModel?.trim();

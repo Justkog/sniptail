@@ -3,6 +3,7 @@ export type CompletionActionIds = {
   implementFromJob: string;
   worktreeCommands: string;
   clearJob: string;
+  answerQuestions?: string;
 };
 
 export function buildCompletionBlocks(text: string, jobId: string, actionIds: CompletionActionIds) {
@@ -35,6 +36,16 @@ export function buildCompletionBlocks(text: string, jobId: string, actionIds: Co
           action_id: actionIds.worktreeCommands,
           value: jobId,
         },
+        ...(actionIds.answerQuestions
+          ? [
+              {
+                type: 'button' as const,
+                text: { type: 'plain_text' as const, text: 'Answer questions' },
+                action_id: actionIds.answerQuestions,
+                value: jobId,
+              },
+            ]
+          : []),
         {
           type: 'button' as const,
           text: { type: 'plain_text' as const, text: 'Clear job data' },

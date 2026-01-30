@@ -25,6 +25,11 @@ export async function readJobReport(paths: JobPaths): Promise<string> {
   return readFile(reportPath, 'utf8');
 }
 
+export async function readJobPlan(paths: JobPaths): Promise<string> {
+  const planPath = join(paths.artifactsRoot, 'plan.md');
+  return readFile(planPath, 'utf8');
+}
+
 export async function readJobSummary(paths: JobPaths): Promise<string> {
   const summaryPath = join(paths.artifactsRoot, 'summary.md');
   return readFile(summaryPath, 'utf8');

@@ -289,6 +289,12 @@ describe('worker/pipeline helpers', () => {
     await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback')).resolves.toBe(
       '/tmp/sniptail/job-root/job-prev',
     );
+    expect(findLatestJobByChannelThreadAndTypesMock).toHaveBeenCalledWith(
+      'slack',
+      'C1',
+      '111.222',
+      ['ASK', 'PLAN', 'IMPLEMENT'],
+    );
   });
 
   it('resolveMentionWorkingDirectory falls back on lookup failure', async () => {

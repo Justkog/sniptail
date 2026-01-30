@@ -1,7 +1,12 @@
 import { CopilotClient, type SessionConfig, type SessionEvent } from '@github/copilot-sdk';
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
-import { buildAskPrompt, buildImplementPrompt, buildMentionPrompt } from '../codex/prompts.js';
+import {
+  buildAskPrompt,
+  buildImplementPrompt,
+  buildMentionPrompt,
+  buildPlanPrompt,
+} from '../codex/prompts.js';
 import { logger } from '../logger.js';
 import type { JobSpec } from '../types/job.js';
 import type { AgentRunOptions, AgentRunResult } from '../agents/types.js';
@@ -22,7 +27,9 @@ function buildPrompt(job: JobSpec, botName: string): string {
     ? buildAskPrompt(job, botName)
     : job.type === 'IMPLEMENT'
       ? buildImplementPrompt(job, botName)
-      : buildMentionPrompt(job, botName);
+      : job.type === 'PLAN'
+        ? buildPlanPrompt(job, botName)
+        : buildMentionPrompt(job, botName);
 }
 
 const continuationPrompt = continuationPromptSource.trimEnd();

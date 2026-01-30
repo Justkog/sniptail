@@ -24,6 +24,7 @@ export type JobRecord = {
   summary?: string;
   mergeRequests?: MergeRequestResult[];
   error?: string;
+  openQuestions?: string[];
 };
 
 function jobKey(jobId: string) {
@@ -139,6 +140,22 @@ export async function saveJobQueued(job: JobSpec): Promise<JobRecord> {
       });
   }
   return record;
+}
+
+export async function loadAllJobRecords(): Promise<JobRecord[]> {
+  return loadAllRecords();
+}
+
+export async function deleteJobRecords(jobIds: string[]): Promise<void> {
+  if (!jobIds.length) return;
+  const ctx = await getDbContext();
+  const keysToDelete = jobIds.map((jobId) => jobKey(jobId));
+  if (ctx.kind === 'pg') {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  } else {
+    await ctx.client.db.delete(ctx.jobsTable).where(inArray(ctx.jobsTable.jobId, keysToDelete));
+  }
+  await Promise.all(jobIds.map((jobId) => removeJobRoot(jobId)));
 }
 
 export async function updateJobRecord(

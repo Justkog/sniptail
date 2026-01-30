@@ -47,7 +47,9 @@ export async function prepareRepoWorktrees(
       ? (resumeBranch ?? `${branchPrefix}/${job.resumeFromJobId}`)
       : job.gitRef;
     const branch =
-      job.type === 'IMPLEMENT' || job.type === 'ASK' ? `${branchPrefix}/${job.jobId}` : undefined;
+      job.type === 'IMPLEMENT' || job.type === 'ASK' || job.type === 'PLAN'
+        ? `${branchPrefix}/${job.jobId}`
+        : undefined;
 
     await ensureClone(
       repoKey,
