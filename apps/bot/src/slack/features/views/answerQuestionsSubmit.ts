@@ -6,7 +6,12 @@ import type { SlackAppContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 
-export function registerAnswerQuestionsSubmitView({ app, slackIds, config, queue }: SlackAppContext) {
+export function registerAnswerQuestionsSubmitView({
+  app,
+  slackIds,
+  config,
+  queue,
+}: SlackAppContext) {
   app.view(slackIds.actions.answerQuestionsSubmit, async ({ ack, body, view }) => {
     await ack();
 

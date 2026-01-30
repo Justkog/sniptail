@@ -45,7 +45,6 @@ function isMissingArtifact(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 }
 
-
 async function recordAgentThreadId(job: JobSpec, agentId: string, threadId: string): Promise<void> {
   const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
