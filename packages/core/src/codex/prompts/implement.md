@@ -7,7 +7,8 @@ Repositories are located under the job root:
 
 - {{this}}: repos/{{this}}
   {{/each}}
-  Write a summary to artifacts/summary.md.
+
+Write a summary to artifacts/summary.md.
 
 {{#if threadContext}}
 Thread history (oldest to newest):

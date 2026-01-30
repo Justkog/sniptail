@@ -173,6 +173,10 @@ features:
       description: Ask Sniptail to analyze one or more repos and return a Markdown report.
       usage_hint: "[repo keys] [branch] [request text]"
       should_escape: false
+    - command: /sniptail-plan
+      description: Ask Sniptail to plan a feature implementation across one or more repos.
+      usage_hint: "[repo keys] [branch] [request text]"
+      should_escape: false
     - command: /sniptail-implement
       description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
@@ -233,6 +237,7 @@ pnpm run start
 ## Command overview
 
 - `/sniptail-ask`: Generates a Markdown report, uploads it to Slack, and posts a completion message.
+- `/sniptail-plan`: Generates a Markdown plan, uploads it to Slack, and posts a completion message.
 - `/sniptail-implement`: Runs Codex to implement changes, runs checks, pushes branches, and opens GitLab MRs or GitHub PRs.
 - `/sniptail-bootstrap`: Creates a GitHub/GitLab repository and appends it to the allowlist.
 - `/sniptail-clear-before`: Admin-only cleanup of historical job data.

@@ -91,6 +91,112 @@ export function buildAskModal(
   };
 }
 
+export function buildPlanModal(
+  repoAllowlist: Record<string, RepoConfig>,
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  resumeFromJobId?: string,
+) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Plan` },
+    submit: { type: 'plain_text' as const, text: 'Run' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'repos',
+        label: { type: 'plain_text' as const, text: 'Repositories' },
+        element: {
+          type: 'multi_static_select' as const,
+          action_id: 'repo_keys',
+          placeholder: { type: 'plain_text' as const, text: 'Select repos' },
+          options: repoOptions,
+          ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'branch',
+        label: { type: 'plain_text' as const, text: 'Base branch' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'git_ref',
+          initial_value: resolveDefaultBaseBranch(repoAllowlist),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'question',
+        label: { type: 'plain_text' as const, text: 'Plan request' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'request_text',
+          multiline: true,
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'resume',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Resume from job ID (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'resume_from',
+          ...(resumeFromJobId ? { initial_value: resumeFromJobId } : {}),
+        },
+      },
+    ],
+  };
+}
+
+export function buildAnswerQuestionsModal(
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  questions: string[],
+) {
+  const questionLines = questions.length
+    ? questions.join('\n')
+    : 'No open questions were recorded for this job.';
+
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Questions` },
+    submit: { type: 'plain_text' as const, text: 'Send' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*Open questions*\n${questionLines}`,
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'answers',
+        label: { type: 'plain_text' as const, text: 'Your answers' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'answers',
+          multiline: true,
+        },
+      },
+    ],
+  };
+}
+
 export function buildImplementModal(
   repoAllowlist: Record<string, RepoConfig>,
   botName: string,

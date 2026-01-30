@@ -14,10 +14,11 @@ import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import { createGitHubPullRequest } from '../merge-requests/github.js';
 import { createGitLabMergeRequest } from '../merge-requests/gitlab.js';
 import { createNotifier } from '../channels/createNotifier.js';
-import { buildSlackCompletionPayload } from '../slack/completion.js';
+import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
   copyJobRootSeed,
   ensureJobDirectories,
+  readJobPlan,
   readJobReport,
   readJobSummary,
   writeJobSpecArtifact,
@@ -27,6 +28,7 @@ import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
 import { commitRepoChanges } from '../repos/commit.js';
 import { runAgentJob } from '../agents/runAgent.js';
+import { enforceCleanupMaxEntries } from './cleanup.js';
 
 const config = loadWorkerConfig();
 const branchPrefix = 'sniptail';
@@ -38,6 +40,11 @@ function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
     ...(threadId ? { threadId } : {}),
   };
 }
+
+function isMissingArtifact(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
 
 async function recordAgentThreadId(job: JobSpec, agentId: string, threadId: string): Promise<void> {
   const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
@@ -136,40 +143,84 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       };
     }
 
-    if (job.type === 'ASK') {
-      const report = await readJobReport(paths);
+    if (job.type === 'ASK' || job.type === 'PLAN') {
+      const reportFileName = job.type === 'PLAN' ? 'plan.md' : 'report.md';
+      const reportPath = join(paths.artifactsRoot, reportFileName);
+      const agentResponse = agentRun.result.finalResponse?.trim() ?? '';
+      let report = '';
+      let planMissing = false;
+
+      if (job.type === 'PLAN') {
+        try {
+          report = await readJobPlan(paths);
+        } catch (err) {
+          if (!isMissingArtifact(err)) {
+            throw err;
+          }
+          planMissing = true;
+          logger.warn({ err, jobId: job.jobId }, 'Missing plan.md for PLAN job');
+        }
+      } else {
+        report = await readJobReport(paths);
+      }
+
+      const openQuestions =
+        job.type === 'PLAN' && planMissing && agentResponse
+          ? [agentResponse]
+          : job.type === 'PLAN' && planMissing
+            ? ['Please answer any outstanding questions so I can finalize the plan.']
+            : [];
+      if (job.type === 'PLAN' && openQuestions.length) {
+        await updateJobRecord(job.jobId, { openQuestions }).catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to persist open questions');
+        });
+      }
       for (const repo of repoWorktrees.values()) {
         await ensureRepoClean(repo.worktreePath, env, paths.logFile, redactionPatterns);
       }
-      const reportPath = join(paths.artifactsRoot, 'report.md');
       const threadId = await resolveThreadId(job);
       const channelRef = buildChannelRef(job, threadId);
-      await notifier.uploadFile(channelRef, {
-        filePath: reportPath,
-        title: `sniptail-${job.jobId}-report.md`,
-      });
-      const askText = `All set! I finished job ${job.jobId}.`;
+      if (report) {
+        await notifier.uploadFile(channelRef, {
+          filePath: reportPath,
+          title: `sniptail-${job.jobId}-${reportFileName}`,
+        });
+      }
+      const askText = report
+        ? `All set! I finished job ${job.jobId}.`
+        : planMissing
+          ? `I need a few clarifications before I can produce the plan for job ${job.jobId}.`
+          : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
       if (job.channel.provider === 'slack') {
         const slackIds = buildSlackIds(config.botName);
-        const askMessage = buildSlackCompletionPayload(askText, job.jobId, slackIds);
-        await notifier.postMessage(channelRef, askMessage.text, { blocks: askMessage.blocks });
+        const blocks = buildCompletionBlocks(askText, job.jobId, {
+          askFromJob: slackIds.actions.askFromJob,
+          implementFromJob: slackIds.actions.implementFromJob,
+          worktreeCommands: slackIds.actions.worktreeCommands,
+          clearJob: slackIds.actions.clearJob,
+          ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
+        });
+        await notifier.postMessage(channelRef, askText, { blocks });
       } else if (job.channel.provider === 'discord') {
-        const components = buildDiscordCompletionComponents(job.jobId);
+        const components = buildDiscordCompletionComponents(job.jobId, {
+          includeAnswerQuestions: openQuestions.length > 0,
+        });
         await notifier.postMessage(channelRef, askText, { components });
       } else {
         await notifier.postMessage(channelRef, askText);
       }
+      const summary = report ? report.slice(0, 500) : `${job.type} complete`;
       await updateJobRecord(job.jobId, {
         status: 'ok',
-        summary: report.slice(0, 500),
+        summary,
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
       });
       return {
         jobId: job.jobId,
         status: 'ok',
-        summary: report.slice(0, 500),
-        reportPath,
+        summary,
+        ...(report ? { reportPath } : {}),
       };
     }
 
@@ -286,8 +337,13 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
     if (job.channel.provider === 'slack') {
       const slackIds = buildSlackIds(config.botName);
-      const implMessage = buildSlackCompletionPayload(implText, job.jobId, slackIds);
-      await notifier.postMessage(channelRef, implMessage.text, { blocks: implMessage.blocks });
+      const blocks = buildCompletionBlocks(implText, job.jobId, {
+        askFromJob: slackIds.actions.askFromJob,
+        implementFromJob: slackIds.actions.implementFromJob,
+        worktreeCommands: slackIds.actions.worktreeCommands,
+        clearJob: slackIds.actions.clearJob,
+      });
+      await notifier.postMessage(channelRef, implText, { blocks });
     } else if (job.channel.provider === 'discord') {
       const components = buildDiscordCompletionComponents(job.jobId);
       await notifier.postMessage(channelRef, implText, { components });
@@ -341,5 +397,8 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     //   });
     // }
     // await rm(paths.root, { recursive: true, force: true });
+    await enforceCleanupMaxEntries().catch((err) => {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to enforce cleanupMaxEntries');
+    });
   }
 }

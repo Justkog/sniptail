@@ -8,13 +8,15 @@ import {
 } from '@sniptail/core/jobs/registry.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import {
-  buildDiscordClearJobConfirmComponents,
-} from '@sniptail/core/discord/components.js';
+import { buildDiscordClearJobConfirmComponents } from '@sniptail/core/discord/components.js';
 import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
-import { buildAskModal, buildImplementModal } from '../../modals.js';
-import { askSelectionByUser, implementSelectionByUser } from '../../state.js';
+import { buildAnswerQuestionsModal, buildAskModal, buildImplementModal } from '../../modals.js';
+import {
+  answerQuestionsByUser,
+  askSelectionByUser,
+  implementSelectionByUser,
+} from '../../state.js';
 import { buildWorktreeCommandsText } from '../../../slack/lib/worktree.js';
 
 export async function handleAskFromJobButton(interaction: ButtonInteraction, jobId: string) {
@@ -91,10 +93,36 @@ export async function handleImplementFromJobButton(interaction: ButtonInteractio
   await interaction.showModal(modal);
 }
 
-export async function handleWorktreeCommandsButton(
+export async function handleAnswerQuestionsButton(
   interaction: ButtonInteraction,
   jobId: string,
 ) {
+  const record = await loadJobRecord(jobId).catch((err) => {
+    logger.warn({ err, jobId }, 'Failed to load job record for answer questions');
+    return undefined;
+  });
+
+  const openQuestions = record?.openQuestions ?? [];
+  if (!openQuestions.length) {
+    await interaction.reply({
+      content: `No open questions were recorded for job ${jobId}.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  answerQuestionsByUser.set(interaction.user.id, {
+    jobId,
+    openQuestions,
+    requestedAt: Date.now(),
+  });
+
+  const config = loadBotConfig();
+  const modal = buildAnswerQuestionsModal(config.botName, openQuestions);
+  await interaction.showModal(modal);
+}
+
+export async function handleWorktreeCommandsButton(interaction: ButtonInteraction, jobId: string) {
   const config = loadBotConfig();
   refreshRepoAllowlist(config);
 
@@ -118,12 +146,12 @@ export async function handleWorktreeCommandsButton(
     : record?.job?.channel?.threadId;
 
   const latestImplement = threadId
-    ? await findLatestJobByChannelThreadAndTypes('discord', channelId, threadId, ['IMPLEMENT']).catch(
-        (err) => {
-          logger.warn({ err, jobId }, 'Failed to resolve latest implement job');
-          return undefined;
-        },
-      )
+    ? await findLatestJobByChannelThreadAndTypes('discord', channelId, threadId, [
+        'IMPLEMENT',
+      ]).catch((err) => {
+        logger.warn({ err, jobId }, 'Failed to resolve latest implement job');
+        return undefined;
+      })
     : undefined;
 
   const targetRepoKeys =
@@ -185,10 +213,7 @@ export async function handleClearJobConfirmButton(
   }
 }
 
-export async function handleClearJobCancelButton(
-  interaction: ButtonInteraction,
-  jobId: string,
-) {
+export async function handleClearJobCancelButton(interaction: ButtonInteraction, jobId: string) {
   await interaction.update({
     content: `Job ${jobId} clear cancelled.`,
     components: [],
