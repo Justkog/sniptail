@@ -17,10 +17,12 @@ export async function fetchDiscordThreadContext(
   client: Client,
   channelId: string,
   excludeMessageId?: string,
+  requireThread = false,
 ): Promise<string | undefined> {
   try {
     const channel = await client.channels.fetch(channelId);
     if (!channel || !channel.isTextBased()) return undefined;
+    if (requireThread && !channel.isThread()) return undefined;
     const messages = await channel.messages.fetch({ limit: 50 });
     const filtered = Array.from(messages.values())
       .filter((message) => message.id !== excludeMessageId)

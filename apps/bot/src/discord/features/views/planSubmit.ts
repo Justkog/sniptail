@@ -11,6 +11,7 @@ import { createJobId } from '../../../lib/jobs.js';
 import { planSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
+import { fetchDiscordThreadContext } from '../../threadContext.js';
 
 export async function handlePlanModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -44,6 +45,12 @@ export async function handlePlanModalSubmit(
   const requestText = interaction.fields.getTextInputValue('question').trim();
   const resumeFromInput = interaction.fields.getTextInputValue('resume_from').trim();
   const resumeFromJobId = resumeFromInput || undefined;
+  const threadContext = await fetchDiscordThreadContext(
+    interaction.client,
+    interaction.channelId!,
+    undefined,
+    true,
+  );
 
   const job: JobSpec = {
     jobId: createJobId('plan'),
@@ -54,6 +61,7 @@ export async function handlePlanModalSubmit(
     requestText,
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
+    ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
 

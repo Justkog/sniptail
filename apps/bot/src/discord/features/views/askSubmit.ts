@@ -11,6 +11,7 @@ import { createJobId } from '../../../lib/jobs.js';
 import { askSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
+import { fetchDiscordThreadContext } from '../../threadContext.js';
 
 export async function handleAskModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -44,6 +45,12 @@ export async function handleAskModalSubmit(
   const requestText = interaction.fields.getTextInputValue('question').trim();
   const resumeFromInput = interaction.fields.getTextInputValue('resume_from').trim();
   const resumeFromJobId = resumeFromInput || undefined;
+  const threadContext = await fetchDiscordThreadContext(
+    interaction.client,
+    interaction.channelId!,
+    undefined,
+    true,
+  );
 
   const job: JobSpec = {
     jobId: createJobId('ask'),
@@ -54,6 +61,7 @@ export async function handleAskModalSubmit(
     requestText,
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
+    ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
 
