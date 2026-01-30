@@ -12,6 +12,7 @@ import { implementSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { parseCommaList } from '../../../slack/lib/parsing.js';
+import { fetchDiscordThreadContext } from '../../threadContext.js';
 
 export async function handleImplementModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -41,6 +42,12 @@ export async function handleImplementModalSubmit(
   const reviewers = reviewersInput ? parseCommaList(reviewersInput) : undefined;
   const labels = labelsInput ? parseCommaList(labelsInput) : undefined;
   const resumeFromJobId = resumeFromInput || undefined;
+  const threadContext = await fetchDiscordThreadContext(
+    interaction.client,
+    interaction.channelId!,
+    undefined,
+    true,
+  );
 
   const job: JobSpec = {
     jobId: createJobId('implement'),
@@ -51,6 +58,7 @@ export async function handleImplementModalSubmit(
     requestText,
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
+    ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
 
