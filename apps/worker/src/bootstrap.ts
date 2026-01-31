@@ -67,8 +67,7 @@ export async function runBootstrap(
     let repoLabel = '';
 
     if (request.service === 'local') {
-      const root = process.env.LOCAL_REPO_ROOT?.trim();
-      const resolved = resolveLocalRepoPath(request.localPath ?? '', root);
+      const resolved = resolveLocalRepoPath(request.localPath ?? '', config.localRepoRoot);
       await bootstrapLocalRepository({
         repoPath: resolved.path,
         repoName: request.repoName,
