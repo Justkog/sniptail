@@ -13,6 +13,7 @@ import {
   buildImplementPrompt,
   buildMentionPrompt,
   buildPlanPrompt,
+  buildReviewPrompt,
 } from './prompts.js';
 import type { JobSpec } from '../types/job.js';
 
@@ -113,7 +114,9 @@ export async function runCodex(
         ? buildImplementPrompt(job, botName)
         : job.type === 'PLAN'
           ? buildPlanPrompt(job, botName)
-          : buildMentionPrompt(job, botName);
+          : job.type === 'REVIEW'
+            ? buildReviewPrompt(job, botName)
+            : buildMentionPrompt(job, botName);
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;

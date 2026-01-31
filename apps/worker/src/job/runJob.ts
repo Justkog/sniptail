@@ -142,7 +142,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
       };
     }
 
-    if (job.type === 'ASK' || job.type === 'PLAN') {
+    if (job.type === 'ASK' || job.type === 'PLAN' || job.type === 'REVIEW') {
       const reportFileName = job.type === 'PLAN' ? 'plan.md' : 'report.md';
       const reportPath = join(paths.artifactsRoot, reportFileName);
       const agentResponse = agentRun.result.finalResponse?.trim() ?? '';
@@ -189,7 +189,9 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
         ? `All set! I finished job ${job.jobId}.`
         : planMissing
           ? `I need a few clarifications before I can produce the plan for job ${job.jobId}.`
-          : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
+          : job.type === 'REVIEW'
+            ? `All set! I finished job ${job.jobId}, but no review report was produced.`
+            : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
       if (job.channel.provider === 'slack') {
         const slackIds = buildSlackIds(config.botName);
         const blocks = buildCompletionBlocks(
@@ -198,6 +200,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
           {
             askFromJob: slackIds.actions.askFromJob,
             implementFromJob: slackIds.actions.implementFromJob,
+            reviewFromJob: slackIds.actions.reviewFromJob,
             worktreeCommands: slackIds.actions.worktreeCommands,
             clearJob: slackIds.actions.clearJob,
             ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
@@ -206,6 +209,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
             ? {
                 includeAskFromJob: false,
                 includeImplementFromJob: false,
+                includeReviewFromJob: false,
                 answerQuestionsFirst: true,
               }
             : undefined,
@@ -216,6 +220,7 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
           includeAnswerQuestions: openQuestions.length > 0,
           includeAskFromJob: !openQuestions.length,
           includeImplementFromJob: !openQuestions.length,
+          includeReviewFromJob: false,
           answerQuestionsFirst: openQuestions.length > 0,
         });
         await notifier.postMessage(channelRef, askText, { components });
@@ -348,17 +353,28 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
+    const includeReviewFromJob = Object.keys(branchByRepo).length > 0;
     if (job.channel.provider === 'slack') {
       const slackIds = buildSlackIds(config.botName);
-      const blocks = buildCompletionBlocks(implText, job.jobId, {
-        askFromJob: slackIds.actions.askFromJob,
-        implementFromJob: slackIds.actions.implementFromJob,
-        worktreeCommands: slackIds.actions.worktreeCommands,
-        clearJob: slackIds.actions.clearJob,
-      });
+      const blocks = buildCompletionBlocks(
+        implText,
+        job.jobId,
+        {
+          askFromJob: slackIds.actions.askFromJob,
+          implementFromJob: slackIds.actions.implementFromJob,
+          reviewFromJob: slackIds.actions.reviewFromJob,
+          worktreeCommands: slackIds.actions.worktreeCommands,
+          clearJob: slackIds.actions.clearJob,
+        },
+        {
+          includeReviewFromJob,
+        },
+      );
       await notifier.postMessage(channelRef, implText, { blocks });
     } else if (job.channel.provider === 'discord') {
-      const components = buildDiscordCompletionComponents(job.jobId);
+      const components = buildDiscordCompletionComponents(job.jobId, {
+        includeReviewFromJob,
+      });
       await notifier.postMessage(channelRef, implText, { components });
     } else {
       await notifier.postMessage(channelRef, implText);
