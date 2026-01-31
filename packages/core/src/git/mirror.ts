@@ -30,7 +30,8 @@ export async function ensureClone(
   if (!existsSync(clonePath)) {
     await runCommand('git', ['clone', '--single-branch', '-b', gitRef, source, clonePath], common);
   } else {
-    const fetchResult = await runCommand('git', ['fetch', '--prune', 'origin', gitRef], {
+    const fetchRefspec = `${gitRef}:refs/remotes/origin/${gitRef}`;
+    const fetchResult = await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
       ...common,
       cwd: clonePath,
       allowFailure: true,
@@ -38,6 +39,23 @@ export async function ensureClone(
     if ((fetchResult.exitCode ?? 1) !== 0) {
       const stderr = fetchResult.stderr ?? '';
       const missingRemoteRef = stderr.includes("couldn't find remote ref");
+      const cannotLockRef =
+        stderr.includes('cannot lock ref') && stderr.includes(`refs/remotes/origin/${gitRef}`);
+      if (cannotLockRef) {
+        await runCommand('git', ['update-ref', '-d', `refs/remotes/origin/${gitRef}`], {
+          ...common,
+          cwd: clonePath,
+          allowFailure: true,
+        });
+        const retryResult = await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
+          ...common,
+          cwd: clonePath,
+          allowFailure: true,
+        });
+        if ((retryResult.exitCode ?? 1) === 0) {
+          return;
+        }
+      }
       if (!missingRemoteRef) {
         throw new Error(
           `git fetch failed (${fetchResult.exitCode ?? 'unknown'}): ${stderr.trim()}`,
