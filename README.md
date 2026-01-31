@@ -4,7 +4,7 @@ Sniptail is a Slack and Discord bot that accepts slash commands, runs coding age
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Discord + coding agents + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack/Discord + Codex/Github_Copilot + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 ### Mediums (chat surfaces)
 
