@@ -246,12 +246,14 @@ export function loadWorkerConfig(): WorkerConfig {
   const redisUrl = resolveStringValue('REDIS_URL', workerToml?.redis_url, {
     required: true,
   }) as string;
+  const localRepoRoot = resolveStringValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
 
   workerConfigCache = {
     ...core,
     botName,
     redisUrl,
     primaryAgent,
+    ...(localRepoRoot ? { localRepoRoot } : {}),
     copilot: {
       executionMode: copilotExecutionMode,
       idleRetries: copilotIdleRetries,

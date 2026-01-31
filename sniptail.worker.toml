@@ -40,6 +40,11 @@ redis_url = "redis://localhost:6379"
 # Required. No default. Example: "/srv/sniptail/repo-cache"
 repo_cache_root = "/srv/sniptail/repo-cache"
 
+# Root directory for local repo bootstraps. When set, local paths must be relative
+# to this root.
+# Optional. No default. Example: "/srv/sniptail/local-repos"
+# local_repo_root = "/srv/sniptail/local-repos"
+
 # Optional glob of paths to copy into each job root.
 # Optional. No default. Example: "/srv/sniptail/common/**"
 # job_root_copy_glob = "/srv/sniptail/common/**"

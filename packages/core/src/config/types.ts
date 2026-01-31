@@ -38,6 +38,7 @@ export type WorkerConfig = CoreConfig & {
   redisUrl: string;
   openAiKey?: string;
   primaryAgent: AgentId;
+  localRepoRoot?: string;
   copilot: {
     executionMode: 'local' | 'docker';
     idleRetries: number;
