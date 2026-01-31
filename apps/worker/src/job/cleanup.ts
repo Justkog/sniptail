@@ -10,9 +10,9 @@ function parseCleanupMaxAge(value: string): number | undefined {
   if (!trimmed) return undefined;
   const match = /^(\d+)([dhm])$/i.exec(trimmed);
   if (!match) return undefined;
-  const amount = Number.parseInt(match[1], 10);
+  const amount = Number.parseInt(match[1]!, 10);
   if (!Number.isFinite(amount) || amount < 0) return undefined;
-  const unit = match[2].toLowerCase();
+  const unit = match[2]!.toLowerCase();
   const multiplier = unit === 'd' ? 86400000 : unit === 'h' ? 3600000 : 60000;
   return amount * multiplier;
 }
@@ -50,7 +50,10 @@ export async function enforceJobCleanup(): Promise<void> {
 
   const maxAgeMs = maxAgeRaw ? parseCleanupMaxAge(maxAgeRaw) : undefined;
   if (maxAgeRaw && maxAgeMs === undefined) {
-    logger.warn({ cleanupMaxAge: maxAgeRaw }, 'Invalid cleanup_max_age; skipping age-based cleanup');
+    logger.warn(
+      { cleanupMaxAge: maxAgeRaw },
+      'Invalid cleanup_max_age; skipping age-based cleanup',
+    );
   }
 
   const records = await loadAllJobRecords();
@@ -73,7 +76,10 @@ export async function enforceJobCleanup(): Promise<void> {
     const cutoff = Date.now() - maxAgeMs;
     const aged = remaining.filter((entry) => entry.createdAtMs <= cutoff);
     if (aged.length) {
-      await removeJobRecords(aged.map(({ record }) => record), config);
+      await removeJobRecords(
+        aged.map(({ record }) => record),
+        config,
+      );
       logger.info(
         { removed: aged.length, maxAge: maxAgeRaw, cutoff: new Date(cutoff).toISOString() },
         'Trimmed job history by max age',
