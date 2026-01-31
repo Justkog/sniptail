@@ -192,17 +192,31 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
           : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
       if (job.channel.provider === 'slack') {
         const slackIds = buildSlackIds(config.botName);
-        const blocks = buildCompletionBlocks(askText, job.jobId, {
-          askFromJob: slackIds.actions.askFromJob,
-          implementFromJob: slackIds.actions.implementFromJob,
-          worktreeCommands: slackIds.actions.worktreeCommands,
-          clearJob: slackIds.actions.clearJob,
-          ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
-        });
+        const blocks = buildCompletionBlocks(
+          askText,
+          job.jobId,
+          {
+            askFromJob: slackIds.actions.askFromJob,
+            implementFromJob: slackIds.actions.implementFromJob,
+            worktreeCommands: slackIds.actions.worktreeCommands,
+            clearJob: slackIds.actions.clearJob,
+            ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
+          },
+          openQuestions.length
+            ? {
+                includeAskFromJob: false,
+                includeImplementFromJob: false,
+                answerQuestionsFirst: true,
+              }
+            : undefined,
+        );
         await notifier.postMessage(channelRef, askText, { blocks });
       } else if (job.channel.provider === 'discord') {
         const components = buildDiscordCompletionComponents(job.jobId, {
           includeAnswerQuestions: openQuestions.length > 0,
+          includeAskFromJob: !openQuestions.length,
+          includeImplementFromJob: !openQuestions.length,
+          answerQuestionsFirst: openQuestions.length > 0,
         });
         await notifier.postMessage(channelRef, askText, { components });
       } else {
