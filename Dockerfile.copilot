@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep patch procps less \
   && rm -rf /var/lib/apt/lists/*
 
+# Enable pnpm via Corepack (needs root to write /usr/local/bin).
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # non-root user
 RUN useradd -m -s /bin/bash copilot
 USER copilot
