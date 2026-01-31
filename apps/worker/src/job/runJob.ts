@@ -28,7 +28,7 @@ import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
 import { commitRepoChanges } from '../repos/commit.js';
 import { runAgentJob } from '../agents/runAgent.js';
-import { enforceCleanupMaxEntries } from './cleanup.js';
+import { enforceJobCleanup } from './cleanup.js';
 
 const config = loadWorkerConfig();
 const branchPrefix = 'sniptail';
@@ -396,8 +396,8 @@ export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<J
     //   });
     // }
     // await rm(paths.root, { recursive: true, force: true });
-    await enforceCleanupMaxEntries().catch((err) => {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to enforce cleanupMaxEntries');
+    await enforceJobCleanup().catch((err) => {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to enforce job cleanup');
     });
   }
 }
