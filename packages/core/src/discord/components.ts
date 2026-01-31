@@ -62,48 +62,66 @@ export function parseDiscordCompletionCustomId(
 
 export function buildDiscordCompletionComponents(
   jobId: string,
-  options?: { includeAnswerQuestions?: boolean },
+  options?: {
+    includeAnswerQuestions?: boolean;
+    includeAskFromJob?: boolean;
+    includeImplementFromJob?: boolean;
+    answerQuestionsFirst?: boolean;
+  },
 ): DiscordActionRow[] {
   const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
+  const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
+  const components: DiscordActionRow['components'] = [];
+  if (answerQuestionsFirst && includeAnswerQuestions) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Answer questions',
+      custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
+    });
+  }
+  if (includeAskFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Ask from there',
+      custom_id: buildDiscordCompletionCustomId('askFromJob', jobId),
+    });
+  }
+  if (includeImplementFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Implement from there',
+      custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
+    });
+  }
+  components.push({
+    type: 2,
+    style: 2,
+    label: 'Take over',
+    custom_id: buildDiscordCompletionCustomId('worktreeCommands', jobId),
+  });
+  if (!answerQuestionsFirst && includeAnswerQuestions) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Answer questions',
+      custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
+    });
+  }
+  components.push({
+    type: 2,
+    style: 4,
+    label: 'Clear job data',
+    custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
+  });
   return [
     {
       type: 1,
-      components: [
-        {
-          type: 2,
-          style: 1,
-          label: 'Ask from there',
-          custom_id: buildDiscordCompletionCustomId('askFromJob', jobId),
-        },
-        {
-          type: 2,
-          style: 1,
-          label: 'Implement from there',
-          custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
-        },
-        {
-          type: 2,
-          style: 2,
-          label: 'Take over',
-          custom_id: buildDiscordCompletionCustomId('worktreeCommands', jobId),
-        },
-        ...(includeAnswerQuestions
-          ? [
-              {
-                type: 2,
-                style: 1,
-                label: 'Answer questions',
-                custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
-              } as const,
-            ]
-          : []),
-        {
-          type: 2,
-          style: 4,
-          label: 'Clear job data',
-          custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
-        },
-      ],
+      components,
     },
   ];
 }
