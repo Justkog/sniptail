@@ -9,9 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # non-root user
-RUN useradd -m -s /bin/bash copilot
+RUN useradd -m -s /bin/bash copilot \
+  && mkdir -p /home/copilot/.cache/node/corepack \
+  && chown -R copilot:copilot /home/copilot/.cache
 USER copilot
 WORKDIR /home/copilot
+
+# Ensure corepack cache is writable for the non-root user.
+ENV XDG_CACHE_HOME=/home/copilot/.cache
+ENV COREPACK_HOME=/home/copilot/.cache/node/corepack
 
 # Install global npm packages into the user home to avoid needing root.
 ENV NPM_CONFIG_PREFIX=/home/copilot/.npm-global
