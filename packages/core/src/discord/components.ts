@@ -94,7 +94,7 @@ export function buildDiscordCompletionComponents(
                 style: 1,
                 label: 'Answer questions',
                 custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
-              },
+              } as const,
             ]
           : []),
         {
