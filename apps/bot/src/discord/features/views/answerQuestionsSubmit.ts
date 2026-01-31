@@ -67,6 +67,6 @@ export async function handleAnswerQuestionsSubmit(
   await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   answerQuestionsByUser.delete(interaction.user.id);
   await interaction.editReply(
-    `Thanks! I've accepted job ${job.jobId}. I've posted a thread in this channel for updates.`,
+    `Thanks! 👀 I've accepted job ${job.jobId}. I've posted a thread in this channel for updates.`,
   );
 }

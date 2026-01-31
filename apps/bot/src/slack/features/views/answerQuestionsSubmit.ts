@@ -88,7 +88,7 @@ export function registerAnswerQuestionsSubmitView({
 
     await postMessage(app, {
       channel: channelId,
-      text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+      text: `Thanks! 👀 I've accepted job ${job.jobId}. I'll report back here.`,
       ...(threadId ? { threadTs: threadId } : {}),
     });
   });
