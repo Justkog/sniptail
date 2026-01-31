@@ -17,21 +17,22 @@ import { handleUsage } from './features/commands/usage.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
 import { handleImplementSelection } from './features/actions/implementSelection.js';
-import { handleAnswerQuestionsButton } from './features/actions/completionButtons.js';
+import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
 import { handleAskModalSubmit } from './features/views/askSubmit.js';
 import { handleAnswerQuestionsSubmit } from './features/views/answerQuestionsSubmit.js';
 import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
+import { handleAskFromJobButton } from './features/actions/askFromJob.js';
 import {
-  handleAskFromJobButton,
   handleClearJobButton,
   handleClearJobCancelButton,
   handleClearJobConfirmButton,
-  handleImplementFromJobButton,
-  handleWorktreeCommandsButton,
-} from './features/actions/completionButtons.js';
+} from './features/actions/clearJob.js';
+import { handleImplementFromJobButton } from './features/actions/implementFromJob.js';
+import { handleReviewFromJobButton } from './features/actions/reviewFromJob.js';
+import { handleWorktreeCommandsButton } from './features/actions/worktreeCommands.js';
 import {
   askModalCustomId,
   askRepoSelectCustomId,
@@ -162,6 +163,9 @@ export async function startDiscordBot(
           return;
         case 'implementFromJob':
           await handleImplementFromJobButton(interaction, parsed.jobId);
+          return;
+        case 'reviewFromJob':
+          await handleReviewFromJobButton(interaction, parsed.jobId, jobQueue);
           return;
         case 'worktreeCommands':
           await handleWorktreeCommandsButton(interaction, parsed.jobId);

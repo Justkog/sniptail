@@ -6,6 +6,7 @@ import {
   buildImplementPrompt,
   buildMentionPrompt,
   buildPlanPrompt,
+  buildReviewPrompt,
 } from '../codex/prompts.js';
 import { logger } from '../logger.js';
 import type { JobSpec } from '../types/job.js';
@@ -29,7 +30,9 @@ function buildPrompt(job: JobSpec, botName: string): string {
       ? buildImplementPrompt(job, botName)
       : job.type === 'PLAN'
         ? buildPlanPrompt(job, botName)
-        : buildMentionPrompt(job, botName);
+        : job.type === 'REVIEW'
+          ? buildReviewPrompt(job, botName)
+          : buildMentionPrompt(job, botName);
 }
 
 const continuationPrompt = continuationPromptSource.trimEnd();

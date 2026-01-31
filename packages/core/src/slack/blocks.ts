@@ -1,6 +1,7 @@
 export type CompletionActionIds = {
   askFromJob: string;
   implementFromJob: string;
+  reviewFromJob: string;
   worktreeCommands: string;
   clearJob: string;
   answerQuestions?: string;
@@ -9,6 +10,7 @@ export type CompletionActionIds = {
 export type CompletionBlockOptions = {
   includeAskFromJob?: boolean;
   includeImplementFromJob?: boolean;
+  includeReviewFromJob?: boolean;
   answerQuestionsFirst?: boolean;
 };
 
@@ -20,6 +22,7 @@ export function buildCompletionBlocks(
 ) {
   const includeAskFromJob = options?.includeAskFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const elements: Array<Record<string, unknown>> = [];
 
@@ -44,6 +47,14 @@ export function buildCompletionBlocks(
       type: 'button' as const,
       text: { type: 'plain_text' as const, text: 'Implement from there' },
       action_id: actionIds.implementFromJob,
+      value: jobId,
+    });
+  }
+  if (includeReviewFromJob) {
+    elements.push({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: 'Review changes' },
+      action_id: actionIds.reviewFromJob,
       value: jobId,
     });
   }

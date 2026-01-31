@@ -1,6 +1,6 @@
 import type { ChannelContext } from './channel.js';
 
-export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'MENTION';
+export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
 export type AgentId = 'codex' | 'copilot';
 
 export type RepoConfig = {

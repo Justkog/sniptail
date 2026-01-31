@@ -59,7 +59,10 @@ export async function enforceJobCleanup(): Promise<void> {
   const records = await loadAllJobRecords();
   const eligibleRecords = records.filter(
     (record) =>
-      record.job.type === 'ASK' || record.job.type === 'PLAN' || record.job.type === 'IMPLEMENT',
+      record.job.type === 'ASK' ||
+      record.job.type === 'PLAN' ||
+      record.job.type === 'REVIEW' ||
+      record.job.type === 'IMPLEMENT',
   );
   if (!eligibleRecords.length) return;
 

@@ -16,6 +16,7 @@ import { registerAskFromJobAction } from './features/actions/askFromJob.js';
 import { registerClearJobAction } from './features/actions/clearJob.js';
 import { registerAnswerQuestionsAction } from './features/actions/answerQuestions.js';
 import { registerImplementFromJobAction } from './features/actions/implementFromJob.js';
+import { registerReviewFromJobAction } from './features/actions/reviewFromJob.js';
 import { registerWorktreeCommandsAction } from './features/actions/worktreeCommands.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
 import { registerAskSubmitView } from './features/views/askSubmit.js';
@@ -60,6 +61,7 @@ export function createSlackApp(
   registerUsageCommand(context);
   registerAskFromJobAction(context);
   registerImplementFromJobAction(context);
+  registerReviewFromJobAction(context);
   registerWorktreeCommandsAction(context);
   registerClearJobAction(context);
   registerAnswerQuestionsAction(context);

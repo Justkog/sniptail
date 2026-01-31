@@ -1,6 +1,7 @@
 export type DiscordCompletionAction =
   | 'askFromJob'
   | 'implementFromJob'
+  | 'reviewFromJob'
   | 'worktreeCommands'
   | 'answerQuestions'
   | 'clearJob'
@@ -22,6 +23,7 @@ const completionPrefix = 'sniptail:completion';
 const actionTokens = {
   askFromJob: 'ask',
   implementFromJob: 'implement',
+  reviewFromJob: 'review',
   worktreeCommands: 'worktree',
   answerQuestions: 'answer-questions',
   clearJob: 'clear',
@@ -35,6 +37,7 @@ const tokenToAction: Record<
 > = {
   [actionTokens.askFromJob]: 'askFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
+  [actionTokens.reviewFromJob]: 'reviewFromJob',
   [actionTokens.worktreeCommands]: 'worktreeCommands',
   [actionTokens.answerQuestions]: 'answerQuestions',
   [actionTokens.clearJob]: 'clearJob',
@@ -66,12 +69,14 @@ export function buildDiscordCompletionComponents(
     includeAnswerQuestions?: boolean;
     includeAskFromJob?: boolean;
     includeImplementFromJob?: boolean;
+    includeReviewFromJob?: boolean;
     answerQuestionsFirst?: boolean;
   },
 ): DiscordActionRow[] {
   const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
   const includeAskFromJob = options?.includeAskFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const components: DiscordActionRow['components'] = [];
   if (answerQuestionsFirst && includeAnswerQuestions) {
@@ -96,6 +101,14 @@ export function buildDiscordCompletionComponents(
       style: 1,
       label: 'Implement from there',
       custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
+    });
+  }
+  if (includeReviewFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Review changes',
+      custom_id: buildDiscordCompletionCustomId('reviewFromJob', jobId),
     });
   }
   components.push({
