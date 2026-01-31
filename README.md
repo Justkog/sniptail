@@ -1,10 +1,10 @@
 # Sniptail
 
-Sniptail is a Slack and Discord bot that accepts slash commands, runs Codex jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
+Sniptail is a Slack and Discord bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Discord + Codex + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack + Discord + coding agents + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 ### Mediums (chat surfaces)
 
@@ -41,7 +41,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 
 1. A user triggers a slash command or mentions the bot in Slack or Discord.
 2. The bot queues a job in Redis and records metadata in a local job registry.
-3. A worker pulls the job, prepares repo worktrees, and runs the configured agent (Codex or Copilot).
+3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex or Copilot).
 4. Results are posted back to Slack or Discord as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
 ## Repo layout
@@ -50,7 +50,7 @@ Sniptail is a PNPM monorepo with two apps and one shared package:
 
 - `apps/bot`: Slack Bolt app (Socket Mode), slash commands, Slack events
 - `apps/worker`: job runner and pipeline execution
-- `packages/core`: shared queue wiring, Codex execution, Git/GitLab/GitHub integrations, config
+- `packages/core`: shared queue wiring, coding agent execution, Git/GitLab/GitHub integrations, config
 
 ## Dependencies
 
@@ -110,7 +110,9 @@ Override paths with env vars:
 - `SNIPTAIL_BOT_CONFIG_PATH`
 - `SNIPTAIL_WORKER_CONFIG_PATH`
 
-The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (Codex/Copilot execution modes, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths).
+The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (coding agent execution modes for Codex/Copilot, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths).
+
+Each agent can still be fully customized (skills, MCP servers, and more) by inheriting the home or repository configurations.
 
 ### 4) Configure environment variables
 
@@ -138,6 +140,7 @@ Optional:
 - `[codex].execution_mode = "docker"`
   - Runs Codex inside a container via `scripts/codex-docker.sh`.
   - Useful for consistent tooling and sandboxed execution.
+  - Adds extra security isolation as long as the agent is not explicitly trying to jailbreak out of the container.
   - Configure `[codex].dockerfile_path`, `[codex].docker_image`, and `[codex].docker_build_context` if you want the image to auto-build.
 
 ### 5b) Choose local vs docker Copilot execution
@@ -147,6 +150,7 @@ Optional:
   - Requires `@github/copilot` available in `PATH`.
 - `[copilot].execution_mode = "docker"`
   - Runs Copilot CLI inside a container via `apps/worker/scripts/copilot-docker.sh`.
+  - Adds extra security isolation as long as the agent is not explicitly trying to jailbreak out of the container.
   - Configure `[copilot].dockerfile_path`, `[copilot].docker_image`, and `[copilot].docker_build_context` if you want the image to auto-build.
 
 ### 6) Slack app setup
@@ -238,7 +242,7 @@ pnpm run start
 
 - `/sniptail-ask`: Generates a Markdown report, uploads it to Slack, and posts a completion message.
 - `/sniptail-plan`: Generates a Markdown plan, uploads it to Slack, and posts a completion message.
-- `/sniptail-implement`: Runs Codex to implement changes, runs checks, pushes branches, and opens GitLab MRs or GitHub PRs.
+- `/sniptail-implement`: Runs the configured coding agent to implement changes, runs checks, pushes branches, and opens GitLab MRs or GitHub PRs.
 - `/sniptail-bootstrap`: Creates a GitHub/GitLab repository and appends it to the allowlist.
 - `/sniptail-clear-before`: Admin-only cleanup of historical job data.
 - `/sniptail-usage`: Shows Codex usage for the day/week and quota reset timing.
