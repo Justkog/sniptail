@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep patch procps less \
   && rm -rf /var/lib/apt/lists/*
 
+# Enable pnpm via Corepack (needs root to write /usr/local/bin).
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # non-root user
 RUN useradd -m -s /bin/bash codex
 USER codex
@@ -14,8 +17,5 @@ WORKDIR /home/codex
 ENV NPM_CONFIG_PREFIX=/home/codex/.npm-global
 ENV PATH=/home/codex/.npm-global/bin:${PATH}
 RUN npm install -g @openai/codex
-
-# Enable pnpm via Corepack for the non-root user.
-RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENTRYPOINT ["codex"]

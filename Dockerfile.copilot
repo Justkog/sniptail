@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep patch procps less \
   && rm -rf /var/lib/apt/lists/*
 
+# Enable pnpm via Corepack (needs root to write /usr/local/bin).
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # non-root user
 RUN useradd -m -s /bin/bash copilot
 USER copilot
@@ -14,8 +17,5 @@ WORKDIR /home/copilot
 ENV NPM_CONFIG_PREFIX=/home/copilot/.npm-global
 ENV PATH=/home/copilot/.npm-global/bin:${PATH}
 RUN npm install -g @github/copilot
-
-# Enable pnpm via Corepack for the non-root user.
-RUN corepack enable && corepack prepare pnpm@latest --activate
 
 ENTRYPOINT ["copilot"]
