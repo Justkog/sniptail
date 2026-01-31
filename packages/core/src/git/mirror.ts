@@ -47,14 +47,11 @@ export async function ensureClone(
           cwd: clonePath,
           allowFailure: true,
         });
-        const retryResult = await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
+        await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
           ...common,
           cwd: clonePath,
           allowFailure: true,
         });
-        if ((retryResult.exitCode ?? 1) === 0) {
-          return;
-        }
       }
       if (!missingRemoteRef) {
         throw new Error(
