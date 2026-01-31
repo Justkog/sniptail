@@ -15,4 +15,7 @@ ENV NPM_CONFIG_PREFIX=/home/codex/.npm-global
 ENV PATH=/home/codex/.npm-global/bin:${PATH}
 RUN npm install -g @openai/codex
 
+# Enable pnpm via Corepack for the non-root user.
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 ENTRYPOINT ["codex"]
