@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/jobs/utils.js';
-import { loadJobRecord, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
@@ -23,6 +22,7 @@ import {
   writeJobSpecArtifact,
 } from './artifacts.js';
 import { resolveThreadId } from './records.js';
+import type { JobRegistry } from './jobRegistry.js';
 import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
 import { commitRepoChanges } from '../repos/commit.js';
@@ -44,30 +44,41 @@ function isMissingArtifact(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 }
 
-async function recordAgentThreadId(job: JobSpec, agentId: string, threadId: string): Promise<void> {
-  const existingRecord = await loadJobRecord(job.jobId).catch((err) => {
+async function recordAgentThreadId(
+  registry: JobRegistry,
+  job: JobSpec,
+  agentId: string,
+  threadId: string,
+): Promise<void> {
+  const existingRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
     return undefined;
   });
   const existingJob = existingRecord?.job ?? job;
-  await updateJobRecord(job.jobId, {
-    job: {
-      ...existingJob,
-      agentThreadIds: {
-        ...(existingJob.agentThreadIds ?? {}),
-        [agentId]: threadId,
+  await registry
+    .updateJobRecord(job.jobId, {
+      job: {
+        ...existingJob,
+        agentThreadIds: {
+          ...(existingJob.agentThreadIds ?? {}),
+          [agentId]: threadId,
+        },
       },
-    },
-  }).catch((err) => {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
-  });
+    })
+    .catch((err) => {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
+    });
 }
 
-export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobResult> {
+export async function runJob(
+  events: BotEventSink,
+  job: JobSpec,
+  registry: JobRegistry,
+): Promise<JobResult> {
   validateJob(job);
   const notifier = createNotifier(events);
 
-  await updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
+  await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
   });
 
@@ -87,7 +98,9 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
     config.openAiKey ?? '',
   ].filter(Boolean);
 
-  const resumeRecord = job.resumeFromJobId ? await loadJobRecord(job.resumeFromJobId) : null;
+  const resumeRecord = job.resumeFromJobId
+    ? await registry.loadJobRecord(job.resumeFromJobId)
+    : null;
   if (job.resumeFromJobId && !resumeRecord) {
     throw new Error(`Resume job not found: ${job.resumeFromJobId}`);
   }
@@ -112,28 +125,30 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
     });
 
     if (Object.keys(branchByRepo).length) {
-      await updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
+      await registry.updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job branches');
       });
     }
 
-    const agentRun = await runAgentJob({ job, config, paths, env });
+    const agentRun = await runAgentJob({ job, config, paths, env, registry });
 
     if (agentRun.result.threadId) {
-      await recordAgentThreadId(job, agentRun.agentId, agentRun.result.threadId);
+      await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);
     }
 
     if (job.type === 'MENTION') {
       const replyText = agentRun.result.finalResponse || 'Thanks for the mention! How can I help?';
-      const threadId = await resolveThreadId(job);
+      const threadId = await resolveThreadId(job, registry);
       const channelRef = buildChannelRef(job, threadId);
       await notifier.postMessage(channelRef, replyText);
-      await updateJobRecord(job.jobId, {
-        status: 'ok',
-        summary: replyText.slice(0, 500),
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
-      });
+      await registry
+        .updateJobRecord(job.jobId, {
+          status: 'ok',
+          summary: replyText.slice(0, 500),
+        })
+        .catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
+        });
       return {
         jobId: job.jobId,
         status: 'ok',
@@ -169,14 +184,14 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
             ? ['Please answer any outstanding questions so I can finalize the plan.']
             : [];
       if (job.type === 'PLAN' && openQuestions.length) {
-        await updateJobRecord(job.jobId, { openQuestions }).catch((err) => {
+        await registry.updateJobRecord(job.jobId, { openQuestions }).catch((err) => {
           logger.warn({ err, jobId: job.jobId }, 'Failed to persist open questions');
         });
       }
       for (const repo of repoWorktrees.values()) {
         await ensureRepoClean(repo.worktreePath, env, paths.logFile, redactionPatterns);
       }
-      const threadId = await resolveThreadId(job);
+      const threadId = await resolveThreadId(job, registry);
       const channelRef = buildChannelRef(job, threadId);
       if (report) {
         await notifier.uploadFile(channelRef, {
@@ -227,12 +242,14 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
         await notifier.postMessage(channelRef, askText);
       }
       const summary = report ? report.slice(0, 500) : `${job.type} complete`;
-      await updateJobRecord(job.jobId, {
-        status: 'ok',
-        summary,
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
-      });
+      await registry
+        .updateJobRecord(job.jobId, {
+          status: 'ok',
+          summary,
+        })
+        .catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
+        });
       return {
         jobId: job.jobId,
         status: 'ok',
@@ -344,7 +361,7 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
     const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
     const summaryPath = join(paths.artifactsRoot, 'summary.md');
-    const threadId = await resolveThreadId(job);
+    const threadId = await resolveThreadId(job, registry);
     const channelRef = buildChannelRef(job, threadId);
     await notifier.uploadFile(channelRef, {
       filePath: summaryPath,
@@ -379,13 +396,15 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
       await notifier.postMessage(channelRef, implText);
     }
 
-    await updateJobRecord(job.jobId, {
-      status: 'ok',
-      summary: summary || 'IMPLEMENT complete',
-      mergeRequests,
-    }).catch((err) => {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
-    });
+    await registry
+      .updateJobRecord(job.jobId, {
+        status: 'ok',
+        summary: summary || 'IMPLEMENT complete',
+        mergeRequests,
+      })
+      .catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
+      });
     return {
       jobId: job.jobId,
       status: 'ok',
@@ -394,18 +413,20 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
     };
   } catch (err) {
     logger.error({ err, jobId: job.jobId }, 'Job failed');
-    const threadId = await resolveThreadId(job);
+    const threadId = await resolveThreadId(job, registry);
     const channelRef = buildChannelRef(job, threadId);
     await notifier.postMessage(
       channelRef,
       `I hit an issue with job ${job.jobId}: ${(err as Error).message}`,
     );
-    await updateJobRecord(job.jobId, {
-      status: 'failed',
-      error: (err as Error).message,
-    }).catch((updateErr) => {
-      logger.warn({ err: updateErr, jobId: job.jobId }, 'Failed to mark job as failed');
-    });
+    await registry
+      .updateJobRecord(job.jobId, {
+        status: 'failed',
+        error: (err as Error).message,
+      })
+      .catch((updateErr) => {
+        logger.warn({ err: updateErr, jobId: job.jobId }, 'Failed to mark job as failed');
+      });
     return {
       jobId: job.jobId,
       status: 'failed',
@@ -425,7 +446,7 @@ export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobRes
     //   });
     // }
     // await rm(paths.root, { recursive: true, force: true });
-    await enforceJobCleanup().catch((err) => {
+    await enforceJobCleanup(registry).catch((err) => {
       logger.warn({ err, jobId: job.jobId }, 'Failed to enforce job cleanup');
     });
   }

@@ -1,12 +1,12 @@
-import { clearJobsBefore, markJobForDeletion } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { JobRegistry } from './job/jobRegistry.js';
 
-export async function handleWorkerEvent(event: WorkerEvent): Promise<void> {
+export async function handleWorkerEvent(event: WorkerEvent, registry: JobRegistry): Promise<void> {
   switch (event.type) {
     case 'clearJob': {
       const { jobId, ttlMs } = event.payload;
-      await markJobForDeletion(jobId, ttlMs).catch((err) => {
+      await registry.markJobForDeletion(jobId, ttlMs).catch((err) => {
         logger.error({ err, jobId }, 'Failed to schedule job deletion');
       });
       return;
@@ -17,7 +17,7 @@ export async function handleWorkerEvent(event: WorkerEvent): Promise<void> {
         logger.warn({ cutoffIso: event.payload.cutoffIso }, 'Invalid cutoff date');
         return;
       }
-      await clearJobsBefore(cutoff).catch((err) => {
+      await registry.clearJobsBefore(cutoff).catch((err) => {
         logger.error({ err, cutoffIso: event.payload.cutoffIso }, 'Failed to clear jobs');
       });
       return;
