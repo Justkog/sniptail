@@ -39,13 +39,6 @@ vi.mock('@sniptail/core/runner/commandRunner.js', () => ({
   runCommand: vi.fn(),
 }));
 
-vi.mock('@sniptail/core/jobs/registry.js', () => ({
-  findLatestJobByChannelThread: vi.fn(),
-  findLatestJobByChannelThreadAndTypes: vi.fn(),
-  loadJobRecord: vi.fn(),
-  updateJobRecord: vi.fn(),
-}));
-
 vi.mock('@sniptail/core/jobs/utils.js', () => {
   const jobWorkRoot = '/tmp/sniptail/job-root';
   return {
@@ -130,12 +123,6 @@ import type { Queue } from 'bullmq';
 import { AGENT_REGISTRY } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
-import {
-  findLatestJobByChannelThread,
-  findLatestJobByChannelThreadAndTypes,
-  loadJobRecord,
-  updateJobRecord,
-} from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
@@ -147,6 +134,20 @@ import {
   runJob,
 } from './pipeline.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
+import type { JobRegistry } from './job/jobRegistry.js';
+
+function createRegistryMock() {
+  return {
+    loadJobRecord: vi.fn(),
+    updateJobRecord: vi.fn(),
+    loadAllJobRecords: vi.fn(),
+    deleteJobRecords: vi.fn(),
+    markJobForDeletion: vi.fn(),
+    clearJobsBefore: vi.fn(),
+    findLatestJobByChannelThread: vi.fn(),
+    findLatestJobByChannelThreadAndTypes: vi.fn(),
+  } satisfies JobRegistry;
+}
 
 describe('worker/pipeline helpers', () => {
   it('copyJobRootSeed skips when glob is empty', async () => {
@@ -184,7 +185,8 @@ describe('worker/pipeline helpers', () => {
   });
 
   it('resolveAgentThreadId returns explicit thread id', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
 
     const job = {
       jobId: 'job-1',
@@ -196,13 +198,14 @@ describe('worker/pipeline helpers', () => {
       agentThreadIds: { codex: 'thread-explicit' },
     };
 
-    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-explicit');
+    await expect(resolveAgentThreadId(job, 'codex', registry)).resolves.toBe('thread-explicit');
     expect(loadJobRecordMock).not.toHaveBeenCalled();
   });
 
   it('resolveAgentThreadId resolves from resume job record', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
-    const findLatestJobByChannelThreadMock = vi.mocked(findLatestJobByChannelThread);
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const findLatestJobByChannelThreadMock = registry.findLatestJobByChannelThread;
 
     loadJobRecordMock.mockResolvedValueOnce({
       job: { agentThreadIds: { codex: 'thread-resumed' } },
@@ -218,14 +221,15 @@ describe('worker/pipeline helpers', () => {
       resumeFromJobId: 'job-1',
     };
 
-    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-resumed');
+    await expect(resolveAgentThreadId(job, 'codex', registry)).resolves.toBe('thread-resumed');
     expect(loadJobRecordMock).toHaveBeenCalledWith('job-1');
     expect(findLatestJobByChannelThreadMock).not.toHaveBeenCalled();
   });
 
   it('resolveAgentThreadId falls back to latest thread record', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
-    const findLatestJobByChannelThreadMock = vi.mocked(findLatestJobByChannelThread);
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const findLatestJobByChannelThreadMock = registry.findLatestJobByChannelThread;
 
     loadJobRecordMock.mockResolvedValueOnce(undefined);
     findLatestJobByChannelThreadMock.mockResolvedValueOnce({
@@ -241,7 +245,7 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
     };
 
-    await expect(resolveAgentThreadId(job, 'codex')).resolves.toBe('thread-latest');
+    await expect(resolveAgentThreadId(job, 'codex', registry)).resolves.toBe('thread-latest');
     expect(findLatestJobByChannelThreadMock).toHaveBeenCalledWith(
       'slack',
       'C1',
@@ -251,6 +255,7 @@ describe('worker/pipeline helpers', () => {
   });
 
   it('resolveMentionWorkingDirectory uses fallback for non-mention jobs', async () => {
+    const registry = createRegistryMock();
     const job = {
       jobId: 'job-4',
       type: 'ASK' as const,
@@ -260,16 +265,15 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback')).resolves.toBe(
+    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
       '/tmp/fallback',
     );
   });
 
   it('resolveMentionWorkingDirectory uses previous job root when available', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
-    const findLatestJobByChannelThreadAndTypesMock = vi.mocked(
-      findLatestJobByChannelThreadAndTypes,
-    );
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const findLatestJobByChannelThreadAndTypesMock = registry.findLatestJobByChannelThreadAndTypes;
 
     loadJobRecordMock.mockResolvedValueOnce({
       job: { channel: { provider: 'slack', threadId: '111.222', channelId: 'C1', userId: 'U1' } },
@@ -287,7 +291,7 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback')).resolves.toBe(
+    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
       '/tmp/sniptail/job-root/job-prev',
     );
     expect(findLatestJobByChannelThreadAndTypesMock).toHaveBeenCalledWith(
@@ -299,10 +303,9 @@ describe('worker/pipeline helpers', () => {
   });
 
   it('resolveMentionWorkingDirectory falls back on lookup failure', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
-    const findLatestJobByChannelThreadAndTypesMock = vi.mocked(
-      findLatestJobByChannelThreadAndTypes,
-    );
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const findLatestJobByChannelThreadAndTypesMock = registry.findLatestJobByChannelThreadAndTypes;
 
     loadJobRecordMock.mockResolvedValueOnce({
       job: { channel: { provider: 'slack', threadId: '111.222', channelId: 'C1', userId: 'U1' } },
@@ -318,7 +321,7 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback')).resolves.toBe(
+    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
       '/tmp/fallback',
     );
   });
@@ -326,8 +329,9 @@ describe('worker/pipeline helpers', () => {
 
 describe('worker/pipeline runJob', () => {
   it('runs a mention job and posts the response', async () => {
-    const loadJobRecordMock = vi.mocked(loadJobRecord);
-    const updateJobRecordMock = vi.mocked(updateJobRecord);
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
     const runAgentMock = vi.mocked(AGENT_REGISTRY.codex.run);
     const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
     const mkdirMock = vi.mocked(mkdir);
@@ -356,7 +360,7 @@ describe('worker/pipeline runJob', () => {
     appendFileMock.mockResolvedValue(undefined);
 
     const botQueue = {} as Queue<BotEvent>;
-    const result = await runJob(new BullMqBotEventSink(botQueue), job);
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
 
     expect(result).toEqual({
       jobId: 'job-mention',

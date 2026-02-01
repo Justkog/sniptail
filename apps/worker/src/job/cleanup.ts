@@ -1,9 +1,9 @@
 import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
-import { deleteJobRecords, loadAllJobRecords } from '@sniptail/core/jobs/registry.js';
 import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { removeWorktree } from '@sniptail/core/git/worktree.js';
 import { logger } from '@sniptail/core/logger.js';
+import type { JobRegistry } from './jobRegistry.js';
 
 function parseCleanupMaxAge(value: string): number | undefined {
   const trimmed = value.trim();
@@ -20,6 +20,7 @@ function parseCleanupMaxAge(value: string): number | undefined {
 async function removeJobRecords(
   recordsToDelete: Array<{ job: { jobId: string; repoKeys?: string[] } }>,
   config: ReturnType<typeof loadWorkerConfig>,
+  registry: JobRegistry,
 ): Promise<void> {
   if (!recordsToDelete.length) return;
   for (const record of recordsToDelete) {
@@ -39,10 +40,10 @@ async function removeJobRecords(
     }
   }
 
-  await deleteJobRecords(recordsToDelete.map((record) => record.job.jobId));
+  await registry.deleteJobRecords(recordsToDelete.map((record) => record.job.jobId));
 }
 
-export async function enforceJobCleanup(): Promise<void> {
+export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
   const config = loadWorkerConfig();
   const maxEntries = config.cleanupMaxEntries;
   const maxAgeRaw = config.cleanupMaxAge;
@@ -56,7 +57,7 @@ export async function enforceJobCleanup(): Promise<void> {
     );
   }
 
-  const records = await loadAllJobRecords();
+  const records = await registry.loadAllJobRecords();
   const eligibleRecords = records.filter(
     (record) =>
       record.job.type === 'ASK' ||
@@ -82,6 +83,7 @@ export async function enforceJobCleanup(): Promise<void> {
       await removeJobRecords(
         aged.map(({ record }) => record),
         config,
+        registry,
       );
       logger.info(
         { removed: aged.length, maxAge: maxAgeRaw, cutoff: new Date(cutoff).toISOString() },
@@ -106,7 +108,7 @@ export async function enforceJobCleanup(): Promise<void> {
   const recordsToDelete = sorted.slice(0, excess).map(({ record }) => record);
   if (!recordsToDelete.length) return;
 
-  await removeJobRecords(recordsToDelete, config);
+  await removeJobRecords(recordsToDelete, config, registry);
   logger.info(
     { removed: recordsToDelete.length, maxEntries: normalizedMax },
     'Trimmed job history to max entries',

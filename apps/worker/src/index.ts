@@ -17,17 +17,19 @@ import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
+import { PostgresJobRegistry } from './job/postgresJobRegistry.js';
 
 const config = loadWorkerConfig();
 const connection = createConnectionOptions(config.redisUrl);
 const botQueue = createBotQueue(config.redisUrl);
 const botEvents = new BullMqBotEventSink(botQueue);
+const jobRegistry = new PostgresJobRegistry();
 
 const worker = new Worker<JobSpec>(
   jobQueueName,
   async (job) => {
     logger.info({ jobId: job.id }, 'Worker picked up job');
-    return runJob(botEvents, job.data);
+    return runJob(botEvents, job.data, jobRegistry);
   },
   { connection, concurrency: 2 },
 );
@@ -45,7 +47,7 @@ const workerEventWorker = new Worker<WorkerEvent>(
   workerEventQueueName,
   async (job) => {
     logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
-    await handleWorkerEvent(job.data);
+    await handleWorkerEvent(job.data, jobRegistry);
   },
   { connection, concurrency: 2 },
 );

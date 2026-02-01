@@ -5,6 +5,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
+import type { JobRegistry } from '../job/jobRegistry.js';
 import { appendAgentEventLog } from '../job/artifacts.js';
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
@@ -20,16 +21,17 @@ export async function runAgentJob(options: {
   config: WorkerConfig;
   paths: JobPaths;
   env: NodeJS.ProcessEnv;
+  registry: JobRegistry;
 }): Promise<RunAgentResult> {
-  const { job, config, paths, env } = options;
+  const { job, config, paths, env, registry } = options;
 
   const agentId = job.agent ?? config.primaryAgent;
   const agent = AGENT_REGISTRY[agentId];
 
   logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
 
-  const agentThreadId = await resolveAgentThreadId(job, agentId);
-  const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot);
+  const agentThreadId = await resolveAgentThreadId(job, agentId, registry);
+  const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot, registry);
   const modelOverride =
     agentId === 'copilot'
       ? config.copilot.models?.[job.type]

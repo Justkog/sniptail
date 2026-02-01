@@ -5,6 +5,7 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { StdoutBotEventSink } from '../channels/botEventSink.js';
+import { CollectingJobRegistry } from '../job/collectingJobRegistry.js';
 import { runJob } from '../pipeline.js';
 
 function printUsage() {
@@ -33,20 +34,32 @@ async function main() {
   }
 
   const events = new StdoutBotEventSink();
+  const registry = new CollectingJobRegistry({ seedJob: job });
+  let resultStatus: 'ok' | 'failed' | undefined;
   try {
-    const result = await runJob(events, job);
-    if (events.flush) {
-      await events.flush();
-    }
+    const result = await runJob(events, job, registry);
+    resultStatus = result.status;
     if (result.status !== 'ok') {
       process.exitCode = 1;
     }
   } catch (err) {
     logger.error({ err }, 'Failed to run job');
+    process.exitCode = 1;
+  } finally {
     if (events.flush) {
       await events.flush();
     }
-    process.exitCode = 1;
+    const snapshot = registry.snapshot();
+    const snapshotLine = `${JSON.stringify({
+      type: 'jobSnapshot',
+      payload: snapshot,
+      ...(resultStatus ? { status: resultStatus } : {}),
+    })}\n`;
+    if (!process.stdout.write(snapshotLine)) {
+      await new Promise<void>((resolve) => {
+        process.stdout.once('drain', resolve);
+      });
+    }
   }
 }
 
