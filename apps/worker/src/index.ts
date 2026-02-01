@@ -16,16 +16,18 @@ import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
+import { BullMqBotEventSink } from './channels/botEventSink.js';
 
 const config = loadWorkerConfig();
 const connection = createConnectionOptions(config.redisUrl);
 const botQueue = createBotQueue(config.redisUrl);
+const botEvents = new BullMqBotEventSink(botQueue);
 
 const worker = new Worker<JobSpec>(
   jobQueueName,
   async (job) => {
     logger.info({ jobId: job.id }, 'Worker picked up job');
-    return runJob(botQueue, job.data);
+    return runJob(botEvents, job.data);
   },
   { connection, concurrency: 2 },
 );
@@ -34,7 +36,7 @@ const bootstrapWorker = new Worker<BootstrapRequest>(
   bootstrapQueueName,
   async (job) => {
     logger.info({ requestId: job.id }, 'Worker picked up bootstrap request');
-    await runBootstrap(botQueue, job.data);
+    await runBootstrap(botEvents, job.data);
   },
   { connection, concurrency: 2 },
 );

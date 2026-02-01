@@ -1,18 +1,17 @@
 import { join } from 'node:path';
-import type { Queue } from 'bullmq';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/jobs/utils.js';
 import { loadJobRecord, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
-import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { isGitHubSshUrl } from '@sniptail/core/git/ssh.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import { createGitHubPullRequest } from '../merge-requests/github.js';
 import { createGitLabMergeRequest } from '../merge-requests/gitlab.js';
+import type { BotEventSink } from '../channels/botEventSink.js';
 import { createNotifier } from '../channels/createNotifier.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
@@ -64,9 +63,9 @@ async function recordAgentThreadId(job: JobSpec, agentId: string, threadId: stri
   });
 }
 
-export async function runJob(botQueue: Queue<BotEvent>, job: JobSpec): Promise<JobResult> {
+export async function runJob(events: BotEventSink, job: JobSpec): Promise<JobResult> {
   validateJob(job);
-  const notifier = createNotifier(botQueue);
+  const notifier = createNotifier(events);
 
   await updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');

@@ -1,12 +1,10 @@
-import type { Queue } from 'bullmq';
-import type { BotEvent } from '@sniptail/core/types/bot-event.js';
-import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { Notifier } from './notifier.js';
+import type { BotEventSink } from './botEventSink.js';
 
-export function createNotifier(queue: Queue<BotEvent>): Notifier {
+export function createNotifier(events: BotEventSink): Notifier {
   return {
     async postMessage(ref, text, options) {
-      await enqueueBotEvent(queue, {
+      await events.publish({
         provider: ref.provider,
         type: 'postMessage',
         payload: {
@@ -21,7 +19,7 @@ export function createNotifier(queue: Queue<BotEvent>): Notifier {
       });
     },
     async uploadFile(ref, file) {
-      await enqueueBotEvent(queue, {
+      await events.publish({
         provider: ref.provider,
         type: 'uploadFile',
         payload: {
