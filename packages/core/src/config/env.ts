@@ -239,7 +239,7 @@ export function loadWorkerConfig(): WorkerConfig {
   );
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey && primaryAgent === 'codex') {
-    logger.warn('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
+    logger.warn('OPENAI_API_KEY is not set.');
   }
   const gitlab = resolveGitLabConfig(gitlabToml);
   const github = resolveGitHubConfig(githubToml);
