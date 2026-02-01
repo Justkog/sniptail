@@ -5,10 +5,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep patch procps less \
   && rm -rf /var/lib/apt/lists/*
 
+# Enable pnpm via Corepack (needs root to write /usr/local/bin).
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # non-root user
-RUN useradd -m -s /bin/bash codex
+RUN useradd -m -s /bin/bash codex \
+  && mkdir -p /home/codex/.cache/node/corepack \
+  && chown -R codex:codex /home/codex/.cache
 USER codex
 WORKDIR /home/codex
+
+# Ensure corepack cache is writable for the non-root user.
+ENV XDG_CACHE_HOME=/home/codex/.cache
+ENV COREPACK_HOME=/home/codex/.cache/node/corepack
 
 # Install global npm packages into the user home to avoid needing root.
 ENV NPM_CONFIG_PREFIX=/home/codex/.npm-global

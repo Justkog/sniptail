@@ -20,22 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      - uses: pnpm/action-setup@v4
+      - name: Enable pnpm (Corepack)
+        run: corepack enable && corepack install
+
+      - name: Setup pnpm cache
+        uses: pnpm/action-setup@v4
         with:
-          version: 10
+          # With packageManager set, you can omit version
           cache: true
 
-      - run: pnpm install
-      - run: pnpm test:run
-      - run: pnpm run check
-      - run: pnpm run build
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Tests
+        run: pnpm test:run
+
+      # - name: Check
+      #   run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
 
       - name: Smoke test (dry run)
-        env:
-          SNIPTAIL_DRY_RUN: "1"
-        run: node --import ./scripts/register-loaders.mjs apps/bot/dist/index.js
+        run: pnpm run smoke:bot

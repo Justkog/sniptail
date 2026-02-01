@@ -11,22 +11,30 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node ../../scripts/copy-prompts.mjs",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "lint": "eslint . --ignore-pattern **/dist/**",
     "format": "prettier . --ignore-path ../../.prettierignore --write",
-    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
+    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check",
+    "db:generate:sqlite": "DOTENV_CONFIG_PATH=../../.env drizzle-kit generate --config drizzle.config.sqlite.ts",
+    "db:migrate:sqlite": "DOTENV_CONFIG_PATH=../../.env drizzle-kit migrate --config drizzle.config.sqlite.ts",
+    "db:generate:pg": "DOTENV_CONFIG_PATH=../../.env drizzle-kit generate --config drizzle.config.pg.ts",
+    "db:migrate:pg": "DOTENV_CONFIG_PATH=../../.env drizzle-kit migrate --config drizzle.config.pg.ts"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^0.1.18",
     "@openai/codex-sdk": "^0.79.0",
     "better-sqlite3": "^12.6.2",
     "bullmq": "^5.51.0",
     "classic-level": "^3.0.0",
     "drizzle-orm": "^0.45.1",
     "handlebars": "^4.7.8",
-    "pino": "^10.1.0"
+    "pg": "^8.16.3",
+    "pino": "^10.1.0",
+    "smol-toml": "^1.6.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.8"
   }
 }

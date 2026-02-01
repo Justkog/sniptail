@@ -1,5 +1,5 @@
 display_information:
-  name: sniptail
+  name: Sniptail
 features:
   bot_user:
     display_name: Sniptail
@@ -9,12 +9,22 @@ features:
       description: Ask Sniptail to analyze one or more repos and return a Markdown report.
       usage_hint: "[repo keys] [branch] [request text]"
       should_escape: false
+    - command: /sniptail-plan
+      description: Ask Sniptail to plan a feature implementation across one or more repos.
+      usage_hint: "[repo keys] [branch] [request text]"
+      should_escape: false
     - command: /sniptail-implement
       description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
       should_escape: false
+    - command: /sniptail-bootstrap
+      description: Create a new repository and add it to the allowlist.
+      should_escape: false
     - command: /sniptail-clear-before
       description: Ask Sniptail to clear jobs data created before a certain date
+      should_escape: false
+    - command: /sniptail-usage
+      description: shows your current Codex usage for the day and week, plus when each quota resets.
       should_escape: false
 oauth_config:
   scopes:
@@ -26,8 +36,10 @@ oauth_config:
       - files:write
       - groups:history
       - groups:read
-      - im:write
       - im:history
+      - im:write
+      - reactions:write
+      - mpim:history
 settings:
   event_subscriptions:
     bot_events:

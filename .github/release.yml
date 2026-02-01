@@ -1,0 +1,29 @@
+changelog:
+  categories:
+    - title: "🚨 Breaking changes"
+      labels:
+        - "release:major"
+
+    - title: "✨ Enhancements"
+      labels:
+        - "release:minor"
+        - "enhancement"
+
+    - title: "🐛 Bug fixes"
+      labels:
+        - "release:patch"
+        - "bug"
+
+    - title: "📚 Documentation"
+      labels:
+        - "documentation"
+
+    - title: "🧰 Maintenance"
+      labels:
+        - "release:none"
+
+  exclude:
+    labels:
+      - "duplicate"
+      - "invalid"
+      - "wontfix"

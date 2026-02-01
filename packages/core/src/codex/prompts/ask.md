@@ -6,15 +6,18 @@ Repositories are located under the job root:
 
 - {{this}}: repos/{{this}}
   {{/each}}
-  Answer with:
+
+Answer with:
+
 - Direct answer
 - Evidence (paths, symbols)
 - What is not supported
 - How to verify
-  Write the report to artifacts/report.md.
+
+Write the report to artifacts/report.md.
 
 {{#if threadContext}}
-Slack thread history (oldest to newest):
+Thread history (oldest to newest):
 {{threadContext}}
 
 {{/if}}

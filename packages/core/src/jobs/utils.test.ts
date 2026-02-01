@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/index.js', () => ({
+vi.mock('../config/config.js', () => ({
   loadCoreConfig: () => ({
     repoAllowlist: {
       'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },
     },
     jobWorkRoot: '/tmp/sniptail/job-root',
     jobRegistryPath: '/tmp/sniptail/registry',
+    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
+    jobRegistryDriver: 'sqlite',
   }),
 }));
 
@@ -36,7 +38,7 @@ describe('jobs/utils', () => {
       repoKeys: ['repo-one'],
       gitRef: 'main',
       requestText: 'Do the thing',
-      slack: { channelId: 'C123', userId: 'U123' },
+      channel: { provider: 'slack', channelId: 'C123', userId: 'U123' },
     };
 
     expect(() => validateJob(baseJob)).not.toThrow();
@@ -56,7 +58,7 @@ describe('jobs/utils', () => {
         repoKeys: [],
         gitRef: 'not-checked',
         requestText: 'Hey',
-        slack: { channelId: 'C123', userId: 'U123' },
+        channel: { provider: 'slack', channelId: 'C123', userId: 'U123' },
       }),
     ).not.toThrow();
   });

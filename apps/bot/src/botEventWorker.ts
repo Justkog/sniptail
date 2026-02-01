@@ -1,29 +1,83 @@
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import type { App } from '@slack/bolt';
+import type { Client } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
-import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/index.js';
+import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import { addReaction, postMessage, uploadFile } from './slack/helpers.js';
+import { postDiscordMessage, uploadDiscordFile } from './discord/helpers.js';
 
-export function startBotEventWorker(app: App, redisUrl: string) {
+type BotEventWorkerDeps = {
+  redisUrl: string;
+  slackApp?: App;
+  discordClient?: Client;
+};
+
+export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEventWorkerDeps) {
   const connection = createConnectionOptions(redisUrl);
   const worker = new Worker<BotEvent>(
     botEventQueueName,
     async (job) => {
       const event = job.data;
+      if (event.provider === 'slack') {
+        if (!slackApp) {
+          logger.warn({ event }, 'Slack bot event received without Slack app');
+          return;
+        }
+        switch (event.type) {
+          case 'postMessage':
+            await postMessage(slackApp, {
+              channel: event.payload.channelId,
+              text: event.payload.text,
+              ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
+              ...(event.payload.blocks ? { blocks: event.payload.blocks } : {}),
+            });
+            break;
+          case 'uploadFile':
+            await uploadFile(slackApp, {
+              channel: event.payload.channelId,
+              filePath: event.payload.filePath,
+              title: event.payload.title,
+              ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
+            });
+            break;
+          case 'addReaction':
+            await addReaction(slackApp, {
+              channel: event.payload.channelId,
+              name: event.payload.name,
+              timestamp: event.payload.timestamp,
+            });
+            break;
+          default:
+            logger.warn({ event }, 'Unknown Slack bot event received');
+        }
+        return;
+      }
+
+      if (!discordClient) {
+        logger.warn({ event }, 'Discord bot event received without Discord client');
+        return;
+      }
       switch (event.type) {
         case 'postMessage':
-          await postMessage(app, event.payload);
+          await postDiscordMessage(discordClient, {
+            channelId: event.payload.channelId,
+            text: event.payload.text,
+            ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+            ...(event.payload.components ? { components: event.payload.components } : {}),
+          });
           break;
         case 'uploadFile':
-          await uploadFile(app, event.payload);
-          break;
-        case 'addReaction':
-          await addReaction(app, event.payload);
+          await uploadDiscordFile(discordClient, {
+            channelId: event.payload.channelId,
+            filePath: event.payload.filePath,
+            title: event.payload.title,
+            ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+          });
           break;
         default:
-          logger.warn({ event }, 'Unknown bot event received');
+          logger.warn({ event }, 'Unknown Discord bot event received');
       }
     },
     { connection, concurrency: 4 },
