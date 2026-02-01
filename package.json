@@ -18,6 +18,7 @@
     "lint": "pnpm -r lint",
     "format": "pnpm -r format",
     "check": "pnpm -r check",
+    "slack:manifest": "node scripts/generate-slack-manifest.mjs",
     "db:generate:sqlite": "pnpm --filter @sniptail/core db:generate:sqlite",
     "db:migrate:sqlite": "pnpm --filter @sniptail/core db:migrate:sqlite",
     "db:generate:pg": "pnpm --filter @sniptail/core db:generate:pg",

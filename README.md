@@ -161,69 +161,13 @@ Optional:
 
 ### 6) Slack app setup
 
-Create a Slack app (Socket Mode enabled) and add the following manifest (edit the name if desired). The slash commands are derived from `sniptail.bot.toml` `[bot].bot_name` (default prefix is `sniptail`).
-
-To generate the manifest automatically, run:
+Create a Slack app (Socket Mode enabled), then generate the manifest from the template. The slash commands are derived from `sniptail.bot.toml` `[bot].bot_name` (default prefix is `sniptail`).
 
 ```bash
-node scripts/generate-slack-manifest.mjs "My Bot"
+pnpm run slack:manifest "My Bot"
 ```
 
 This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `[bot].bot_name` in `sniptail.bot.toml` and omit the argument.
-
-```yaml
-display_information:
-  name: sniptail
-features:
-  bot_user:
-    display_name: Sniptail
-    always_online: true
-  slash_commands:
-    - command: /sniptail-ask
-      description: Ask Sniptail to analyze one or more repos and return a Markdown report.
-      usage_hint: "[repo keys] [branch] [request text]"
-      should_escape: false
-    - command: /sniptail-plan
-      description: Ask Sniptail to plan a feature implementation across one or more repos.
-      usage_hint: "[repo keys] [branch] [request text]"
-      should_escape: false
-    - command: /sniptail-implement
-      description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
-      usage_hint: "[repos] [branch]"
-      should_escape: false
-    - command: /sniptail-bootstrap
-      description: Create a new repository and add it to the allowlist.
-      should_escape: false
-    - command: /sniptail-clear-before
-      description: Ask Sniptail to clear jobs data created before a certain date
-      should_escape: false
-    - command: /sniptail-usage
-      description: shows your current Codex usage for the day and week, plus when each quota resets.
-      should_escape: false
-oauth_config:
-  scopes:
-    bot:
-      - app_mentions:read
-      - channels:history
-      - chat:write
-      - commands
-      - files:write
-      - groups:history
-      - groups:read
-      - im:history
-      - im:write
-      - mpim:history
-      - reactions:write
-settings:
-  event_subscriptions:
-    bot_events:
-      - app_mention
-  interactivity:
-    is_enabled: true
-  org_deploy_enabled: false
-  socket_mode_enabled: true
-  token_rotation_enabled: false
-```
 
 After installing the app to your workspace, set:
 - `SLACK_BOT_TOKEN`
