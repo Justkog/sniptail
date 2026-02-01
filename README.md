@@ -1,7 +1,7 @@
 # Sniptail
 
 <p align="center">
-  <img src="images/Sniptail_square.jpg" alt="Sniptail logo" width="50%" />
+  <img src="images/Sniptail_square.jpg" alt="Sniptail logo" width="200px" style="border-radius: 24px;" />
 </p>
 
 Sniptail is a Slack and Discord bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
