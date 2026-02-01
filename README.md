@@ -8,6 +8,10 @@
 
 Sniptail is a Slack and Discord bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
+## Bot mention (quick demo)
+
+You can also mention the bot directly in a channel to kick off work without remembering a slash command. This is the simplest "wow" moment: mention the bot, ask a quick question, and it will casually check the configured repositories and answer in natural language right where it was mentioned.
+
 ## Chat Commands overview
 
 - `/sniptail-ask`: Generates a Markdown report, uploads it to Slack, and posts a completion message.
