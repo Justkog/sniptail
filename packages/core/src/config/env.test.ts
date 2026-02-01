@@ -21,7 +21,7 @@ describe('config loaders', () => {
 
     loadWorkerConfig();
 
-    expect(warnSpy).toHaveBeenCalledWith('OPENAI_API_KEY is not set. Codex jobs will likely fail.');
+    expect(warnSpy).toHaveBeenCalledWith('OPENAI_API_KEY is not set.');
   });
 
   it('requires both GitLab base URL and token when either is provided', () => {

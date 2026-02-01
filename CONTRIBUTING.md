@@ -67,6 +67,23 @@ See https://www.conventionalcommits.org/ for details on allowed `type` values.
 3. Ensure tests/checks pass (or note what you could not run).
 4. Open a PR targeting `staging` with a clear description and any screenshots
    or logs if relevant.
+5. If helpful, suggest a release-impact label (`release:patch|minor|major|none`)
+   in the PR description.
+
+## Pull request labels (release impact)
+
+We use pull request labels to drive versioning and GitHub release notes.
+
+Every PR merged into `staging` must have **exactly one** release-impact label:
+
+- `release:patch` — Bug fixes or internal changes with no user-visible impact
+- `release:minor` — New features or backward-compatible behavior changes
+- `release:major` — Breaking changes (config, commands, behavior, data formats)
+- `release:none` — Docs, refactors, CI, or changes that should not trigger a release
+
+Contributors do **not** need to apply labels themselves — maintainers will add or
+adjust the release label during review if needed. If you’re unsure which label
+applies, mention it in the PR description.
 
 ## Review process
 
