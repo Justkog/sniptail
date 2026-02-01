@@ -146,6 +146,7 @@ import {
   resolveMentionWorkingDirectory,
   runJob,
 } from './pipeline.js';
+import { BullMqBotEventSink } from './channels/botEventSink.js';
 
 describe('worker/pipeline helpers', () => {
   it('copyJobRootSeed skips when glob is empty', async () => {
@@ -355,7 +356,7 @@ describe('worker/pipeline runJob', () => {
     appendFileMock.mockResolvedValue(undefined);
 
     const botQueue = {} as Queue<BotEvent>;
-    const result = await runJob(botQueue, job);
+    const result = await runJob(new BullMqBotEventSink(botQueue), job);
 
     expect(result).toEqual({
       jobId: 'job-mention',

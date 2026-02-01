@@ -1,4 +1,3 @@
-import type { Queue } from 'bullmq';
 import {
   loadWorkerConfig,
   parseRepoAllowlist,
@@ -13,10 +12,10 @@ import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { createRepository } from '@sniptail/core/github/client.js';
 import { createProject } from '@sniptail/core/gitlab/client.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
+import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 
 const config = loadWorkerConfig();
@@ -36,13 +35,10 @@ function buildRepoDisplay(
   return `<${repoUrl}|${repoLabel}>`;
 }
 
-export async function runBootstrap(
-  botQueue: Queue<BotEvent>,
-  request: BootstrapRequest,
-): Promise<void> {
+export async function runBootstrap(events: BotEventSink, request: BootstrapRequest): Promise<void> {
   const responseChannel = request.channel.channelId;
   const userPrefix = formatUserMention(request.channel.userId);
-  const notifier = createNotifier(botQueue);
+  const notifier = createNotifier(events);
   const channelRef: ChannelRef = {
     provider: request.channel.provider,
     channelId: responseChannel,
