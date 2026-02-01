@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { loadCoreConfig } from '../config/index.js';
+import { loadCoreConfig } from '../config/config.js';
 import type { JobSpec } from '../types/job.js';
 
 const gitRefPattern = /^[A-Za-z0-9._/-]+$/;

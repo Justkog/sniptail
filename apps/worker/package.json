@@ -9,10 +9,12 @@
     "test": "vitest",
     "test:run": "vitest run",
     "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
-    "clean": "rm -rf dist",
-    "lint": "eslint .",
-    "format": "prettier . --write",
-    "check": "pnpm run lint && prettier . --check"
+    "run-job": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/run-job.ts",
+    "run-job:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/run-job.js",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "lint": "eslint . --ignore-pattern **/dist/**",
+    "format": "prettier . --ignore-path ../../.prettierignore --write",
+    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
   },
   "dependencies": {
     "@sniptail/core": "workspace:*",

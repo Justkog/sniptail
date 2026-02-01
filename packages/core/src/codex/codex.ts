@@ -4,10 +4,17 @@ import {
   type SandboxMode,
   type ThreadEvent,
   type ThreadItem,
+  type ThreadOptions,
 } from '@openai/codex-sdk';
 import { resolve } from 'node:path';
 import os from 'node:os';
-import { buildAskPrompt, buildImplementPrompt, buildMentionPrompt } from './prompts.js';
+import {
+  buildAskPrompt,
+  buildImplementPrompt,
+  buildMentionPrompt,
+  buildPlanPrompt,
+  buildReviewPrompt,
+} from './prompts.js';
 import type { JobSpec } from '../types/job.js';
 
 export type CodexRunResult = {
@@ -25,6 +32,7 @@ export type CodexRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  model?: string;
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;
@@ -78,7 +86,7 @@ export async function runCodex(
       ? { codexPathOverride: resolve(process.cwd(), 'scripts', 'codex-docker.sh') }
       : {}),
   });
-  const threadOptions = {
+  const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
     sandboxMode: options.sandboxMode ?? 'workspace-write',
@@ -92,6 +100,7 @@ export async function runCodex(
     ...(options.webSearchEnabled !== undefined
       ? { webSearchEnabled: options.webSearchEnabled }
       : {}),
+    ...(options.model && { model: options.model }),
   };
   const thread = options.resumeThreadId
     ? codex.resumeThread(options.resumeThreadId, threadOptions)
@@ -103,7 +112,11 @@ export async function runCodex(
       ? buildAskPrompt(job, botName)
       : job.type === 'IMPLEMENT'
         ? buildImplementPrompt(job, botName)
-        : buildMentionPrompt(job, botName);
+        : job.type === 'PLAN'
+          ? buildPlanPrompt(job, botName)
+          : job.type === 'REVIEW'
+            ? buildReviewPrompt(job, botName)
+            : buildMentionPrompt(job, botName);
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;

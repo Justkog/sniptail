@@ -4,28 +4,51 @@ export type BotEventBase = {
 
 export type BotEvent =
   | (BotEventBase & {
+      provider: 'slack';
       type: 'postMessage';
       payload: {
-        channel: string;
+        channelId: string;
         text: string;
-        threadTs?: string;
+        threadId?: string;
         blocks?: unknown[];
       };
     })
   | (BotEventBase & {
+      provider: 'slack';
       type: 'uploadFile';
       payload: {
-        channel: string;
+        channelId: string;
         filePath: string;
         title: string;
-        threadTs?: string;
+        threadId?: string;
       };
     })
   | (BotEventBase & {
+      provider: 'slack';
       type: 'addReaction';
       payload: {
-        channel: string;
+        channelId: string;
         name: string;
         timestamp: string;
+      };
+    })
+  | (BotEventBase & {
+      provider: 'discord';
+      type: 'postMessage';
+      payload: {
+        channelId: string;
+        text: string;
+        threadId?: string;
+        components?: unknown[];
+      };
+    })
+  | (BotEventBase & {
+      provider: 'discord';
+      type: 'uploadFile';
+      payload: {
+        channelId: string;
+        filePath: string;
+        title: string;
+        threadId?: string;
       };
     });
