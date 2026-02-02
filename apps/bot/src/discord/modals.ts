@@ -1,5 +1,7 @@
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   LabelBuilder,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -7,6 +9,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
+import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
@@ -16,6 +19,16 @@ export const answerQuestionsModalCustomId = 'answer_questions_modal';
 export const implementRepoSelectCustomId = 'implement_repo_select';
 export const implementModalCustomId = 'implement_modal';
 export const bootstrapModalCustomId = 'bootstrap_modal';
+export const bootstrapVisibilitySelectCustomId = 'bootstrap_visibility_select';
+export const bootstrapQuickstartSelectCustomId = 'bootstrap_quickstart_select';
+export const bootstrapServiceSelectCustomId = 'bootstrap_service_select';
+export const bootstrapContinueButtonCustomId = 'bootstrap_continue';
+
+export type BootstrapExtrasSelection = {
+  service: RepoBootstrapService;
+  visibility: 'private' | 'public';
+  quickstart: boolean;
+};
 
 export function buildImplementRepoSelect(repoKeys: string[]) {
   const options = repoKeys.map((key) =>
@@ -176,7 +189,9 @@ export function buildAnswerQuestionsModal(botName: string, openQuestions: string
   return modal;
 }
 
-export function buildBootstrapModal(botName: string) {
+export function buildBootstrapModal(
+  botName: string,
+) {
   const modal = new ModalBuilder()
     .setCustomId(bootstrapModalCustomId)
     .setTitle(`${botName} Bootstrap`);
@@ -184,11 +199,6 @@ export function buildBootstrapModal(botName: string) {
   const repoNameInput = new TextInputBuilder()
     .setCustomId('repo_name')
     .setStyle(TextInputStyle.Short);
-
-  const serviceInput = new TextInputBuilder()
-    .setCustomId('service')
-    .setStyle(TextInputStyle.Short)
-    .setValue('github');
 
   const repoKeyInput = new TextInputBuilder()
     .setCustomId('repo_key')
@@ -200,6 +210,11 @@ export function buildBootstrapModal(botName: string) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
 
+  const descriptionInput = new TextInputBuilder()
+    .setCustomId('description')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false);
+
   const extrasInput = new TextInputBuilder()
     .setCustomId('extras')
     .setStyle(TextInputStyle.Paragraph)
@@ -207,20 +222,79 @@ export function buildBootstrapModal(botName: string) {
 
   modal.addLabelComponents(
     new LabelBuilder().setLabel('Repository name').setTextInputComponent(repoNameInput),
-    new LabelBuilder()
-      .setLabel('Service (github | gitlab | local)')
-      .setTextInputComponent(serviceInput),
     new LabelBuilder().setLabel('Allowlist key (optional)').setTextInputComponent(repoKeyInput),
     new LabelBuilder().setLabel('Owner/namespace (optional)').setTextInputComponent(ownerInput),
     new LabelBuilder()
+      .setLabel('Description (optional)')
+      .setTextInputComponent(descriptionInput),
+    new LabelBuilder()
       .setLabel('Extras (optional)')
-      .setDescription(
-        'description=..., visibility=private|public, quickstart=true|false, gitlab_namespace_id=123, local_path=path',
-      )
+      .setDescription('gitlab_namespace_id=123, local_path=path')
       .setTextInputComponent(extrasInput),
   );
 
   return modal;
+}
+
+export function buildBootstrapExtrasPrompt(
+  botName: string,
+  selection: BootstrapExtrasSelection,
+  services: RepoBootstrapService[],
+) {
+  const serviceSelect = new StringSelectMenuBuilder()
+    .setCustomId(bootstrapServiceSelectCustomId)
+    .setPlaceholder('Select service')
+    .addOptions(
+      services.map((service) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(`Service: ${service}`)
+          .setValue(service)
+          .setDefault(selection.service === service),
+      ),
+    );
+
+  const visibilitySelect = new StringSelectMenuBuilder()
+    .setCustomId(bootstrapVisibilitySelectCustomId)
+    .setPlaceholder('Select visibility')
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel('Visibility: private')
+        .setValue('private')
+        .setDefault(selection.visibility === 'private'),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('Visibility: public')
+        .setValue('public')
+        .setDefault(selection.visibility === 'public'),
+    );
+
+  const quickstartSelect = new StringSelectMenuBuilder()
+    .setCustomId(bootstrapQuickstartSelectCustomId)
+    .setPlaceholder('Select quickstart')
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel('Quickstart: false')
+        .setValue('false')
+        .setDefault(!selection.quickstart),
+      new StringSelectMenuOptionBuilder()
+        .setLabel('Quickstart: true')
+        .setValue('true')
+        .setDefault(selection.quickstart),
+    );
+
+  const continueButton = new ButtonBuilder()
+    .setCustomId(bootstrapContinueButtonCustomId)
+    .setStyle(ButtonStyle.Primary)
+    .setLabel('Continue');
+
+  return {
+    content: `${botName} bootstrap options`,
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(serviceSelect),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(visibilitySelect),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(quickstartSelect),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
+    ],
+  };
 }
 
 export function buildImplementModal(

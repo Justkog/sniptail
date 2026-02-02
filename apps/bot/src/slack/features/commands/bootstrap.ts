@@ -1,10 +1,10 @@
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { resolveBootstrapServices } from '../../lib/bootstrap.js';
 import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 import { buildRepoBootstrapModal } from '../../modals.js';
 
-export function registerBootstrapCommand({ app, slackIds, config }: SlackAppContext) {
+export function registerBootstrapCommand({ app, slackIds, config }: SlackHandlerContext) {
   app.command(slackIds.commands.bootstrap, async ({ ack, body, client }) => {
     await ack();
     const dedupeKey = `${body.team_id}:${body.trigger_id}:bootstrap`;

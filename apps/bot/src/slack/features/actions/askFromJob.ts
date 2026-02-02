@@ -1,7 +1,7 @@
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { buildAskModal } from '../../modals.js';
 
-export function registerAskFromJobAction({ app, slackIds, config }: SlackAppContext) {
+export function registerAskFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.askFromJob, async ({ ack, body, client, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();

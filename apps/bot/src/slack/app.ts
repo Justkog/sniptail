@@ -1,29 +1,12 @@
-import { App, type CodedError } from '@slack/bolt';
+import { App } from '@slack/bolt';
 import type { Queue } from 'bullmq';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
-import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import { registerClearBeforeCommand } from './features/commands/clearBefore.js';
-import { registerAskCommand } from './features/commands/ask.js';
-import { registerPlanCommand } from './features/commands/plan.js';
-import { registerBootstrapCommand } from './features/commands/bootstrap.js';
-import { registerImplementCommand } from './features/commands/implement.js';
-import { registerUsageCommand } from './features/commands/usage.js';
-import { registerAskFromJobAction } from './features/actions/askFromJob.js';
-import { registerClearJobAction } from './features/actions/clearJob.js';
-import { registerAnswerQuestionsAction } from './features/actions/answerQuestions.js';
-import { registerImplementFromJobAction } from './features/actions/implementFromJob.js';
-import { registerReviewFromJobAction } from './features/actions/reviewFromJob.js';
-import { registerWorktreeCommandsAction } from './features/actions/worktreeCommands.js';
-import { registerAppMentionEvent } from './features/events/appMention.js';
-import { registerAskSubmitView } from './features/views/askSubmit.js';
-import { registerPlanSubmitView } from './features/views/planSubmit.js';
-import { registerAnswerQuestionsSubmitView } from './features/views/answerQuestionsSubmit.js';
-import { registerBootstrapSubmitView } from './features/views/bootstrapSubmit.js';
-import { registerImplementSubmitView } from './features/views/implementSubmit.js';
+import type { SlackHandlerContext } from './features/context.js';
+import { registerSlackHandlers } from './handlers.js';
 
 export function createSlackApp(
   queue: Queue<JobSpec>,
@@ -44,7 +27,7 @@ export function createSlackApp(
     socketMode: true,
   });
 
-  const context = {
+  const context: SlackHandlerContext = {
     app,
     slackIds,
     config,
@@ -53,29 +36,7 @@ export function createSlackApp(
     workerEventQueue,
   };
 
-  registerAskCommand(context);
-  registerPlanCommand(context);
-  registerImplementCommand(context);
-  registerBootstrapCommand(context);
-  registerClearBeforeCommand(context);
-  registerUsageCommand(context);
-  registerAskFromJobAction(context);
-  registerImplementFromJobAction(context);
-  registerReviewFromJobAction(context);
-  registerWorktreeCommandsAction(context);
-  registerClearJobAction(context);
-  registerAnswerQuestionsAction(context);
-  registerAppMentionEvent(context);
-  registerBootstrapSubmitView(context);
-  registerAskSubmitView(context);
-  registerPlanSubmitView(context);
-  registerAnswerQuestionsSubmitView(context);
-  registerImplementSubmitView(context);
-
-  // eslint-disable-next-line @typescript-eslint/require-await
-  app.error(async (err: CodedError) => {
-    logger.error({ err }, 'Slack app error');
-  });
+  registerSlackHandlers(context);
 
   return app;
 }

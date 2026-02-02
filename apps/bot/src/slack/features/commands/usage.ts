@@ -1,8 +1,8 @@
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 
-export function registerUsageCommand({ app, slackIds }: SlackAppContext) {
+export function registerUsageCommand({ app, slackIds }: SlackHandlerContext) {
   app.command(slackIds.commands.usage, async ({ ack, body, client }) => {
     await ack({
       response_type: 'ephemeral',
