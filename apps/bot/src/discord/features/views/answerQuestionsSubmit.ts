@@ -1,6 +1,6 @@
 import type { ModalSubmitInteraction } from 'discord.js';
 import type { Queue } from 'bullmq';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
@@ -12,10 +12,9 @@ import { postDiscordJobAcceptance } from '../../lib/threads.js';
 
 export async function handleAnswerQuestionsSubmit(
   interaction: ModalSubmitInteraction,
+  config: BotConfig,
   queue: Queue<JobSpec>,
 ) {
-  const config = loadBotConfig();
-
   const selection = answerQuestionsByUser.get(interaction.user.id);
   if (!selection) {
     await interaction.reply({

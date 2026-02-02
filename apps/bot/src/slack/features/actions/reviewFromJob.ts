@@ -2,11 +2,11 @@ import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { loadJobRecord, saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 
-export function registerReviewFromJobAction({ app, slackIds, config, queue }: SlackAppContext) {
+export function registerReviewFromJobAction({ app, slackIds, config, queue }: SlackHandlerContext) {
   app.action(slackIds.actions.reviewFromJob, async ({ ack, body, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();

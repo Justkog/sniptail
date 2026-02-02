@@ -3,6 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "exports": {
+    "./handlers": {
+      "types": "./dist/handlers.d.ts",
+      "default": "./dist/handlers.js"
+    }
+  },
   "scripts": {
     "dev": "DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/index.ts",
     "build": "tsc -p tsconfig.build.json",

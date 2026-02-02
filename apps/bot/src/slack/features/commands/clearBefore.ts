@@ -1,6 +1,6 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { parseCutoffDateInput } from '../../lib/parsing.js';
 
 export function registerClearBeforeCommand({
@@ -8,7 +8,7 @@ export function registerClearBeforeCommand({
   slackIds,
   config,
   workerEventQueue,
-}: SlackAppContext) {
+}: SlackHandlerContext) {
   app.command(slackIds.commands.clearBefore, async ({ ack, body, client }) => {
     const userId = body.user_id;
     if (!userId || !config.adminUserIds.includes(userId)) {
