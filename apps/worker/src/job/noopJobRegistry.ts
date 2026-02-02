@@ -23,7 +23,7 @@ export class NoopJobRegistry implements JobRegistry {
     return [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async deleteJobRecords(_jobIds: string[]): Promise<void> {}
 
   // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars

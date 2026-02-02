@@ -1,8 +1,5 @@
 export function parseBootstrapExtras(value: string) {
   const extras: {
-    description?: string;
-    visibility?: 'private' | 'public';
-    quickstart?: boolean;
     gitlabNamespaceId?: number;
     localPath?: string;
   } = {};
@@ -19,17 +16,7 @@ export function parseBootstrapExtras(value: string) {
     const rawValue = rest.join('=')?.trim();
     if (!key || !rawValue) continue;
 
-    if (key === 'description') {
-      extras.description = rawValue;
-    } else if (key === 'visibility') {
-      const normalized = rawValue.toLowerCase();
-      if (normalized === 'private' || normalized === 'public') {
-        extras.visibility = normalized;
-      }
-    } else if (key === 'quickstart') {
-      const normalized = rawValue.toLowerCase();
-      extras.quickstart = ['true', 'yes', '1', 'y'].includes(normalized);
-    } else if (key === 'gitlab_namespace_id') {
+    if (key === 'gitlab_namespace_id') {
       const parsed = Number.parseInt(rawValue, 10);
       if (!Number.isNaN(parsed)) {
         extras.gitlabNamespaceId = parsed;

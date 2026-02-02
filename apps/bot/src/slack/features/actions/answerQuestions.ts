@@ -1,10 +1,10 @@
 import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { buildAnswerQuestionsModal } from '../../modals.js';
 
-export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackAppContext) {
+export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.answerQuestions, async ({ ack, body, action, client }) => {
     await ack();
 

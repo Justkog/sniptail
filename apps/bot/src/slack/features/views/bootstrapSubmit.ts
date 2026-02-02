@@ -4,7 +4,7 @@ import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
@@ -14,7 +14,7 @@ export function registerBootstrapSubmitView({
   slackIds,
   bootstrapQueue,
   config,
-}: SlackAppContext) {
+}: SlackHandlerContext) {
   app.view(slackIds.actions.bootstrapSubmit, async ({ ack, body, view, client }) => {
     const state = view.state.values;
     const metadata = view.private_metadata
