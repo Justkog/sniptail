@@ -1,5 +1,4 @@
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 
 export function buildCommandNames(prefix: string) {
@@ -15,11 +14,11 @@ export function buildCommandNames(prefix: string) {
 export async function registerDiscordCommands(
   appId: string,
   token: string,
+  botName: string,
   guildId?: string,
-  botName?: string,
 ) {
   const rest = new REST({ version: '10' }).setToken(token);
-  const prefix = toSlackCommandPrefix(botName ?? loadBotConfig().botName);
+  const prefix = toSlackCommandPrefix(botName);
   const names = buildCommandNames(prefix);
 
   const slashCommands = [

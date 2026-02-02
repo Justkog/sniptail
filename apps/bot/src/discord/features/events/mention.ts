@@ -1,6 +1,6 @@
 import type { Message } from 'discord.js';
 import type { Queue } from 'bullmq';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
@@ -12,12 +12,11 @@ import { dedupe } from '../../../slack/lib/dedupe.js';
 
 const defaultGitRef = 'main';
 
-export async function handleMention(message: Message, queue: Queue<JobSpec>) {
+export async function handleMention(message: Message, config: BotConfig, queue: Queue<JobSpec>) {
   if (!message.mentions.has(message.client.user)) {
     return;
   }
 
-  const config = loadBotConfig();
   const dedupeKey = `${message.channelId}:${message.id}:mention`;
   if (dedupe(dedupeKey)) return;
 

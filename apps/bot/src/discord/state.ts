@@ -8,3 +8,12 @@ export const implementSelectionByUser = new Map<
   string,
   { repoKeys: string[]; requestedAt: number }
 >();
+export const bootstrapExtrasByUser = new Map<
+  string,
+  {
+    service: 'github' | 'gitlab' | 'local';
+    visibility: 'private' | 'public';
+    quickstart: boolean;
+    requestedAt: number;
+  }
+>();
