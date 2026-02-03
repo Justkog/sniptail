@@ -189,9 +189,7 @@ export function buildAnswerQuestionsModal(botName: string, openQuestions: string
   return modal;
 }
 
-export function buildBootstrapModal(
-  botName: string,
-) {
+export function buildBootstrapModal(botName: string) {
   const modal = new ModalBuilder()
     .setCustomId(bootstrapModalCustomId)
     .setTitle(`${botName} Bootstrap`);
@@ -224,9 +222,7 @@ export function buildBootstrapModal(
     new LabelBuilder().setLabel('Repository name').setTextInputComponent(repoNameInput),
     new LabelBuilder().setLabel('Allowlist key (optional)').setTextInputComponent(repoKeyInput),
     new LabelBuilder().setLabel('Owner/namespace (optional)').setTextInputComponent(ownerInput),
-    new LabelBuilder()
-      .setLabel('Description (optional)')
-      .setTextInputComponent(descriptionInput),
+    new LabelBuilder().setLabel('Description (optional)').setTextInputComponent(descriptionInput),
     new LabelBuilder()
       .setLabel('Extras (optional)')
       .setDescription('gitlab_namespace_id=123, local_path=path')

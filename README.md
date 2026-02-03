@@ -25,6 +25,13 @@ You can also mention the bot directly in a channel to kick off work without reme
 
 Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack/Discord + Codex/Github_Copilot + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
+> **Sniptail is source-available, self-hostable, and free to use and modify.**
+>
+> We are actively working on **Sniptail Cloud**, a hosted and managed offering for teams that want to use Sniptail without running bots, queues, or workers themselves.
+>
+> Sniptail Cloud is **not available yet**. If you’re interested in early access or updates, you can join the waitlist here: **[\[link\]](https://forms.gle/r5XiMVScEniHkcTVA)**
+
+
 ### Mediums (chat surfaces)
 
 | Medium | Status | Notes |
@@ -176,6 +183,8 @@ Optional:
 
 Create a Slack app (Socket Mode enabled), then generate the manifest from the template. The slash commands are derived from `sniptail.bot.toml` `[bot].bot_name` (default prefix is `sniptail`).
 
+See `docs/slack-bot-setup.md` for step-by-step instructions to create the Slack app, enable Socket Mode, generate the manifest, and set `SLACK_*` settings.
+
 ```bash
 pnpm run slack:manifest "My Bot"
 ```
@@ -186,6 +195,10 @@ After installing the app to your workspace, set:
 - `SLACK_BOT_TOKEN`
 - `SLACK_APP_TOKEN`
 - `SLACK_SIGNING_SECRET`
+
+### 6b) Discord bot setup
+
+See `docs/discord-bot-setup.md` for step-by-step instructions to create a Discord application/bot, enable required intents, invite it to your server, and configure `DISCORD_*` settings.
 
 ### 7) Run the bot
 
@@ -217,3 +230,78 @@ pnpm run start
 - `packages/core/src/codex/`: Codex SDK integration and execution
 - `packages/core/src/config/env.ts`: env var schema + validation
 - `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)
+
+## License
+
+Sniptail is licensed under the Elastic License v2.
+
+You are free to:
+- Use Sniptail for personal or internal business purposes
+- Self-host Sniptail
+- Modify the source code
+- Distribute unmodified or modified copies
+
+You may not:
+- Offer Sniptail as a hosted or managed service to third parties
+- Provide Sniptail as part of a commercial SaaS offering without permission
+
+If you are interested in a hosted or managed version, see Sniptail Cloud.
+
+
+## Sniptail Cloud (Hosted & Managed)
+
+We are building **Sniptail Cloud**, a hosted and managed version of Sniptail for teams that want the benefits of Sniptail without operating the underlying infrastructure.
+
+Sniptail Cloud is intended to provide:
+
+- A **hosted Slack / Discord bot**
+- Managed job coordination (queues, state, retries)
+- A web dashboard for configuration, usage, and history
+- Optional **fully managed workers** (no servers to run)
+- Upgrades, monitoring, and operational reliability handled for you
+
+Sniptail Cloud is currently under active development and is **not yet publicly available**.
+
+### Source-available vs Cloud
+
+Sniptail is designed to be usable in multiple ways.
+
+- The **core Sniptail engine** (bot, worker, agents, integrations) is source-available, self-hostable, and free to use and modify under the Elastic License v2.
+- **Sniptail Cloud** (in development) will add a managed control plane, hosted bots, and optional managed execution.
+
+When Sniptail Cloud becomes available, teams will be able to:
+- self-host everything
+- use a hosted bot while running their own workers
+- or use a fully managed setup with no self-hosted components
+
+Self-hosting will remain a supported and valid way to run Sniptail.
+
+### Starting Open, Moving to Cloud (Later)
+
+Many teams may start by self-hosting Sniptail and later look for ways to reduce operational overhead.
+
+Sniptail Cloud is being designed to make that transition straightforward:
+- configurations and repo allowlists will map directly
+- workflows and chat commands will stay the same
+- moving to Cloud will not require changes to how your team uses Sniptail day to day
+
+Using Sniptail Cloud will be optional.
+
+## FAQ
+
+**Is Sniptail Cloud available today?**  
+No. Sniptail Cloud is currently under development.
+
+**Do I need Sniptail Cloud to use Sniptail?**  
+No. Sniptail is fully usable as a self-hosted, source-available tool.
+
+**Will the source-available version be limited in the future?**  
+No. The core Sniptail engine will remain source-available. Sniptail Cloud focuses on hosting, orchestration, and operational convenience.
+
+**Why mention Sniptail Cloud now?**  
+To be transparent about the project’s direction and to gather early feedback from teams interested in a managed offering.
+
+---
+
+Interested in a hosted or managed version of Sniptail?  
+👉 **Join the Sniptail Cloud waitlist:** **[\[link\]](https://forms.gle/r5XiMVScEniHkcTVA)**
