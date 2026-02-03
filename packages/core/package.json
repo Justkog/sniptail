@@ -1,7 +1,9 @@
 {
   "name": "@sniptail/core",
   "private": true,
-  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "../../LICENSE",
+  "version": "0.1.0",
   "type": "module",
   "files": [
     "dist"

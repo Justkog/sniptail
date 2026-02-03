@@ -1,7 +1,9 @@
 {
   "name": "@sniptail/worker",
   "private": true,
-  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "../../LICENSE",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/index.ts",

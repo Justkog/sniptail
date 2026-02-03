@@ -1,6 +1,8 @@
 {
   "name": "sniptail",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "LICENSE",
   "type": "module",
   "packageManager": "pnpm@10.5.0",
   "workspaces": [
