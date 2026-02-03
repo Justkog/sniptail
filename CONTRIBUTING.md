@@ -92,3 +92,5 @@ We follow standard GitHub practices:
 - Address review comments with follow-up commits or amendments.
 - Keep discussions in the PR so changes are traceable.
 - Once approved and checks pass, maintainers will merge to `staging`.
+
+By submitting a contribution, you agree that your contribution will be licensed under the Elastic License v2.

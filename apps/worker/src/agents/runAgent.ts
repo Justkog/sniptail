@@ -46,7 +46,10 @@ export async function runAgentJob(options: {
     {
       botName: config.botName,
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
-      ...(modelOverride ? { model: modelOverride } : {}),
+      ...(modelOverride ? { model: modelOverride.model } : {}),
+      ...(modelOverride?.modelReasoningEffort
+        ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
+        : {}),
       onEvent: async (event) => {
         if (agent.formatEvent) {
           try {

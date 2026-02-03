@@ -84,10 +84,17 @@ idle_retries = 2
 
 [copilot.models]
 # Optional per-command model overrides.
-# Keys: ASK, IMPLEMENT, MENTION. Values: model identifiers.
-# ASK = "gpt-5-mini"
-# IMPLEMENT = "gpt-5"
-# MENTION = "gpt-5-mini"
+# Keys: ASK, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Each entry is a table with:
+# - model (required): model identifier
+# - model_reasoning_effort (optional): minimal | low | medium | high | xhigh
+#
+# [copilot.models.ASK]
+# model = "gpt-5-mini"
+# model_reasoning_effort = "low"
+#
+# [copilot.models.IMPLEMENT]
+# model = "gpt-5"
 
 [codex]
 # Execution mode for OpenAI Codex agent.
@@ -108,10 +115,17 @@ execution_mode = "local"
 
 [codex.models]
 # Optional per-command model overrides.
-# Keys: ASK, IMPLEMENT, MENTION. Values: model identifiers.
-# ASK = "gpt-5-mini"
-# IMPLEMENT = "gpt-5"
-# MENTION = "gpt-5-mini"
+# Keys: ASK, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Each entry is a table with:
+# - model (required): model identifier
+# - model_reasoning_effort (optional): minimal | low | medium | high | xhigh
+#
+# [codex.models.ASK]
+# model = "gpt-5-mini"
+# model_reasoning_effort = "medium"
+#
+# [codex.models.IMPLEMENT]
+# model = "gpt-5"
 
 [github]
 # GitHub API base URL.
