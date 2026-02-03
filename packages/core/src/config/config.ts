@@ -8,4 +8,4 @@ export {
   resolveGitHubConfig,
   resolveGitLabConfig,
 } from './env.js';
-export type { BotConfig, CoreConfig, WorkerConfig } from './types.js';
+export type { BotConfig, CoreConfig, WorkerConfig, JobModelConfig } from './types.js';

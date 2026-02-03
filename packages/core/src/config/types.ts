@@ -1,6 +1,12 @@
 import type { RepoConfig, AgentId, JobType } from '../types/job.js';
 import type { GitHubConfig } from '../github/client.js';
 import type { GitLabConfig } from '../gitlab/client.js';
+import type { ModelReasoningEffort } from '@openai/codex-sdk';
+
+export type JobModelConfig = {
+  model: string;
+  modelReasoningEffort?: ModelReasoningEffort;
+};
 
 export type CoreConfig = {
   repoAllowlistPath: string;
@@ -45,7 +51,7 @@ export type WorkerConfig = CoreConfig & {
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;
-    models?: Partial<Record<JobType, string>>;
+    models?: Partial<Record<JobType, JobModelConfig>>;
   };
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
@@ -59,7 +65,7 @@ export type WorkerConfig = CoreConfig & {
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;
-    models?: Partial<Record<JobType, string>>;
+    models?: Partial<Record<JobType, JobModelConfig>>;
   };
 };
 

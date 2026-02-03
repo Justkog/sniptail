@@ -1,7 +1,7 @@
 import { logger } from '../logger.js';
 import type { TomlTable } from './toml.js';
 import { loadTomlConfig, getTomlTable, getTomlString, getTomlNumber } from './toml.js';
-import type { CoreConfig, BotConfig, WorkerConfig } from './types.js';
+import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
   BOT_CONFIG_PATH_ENV,
@@ -50,19 +50,54 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   const entries = Object.entries(modelsToml);
   if (!entries.length) return undefined;
   const allowed = new Set<JobType>(['ASK', 'IMPLEMENT', 'PLAN', 'REVIEW', 'MENTION']);
-  const models: Partial<Record<JobType, string>> = {};
+  const allowedEfforts = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+  const models: Partial<Record<JobType, JobModelConfig>> = {};
+
+  function parseEffort(value: unknown, name: string) {
+    const raw = getTomlString(value, name);
+    const trimmed = raw?.trim();
+    if (!trimmed) return undefined;
+    if (!allowedEfforts.has(trimmed)) {
+      throw new Error(
+        `Invalid ${name} in TOML. Expected one of: minimal, low, medium, high, xhigh.`,
+      );
+    }
+    return trimmed as JobModelConfig['modelReasoningEffort'];
+  }
+
   for (const [key, value] of entries) {
     if (!allowed.has(key as JobType)) {
       throw new Error(
         `Invalid ${label} key: ${key}. Expected ASK, IMPLEMENT, PLAN, REVIEW, MENTION.`,
       );
     }
-    const rawModel = getTomlString(value, `${label}.${key}`);
+
+    if (typeof value === 'string') {
+      const model = value.trim();
+      if (!model) {
+        throw new Error(`Invalid ${label}.${key} in TOML. Expected a non-empty string.`);
+      }
+      models[key as JobType] = { model };
+      continue;
+    }
+
+    const modelToml = getTomlTable(value, `${label}.${key}`);
+    if (!modelToml) {
+      throw new Error(`Invalid ${label}.${key} in TOML. Expected a table.`);
+    }
+    const rawModel = getTomlString(modelToml.model, `${label}.${key}.model`);
     const model = rawModel?.trim();
     if (!model) {
-      throw new Error(`Invalid ${label}.${key} in TOML. Expected a non-empty string.`);
+      throw new Error(`Invalid ${label}.${key}.model in TOML. Expected a non-empty string.`);
     }
-    models[key as JobType] = model;
+    const modelReasoningEffort = parseEffort(
+      modelToml.model_reasoning_effort,
+      `${label}.${key}.model_reasoning_effort`,
+    );
+    models[key as JobType] = {
+      model,
+      ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
+    };
   }
   return Object.keys(models).length ? models : undefined;
 }

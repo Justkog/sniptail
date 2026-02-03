@@ -1,6 +1,7 @@
 import {
   Codex,
   type ApprovalMode,
+  type ModelReasoningEffort,
   type SandboxMode,
   type ThreadEvent,
   type ThreadItem,
@@ -33,6 +34,7 @@ export type CodexRunOptions = {
   botName?: string;
   resumeThreadId?: string;
   model?: string;
+  modelReasoningEffort?: ModelReasoningEffort;
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;
@@ -101,6 +103,7 @@ export async function runCodex(
       ? { webSearchEnabled: options.webSearchEnabled }
       : {}),
     ...(options.model && { model: options.model }),
+    ...(options.modelReasoningEffort && { modelReasoningEffort: options.modelReasoningEffort }),
   };
   const thread = options.resumeThreadId
     ? codex.resumeThread(options.resumeThreadId, threadOptions)

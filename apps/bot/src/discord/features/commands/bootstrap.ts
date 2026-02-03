@@ -16,7 +16,7 @@ export async function handleBootstrapStart(
   }
 
   const selection = {
-    service: config.bootstrapServices[0],
+    service: config.bootstrapServices[0]!,
     visibility: 'private' as const,
     quickstart: false,
   };
