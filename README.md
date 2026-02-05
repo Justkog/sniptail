@@ -90,6 +90,16 @@ Sniptail is a PNPM monorepo with two apps and one shared package:
 
 ## Installation (step by step)
 
+### 0) Quick install (prebuilt release)
+
+If you want a prebuilt release with the `sniptail` CLI, you can use the one-liner installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+```
+
+This installs into `~/.sniptail` and links the CLI into `~/.local/bin`. Set `SNIPTAIL_REPO` to your fork if needed.
+
 ### 1) Install and run dependencies
 
 - Install Node.js, Redis, Git, and SSH keys for repo access.
@@ -189,6 +199,12 @@ See `docs/slack-bot-setup.md` for step-by-step instructions to create the Slack 
 pnpm run slack:manifest "My Bot"
 ```
 
+Or with the CLI:
+
+```bash
+sniptail slack-manifest --name "My Bot"
+```
+
 This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `[bot].bot_name` in `sniptail.bot.toml` and omit the argument.
 
 After installing the app to your workspace, set:
@@ -212,6 +228,13 @@ For production:
 ```bash
 pnpm run build
 pnpm run start
+```
+
+If you installed the CLI, you can run the bot/worker directly:
+
+```bash
+sniptail bot --config ./sniptail.bot.toml --env ./.env
+sniptail worker --config ./sniptail.worker.toml --env ./.env
 ```
 
 ## Repo execution notes
