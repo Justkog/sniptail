@@ -24,6 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: "pnpm"
 
       - name: Enable pnpm (Corepack)
         run: corepack enable && corepack install
@@ -32,7 +33,7 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           # With packageManager set, you can omit version
-          cache: true
+          run_install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
