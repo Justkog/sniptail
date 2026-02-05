@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release assets (${{ matrix.os_name }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    if: startsWith(github.event.release.tag_name, 'v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_name: linux
+            arch: x64
+          - os: macos-13
+            os_name: darwin
+            arch: x64
+          - os: macos-latest
+            os_name: darwin
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag name
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
+            echo "Invalid release tag: ${tag}"
+            echo "Expected v<major>.<minor>.<patch> (optionally with suffix)."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.0
+          run_install: false
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          name="sniptail-v${version}-${{ matrix.os_name }}-${{ matrix.arch }}"
+          root="release/${name}"
+
+          mkdir -p "${root}"
+
+          # App dist
+          mkdir -p "${root}/apps/bot" "${root}/apps/worker"
+          cp -R apps/bot/dist "${root}/apps/bot/"
+          cp -R apps/worker/dist "${root}/apps/worker/"
+          cp -R apps/worker/scripts "${root}/apps/worker/"
+
+          # Core + CLI dist
+          mkdir -p "${root}/packages/core" "${root}/packages/cli"
+          cp -R packages/core/dist "${root}/packages/core/"
+          cp -R packages/cli/dist "${root}/packages/cli/"
+          cp packages/cli/package.json "${root}/packages/cli/"
+
+          # Runtime scripts + templates
+          mkdir -p "${root}/scripts"
+          cp scripts/register-loaders.mjs "${root}/scripts/"
+          cp scripts/md-raw-loader.mjs "${root}/scripts/"
+          cp scripts/generate-slack-manifest.mjs "${root}/scripts/"
+          cp scripts/slack-app-manifest.template.yaml "${root}/scripts/"
+
+          # Config + docs
+          cp sniptail.bot.toml sniptail.worker.toml "${root}/"
+          cp .env.example "${root}/"
+          cp README.md LICENSE "${root}/"
+          mkdir -p "${root}/docs"
+          cp docs/slack-bot-setup.md docs/discord-bot-setup.md "${root}/docs/"
+          cp Dockerfile.codex Dockerfile.copilot "${root}/"
+
+          # Optional allowlist example
+          cat > "${root}/repo-allowlist.example.json" <<'JSON'
+          {
+            "example-repo": {
+              "sshUrl": "git@gitlab.com:org/repo.git",
+              "projectId": 12345
+            }
+          }
+          JSON
+
+          # CLI wrapper
+          mkdir -p "${root}/bin"
+          cat > "${root}/bin/sniptail" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+          export SNIPTAIL_ROOT="${ROOT_DIR}"
+          exec node "${ROOT_DIR}/packages/cli/dist/index.js" "$@"
+          SH
+          chmod +x "${root}/bin/sniptail"
+
+          tar -czf "${name}.tar.gz" -C release "${name}"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${name}.tar.gz" > "${name}.sha256"
+          else
+            sha256sum "${name}.tar.gz" > "${name}.sha256"
+          fi
+
+      - name: Upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sniptail-v*.tar.gz
+            sniptail-v*.sha256
