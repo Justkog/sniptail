@@ -4,16 +4,16 @@
 
 [core]
 # Path to the repo allowlist JSON file.
-# Required. No default. Example: "/srv/sniptail/allowlist.json"
-repo_allowlist_path = "/srv/sniptail/allowlist.json"
+# Required. No default. Example: "$HOME/.sniptail/allowlist.json"
+repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 
 # Path to the job working root.
-# Required. No default. Example: "/srv/sniptail/jobs"
-job_work_root = "/srv/sniptail/jobs"
+# Required. No default. Example: "$HOME/.sniptail/jobs"
+job_work_root = "$HOME/.sniptail/jobs"
 
 # Path to the job registry database file (used for sqlite).
-# Required. No default. Example: "/srv/sniptail/job-registry"
-job_registry_path = "/srv/sniptail/job-registry"
+# Required. No default. Example: "$HOME/.sniptail/job-registry"
+job_registry_path = "$HOME/.sniptail/job-registry"
 
 # Registry backend: "sqlite" or "pg".
 # Optional. Default: "sqlite". Example: "pg"
@@ -37,17 +37,17 @@ primary_agent = "codex"
 redis_url = "redis://localhost:6379"
 
 # Root directory for cached repos.
-# Required. No default. Example: "/srv/sniptail/repo-cache"
-repo_cache_root = "/srv/sniptail/repo-cache"
+# Required. No default. Example: "$HOME/.sniptail/repo-cache"
+repo_cache_root = "$HOME/.sniptail/repo-cache"
 
 # Root directory for local repo bootstraps. When set, local paths must be relative
 # to this root.
-# Optional. No default. Example: "/srv/sniptail/local-repos"
-# local_repo_root = "/srv/sniptail/local-repos"
+# Optional. No default. Example: "$HOME/.sniptail/local-repos"
+# local_repo_root = "$HOME/.sniptail/local-repos"
 
 # Optional glob of paths to copy into each job root.
-# Optional. No default. Example: "/srv/sniptail/common/**"
-# job_root_copy_glob = "/srv/sniptail/common/**"
+# Optional. No default. Example: "$HOME/.sniptail/common/**"
+# job_root_copy_glob = "$HOME/.sniptail/common/**"
 
 # Cleanup jobs past a max age (duration string like "30m", "12h", "7d").
 # Optional. No default. Example: "7d"

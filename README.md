@@ -100,6 +100,12 @@ curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | 
 
 This installs into `~/.sniptail` and links the CLI into `~/.local/bin`. Set `SNIPTAIL_REPO` to your fork if needed.
 
+To test an already-built local release tarball, point the installer at it:
+
+```bash
+SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
+```
+
 ### 1) Install and run dependencies
 
 - Install Node.js, Redis, Git, and SSH keys for repo access.

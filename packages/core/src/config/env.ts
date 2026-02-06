@@ -20,6 +20,7 @@ import {
   resolveCodexExecutionMode,
   resolveOptionalFlagFromSources,
   resolveStringArrayFromSources,
+  resolvePathValue,
   resolveStringValue,
 } from './resolve.js';
 import { parseRepoAllowlist } from './repoAllowlist.js';
@@ -103,7 +104,7 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
 }
 
 function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
-  const repoAllowlistPath = resolveStringValue(
+  const repoAllowlistPath = resolvePathValue(
     'REPO_ALLOWLIST_PATH',
     coreToml?.repo_allowlist_path,
     {
@@ -117,10 +118,10 @@ function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
   return {
     repoAllowlistPath: repoAllowlistPath as string,
     repoAllowlist,
-    jobWorkRoot: resolveStringValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
+    jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
       required: true,
     }) as string,
-    jobRegistryPath: resolveStringValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
+    jobRegistryPath: resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
       required: true,
     }) as string,
     jobRegistryDriver,
@@ -253,7 +254,7 @@ export function loadWorkerConfig(): WorkerConfig {
     'codex.models',
   );
 
-  const jobRootCopyGlob = resolveStringValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
+  const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
   const cleanupMaxAge = resolveStringValue('CLEANUP_MAX_AGE', workerToml?.cleanup_max_age);
   const cleanupMaxEntriesEnv = process.env.CLEANUP_MAX_ENTRIES?.trim();
   let cleanupMaxEntries = getTomlNumber(
@@ -281,7 +282,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const redisUrl = resolveStringValue('REDIS_URL', workerToml?.redis_url, {
     required: true,
   }) as string;
-  const localRepoRoot = resolveStringValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
+  const localRepoRoot = resolvePathValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
 
   workerConfigCache = {
     ...core,
@@ -300,7 +301,7 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),
     ...(github && { github }),
-    repoCacheRoot: resolveStringValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
+    repoCacheRoot: resolvePathValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
       required: true,
     }) as string,
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
