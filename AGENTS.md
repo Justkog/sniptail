@@ -3,6 +3,7 @@
 ## Project overview
 - Sniptail is a Slack bot that queues and runs Codex-backed jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
 - Entry points: `apps/bot/src/index.ts` starts the Slack app (Socket Mode) and `apps/worker/src/index.ts` starts the worker.
+- Deployment model: `apps/bot` and `apps/worker` are intended to run on different machines and must not rely on any shared filesystem between them.
 
 ## Stack
 - Node.js + TypeScript (ESM), PNPM workspaces

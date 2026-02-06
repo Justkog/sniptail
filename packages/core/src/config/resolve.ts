@@ -1,5 +1,6 @@
 import { getTomlNumber, getTomlString, getTomlStringArray } from './toml.js';
 import type { AgentId } from '../types/job.js';
+import os from 'node:os';
 
 export function requireEnv(name: string): string {
   const value = process.env[name];
@@ -55,6 +56,27 @@ export function resolveStringValue(
   if (options.defaultValue !== undefined) return options.defaultValue;
   if (options.required) throw new Error(`Missing required config: ${envName}`);
   return undefined;
+}
+
+function expandHomePath(value: string): string {
+  const home = os.homedir();
+  if (value === '~') return home;
+  if (value.startsWith('~/')) return `${home}/${value.slice(2)}`;
+  if (value === '$HOME') return home;
+  if (value.startsWith('$HOME/')) return `${home}/${value.slice(6)}`;
+  if (value === '${HOME}') return home;
+  if (value.startsWith('${HOME}/')) return `${home}/${value.slice(8)}`;
+  return value;
+}
+
+export function resolvePathValue(
+  envName: string,
+  tomlValue: unknown,
+  options: { required?: boolean; defaultValue?: string } = {},
+): string | undefined {
+  const raw = resolveStringValue(envName, tomlValue, options);
+  if (!raw) return raw;
+  return expandHomePath(raw);
 }
 
 export function resolveStringArrayFromSources(envName: string, tomlValue: unknown): string[] {
