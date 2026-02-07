@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadBotConfig, loadCoreConfig, loadWorkerConfig, resetConfigCaches } from './env.js';
+import { loadBotConfig, loadWorkerConfig, resetConfigCaches } from './env.js';
 import { logger } from '../logger.js';
-import { applyRequiredEnv, writeAllowlist } from '../../tests/helpers/env.js';
+import { applyRequiredEnv } from '../../tests/helpers/env.js';
 
 describe('config loaders', () => {
   afterEach(() => {
@@ -32,27 +32,13 @@ describe('config loaders', () => {
     );
   });
 
-  it('throws when repo allowlist entries are missing sshUrl or localPath', () => {
-    const allowlistPath = writeAllowlist({
-      'repo-one': { projectId: 123 },
-    });
-    applyRequiredEnv({ REPO_ALLOWLIST_PATH: allowlistPath });
-
-    expect(() => loadCoreConfig()).toThrow(
-      'Repo allowlist entry missing sshUrl or localPath for repo-one.',
-    );
-  });
-
-  it('loads bot config with defaults and parsed allowlist', () => {
+  it('loads bot config with defaults', () => {
     applyRequiredEnv({ BOT_NAME: '  ' });
     const config = loadBotConfig();
 
     expect(config.botName).toBe('Sniptail');
     expect(config.debugJobSpecMessages).toBe(false);
-    expect(config.repoAllowlist['repo-one']).toEqual({
-      sshUrl: 'git@example.com:org/repo.git',
-      projectId: 123,
-    });
+    expect(config.repoAllowlist).toEqual({});
   });
 
   it('enables job spec messages when debug flag is set', () => {

@@ -11,7 +11,7 @@ export function registerImplementCommand({ app, slackIds, config }: SlackHandler
       return;
     }
 
-    refreshRepoAllowlist(config);
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildImplementModal(

@@ -4,7 +4,8 @@
 
 [core]
 # Path to the repo allowlist JSON file.
-# Required. No default. Example: "$HOME/.sniptail/allowlist.json"
+# Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
+# When set, worker startup can seed an empty DB catalog from this file.
 repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 
 # Path to the job working root.

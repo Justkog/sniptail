@@ -13,7 +13,7 @@ export async function handleWorktreeCommandsButton(
   jobId: string,
   config: BotConfig,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for worktree commands');

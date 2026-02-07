@@ -15,7 +15,7 @@ export async function handleBootstrapModalSubmit(
   config: BotConfig,
   queue: Queue<BootstrapRequest>,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const repoName = interaction.fields.getTextInputValue('repo_name').trim();
   const repoKeyInput = interaction.fields.getTextInputValue('repo_key').trim();
