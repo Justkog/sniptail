@@ -5,7 +5,7 @@ import type { Client } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
-import { addReaction, postMessage, uploadFile } from './slack/helpers.js';
+import { addReaction, postEphemeral, postMessage, uploadFile } from './slack/helpers.js';
 import { postDiscordMessage, uploadDiscordFile } from './discord/helpers.js';
 
 type BotEventWorkerDeps = {
@@ -47,6 +47,15 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
               channel: event.payload.channelId,
               name: event.payload.name,
               timestamp: event.payload.timestamp,
+            });
+            break;
+          case 'postEphemeral':
+            await postEphemeral(slackApp, {
+              channel: event.payload.channelId,
+              user: event.payload.userId,
+              text: event.payload.text,
+              ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
+              ...(event.payload.blocks ? { blocks: event.payload.blocks } : {}),
             });
             break;
           default:

@@ -23,6 +23,27 @@ export async function postMessage(
   return app.client.chat.postMessage(payload);
 }
 
+export async function postEphemeral(
+  app: App,
+  options: {
+    channel: string;
+    user: string;
+    text: string;
+    threadTs?: string;
+    blocks?: unknown[];
+  },
+) {
+  const payload = {
+    channel: options.channel,
+    user: options.user,
+    text: options.text,
+    ...(options.threadTs && { thread_ts: options.threadTs }),
+    ...(options.blocks && { blocks: options.blocks }),
+  };
+
+  return app.client.chat.postEphemeral(payload);
+}
+
 export async function uploadFile(
   app: App,
   options: {

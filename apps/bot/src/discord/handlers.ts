@@ -132,7 +132,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     try {
       if (interaction.commandName === commandNames.usage) {
-        await handleUsage(interaction);
+        await handleUsage(interaction, workerEventQueue);
       }
     } catch (err) {
       logger.error({ err, command: interaction.commandName }, 'Discord command failed');

@@ -52,7 +52,7 @@ const workerEventWorker = new Worker<WorkerEvent>(
   workerEventQueueName,
   async (job) => {
     logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
-    await handleWorkerEvent(job.data, jobRegistry);
+    await handleWorkerEvent(job.data, jobRegistry, botEvents);
   },
   { connection, concurrency: 2 },
 );
