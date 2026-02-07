@@ -106,13 +106,7 @@ else
   fi
 fi
 
-ROOT_ENTRY=""
-while IFS= read -r entry; do
-  if [[ -z "${ROOT_ENTRY}" ]]; then
-    ROOT_ENTRY="${entry}"
-  fi
-done < <(tar -tzf "${TARBALL_PATH}")
-
+ROOT_ENTRY="$(tar -tzf "${TARBALL_PATH}" | head -n 1)"
 if [[ -z "${ROOT_ENTRY}" ]]; then
   fail "Tarball is empty or unreadable: ${TARBALL_PATH}"
 fi
