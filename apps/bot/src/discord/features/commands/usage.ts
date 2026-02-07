@@ -14,6 +14,8 @@ export async function handleUsage(
       payload: {
         provider: 'discord',
         channelId: interaction.channelId,
+        interactionToken: interaction.token,
+        interactionApplicationId: interaction.applicationId,
       },
     });
     await interaction.editReply('Checking Codex usage...');

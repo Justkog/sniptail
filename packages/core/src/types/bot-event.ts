@@ -62,4 +62,13 @@ export type BotEvent =
         title: string;
         threadId?: string;
       };
+    })
+  | (BotEventBase & {
+      provider: 'discord';
+      type: 'editInteractionReply';
+      payload: {
+        interactionToken: string;
+        interactionApplicationId: string;
+        text: string;
+      };
     });

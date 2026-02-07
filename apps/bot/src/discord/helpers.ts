@@ -7,6 +7,7 @@ import {
   type TextBasedChannel,
   AttachmentBuilder,
   ChannelType,
+  Routes,
 } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 
@@ -22,6 +23,12 @@ type DiscordFileOptions = {
   filePath: string;
   title: string;
   threadId?: string;
+};
+
+type DiscordInteractionReplyOptions = {
+  interactionToken: string;
+  interactionApplicationId: string;
+  text: string;
 };
 
 export type SendableTextChannel = Exclude<TextBasedChannel, PartialGroupDMChannel>;
@@ -80,4 +87,18 @@ export async function uploadDiscordFile(client: Client, options: DiscordFileOpti
     logger.error({ err }, 'Failed to upload Discord file');
     throw err;
   }
+}
+
+export async function editDiscordInteractionReply(
+  client: Client,
+  options: DiscordInteractionReplyOptions,
+) {
+  await client.rest.patch(
+    Routes.webhookMessage(
+      options.interactionApplicationId,
+      options.interactionToken,
+      '@original',
+    ),
+    { body: { content: options.text } },
+  );
 }
