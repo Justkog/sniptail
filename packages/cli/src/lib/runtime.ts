@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 import { runNode } from './exec.js';
-import { pathExists, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
+import { pathExists, pathIsDirectory, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
 
 type RuntimeOptions = {
   app: 'bot' | 'worker';
@@ -34,7 +34,14 @@ export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
     throw new Error(`${options.app} build not found at ${entryPath}. Run "pnpm run build" first.`);
   }
 
-  const envPath = resolveOptionalPath(options.envPath ? baseCwd : root, options.envPath ?? '.env');
+  const resolvedEnvPath = resolveOptionalPath(
+    options.envPath ? baseCwd : root,
+    options.envPath ?? '.env',
+  );
+  const envPath =
+    resolvedEnvPath && pathIsDirectory(resolvedEnvPath)
+      ? resolve(resolvedEnvPath, '.env')
+      : resolvedEnvPath;
 
   return {
     root,

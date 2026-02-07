@@ -66,7 +66,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 ## How it works (high level)
 
 1. A user triggers a slash command or mentions the bot in Slack or Discord.
-2. The bot queues a job in Redis and records metadata in a local job registry.
+2. The bot queues a job in Redis and records metadata in the configured job registry (Redis recommended).
 3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex or Copilot).
 4. Results are posted back to Slack or Discord as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
@@ -81,41 +81,116 @@ Sniptail is a PNPM monorepo with two apps and one shared package:
 ## Dependencies
 
 - Node.js (tested with Node 22)
-- PNPM (workspace tooling)
-- Redis (for job queue)
+- Redis (required; used for job queue and recommended job registry)
+- PNPM (workspace tooling; only needed when running from source)
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `sniptail.worker.toml` sets `[codex].execution_mode = "local"`, e.g. `npm install -g @openai/codex`)
 - Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"`, e.g. `npm install -g @github/copilot`)
 - Docker (required when `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`)
 
-## Installation (step by step)
+## Installation
 
-### 0) Quick install (prebuilt release)
+### Operators / quickstart (prebuilt release + `sniptail` CLI)
 
-If you want a prebuilt release with the `sniptail` CLI, you can use the one-liner installer:
+This path is intended for people who want to run Sniptail, not hack on it locally. You’ll use `install.sh` + the `sniptail` CLI (no `pnpm` required).
+
+#### 0) Install prerequisites
+
+- Node.js
+- Redis (**mandatory**)
+- Git + SSH access to your repos (worker needs this)
+- One of:
+  - Codex/Copilot CLI in `PATH` (when using `execution_mode = "local"`), or
+  - Docker (when using `execution_mode = "docker"`)
+
+#### 1) Install Sniptail (`install.sh`)
+
+Use the one-liner installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
 ```
 
-This installs into `~/.sniptail` and links the CLI into `~/.local/bin`. Set `SNIPTAIL_REPO` to your fork if needed.
+This installs into `~/.sniptail` and links the CLI into `~/.local/bin`.
 
-To test an already-built local release tarball, point the installer at it:
+#### 2) Configure Redis (URL + optional overrides)
+
+Sniptail uses two TOML config files so the bot and worker can be run on different machines.
+By default, the installer runs Sniptail with the config files located in the install root:
+
+- `sniptail.bot.toml`
+- `sniptail.worker.toml`
+
+If you installed via `install.sh`, these live at `~/.sniptail/current/sniptail.bot.toml` and `~/.sniptail/current/sniptail.worker.toml`.
+
+Redis is mandatory, and the defaults are set up so the **job queue** and the **job registry** use Redis.
+
+To point Sniptail at your Redis instance, either:
+
+- set `REDIS_URL` in your `.env` (recommended), or
+- edit `redis_url` in both `sniptail.bot.toml` (`[bot].redis_url`) and `sniptail.worker.toml` (`[worker].redis_url`).
+
+Optional: if you want the job registry to use a different Redis than the queue, set `JOB_REGISTRY_REDIS_URL` (or set `[core].job_registry_redis_url` in TOML).
+
+If you want to keep the TOML files somewhere else (for example so upgrades don’t overwrite them), pass `--config` or set:
+- `SNIPTAIL_BOT_CONFIG_PATH`
+- `SNIPTAIL_WORKER_CONFIG_PATH`
+
+#### 3) Configure environment variables
+
+Start from `.env.example` (from the repo, or `~/.sniptail/current/.env.example` if you installed via `install.sh`) and set at least:
 
 ```bash
-SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
+cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
 ```
 
-### 1) Install and run dependencies
+- Slack (only if enabled):
+  - `SLACK_BOT_TOKEN`
+  - `SLACK_APP_TOKEN` (Socket Mode app-level token)
+  - `SLACK_SIGNING_SECRET`
+- Discord (only if enabled):
+  - `DISCORD_BOT_TOKEN`
+- Worker (required in practice for most setups):
+  - `GITLAB_TOKEN` (for GitLab merge requests)
+  - `GITHUB_API_TOKEN` (for GitHub PR creation)
 
-- Install Node.js, Redis, Git, and SSH keys for repo access.
-- If using `sniptail.worker.toml` `[codex].execution_mode = "local"`, install the Codex CLI so `codex` is available in `PATH`.
-- If using `[codex].execution_mode = "docker"`, install and run Docker.
+#### 4) Choose local vs docker agent execution
 
-### 2) Seed the repo catalog (optional, recommended for first boot)
+In `sniptail.worker.toml`, configure:
 
-Sniptail stores the allowlist in the configured job-registry backend (sqlite/pg/redis).  
-You can still start from a JSON file (ex: `repo-allowlist.json`) by setting `repo_allowlist_path` in `sniptail.worker.toml` `[core]` (or `REPO_ALLOWLIST_PATH` in env). On worker startup, Sniptail seeds the DB when the catalog is empty.
+- `[codex].execution_mode = "local"` or `"docker"`
+- `[copilot].execution_mode = "local"` or `"docker"`
+
+When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it’s available in `PATH`. When using `"docker"`, ensure Docker is available and configure the relevant docker settings in the TOML.
+
+#### 5) Slack / Discord setup
+
+See `docs/slack-bot-setup.md` and `docs/discord-bot-setup.md`.
+
+To generate a Slack manifest from the template:
+
+```bash
+sniptail slack-manifest --name "My Bot"
+```
+
+This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the current directory.
+
+#### 6) Seed the repository catalog
+
+The repo allowlist is stored in the configured job registry backend (sqlite/pg/redis). With the default Redis registry, this also means bot + worker can run on different machines without any shared filesystem.
+
+The quickest way to seed entries is with the CLI:
+
+```bash
+sniptail repos add my-api --ssh-url git@github.com:org/my-api.git
+sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git --project-id 12345
+sniptail repos add local-tools --local-path /srv/repos/local-tools
+sniptail repos list
+```
+
+You can also seed from a JSON file by setting `repo_allowlist_path` in `sniptail.worker.toml` `[core]` (or `REPO_ALLOWLIST_PATH` in env). On worker startup, Sniptail seeds the registry catalog when it is empty.
+
+Example allowlist JSON:
 
 ```json
 {
@@ -139,124 +214,84 @@ Notes:
 - Use `sshUrl` or `localPath` for every entry.
 - `localPath` points at a local repo source on the same machine.
 - `projectId` is required for GitLab merge requests.
-- `baseBranch` is optional; it is used as the default branch in Slack modals.
-- After the first seed, bot and worker read the shared catalog from the configured registry backend (no shared filesystem required).
+- `baseBranch` is optional; it is used as the default branch behind the scene.
 
-To force DB -> file reconciliation on a worker host:
+To reconcile the registry catalog back into the allowlist file:
 
 ```bash
-pnpm --filter @sniptail/worker sync-allowlist-file
+sniptail repos sync-file
 ```
 
-### 3) Configure TOML files
+#### 7) Run bot + worker
 
-Sniptail uses two TOML config files so the bot and worker can be run on different machines.
-For multi-machine deployments, use a shared Postgres registry (`[core].job_registry_db = "pg"`) or Redis-backed job records (`[core].job_registry_db = "redis"`).
+```bash
+sniptail bot
+sniptail worker
+```
 
-Default paths:
-- `./sniptail.bot.toml`
-- `./sniptail.worker.toml`
+### Developers / contributors (clone the repo)
 
-Override paths with env vars:
-- `SNIPTAIL_BOT_CONFIG_PATH`
-- `SNIPTAIL_WORKER_CONFIG_PATH`
+This path is intended for local development and contributions.
 
-The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (coding agent execution modes for Codex/Copilot, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths, including optional allowlist seed path).
+#### 1) Clone and install
 
-Each agent can still be fully customized (skills, MCP servers, and more) by inheriting the home or repository configurations.
+```bash
+git clone git@github.com:Justkog/sniptail.git
+cd sniptail
+pnpm install
+cp .env.example .env
+```
 
-If you run with Postgres (`[core].job_registry_db = "pg"`), apply migrations:
+#### 2) Configure Redis + job registry backend
+
+Redis is still mandatory (queue). For the job registry, you can:
+
+- use the same Redis instance (recommended, set `[core].job_registry_db = "redis"`), or
+- use sqlite for single-machine/local experiments (`[core].job_registry_db = "sqlite"`), or
+- use Postgres for shared state (`[core].job_registry_db = "pg"` + `JOB_REGISTRY_PG_URL`)
+
+#### 3) Postgres migrations (optional)
+
+If you use Postgres for the job registry, apply migrations:
 
 ```bash
 pnpm run db:migrate:pg
 ```
 
-### 4) Configure environment variables
-
-Required (secrets):
-- `SLACK_BOT_TOKEN`
-- `SLACK_APP_TOKEN` (Socket Mode app-level token)
-- `SLACK_SIGNING_SECRET`
-- `DISCORD_BOT_TOKEN` (if Discord is enabled)
-
-Worker secrets:
-- `OPENAI_API_KEY` (required in practice for Codex execution)
-- `GITLAB_TOKEN` (required for GitLab merge requests)
-- `GITHUB_API_TOKEN` (required to create GitHub PRs)
-- `JOB_REGISTRY_PG_URL` (required only when using Postgres registry)
-- `JOB_REGISTRY_REDIS_URL` (optional override when using Redis registry; falls back to `REDIS_URL`)
-
-Optional:
-- `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)
-- `LOCAL_REPO_ROOT` (optional; when set, local bootstrap paths are relative to this root)
-
-### 5) Choose local vs docker Codex execution
-
-- `[codex].execution_mode = "local"`
-  - Runs Codex directly on the host.
-  - Requires `@openai/codex` available in `PATH` and local tooling installed.
-- `[codex].execution_mode = "docker"`
-  - Runs Codex inside a container via `scripts/codex-docker.sh`.
-  - Useful for consistent tooling and sandboxed execution.
-  - Adds extra security isolation as long as the agent is not explicitly trying to jailbreak out of the container.
-  - Configure `[codex].dockerfile_path`, `[codex].docker_image`, and `[codex].docker_build_context` if you want the image to auto-build.
-
-### 5b) Choose local vs docker Copilot execution
-
-- `[copilot].execution_mode = "local"`
-  - Runs Copilot CLI directly on the host.
-  - Requires `@github/copilot` available in `PATH`.
-- `[copilot].execution_mode = "docker"`
-  - Runs Copilot CLI inside a container via `apps/worker/scripts/copilot-docker.sh`.
-  - Adds extra security isolation as long as the agent is not explicitly trying to jailbreak out of the container.
-  - Configure `[copilot].dockerfile_path`, `[copilot].docker_image`, and `[copilot].docker_build_context` if you want the image to auto-build.
-
-### 6) Slack app setup
-
-Create a Slack app (Socket Mode enabled), then generate the manifest from the template. The slash commands are derived from `sniptail.bot.toml` `[bot].bot_name` (default prefix is `sniptail`).
-
-See `docs/slack-bot-setup.md` for step-by-step instructions to create the Slack app, enable Socket Mode, generate the manifest, and set `SLACK_*` settings.
+#### 4) Run in dev
 
 ```bash
-pnpm run slack:manifest "My Bot"
-```
-
-Or with the CLI:
-
-```bash
-sniptail slack-manifest --name "My Bot"
-```
-
-This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manifest.yaml` in the repo root. If you prefer, set `[bot].bot_name` in `sniptail.bot.toml` and omit the argument.
-
-After installing the app to your workspace, set:
-- `SLACK_BOT_TOKEN`
-- `SLACK_APP_TOKEN`
-- `SLACK_SIGNING_SECRET`
-
-### 6b) Discord bot setup
-
-See `docs/discord-bot-setup.md` for step-by-step instructions to create a Discord application/bot, enable required intents, invite it to your server, and configure `DISCORD_*` settings.
-
-### 7) Run the bot
-
-```bash
-pnpm install
 pnpm run dev
 ```
 
-For production:
+#### 5) Build + run (production)
 
 ```bash
 pnpm run build
 pnpm run start
 ```
 
-If you installed the CLI, you can run the bot/worker directly:
+#### 6) Custom Dockerfiles (optional)
+
+When `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`, you can point the worker at non-default Dockerfiles (instead of `./Dockerfile.codex` and `./Dockerfile.copilot`) by setting:
+
+- `sniptail.worker.toml`: `[codex].dockerfile_path` / `[copilot].dockerfile_path` (plus optional `docker_image` and `docker_build_context`), or
+- env vars (override TOML): `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`, `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, `GH_COPILOT_DOCKER_BUILD_CONTEXT`
+
+#### 7) Use installed CLI against a local checkout (optional)
+
+You can still use the installed CLI against your local checkout by pointing it at your config and env files.
+
+#### 8) Installer overrides (optional)
+
+Advanced installer options (useful for testing or forks):
 
 ```bash
-sniptail bot --config ./sniptail.bot.toml --env ./.env
-sniptail worker --config ./sniptail.worker.toml --env ./.env
+SNIPTAIL_REPO=your-org/sniptail curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+SNIPTAIL_VERSION=vX.Y.Z curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh -o install.sh
+chmod +x ./install.sh
+SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
 ```
 
 ## Repo execution notes
@@ -264,17 +299,6 @@ sniptail worker --config ./sniptail.worker.toml --env ./.env
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
-
-## Key paths
-
-- `apps/bot/src/index.ts`: Slack app bootstrap (Socket Mode)
-- `apps/worker/src/index.ts`: worker bootstrap
-- `packages/core/src/slack/`: Slack commands, modals, and event handlers
-- `packages/core/src/queue/`: BullMQ queue wiring
-- `packages/core/src/git/`: Git operations and repo management
-- `packages/core/src/codex/`: Codex SDK integration and execution
-- `packages/core/src/config/env.ts`: env var schema + validation
-- `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)
 
 ## License
 

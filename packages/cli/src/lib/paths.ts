@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,4 +49,12 @@ export function resolveOptionalPath(base: string, input?: string | null): string
 
 export function pathExists(path: string): boolean {
   return existsSync(path);
+}
+
+export function pathIsDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
