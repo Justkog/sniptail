@@ -58,7 +58,7 @@ export function resolveStringValue(
   return undefined;
 }
 
-function expandHomePath(value: string): string {
+export function expandHomePath(value: string): string {
   const home = os.homedir();
   if (value === '~') return home;
   if (value.startsWith('~/')) return `${home}/${value.slice(2)}`;

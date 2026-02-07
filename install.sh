@@ -106,7 +106,7 @@ else
   fi
 fi
 
-ROOT_ENTRY="$(tar -tzf "${TARBALL_PATH}" | head -n 1)"
+ROOT_ENTRY="$(tar -tzf "${TARBALL_PATH}" | sed -n '1p')"
 if [[ -z "${ROOT_ENTRY}" ]]; then
   fail "Tarball is empty or unreadable: ${TARBALL_PATH}"
 fi

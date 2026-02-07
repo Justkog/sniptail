@@ -13,6 +13,8 @@
     "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
     "run-job": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/run-job.ts",
     "run-job:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/run-job.js",
+    "repos": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/repos.ts",
+    "repos:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/repos.js",
     "sync-allowlist-file": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/sync-allowlist-file.ts",
     "sync-allowlist-file:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/sync-allowlist-file.js",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",

@@ -2,7 +2,7 @@ import { parseRepoAllowlist, writeRepoAllowlist } from '../config/repoAllowlist.
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
 import { getRepoCatalogStore } from './catalogStore.js';
-import type { RepoRow } from './catalogTypes.js';
+import type { RepoProvider, RepoRow } from './catalogTypes.js';
 
 export type { RepoProvider } from './catalogTypes.js';
 
@@ -22,6 +22,35 @@ function inferProvider(repo: RepoConfig): 'github' | 'gitlab' | 'local' {
     );
   }
   return 'github';
+}
+
+function validateRepoForProvider(provider: RepoProvider, repo: RepoConfig): void {
+  if (provider === 'local') {
+    if (!repo.localPath) {
+      throw new Error('Local repositories require localPath.');
+    }
+    if (repo.sshUrl) {
+      throw new Error('Local repositories must not define sshUrl.');
+    }
+    if (repo.projectId !== undefined) {
+      throw new Error('Local repositories must not define projectId.');
+    }
+    return;
+  }
+
+  if (!repo.sshUrl) {
+    throw new Error('Remote repositories require sshUrl.');
+  }
+  if (repo.localPath) {
+    throw new Error('Remote repositories must not define localPath.');
+  }
+
+  if (provider === 'github' && repo.projectId !== undefined) {
+    throw new Error('GitHub repositories must not define projectId.');
+  }
+  if (provider === 'gitlab' && repo.projectId === undefined) {
+    throw new Error('GitLab repositories require projectId.');
+  }
 }
 
 function toRepoConfig(row: RepoRow): RepoConfig {
@@ -65,14 +94,27 @@ export async function loadRepoAllowlistFromCatalog(): Promise<Record<string, Rep
   }, {});
 }
 
-export async function upsertRepoCatalogEntry(repoKey: string, repo: RepoConfig): Promise<void> {
+export async function listRepoCatalogEntries(): Promise<RepoRow[]> {
+  return sanitizeRepoRows(await listRepoRows());
+}
+
+export async function findRepoCatalogEntry(repoKey: string): Promise<RepoRow | undefined> {
+  const rows = await listRepoCatalogEntries();
+  return rows.find((row) => row.repoKey === repoKey);
+}
+
+export async function upsertRepoCatalogEntry(
+  repoKey: string,
+  repo: RepoConfig,
+  options: { provider?: RepoProvider; isActive?: boolean } = {},
+): Promise<void> {
   const normalized = normalizeRecord(repo);
-  const provider = inferProvider(normalized);
+  const provider = options.provider ?? inferProvider(normalized);
+  validateRepoForProvider(provider, normalized);
   const store = await getRepoCatalogStore();
 
-  // Prioritize localPath over sshUrl to match worker behavior and satisfy DB constraint
-  const hasLocalPath = Boolean(normalized.localPath);
-  const shouldUseSshUrl = !hasLocalPath && Boolean(normalized.sshUrl);
+  const hasLocalPath = provider === 'local' && Boolean(normalized.localPath);
+  const shouldUseSshUrl = provider !== 'local' && Boolean(normalized.sshUrl);
 
   await store.upsertRow({
     repoKey,
@@ -81,8 +123,26 @@ export async function upsertRepoCatalogEntry(repoKey: string, repo: RepoConfig):
     ...(hasLocalPath ? { localPath: normalized.localPath } : {}),
     ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
     baseBranch: normalizeBaseBranch(normalized.baseBranch),
-    isActive: true,
+    isActive: options.isActive ?? true,
   });
+}
+
+export async function deactivateRepoCatalogEntry(repoKey: string): Promise<boolean> {
+  const existing = await findRepoCatalogEntry(repoKey);
+  if (!existing) {
+    return false;
+  }
+  await upsertRepoCatalogEntry(
+    repoKey,
+    {
+      ...(existing.sshUrl ? { sshUrl: existing.sshUrl } : {}),
+      ...(existing.localPath ? { localPath: existing.localPath } : {}),
+      ...(existing.projectId !== undefined ? { projectId: existing.projectId } : {}),
+      baseBranch: existing.baseBranch,
+    },
+    { provider: existing.provider, isActive: false },
+  );
+  return true;
 }
 
 async function seedRepoCatalogFromAllowlist(

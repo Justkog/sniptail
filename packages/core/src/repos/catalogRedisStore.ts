@@ -107,5 +107,8 @@ export function createRedisRepoCatalogStore(redisUrl: string): RepoCatalogStore 
       const client = await getClient(connection);
       await client.set(toRedisKey(row.repoKey), JSON.stringify(row));
     },
+    async close(): Promise<void> {
+      await connection.close();
+    },
   };
 }

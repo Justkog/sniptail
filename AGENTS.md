@@ -3,6 +3,7 @@
 ## Project overview
 - Sniptail is a Slack bot that queues and runs Codex-backed jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
 - Entry points: `apps/bot/src/index.ts` starts the Slack app (Socket Mode) and `apps/worker/src/index.ts` starts the worker.
+- CLI entrypoint: `packages/cli/src/index.ts` provides the `sniptail` command and delegates runtime commands to bot/worker dist entrypoints.
 - Deployment model: `apps/bot` and `apps/worker` are intended to run on different machines and must not rely on any shared filesystem between them.
 
 ## Stack
@@ -30,12 +31,16 @@
 - `apps/worker/src/merge-requests/`: PR/MR creation + description helpers
 - `apps/worker/src/channels/`: notification abstraction (Slack notifier today)
 - `apps/worker/src/slack/`: Slack-specific payload helpers
+- `apps/worker/src/cli/`: worker-side CLI entrypoints (`run-job`, `sync-allowlist-file`, `repos`)
 - `packages/core/src/repos/catalog.ts`: repository catalog storage (DB-backed allowlist + seed/sync helpers)
 - `packages/core/src/slack/`: Slack commands, modals, and event handlers
 - `packages/core/src/queue/`: BullMQ queue wiring
 - `packages/core/src/git/`: Git operations and repo management
 - `packages/core/src/codex/`: Codex SDK integration and execution
 - `packages/core/src/config/env.ts`: env var schema + validation
+- `packages/cli/src/index.ts`: top-level CLI registration (`bot`, `worker`, `run-job`, `repos`, `slack-manifest`)
+- `packages/cli/src/lib/runtime.ts`: shared runtime launcher used by CLI commands to invoke app entrypoints
+- `packages/cli/src/commands/repos.ts`: operator-facing repository catalog management command surface
 - `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)
 
 For multi-machine deployments, use Postgres for shared state (`JOB_REGISTRY_DB=pg` + `JOB_REGISTRY_PG_URL`).
