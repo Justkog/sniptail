@@ -106,12 +106,17 @@ else
   fi
 fi
 
-mapfile -t TAR_ENTRIES < <(tar -tzf "${TARBALL_PATH}")
-if [[ ${#TAR_ENTRIES[@]} -eq 0 ]]; then
+ROOT_ENTRY=""
+while IFS= read -r entry; do
+  if [[ -z "${ROOT_ENTRY}" ]]; then
+    ROOT_ENTRY="${entry}"
+  fi
+done < <(tar -tzf "${TARBALL_PATH}")
+
+if [[ -z "${ROOT_ENTRY}" ]]; then
   fail "Tarball is empty or unreadable: ${TARBALL_PATH}"
 fi
 
-ROOT_ENTRY="${TAR_ENTRIES[0]}"
 ROOT_ENTRY="${ROOT_ENTRY#./}"
 RELEASE_DIR="${ROOT_ENTRY%%/*}"
 
