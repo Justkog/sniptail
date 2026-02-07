@@ -454,7 +454,17 @@ void main()
   .finally(async () => {
     try {
       await closeRepoCatalogStore();
-    } finally {
+    } catch (err) {
+      process.stderr.write(
+        `Warning: Failed to close repo catalog store: ${(err as Error).message}\n`,
+      );
+    }
+
+    try {
       await closeJobRegistryDb();
+    } catch (err) {
+      process.stderr.write(
+        `Warning: Failed to close job registry DB: ${(err as Error).message}\n`,
+      );
     }
   });
