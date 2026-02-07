@@ -1,8 +1,4 @@
-import {
-  loadWorkerConfig,
-  parseRepoAllowlist,
-  writeRepoAllowlist,
-} from '@sniptail/core/config/config.js';
+import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import {
   bootstrapLocalRepository,
   defaultLocalBaseBranch,
@@ -12,6 +8,11 @@ import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { createRepository } from '@sniptail/core/github/client.js';
 import { createProject } from '@sniptail/core/gitlab/client.js';
 import { logger } from '@sniptail/core/logger.js';
+import {
+  loadRepoAllowlistFromCatalog,
+  syncAllowlistFileFromCatalog,
+  upsertRepoCatalogEntry,
+} from '@sniptail/core/repos/catalog.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
@@ -48,12 +49,7 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
   await notifier.postMessage(channelRef, `${userPrefix}Bootstrapping ${request.repoName}...`);
 
   try {
-    const allowlistPath = config.repoAllowlistPath;
-    if (!allowlistPath) {
-      throw new Error('Repo allowlist path is not set in config.');
-    }
-
-    const allowlist = parseRepoAllowlist(allowlistPath);
+    const allowlist = await loadRepoAllowlistFromCatalog();
     if (allowlist[request.repoKey]) {
       throw new Error(`Allowlist key "${request.repoKey}" already exists.`);
     }
@@ -117,9 +113,16 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
       repoLabel = project.pathWithNamespace;
     }
 
-    allowlist[request.repoKey] = allowlistEntry;
-    await writeRepoAllowlist(allowlistPath, allowlist);
+    await upsertRepoCatalogEntry(request.repoKey, allowlistEntry);
     config.repoAllowlist[request.repoKey] = allowlistEntry;
+    if (config.repoAllowlistPath) {
+      await syncAllowlistFileFromCatalog(config.repoAllowlistPath).catch((err) => {
+        logger.warn(
+          { err, allowlistPath: config.repoAllowlistPath },
+          'Failed to sync allowlist file from repository catalog',
+        );
+      });
+    }
 
     const serviceName =
       request.service === 'github' ? 'GitHub' : request.service === 'gitlab' ? 'GitLab' : 'Local';

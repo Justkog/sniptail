@@ -1,5 +1,6 @@
 import type { SlackHandlerContext } from '../context.js';
 import { buildImplementModal } from '../../modals.js';
+import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 
 export function registerImplementFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.implementFromJob, async ({ ack, body, client, action }) => {
@@ -16,6 +17,7 @@ export function registerImplementFromJobAction({ app, slackIds, config }: SlackH
       return;
     }
 
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: triggerId,
       view: buildImplementModal(

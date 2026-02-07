@@ -100,15 +100,22 @@ curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | 
 
 This installs into `~/.sniptail` and links the CLI into `~/.local/bin`. Set `SNIPTAIL_REPO` to your fork if needed.
 
+To test an already-built local release tarball, point the installer at it:
+
+```bash
+SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
+```
+
 ### 1) Install and run dependencies
 
 - Install Node.js, Redis, Git, and SSH keys for repo access.
 - If using `sniptail.worker.toml` `[codex].execution_mode = "local"`, install the Codex CLI so `codex` is available in `PATH`.
 - If using `[codex].execution_mode = "docker"`, install and run Docker.
 
-### 2) Create a repo allowlist
+### 2) Seed the repo catalog (optional, recommended for first boot)
 
-Create a JSON file (ex: `repo-allowlist.json`) and set `repo_allowlist_path` in both `sniptail.bot.toml` and `sniptail.worker.toml` under the `[core]` section. The keys are short repo names that users select in Slack. You can override the path with `REPO_ALLOWLIST_PATH` if needed.
+Sniptail stores the allowlist in the configured job-registry backend (sqlite/pg/redis).  
+You can still start from a JSON file (ex: `repo-allowlist.json`) by setting `repo_allowlist_path` in `sniptail.worker.toml` `[core]` (or `REPO_ALLOWLIST_PATH` in env). On worker startup, Sniptail seeds the DB when the catalog is empty.
 
 ```json
 {
@@ -133,10 +140,18 @@ Notes:
 - `localPath` points at a local repo source on the same machine.
 - `projectId` is required for GitLab merge requests.
 - `baseBranch` is optional; it is used as the default branch in Slack modals.
+- After the first seed, bot and worker read the shared catalog from the configured registry backend (no shared filesystem required).
+
+To force DB -> file reconciliation on a worker host:
+
+```bash
+pnpm --filter @sniptail/worker sync-allowlist-file
+```
 
 ### 3) Configure TOML files
 
 Sniptail uses two TOML config files so the bot and worker can be run on different machines.
+For multi-machine deployments, use a shared Postgres registry (`[core].job_registry_db = "pg"`) or Redis-backed job records (`[core].job_registry_db = "redis"`).
 
 Default paths:
 - `./sniptail.bot.toml`
@@ -146,9 +161,15 @@ Override paths with env vars:
 - `SNIPTAIL_BOT_CONFIG_PATH`
 - `SNIPTAIL_WORKER_CONFIG_PATH`
 
-The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (coding agent execution modes for Codex/Copilot, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths).
+The bot file holds chat-surface settings (Slack/Discord enablement, `bot_name`, `bootstrap_services`, `redis_url`, and shared `[core]` paths). The worker file holds execution and repo settings (coding agent execution modes for Codex/Copilot, repo cache/work roots, GitHub/GitLab base URLs, and shared `[core]` paths, including optional allowlist seed path).
 
 Each agent can still be fully customized (skills, MCP servers, and more) by inheriting the home or repository configurations.
+
+If you run with Postgres (`[core].job_registry_db = "pg"`), apply migrations:
+
+```bash
+pnpm run db:migrate:pg
+```
 
 ### 4) Configure environment variables
 
@@ -163,6 +184,7 @@ Worker secrets:
 - `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_API_TOKEN` (required to create GitHub PRs)
 - `JOB_REGISTRY_PG_URL` (required only when using Postgres registry)
+- `JOB_REGISTRY_REDIS_URL` (optional override when using Redis registry; falls back to `REDIS_URL`)
 
 Optional:
 - `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)
@@ -240,7 +262,7 @@ sniptail worker --config ./sniptail.worker.toml --env ./.env
 ## Repo execution notes
 
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
-- Only repos listed in the allowlist are selectable in Slack.
+- Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
 
 ## Key paths

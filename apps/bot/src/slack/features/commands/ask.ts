@@ -11,7 +11,7 @@ export function registerAskCommand({ app, slackIds, config }: SlackHandlerContex
       return;
     }
 
-    refreshRepoAllowlist(config);
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildAskModal(

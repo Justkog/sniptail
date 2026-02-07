@@ -4,12 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 function isSniptailRoot(dir: string): boolean {
   if (!existsSync(join(dir, 'scripts', 'register-loaders.mjs'))) return false;
-  const hasApps =
-    existsSync(join(dir, 'apps', 'bot')) || existsSync(join(dir, 'apps', 'worker'));
+  const hasApps = existsSync(join(dir, 'apps', 'bot')) || existsSync(join(dir, 'apps', 'worker'));
   if (!hasApps) return false;
   const hasConfig =
-    existsSync(join(dir, 'sniptail.bot.toml')) ||
-    existsSync(join(dir, 'sniptail.worker.toml'));
+    existsSync(join(dir, 'sniptail.bot.toml')) || existsSync(join(dir, 'sniptail.worker.toml'));
   return hasConfig;
 }
 
@@ -36,9 +34,7 @@ export function resolveSniptailRoot(options: { cwd?: string; root?: string } = {
     if (found) return found;
   }
 
-  throw new Error(
-    'Could not locate the Sniptail install root. Use --root to specify it.',
-  );
+  throw new Error('Could not locate the Sniptail install root. Use --root to specify it.');
 }
 
 export function resolvePath(base: string, input: string): string {

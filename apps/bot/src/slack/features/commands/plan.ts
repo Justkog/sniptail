@@ -11,7 +11,7 @@ export function registerPlanCommand({ app, slackIds, config }: SlackHandlerConte
       return;
     }
 
-    refreshRepoAllowlist(config);
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildPlanModal(

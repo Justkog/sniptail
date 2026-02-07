@@ -12,7 +12,7 @@ export async function handleAskFromJobButton(
   jobId: string,
   config: BotConfig,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for ask from job');

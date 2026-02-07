@@ -12,7 +12,7 @@ export async function handleImplementFromJobButton(
   jobId: string,
   config: BotConfig,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for implement from job');
