@@ -93,7 +93,7 @@ export function resolveBotName(tomlValue: unknown): string {
 
 export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' | 'redis' {
   const raw = (
-    resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'sqlite' }) || 'sqlite'
+    resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'redis' }) || 'redis'
   )
     .trim()
     .toLowerCase();
