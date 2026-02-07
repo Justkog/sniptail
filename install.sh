@@ -28,6 +28,10 @@ if [[ -n "${GH_TOKEN}" ]]; then
   curl_auth_args=(-H "Authorization: Bearer ${GH_TOKEN}")
 fi
 
+api_get() {
+  curl -fsSL "${curl_auth_args[@]}" "$1"
+}
+
 
 if [[ -z "${REPO}" ]]; then
   fail "SNIPTAIL_REPO is required (format: org/repo)."
@@ -100,20 +104,67 @@ if [[ -n "${LOCAL_TARBALL}" ]]; then
   log "Using local tarball: ${TARBALL_PATH}"
 else
   TARBALL_PATH="${TMP_DIR}/${TARBALL}"
-  log "Downloading ${TARBALL}"
-  curl -fsSL "${curl_auth_args[@]}" "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
 
-  log "Checking checksum (if available)"
-  if curl -fsSL "${curl_auth_args[@]}" "${URL_BASE}/${SHA_FILE}" -o "${TMP_DIR}/${SHA_FILE}"; then
-    if command -v sha256sum >/dev/null 2>&1; then
-      (cd "${TMP_DIR}" && sha256sum -c "${SHA_FILE}")
-    elif command -v shasum >/dev/null 2>&1; then
-      (cd "${TMP_DIR}" && shasum -a 256 -c "${SHA_FILE}")
+  if [[ -n "${GH_TOKEN}" ]]; then
+    log "Downloading ${TARBALL} via GitHub API (authenticated)"
+
+    release_json="$(api_get "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")"
+
+    find_asset_id() {
+      local name="$1"
+      printf '%s' "${release_json}" \
+        | tr '{' '\n' \
+        | awk -v n="${name}" '
+            $0 ~ "\"name\":\""n"\"" {
+              if (match($0, /"id":[0-9]+/)) {
+                print substr($0, RSTART+5, RLENGTH-5); exit
+              }
+            }'
+    }
+
+    tar_id="$(find_asset_id "${TARBALL}")"
+    [[ -n "${tar_id}" ]] || fail "Could not find asset '${TARBALL}' in release ${TAG}."
+
+    curl -fL "${curl_auth_args[@]}" \
+      -H "Accept: application/octet-stream" \
+      "https://api.github.com/repos/${REPO}/releases/assets/${tar_id}" \
+      -o "${TARBALL_PATH}"
+
+    log "Checking checksum (if available)"
+    sha_id="$(find_asset_id "${SHA_FILE}")"
+    if [[ -n "${sha_id}" ]]; then
+      curl -fL "${curl_auth_args[@]}" \
+        -H "Accept: application/octet-stream" \
+        "https://api.github.com/repos/${REPO}/releases/assets/${sha_id}" \
+        -o "${TMP_DIR}/${SHA_FILE}"
+
+      if command -v sha256sum >/dev/null 2>&1; then
+        (cd "${TMP_DIR}" && sha256sum -c "${SHA_FILE}")
+      elif command -v shasum >/dev/null 2>&1; then
+        (cd "${TMP_DIR}" && shasum -a 256 -c "${SHA_FILE}")
+      else
+        warn "sha256sum/shasum not found; skipping checksum verification."
+      fi
     else
-      warn "sha256sum/shasum not found; skipping checksum verification."
+      warn "checksum file not found; skipping verification."
     fi
+
   else
-    warn "checksum file not found; skipping verification."
+    log "Downloading ${TARBALL}"
+    curl -fsSL "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
+
+    log "Checking checksum (if available)"
+    if curl -fsSL "${URL_BASE}/${SHA_FILE}" -o "${TMP_DIR}/${SHA_FILE}"; then
+      if command -v sha256sum >/dev/null 2>&1; then
+        (cd "${TMP_DIR}" && sha256sum -c "${SHA_FILE}")
+      elif command -v shasum >/dev/null 2>&1; then
+        (cd "${TMP_DIR}" && shasum -a 256 -c "${SHA_FILE}")
+      else
+        warn "sha256sum/shasum not found; skipping checksum verification."
+      fi
+    else
+      warn "checksum file not found; skipping verification."
+    fi
   fi
 fi
 
