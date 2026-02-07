@@ -66,11 +66,15 @@ export async function upsertRepoCatalogEntry(repoKey: string, repo: RepoConfig):
   const provider = inferProvider(normalized);
   const store = await getRepoCatalogStore();
 
+  // Prioritize localPath over sshUrl to match worker behavior and satisfy DB constraint
+  const useLocalPath = Boolean(normalized.localPath);
+  const useSshUrl = !useLocalPath && Boolean(normalized.sshUrl);
+
   await store.upsertRow({
     repoKey,
     provider,
-    ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : {}),
-    ...(normalized.localPath ? { localPath: normalized.localPath } : {}),
+    ...(useSshUrl ? { sshUrl: normalized.sshUrl } : {}),
+    ...(useLocalPath ? { localPath: normalized.localPath } : {}),
     ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
     baseBranch: normalizeBaseBranch(normalized.baseBranch),
     isActive: true,
