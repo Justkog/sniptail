@@ -1,9 +1,36 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, afterEach } from 'vitest';
+
+const tempDirs = new Set<string>();
+
+function trackTempDir(dir: string): string {
+  tempDirs.add(dir);
+  return dir;
+}
+
+export function cleanupTempDirs() {
+  for (const dir of tempDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup for test temp directories.
+    }
+  }
+  tempDirs.clear();
+}
+
+afterEach(() => {
+  cleanupTempDirs();
+});
+
+afterAll(() => {
+  cleanupTempDirs();
+});
 
 export function writeAllowlist(contents: Record<string, unknown>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'sniptail-allowlist-'));
+  const dir = trackTempDir(mkdtempSync(join(tmpdir(), 'sniptail-allowlist-')));
   const path = join(dir, 'allowlist.json');
   writeFileSync(path, JSON.stringify(contents), 'utf8');
   return path;
@@ -13,7 +40,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
   const allowlistPath = writeAllowlist({
     'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },
   });
-  const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+  const configDir = trackTempDir(mkdtempSync(join(tmpdir(), 'sniptail-config-')));
   const botConfigPath = join(configDir, 'bot.toml');
   const workerConfigPath = join(configDir, 'worker.toml');
   const jobWorkRoot = join(configDir, 'jobs');

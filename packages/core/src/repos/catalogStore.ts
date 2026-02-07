@@ -47,6 +47,18 @@ export async function getRepoCatalogStore(): Promise<RepoCatalogStore> {
   return storePromise;
 }
 
+export async function closeRepoCatalogStore(): Promise<void> {
+  if (!storePromise) return;
+  try {
+    const store = await storePromise;
+    if (store.close) {
+      await store.close();
+    }
+  } finally {
+    storePromise = undefined;
+  }
+}
+
 export function resetRepoCatalogStore(): void {
   storePromise = undefined;
 }

@@ -191,7 +191,7 @@ JSON
 
   # CLI wrapper.
   mkdir -p "${stage_root}/bin"
-  cat >"${stage_root}/bin/sniptail" <<'SH'
+cat >"${stage_root}/bin/sniptail" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -205,6 +205,7 @@ done
 
 ROOT_DIR="$(cd -P "$(dirname "${SOURCE}")/.." && pwd)"
 export SNIPTAIL_ROOT="${ROOT_DIR}"
+export NODE_ENV="${NODE_ENV:-production}"
 exec node "${ROOT_DIR}/packages/cli/dist/index.js" "$@"
 SH
   chmod +x "${stage_root}/bin/sniptail"

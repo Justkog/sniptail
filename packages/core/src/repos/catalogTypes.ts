@@ -14,4 +14,5 @@ export interface RepoCatalogStore {
   kind: 'pg' | 'sqlite' | 'redis';
   listActiveRows(): Promise<RepoRow[]>;
   upsertRow(row: RepoRow): Promise<void>;
+  close?(): Promise<void>;
 }
