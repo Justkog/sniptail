@@ -18,7 +18,7 @@ function inferProvider(repo: RepoConfig): 'github' | 'gitlab' | 'local' {
   if (repo.projectId !== undefined) return 'gitlab';
   if (repo.sshUrl?.toLowerCase().includes('gitlab')) {
     throw new Error(
-      `Repository appears to be a GitLab repository (sshUrl contains 'gitlab'), but projectId is not provided. GitLab repositories require a projectId.`,
+      `Repository appears to be a GitLab repository (sshUrl contains 'gitlab'), but projectId is not provided. Please add a projectId to the repository configuration.`,
     );
   }
   return 'github';
