@@ -17,8 +17,8 @@ job_work_root = "$HOME/.sniptail/jobs"
 job_registry_path = "$HOME/.sniptail/job-registry"
 
 # Registry backend: "sqlite", "pg", or "redis".
-# Optional. Default: "redis". Example: "redis"
-job_registry_db = "redis"
+# Optional. Default: "sqlite". Example: "sqlite"
+job_registry_db = "sqlite"
 
 # When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
 # Optional. No default. Example: "postgres://user:pass@host:5432/db"
