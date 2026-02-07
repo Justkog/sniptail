@@ -3,14 +3,14 @@ import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js'
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSettings, JobSpec } from '@sniptail/core/types/job.js';
 import { rm } from 'node:fs/promises';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
 import { resolveDefaultBaseBranch } from '../../modals.js';
 import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
 import { parseCommaList } from '../../lib/parsing.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 
-export function registerImplementSubmitView({ app, slackIds, config, queue }: SlackAppContext) {
+export function registerImplementSubmitView({ app, slackIds, config, queue }: SlackHandlerContext) {
   app.view(slackIds.actions.implementSubmit, async ({ ack, body, view, client }) => {
     await ack();
 

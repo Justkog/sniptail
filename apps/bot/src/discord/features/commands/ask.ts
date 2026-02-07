@@ -1,13 +1,12 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { buildAskModal, buildAskRepoSelect } from '../../modals.js';
 import { askSelectionByUser } from '../../state.js';
 
-export async function handleAskStart(interaction: ChatInputCommandInteraction) {
-  const config = loadBotConfig();
-  refreshRepoAllowlist(config);
+export async function handleAskStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
+  await refreshRepoAllowlist(config);
 
   const repoKeys = Object.keys(config.repoAllowlist);
   if (!repoKeys.length) {

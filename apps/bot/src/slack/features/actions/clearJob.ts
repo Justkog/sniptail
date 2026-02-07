@@ -1,9 +1,9 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 
-export function registerClearJobAction({ app, slackIds, workerEventQueue }: SlackAppContext) {
+export function registerClearJobAction({ app, slackIds, workerEventQueue }: SlackHandlerContext) {
   app.action(slackIds.actions.clearJob, async ({ ack, body, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();

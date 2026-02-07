@@ -2,13 +2,13 @@ import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { addReaction, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 
-export function registerAppMentionEvent({ app, config, queue }: SlackAppContext) {
+export function registerAppMentionEvent({ app, config, queue }: SlackHandlerContext) {
   app.event('app_mention', async ({ event, client }) => {
     const channelId = (event as { channel?: string }).channel;
     const text = (event as { text?: string }).text ?? '';

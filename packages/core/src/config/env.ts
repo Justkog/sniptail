@@ -1,7 +1,7 @@
 import { logger } from '../logger.js';
 import type { TomlTable } from './toml.js';
 import { loadTomlConfig, getTomlTable, getTomlString, getTomlNumber } from './toml.js';
-import type { CoreConfig, BotConfig, WorkerConfig } from './types.js';
+import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
   BOT_CONFIG_PATH_ENV,
@@ -14,15 +14,16 @@ import {
   resolveBotName,
   resolveJobRegistryDriver,
   resolveJobRegistryPgUrl,
+  resolveJobRegistryRedisUrl,
   resolvePrimaryAgent,
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
   resolveCodexExecutionMode,
   resolveOptionalFlagFromSources,
   resolveStringArrayFromSources,
+  resolvePathValue,
   resolveStringValue,
 } from './resolve.js';
-import { parseRepoAllowlist } from './repoAllowlist.js';
 import { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
 
 let coreConfigCache: CoreConfig | null = null;
@@ -50,46 +51,83 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   const entries = Object.entries(modelsToml);
   if (!entries.length) return undefined;
   const allowed = new Set<JobType>(['ASK', 'IMPLEMENT', 'PLAN', 'REVIEW', 'MENTION']);
-  const models: Partial<Record<JobType, string>> = {};
+  const allowedEfforts = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+  const models: Partial<Record<JobType, JobModelConfig>> = {};
+
+  function parseEffort(value: unknown, name: string) {
+    const raw = getTomlString(value, name);
+    const trimmed = raw?.trim();
+    if (!trimmed) return undefined;
+    if (!allowedEfforts.has(trimmed)) {
+      throw new Error(
+        `Invalid ${name} in TOML. Expected one of: minimal, low, medium, high, xhigh.`,
+      );
+    }
+    return trimmed as JobModelConfig['modelReasoningEffort'];
+  }
+
   for (const [key, value] of entries) {
     if (!allowed.has(key as JobType)) {
       throw new Error(
         `Invalid ${label} key: ${key}. Expected ASK, IMPLEMENT, PLAN, REVIEW, MENTION.`,
       );
     }
-    const rawModel = getTomlString(value, `${label}.${key}`);
+
+    if (typeof value === 'string') {
+      const model = value.trim();
+      if (!model) {
+        throw new Error(`Invalid ${label}.${key} in TOML. Expected a non-empty string.`);
+      }
+      models[key as JobType] = { model };
+      continue;
+    }
+
+    const modelToml = getTomlTable(value, `${label}.${key}`);
+    if (!modelToml) {
+      throw new Error(`Invalid ${label}.${key} in TOML. Expected a table.`);
+    }
+    const rawModel = getTomlString(modelToml.model, `${label}.${key}.model`);
     const model = rawModel?.trim();
     if (!model) {
-      throw new Error(`Invalid ${label}.${key} in TOML. Expected a non-empty string.`);
+      throw new Error(`Invalid ${label}.${key}.model in TOML. Expected a non-empty string.`);
     }
-    models[key as JobType] = model;
+    const modelReasoningEffort = parseEffort(
+      modelToml.model_reasoning_effort,
+      `${label}.${key}.model_reasoning_effort`,
+    );
+    models[key as JobType] = {
+      model,
+      ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
+    };
   }
   return Object.keys(models).length ? models : undefined;
 }
 
-function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
-  const repoAllowlistPath = resolveStringValue(
-    'REPO_ALLOWLIST_PATH',
-    coreToml?.repo_allowlist_path,
-    {
-      required: true,
-    },
-  );
-  const repoAllowlist = parseRepoAllowlist(repoAllowlistPath as string);
+function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown): CoreConfig {
+  const repoAllowlistPath = resolvePathValue('REPO_ALLOWLIST_PATH', coreToml?.repo_allowlist_path, {
+    required: false,
+  });
   const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
   const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
+  const jobRegistryRedisUrl = resolveJobRegistryRedisUrl(
+    jobRegistryDriver,
+    coreToml?.job_registry_redis_url,
+    appRedisUrlToml,
+  );
+  const jobRegistryPath = resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
+    required: jobRegistryDriver === 'sqlite',
+  });
 
   return {
-    repoAllowlistPath: repoAllowlistPath as string,
-    repoAllowlist,
-    jobWorkRoot: resolveStringValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
+    ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
+    repoAllowlist: {},
+    jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
       required: true,
     }) as string,
-    jobRegistryPath: resolveStringValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
-      required: true,
-    }) as string,
+    ...(jobRegistryPath ? { jobRegistryPath } : {}),
     jobRegistryDriver,
     ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
+    ...(jobRegistryRedisUrl ? { jobRegistryRedisUrl } : {}),
   };
 }
 
@@ -97,7 +135,8 @@ export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
   const coreToml = getTomlTable(toml.core, 'core');
-  coreConfigCache = loadCoreConfigFromToml(coreToml);
+  const workerToml = getTomlTable(toml.worker, 'worker');
+  coreConfigCache = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   return coreConfigCache;
 }
 
@@ -109,7 +148,7 @@ export function loadBotConfig(): BotConfig {
   const slackToml = getTomlTable(toml.slack, 'slack');
   const discordToml = getTomlTable(toml.discord, 'discord');
 
-  const core = loadCoreConfigFromToml(coreToml);
+  const core = loadCoreConfigFromToml(coreToml, botToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(botToml?.bot_name);
@@ -182,7 +221,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const githubToml = getTomlTable(toml.github, 'github');
   const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
 
-  const core = loadCoreConfigFromToml(coreToml);
+  const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(workerToml?.bot_name);
@@ -218,7 +257,7 @@ export function loadWorkerConfig(): WorkerConfig {
     'codex.models',
   );
 
-  const jobRootCopyGlob = resolveStringValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
+  const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
   const cleanupMaxAge = resolveStringValue('CLEANUP_MAX_AGE', workerToml?.cleanup_max_age);
   const cleanupMaxEntriesEnv = process.env.CLEANUP_MAX_ENTRIES?.trim();
   let cleanupMaxEntries = getTomlNumber(
@@ -246,7 +285,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const redisUrl = resolveStringValue('REDIS_URL', workerToml?.redis_url, {
     required: true,
   }) as string;
-  const localRepoRoot = resolveStringValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
+  const localRepoRoot = resolvePathValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
 
   workerConfigCache = {
     ...core,
@@ -265,7 +304,7 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),
     ...(github && { github }),
-    repoCacheRoot: resolveStringValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
+    repoCacheRoot: resolvePathValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
       required: true,
     }) as string,
     ...(jobRootCopyGlob && { jobRootCopyGlob }),

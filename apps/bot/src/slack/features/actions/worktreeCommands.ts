@@ -3,11 +3,12 @@ import {
   loadJobRecord,
 } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
+import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 import { buildWorktreeCommandsText } from '../../lib/worktree.js';
 
-export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackAppContext) {
+export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.worktreeCommands, async ({ ack, body, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -20,6 +21,7 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackA
       return;
     }
 
+    await refreshRepoAllowlist(config);
     const record = await loadJobRecord(jobId).catch((err) => {
       logger.warn({ err, jobId }, 'Failed to load job record');
       return undefined;

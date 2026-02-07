@@ -6,7 +6,7 @@ import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 
-export type SlackAppContext = {
+export type SlackHandlerContext = {
   app: App;
   slackIds: SlackIds;
   config: BotConfig;

@@ -35,6 +35,15 @@ vi.mock('@sniptail/core/config/config.js', () => ({
   }),
 }));
 
+vi.mock('@sniptail/core/repos/catalog.js', () => ({
+  loadRepoAllowlistFromCatalog: vi.fn(() =>
+    Promise.resolve({
+      'repo-1': { sshUrl: 'git@example.com:org/repo-1.git', projectId: 1, baseBranch: 'main' },
+      'repo-2': { sshUrl: 'git@example.com:org/repo-2.git', projectId: 2, baseBranch: 'main' },
+    }),
+  ),
+}));
+
 vi.mock('@sniptail/core/runner/commandRunner.js', () => ({
   runCommand: vi.fn(),
 }));

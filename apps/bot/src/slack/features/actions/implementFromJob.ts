@@ -1,7 +1,8 @@
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { buildImplementModal } from '../../modals.js';
+import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 
-export function registerImplementFromJobAction({ app, slackIds, config }: SlackAppContext) {
+export function registerImplementFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.implementFromJob, async ({ ack, body, client, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -16,6 +17,7 @@ export function registerImplementFromJobAction({ app, slackIds, config }: SlackA
       return;
     }
 
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: triggerId,
       view: buildImplementModal(
