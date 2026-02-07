@@ -16,7 +16,11 @@ function normalizeBaseBranch(value?: string): string {
 function inferProvider(repo: RepoConfig): 'github' | 'gitlab' | 'local' {
   if (repo.localPath) return 'local';
   if (repo.projectId !== undefined) return 'gitlab';
-  if (repo.sshUrl?.toLowerCase().includes('gitlab')) return 'gitlab';
+  if (repo.sshUrl?.toLowerCase().includes('gitlab')) {
+    throw new Error(
+      `Repository appears to be a GitLab repository (sshUrl contains 'gitlab'), but projectId is not provided. GitLab repositories require a projectId.`,
+    );
+  }
   return 'github';
 }
 
