@@ -29,5 +29,7 @@ export type WorkerEvent =
             provider: 'discord';
             channelId: string;
             threadId?: string;
+            interactionToken: string;
+            interactionApplicationId: string;
           };
     });
