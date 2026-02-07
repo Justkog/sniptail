@@ -19,6 +19,9 @@ export async function getJobRegistryDb(): Promise<JobRegistryClient> {
           }
           return createPgClient(config.jobRegistryPgUrl);
         case 'sqlite':
+          if (!config.jobRegistryPath) {
+            throw new Error('JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite');
+          }
           return createSqliteClient(config.jobRegistryPath);
         case 'redis':
           throw new Error('SQL job registry DB client is unavailable when JOB_REGISTRY_DB=redis');

@@ -114,6 +114,9 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
     coreToml?.job_registry_redis_url,
     appRedisUrlToml,
   );
+  const jobRegistryPath = resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
+    required: jobRegistryDriver === 'sqlite',
+  });
 
   return {
     ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
@@ -121,9 +124,7 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
     jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
       required: true,
     }) as string,
-    jobRegistryPath: resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
-      required: true,
-    }) as string,
+    ...(jobRegistryPath ? { jobRegistryPath } : {}),
     jobRegistryDriver,
     ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
     ...(jobRegistryRedisUrl ? { jobRegistryRedisUrl } : {}),

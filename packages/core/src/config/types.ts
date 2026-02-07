@@ -14,7 +14,7 @@ export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
-  jobRegistryPath: string;
+  jobRegistryPath?: string;
   jobRegistryDriver: JobRegistryDriver;
   jobRegistryPgUrl?: string;
   jobRegistryRedisUrl?: string;
