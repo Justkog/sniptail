@@ -19,7 +19,7 @@ jobs:
           - os: ubuntu-latest
             os_name: linux
             arch: x64
-          - os: macos-13
+          - os: macos-15-intel
             os_name: darwin
             arch: x64
           - os: macos-latest
