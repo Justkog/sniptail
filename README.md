@@ -37,7 +37,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 | Medium | Status | Notes |
 | --- | --- | --- |
 | Slack | Supported | Current production target |
-| Discord | Supported | |
+| Discord | Supported | Current production target |
 | WhatsApp | Planned | |
 | Telegram | Planned | |
 | Microsoft Teams | Planned | |
@@ -46,7 +46,7 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 
 | Agent | Status | Notes |
 | --- | --- | --- |
-| OpenAI Codex | Supported | Current execution engine |
+| OpenAI Codex | Supported | SDK-backed CLI execution |
 | GitHub Copilot CLI | Supported | SDK-backed CLI execution |
 | Claude Code | Planned | |
 | OpenCode | Planned | |

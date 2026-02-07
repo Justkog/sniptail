@@ -20,6 +20,15 @@ INSTALL_ROOT="${SNIPTAIL_INSTALL_ROOT:-$HOME/.sniptail}"
 BIN_DIR="${SNIPTAIL_BIN_DIR:-$HOME/.local/bin}"
 LOCAL_TARBALL="${SNIPTAIL_TARBALL:-}"
 
+# Token for private repos (supports several common env var names)
+GH_TOKEN="${GITHUB_API_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
+
+curl_auth_args=()
+if [[ -n "${GH_TOKEN}" ]]; then
+  curl_auth_args=(-H "Authorization: Bearer ${GH_TOKEN}")
+fi
+
+
 if [[ -z "${REPO}" ]]; then
   fail "SNIPTAIL_REPO is required (format: org/repo)."
 fi
@@ -58,7 +67,9 @@ if [[ -z "${LOCAL_TARBALL}" ]]; then
   esac
 
   if [[ "${VERSION}" == "latest" ]]; then
-    TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" | awk -F/ '{print $NF}')"
+    TAG="$(curl -fsSL "${curl_auth_args[@]}" \
+      "https://api.github.com/repos/${REPO}/releases/latest" \
+      | awk -F'"tag_name": "' 'NF>1{split($2,a,"\""); print a[1]; exit}')"
   else
     TAG="v${VERSION#v}"
   fi
@@ -90,10 +101,10 @@ if [[ -n "${LOCAL_TARBALL}" ]]; then
 else
   TARBALL_PATH="${TMP_DIR}/${TARBALL}"
   log "Downloading ${TARBALL}"
-  curl -fsSL "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
+  curl -fsSL "${curl_auth_args[@]}" "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
 
   log "Checking checksum (if available)"
-  if curl -fsSL "${URL_BASE}/${SHA_FILE}" -o "${TMP_DIR}/${SHA_FILE}"; then
+  if curl -fsSL "${curl_auth_args[@]}" "${URL_BASE}/${SHA_FILE}" -o "${TMP_DIR}/${SHA_FILE}"; then
     if command -v sha256sum >/dev/null 2>&1; then
       (cd "${TMP_DIR}" && sha256sum -c "${SHA_FILE}")
     elif command -v shasum >/dev/null 2>&1; then
