@@ -1,17 +1,17 @@
 import { join } from 'node:path';
 import { loadCoreConfig } from '../config/config.js';
-import type { JobSpec } from '../types/job.js';
+import type { JobSpec, RepoConfig } from '../types/job.js';
 
 const gitRefPattern = /^[A-Za-z0-9._/-]+$/;
 const config = loadCoreConfig();
 
-export function validateJob(job: JobSpec) {
+export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConfig> = {}) {
   if (job.type !== 'MENTION' && job.repoKeys.length === 0) {
     throw new Error('Job must include at least one repo.');
   }
   if (job.type !== 'MENTION') {
     for (const repoKey of job.repoKeys) {
-      if (!config.repoAllowlist[repoKey]) {
+      if (!repoAllowlist[repoKey]) {
         throw new Error(`Repo ${repoKey} is not in allowlist.`);
       }
     }

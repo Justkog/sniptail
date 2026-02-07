@@ -1,0 +1,21 @@
+{
+  "name": "@sniptail/cli",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "../../LICENSE",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "sniptail": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "lint": "eslint . --ignore-pattern **/dist/**",
+    "format": "prettier . --ignore-path ../../.prettierignore --write",
+    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}

@@ -1,8 +1,8 @@
-import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { SlackAppContext } from '../context.js';
+import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import type { SlackHandlerContext } from '../context.js';
 
-export function registerUsageCommand({ app, slackIds }: SlackAppContext) {
+export function registerUsageCommand({ app, slackIds, workerEventQueue }: SlackHandlerContext) {
   app.command(slackIds.commands.usage, async ({ ack, body, client }) => {
     await ack({
       response_type: 'ephemeral',
@@ -15,11 +15,16 @@ export function registerUsageCommand({ app, slackIds }: SlackAppContext) {
     }
 
     try {
-      const { message } = await fetchCodexUsageMessage();
-      await client.chat.postEphemeral({
-        channel: body.channel_id,
-        user: userId,
-        text: message,
+      await enqueueWorkerEvent(workerEventQueue, {
+        type: 'codexUsage',
+        payload: {
+          provider: 'slack',
+          channelId: body.channel_id,
+          userId,
+          ...((body.thread_ts as string | undefined)
+            ? { threadId: body.thread_ts as string }
+            : {}),
+        },
       });
     } catch (err) {
       logger.error({ err }, 'Failed to fetch Codex usage status');

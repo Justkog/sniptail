@@ -12,6 +12,7 @@ import { createGitHubPullRequest } from '../merge-requests/github.js';
 import { createGitLabMergeRequest } from '../merge-requests/gitlab.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { createNotifier } from '../channels/createNotifier.js';
+import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
   copyJobRootSeed,
@@ -75,7 +76,9 @@ export async function runJob(
   job: JobSpec,
   registry: JobRegistry,
 ): Promise<JobResult> {
-  validateJob(job);
+  const repoAllowlist = await loadRepoAllowlistFromCatalog();
+  config.repoAllowlist = repoAllowlist;
+  validateJob(job, repoAllowlist);
   const notifier = createNotifier(events);
 
   await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {

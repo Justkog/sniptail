@@ -1,13 +1,15 @@
 import type { StringSelectMenuInteraction } from 'discord.js';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { buildAskModal } from '../../modals.js';
 import { askSelectionByUser } from '../../state.js';
 
-export async function handleAskSelection(interaction: StringSelectMenuInteraction) {
-  const config = loadBotConfig();
-  refreshRepoAllowlist(config);
+export async function handleAskSelection(
+  interaction: StringSelectMenuInteraction,
+  config: BotConfig,
+) {
+  await refreshRepoAllowlist(config);
 
   const repoKeys = interaction.values ?? [];
   if (!repoKeys.length) {

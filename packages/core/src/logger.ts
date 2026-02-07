@@ -13,11 +13,9 @@ const options: LoggerOptions = {
   },
 };
 
-if (process.env.NODE_ENV !== 'production') {
-  options.transport = {
-    target: 'pino-pretty',
-    options: { translateTime: 'SYS:standard' },
-  } satisfies TransportSingleOptions;
-}
+options.transport = {
+  target: 'pino-pretty',
+  options: { translateTime: 'SYS:standard' },
+} satisfies TransportSingleOptions;
 
 export const logger = pino(options);

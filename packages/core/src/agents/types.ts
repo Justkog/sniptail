@@ -1,4 +1,5 @@
 import type { JobSpec, AgentId } from '../types/job.js';
+import type { ModelReasoningEffort } from '@openai/codex-sdk';
 
 export type AgentRunResult = {
   finalResponse: string;
@@ -16,6 +17,7 @@ export type AgentRunOptions = {
   botName?: string;
   resumeThreadId?: string;
   model?: string;
+  modelReasoningEffort?: ModelReasoningEffort;
   copilotIdleRetries?: number;
   copilot?: {
     cliPath?: string;

@@ -1,7 +1,9 @@
 {
   "name": "@sniptail/worker",
   "private": true,
-  "version": "1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "../../LICENSE",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/index.ts",
@@ -11,6 +13,10 @@
     "start": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/index.js",
     "run-job": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/run-job.ts",
     "run-job:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/run-job.js",
+    "repos": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/repos.ts",
+    "repos:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/repos.js",
+    "sync-allowlist-file": "DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs src/cli/sync-allowlist-file.ts",
+    "sync-allowlist-file:dist": "DOTENV_CONFIG_PATH=../../.env node dist/cli/sync-allowlist-file.js",
     "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "lint": "eslint . --ignore-pattern **/dist/**",
     "format": "prettier . --ignore-path ../../.prettierignore --write",

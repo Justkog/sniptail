@@ -1,5 +1,5 @@
 import type { ButtonInteraction } from 'discord.js';
-import { loadBotConfig } from '@sniptail/core/config/config.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
@@ -7,9 +7,12 @@ import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { buildImplementModal } from '../../modals.js';
 import { implementSelectionByUser } from '../../state.js';
 
-export async function handleImplementFromJobButton(interaction: ButtonInteraction, jobId: string) {
-  const config = loadBotConfig();
-  refreshRepoAllowlist(config);
+export async function handleImplementFromJobButton(
+  interaction: ButtonInteraction,
+  jobId: string,
+  config: BotConfig,
+) {
+  await refreshRepoAllowlist(config);
 
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for implement from job');

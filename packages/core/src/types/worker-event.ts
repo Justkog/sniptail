@@ -15,4 +15,21 @@ export type WorkerEvent =
       payload: {
         cutoffIso: string;
       };
+    })
+  | (WorkerEventBase & {
+      type: 'codexUsage';
+      payload:
+        | {
+            provider: 'slack';
+            channelId: string;
+            userId: string;
+            threadId?: string;
+          }
+        | {
+            provider: 'discord';
+            channelId: string;
+            threadId?: string;
+            interactionToken: string;
+            interactionApplicationId: string;
+          };
     });

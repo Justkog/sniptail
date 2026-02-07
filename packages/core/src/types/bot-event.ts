@@ -33,6 +33,17 @@ export type BotEvent =
       };
     })
   | (BotEventBase & {
+      provider: 'slack';
+      type: 'postEphemeral';
+      payload: {
+        channelId: string;
+        userId: string;
+        text: string;
+        threadId?: string;
+        blocks?: unknown[];
+      };
+    })
+  | (BotEventBase & {
       provider: 'discord';
       type: 'postMessage';
       payload: {
@@ -50,5 +61,14 @@ export type BotEvent =
         filePath: string;
         title: string;
         threadId?: string;
+      };
+    })
+  | (BotEventBase & {
+      provider: 'discord';
+      type: 'editInteractionReply';
+      payload: {
+        interactionToken: string;
+        interactionApplicationId: string;
+        text: string;
       };
     });

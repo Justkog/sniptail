@@ -1,5 +1,6 @@
 import { getTomlNumber, getTomlString, getTomlStringArray } from './toml.js';
 import type { AgentId } from '../types/job.js';
+import os from 'node:os';
 
 export function requireEnv(name: string): string {
   const value = process.env[name];
@@ -57,6 +58,27 @@ export function resolveStringValue(
   return undefined;
 }
 
+export function expandHomePath(value: string): string {
+  const home = os.homedir();
+  if (value === '~') return home;
+  if (value.startsWith('~/')) return `${home}/${value.slice(2)}`;
+  if (value === '$HOME') return home;
+  if (value.startsWith('$HOME/')) return `${home}/${value.slice(6)}`;
+  if (value === '${HOME}') return home;
+  if (value.startsWith('${HOME}/')) return `${home}/${value.slice(8)}`;
+  return value;
+}
+
+export function resolvePathValue(
+  envName: string,
+  tomlValue: unknown,
+  options: { required?: boolean; defaultValue?: string } = {},
+): string | undefined {
+  const raw = resolveStringValue(envName, tomlValue, options);
+  if (!raw) return raw;
+  return expandHomePath(raw);
+}
+
 export function resolveStringArrayFromSources(envName: string, tomlValue: unknown): string[] {
   const envRaw = process.env[envName];
   if (envRaw !== undefined) return parseCommaList(envRaw);
@@ -69,21 +91,37 @@ export function resolveBotName(tomlValue: unknown): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
-export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' {
+export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' | 'redis' {
   const raw = (
-    resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'sqlite' }) || 'sqlite'
+    resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'redis' }) || 'redis'
   )
     .trim()
     .toLowerCase();
-  if (raw !== 'sqlite' && raw !== 'pg') {
+  if (raw !== 'sqlite' && raw !== 'pg' && raw !== 'redis') {
     throw new Error(`Invalid JOB_REGISTRY_DB: ${raw}`);
   }
   return raw;
 }
 
-export function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg'): string | undefined {
+export function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg' | 'redis'): string | undefined {
   if (driver !== 'pg') return undefined;
   return requireEnv('JOB_REGISTRY_PG_URL');
+}
+
+export function resolveJobRegistryRedisUrl(
+  driver: 'sqlite' | 'pg' | 'redis',
+  tomlValue: unknown,
+  fallbackRedisTomlValue: unknown,
+): string | undefined {
+  if (driver !== 'redis') return undefined;
+
+  const explicit = resolveStringValue('JOB_REGISTRY_REDIS_URL', tomlValue);
+  if (explicit) return explicit;
+
+  const fallback = resolveStringValue('REDIS_URL', fallbackRedisTomlValue);
+  if (fallback) return fallback;
+
+  throw new Error('JOB_REGISTRY_REDIS_URL or REDIS_URL is required when JOB_REGISTRY_DB=redis');
 }
 
 export function resolvePrimaryAgent(tomlValue: unknown): AgentId {

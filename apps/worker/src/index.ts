@@ -3,6 +3,7 @@ import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
+import { seedRepoCatalogFromAllowlistFile } from '@sniptail/core/repos/catalog.js';
 import {
   bootstrapQueueName,
   createBotQueue,
@@ -17,13 +18,17 @@ import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
-import { PostgresJobRegistry } from './job/postgresJobRegistry.js';
+import { createJobRegistry } from './job/createJobRegistry.js';
 
 const config = loadWorkerConfig();
+await seedRepoCatalogFromAllowlistFile({
+  mode: 'if-empty',
+  ...(config.repoAllowlistPath ? { filePath: config.repoAllowlistPath } : {}),
+});
 const connection = createConnectionOptions(config.redisUrl);
 const botQueue = createBotQueue(config.redisUrl);
 const botEvents = new BullMqBotEventSink(botQueue);
-const jobRegistry = new PostgresJobRegistry();
+const jobRegistry = createJobRegistry(config);
 
 const worker = new Worker<JobSpec>(
   jobQueueName,
@@ -47,7 +52,7 @@ const workerEventWorker = new Worker<WorkerEvent>(
   workerEventQueueName,
   async (job) => {
     logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
-    await handleWorkerEvent(job.data, jobRegistry);
+    await handleWorkerEvent(job.data, jobRegistry, botEvents);
   },
   { connection, concurrency: 2 },
 );

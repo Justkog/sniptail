@@ -5,8 +5,8 @@ import type { Client } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
-import { addReaction, postMessage, uploadFile } from './slack/helpers.js';
-import { postDiscordMessage, uploadDiscordFile } from './discord/helpers.js';
+import { addReaction, postEphemeral, postMessage, uploadFile } from './slack/helpers.js';
+import { editDiscordInteractionReply, postDiscordMessage, uploadDiscordFile } from './discord/helpers.js';
 
 type BotEventWorkerDeps = {
   redisUrl: string;
@@ -49,6 +49,15 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
               timestamp: event.payload.timestamp,
             });
             break;
+          case 'postEphemeral':
+            await postEphemeral(slackApp, {
+              channel: event.payload.channelId,
+              user: event.payload.userId,
+              text: event.payload.text,
+              ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
+              ...(event.payload.blocks ? { blocks: event.payload.blocks } : {}),
+            });
+            break;
           default:
             logger.warn({ event }, 'Unknown Slack bot event received');
         }
@@ -74,6 +83,13 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
             filePath: event.payload.filePath,
             title: event.payload.title,
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+          });
+          break;
+        case 'editInteractionReply':
+          await editDiscordInteractionReply(discordClient, {
+            interactionApplicationId: event.payload.interactionApplicationId,
+            interactionToken: event.payload.interactionToken,
+            text: event.payload.text,
           });
           break;
         default:

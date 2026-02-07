@@ -1,9 +1,9 @@
-import type { SlackAppContext } from '../context.js';
+import type { SlackHandlerContext } from '../context.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 import { buildPlanModal } from '../../modals.js';
 
-export function registerPlanCommand({ app, slackIds, config }: SlackAppContext) {
+export function registerPlanCommand({ app, slackIds, config }: SlackHandlerContext) {
   app.command(slackIds.commands.plan, async ({ ack, body, client }) => {
     await ack();
     const dedupeKey = `${body.team_id}:${body.trigger_id}:plan`;
@@ -11,7 +11,7 @@ export function registerPlanCommand({ app, slackIds, config }: SlackAppContext) 
       return;
     }
 
-    refreshRepoAllowlist(config);
+    await refreshRepoAllowlist(config);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: buildPlanModal(
