@@ -1,22 +1,10 @@
-import { asc, eq } from 'drizzle-orm';
 import { parseRepoAllowlist, writeRepoAllowlist } from '../config/repoAllowlist.js';
-import { getJobRegistryDb } from '../db/index.js';
-import { repositories as pgRepositories } from '../db/pg/schema.js';
-import { repositories as sqliteRepositories } from '../db/sqlite/schema.js';
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
+import { getRepoCatalogStore } from './catalogStore.js';
+import type { RepoRow } from './catalogTypes.js';
 
-export type RepoProvider = 'github' | 'gitlab' | 'local';
-
-type RepoRow = {
-  repoKey: string;
-  provider: RepoProvider;
-  sshUrl?: string;
-  localPath?: string;
-  projectId?: number;
-  baseBranch: string;
-  isActive: boolean;
-};
+export type { RepoProvider } from './catalogTypes.js';
 
 type SeedMode = 'if-empty' | 'upsert';
 
@@ -25,7 +13,7 @@ function normalizeBaseBranch(value?: string): string {
   return trimmed ? trimmed : 'main';
 }
 
-function inferProvider(repo: RepoConfig): RepoProvider {
+function inferProvider(repo: RepoConfig): 'github' | 'gitlab' | 'local' {
   if (repo.localPath) return 'local';
   if (repo.projectId !== undefined) return 'gitlab';
   if (repo.sshUrl?.toLowerCase().includes('gitlab')) return 'gitlab';
@@ -33,7 +21,7 @@ function inferProvider(repo: RepoConfig): RepoProvider {
 }
 
 function toRepoConfig(row: RepoRow): RepoConfig {
-  const baseBranch = row.baseBranch.trim();
+  const baseBranch = normalizeBaseBranch(row.baseBranch);
   return {
     ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
     ...(row.localPath ? { localPath: row.localPath } : {}),
@@ -61,54 +49,8 @@ function sanitizeRepoRows(rows: RepoRow[]): RepoRow[] {
 }
 
 async function listRepoRows(): Promise<RepoRow[]> {
-  const client = await getJobRegistryDb();
-  if (client.kind === 'pg') {
-    const rows = await client.db
-      .select({
-        repoKey: pgRepositories.repoKey,
-        provider: pgRepositories.provider,
-        sshUrl: pgRepositories.sshUrl,
-        localPath: pgRepositories.localPath,
-        projectId: pgRepositories.projectId,
-        baseBranch: pgRepositories.baseBranch,
-        isActive: pgRepositories.isActive,
-      })
-      .from(pgRepositories)
-      .where(eq(pgRepositories.isActive, true))
-      .orderBy(asc(pgRepositories.repoKey));
-    return rows.map((row) => ({
-      repoKey: row.repoKey,
-      provider: row.provider,
-      ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
-      ...(row.localPath ? { localPath: row.localPath } : {}),
-      ...(row.projectId !== null && row.projectId !== undefined ? { projectId: row.projectId } : {}),
-      baseBranch: normalizeBaseBranch(row.baseBranch),
-      isActive: Boolean(row.isActive),
-    }));
-  }
-
-  const rows = await client.db
-    .select({
-      repoKey: sqliteRepositories.repoKey,
-      provider: sqliteRepositories.provider,
-      sshUrl: sqliteRepositories.sshUrl,
-      localPath: sqliteRepositories.localPath,
-      projectId: sqliteRepositories.projectId,
-      baseBranch: sqliteRepositories.baseBranch,
-      isActive: sqliteRepositories.isActive,
-    })
-    .from(sqliteRepositories)
-    .where(eq(sqliteRepositories.isActive, true))
-    .orderBy(asc(sqliteRepositories.repoKey));
-  return rows.map((row) => ({
-    repoKey: row.repoKey,
-    provider: row.provider,
-    ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
-    ...(row.localPath ? { localPath: row.localPath } : {}),
-    ...(row.projectId !== null && row.projectId !== undefined ? { projectId: row.projectId } : {}),
-    baseBranch: normalizeBaseBranch(row.baseBranch),
-    isActive: Boolean(row.isActive),
-  }));
+  const store = await getRepoCatalogStore();
+  return store.listActiveRows();
 }
 
 export async function loadRepoAllowlistFromCatalog(): Promise<Record<string, RepoConfig>> {
@@ -122,66 +64,17 @@ export async function loadRepoAllowlistFromCatalog(): Promise<Record<string, Rep
 export async function upsertRepoCatalogEntry(repoKey: string, repo: RepoConfig): Promise<void> {
   const normalized = normalizeRecord(repo);
   const provider = inferProvider(normalized);
-  const now = new Date();
-  const nowIso = now.toISOString();
+  const store = await getRepoCatalogStore();
 
-  const client = await getJobRegistryDb();
-  if (client.kind === 'pg') {
-    await client.db
-      .insert(pgRepositories)
-      .values({
-        repoKey,
-        provider,
-        ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : {}),
-        ...(normalized.localPath ? { localPath: normalized.localPath } : {}),
-        ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
-        baseBranch: normalizeBaseBranch(normalized.baseBranch),
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: pgRepositories.repoKey,
-        set: {
-          provider,
-          ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : { sshUrl: null }),
-          ...(normalized.localPath ? { localPath: normalized.localPath } : { localPath: null }),
-          ...(normalized.projectId !== undefined
-            ? { projectId: normalized.projectId }
-            : { projectId: null }),
-          baseBranch: normalizeBaseBranch(normalized.baseBranch),
-          isActive: true,
-          updatedAt: now,
-        },
-      });
-    return;
-  }
-
-  await client.db
-    .insert(sqliteRepositories)
-    .values({
-      repoKey,
-      provider,
-      ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : {}),
-      ...(normalized.localPath ? { localPath: normalized.localPath } : {}),
-      ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
-      baseBranch: normalizeBaseBranch(normalized.baseBranch),
-      isActive: true,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    })
-    .onConflictDoUpdate({
-      target: sqliteRepositories.repoKey,
-      set: {
-        provider,
-        ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : { sshUrl: null }),
-        ...(normalized.localPath ? { localPath: normalized.localPath } : { localPath: null }),
-        ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : { projectId: null }),
-        baseBranch: normalizeBaseBranch(normalized.baseBranch),
-        isActive: true,
-        updatedAt: nowIso,
-      },
-    });
+  await store.upsertRow({
+    repoKey,
+    provider,
+    ...(normalized.sshUrl ? { sshUrl: normalized.sshUrl } : {}),
+    ...(normalized.localPath ? { localPath: normalized.localPath } : {}),
+    ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
+    baseBranch: normalizeBaseBranch(normalized.baseBranch),
+    isActive: true,
+  });
 }
 
 async function seedRepoCatalogFromAllowlist(

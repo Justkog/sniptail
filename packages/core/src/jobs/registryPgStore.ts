@@ -44,13 +44,10 @@ export function createPgJobRegistryStore(client: PgJobRegistryClient): JobRegist
       return parsePgRecord(rows[0]?.record);
     },
     async upsertRecord(key: string, record: JobRecord): Promise<void> {
-      await client.db
-        .insert(pgJobs)
-        .values({ jobId: key, record })
-        .onConflictDoUpdate({
-          target: pgJobs.jobId,
-          set: { record },
-        });
+      await client.db.insert(pgJobs).values({ jobId: key, record }).onConflictDoUpdate({
+        target: pgJobs.jobId,
+        set: { record },
+      });
     },
     async deleteRecordsByKeys(keys: string[]): Promise<void> {
       if (!keys.length) return;

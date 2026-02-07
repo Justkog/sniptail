@@ -31,15 +31,10 @@ export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
   const entryPath = join(appDir, options.entry);
 
   if (!pathExists(entryPath)) {
-    throw new Error(
-      `${options.app} build not found at ${entryPath}. Run "pnpm run build" first.`,
-    );
+    throw new Error(`${options.app} build not found at ${entryPath}. Run "pnpm run build" first.`);
   }
 
-  const envPath = resolveOptionalPath(
-    options.envPath ? baseCwd : root,
-    options.envPath ?? '.env',
-  );
+  const envPath = resolveOptionalPath(options.envPath ? baseCwd : root, options.envPath ?? '.env');
 
   return {
     root,
@@ -55,9 +50,7 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
 
   const childEnv: NodeJS.ProcessEnv = {
     ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
-    ...(options.configPath
-      ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) }
-      : {}),
+    ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
   };
 
   if (envPath && pathExists(envPath)) {

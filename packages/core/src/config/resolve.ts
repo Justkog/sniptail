@@ -91,21 +91,37 @@ export function resolveBotName(tomlValue: unknown): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
-export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' {
+export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' | 'redis' {
   const raw = (
     resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'sqlite' }) || 'sqlite'
   )
     .trim()
     .toLowerCase();
-  if (raw !== 'sqlite' && raw !== 'pg') {
+  if (raw !== 'sqlite' && raw !== 'pg' && raw !== 'redis') {
     throw new Error(`Invalid JOB_REGISTRY_DB: ${raw}`);
   }
   return raw;
 }
 
-export function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg'): string | undefined {
+export function resolveJobRegistryPgUrl(driver: 'sqlite' | 'pg' | 'redis'): string | undefined {
   if (driver !== 'pg') return undefined;
   return requireEnv('JOB_REGISTRY_PG_URL');
+}
+
+export function resolveJobRegistryRedisUrl(
+  driver: 'sqlite' | 'pg' | 'redis',
+  tomlValue: unknown,
+  fallbackRedisTomlValue: unknown,
+): string | undefined {
+  if (driver !== 'redis') return undefined;
+
+  const explicit = resolveStringValue('JOB_REGISTRY_REDIS_URL', tomlValue);
+  if (explicit) return explicit;
+
+  const fallback = resolveStringValue('REDIS_URL', fallbackRedisTomlValue);
+  if (fallback) return fallback;
+
+  throw new Error('JOB_REGISTRY_REDIS_URL or REDIS_URL is required when JOB_REGISTRY_DB=redis');
 }
 
 export function resolvePrimaryAgent(tomlValue: unknown): AgentId {
