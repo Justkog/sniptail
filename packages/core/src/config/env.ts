@@ -14,6 +14,7 @@ import {
   resolveBotName,
   resolveJobRegistryDriver,
   resolveJobRegistryPgUrl,
+  resolveJobRegistryRedisUrl,
   resolvePrimaryAgent,
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
@@ -102,16 +103,17 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   return Object.keys(models).length ? models : undefined;
 }
 
-function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
-  const repoAllowlistPath = resolvePathValue(
-    'REPO_ALLOWLIST_PATH',
-    coreToml?.repo_allowlist_path,
-    {
-      required: false,
-    },
-  );
+function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown): CoreConfig {
+  const repoAllowlistPath = resolvePathValue('REPO_ALLOWLIST_PATH', coreToml?.repo_allowlist_path, {
+    required: false,
+  });
   const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
   const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
+  const jobRegistryRedisUrl = resolveJobRegistryRedisUrl(
+    jobRegistryDriver,
+    coreToml?.job_registry_redis_url,
+    appRedisUrlToml,
+  );
 
   return {
     ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
@@ -124,6 +126,7 @@ function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
     }) as string,
     jobRegistryDriver,
     ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
+    ...(jobRegistryRedisUrl ? { jobRegistryRedisUrl } : {}),
   };
 }
 
@@ -131,7 +134,8 @@ export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
   const coreToml = getTomlTable(toml.core, 'core');
-  coreConfigCache = loadCoreConfigFromToml(coreToml);
+  const workerToml = getTomlTable(toml.worker, 'worker');
+  coreConfigCache = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   return coreConfigCache;
 }
 
@@ -143,7 +147,7 @@ export function loadBotConfig(): BotConfig {
   const slackToml = getTomlTable(toml.slack, 'slack');
   const discordToml = getTomlTable(toml.discord, 'discord');
 
-  const core = loadCoreConfigFromToml(coreToml);
+  const core = loadCoreConfigFromToml(coreToml, botToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(botToml?.bot_name);
@@ -216,7 +220,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const githubToml = getTomlTable(toml.github, 'github');
   const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
 
-  const core = loadCoreConfigFromToml(coreToml);
+  const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(workerToml?.bot_name);

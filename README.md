@@ -114,7 +114,7 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
 
 ### 2) Seed the repo catalog (optional, recommended for first boot)
 
-Sniptail now stores the allowlist in the job-registry database (`repositories` table).  
+Sniptail stores the allowlist in the configured job-registry backend (sqlite/pg/redis).  
 You can still start from a JSON file (ex: `repo-allowlist.json`) by setting `repo_allowlist_path` in `sniptail.worker.toml` `[core]` (or `REPO_ALLOWLIST_PATH` in env). On worker startup, Sniptail seeds the DB when the catalog is empty.
 
 ```json
@@ -140,7 +140,7 @@ Notes:
 - `localPath` points at a local repo source on the same machine.
 - `projectId` is required for GitLab merge requests.
 - `baseBranch` is optional; it is used as the default branch in Slack modals.
-- After the first seed, bot and worker read the DB catalog (no shared filesystem required).
+- After the first seed, bot and worker read the shared catalog from the configured registry backend (no shared filesystem required).
 
 To force DB -> file reconciliation on a worker host:
 
@@ -151,7 +151,7 @@ pnpm --filter @sniptail/worker sync-allowlist-file
 ### 3) Configure TOML files
 
 Sniptail uses two TOML config files so the bot and worker can be run on different machines.
-For multi-machine deployments, use a shared Postgres registry (`[core].job_registry_db = "pg"`).
+For multi-machine deployments, use a shared Postgres registry (`[core].job_registry_db = "pg"`) or Redis-backed job records (`[core].job_registry_db = "redis"`).
 
 Default paths:
 - `./sniptail.bot.toml`
@@ -184,6 +184,7 @@ Worker secrets:
 - `GITLAB_TOKEN` (required for GitLab merge requests)
 - `GITHUB_API_TOKEN` (required to create GitHub PRs)
 - `JOB_REGISTRY_PG_URL` (required only when using Postgres registry)
+- `JOB_REGISTRY_REDIS_URL` (optional override when using Redis registry; falls back to `REDIS_URL`)
 
 Optional:
 - `SNIPTAIL_DRY_RUN` (`1` runs a smoke test and exits without connecting to Slack or Redis)

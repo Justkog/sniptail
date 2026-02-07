@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 import { join, resolve } from 'node:path';
 import { runNode } from '../lib/exec.js';
 import { resolveSniptailRoot } from '../lib/paths.js';

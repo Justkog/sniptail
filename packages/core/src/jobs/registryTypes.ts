@@ -16,7 +16,7 @@ export type JobRecord = {
 };
 
 export interface JobRegistryStore {
-  kind: 'pg' | 'sqlite';
+  kind: 'pg' | 'sqlite' | 'redis';
   loadAllRecordsByPrefix(prefix: string): Promise<JobRecord[]>;
   loadRecordByKey(key: string): Promise<JobRecord | undefined>;
   upsertRecord(key: string, record: JobRecord): Promise<void>;

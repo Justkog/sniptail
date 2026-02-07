@@ -5,24 +5,28 @@
 [core]
 # Path to the repo allowlist JSON file.
 # Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
-# When set, worker startup can seed an empty DB catalog from this file.
+# When set, worker startup can seed an empty registry catalog from this file.
 repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 
 # Path to the job working root.
 # Required. No default. Example: "$HOME/.sniptail/jobs"
 job_work_root = "$HOME/.sniptail/jobs"
 
-# Path to the job registry database file (used for sqlite).
+# Path to the job registry file/directory (used for sqlite).
 # Required. No default. Example: "$HOME/.sniptail/job-registry"
 job_registry_path = "$HOME/.sniptail/job-registry"
 
-# Registry backend: "sqlite" or "pg".
-# Optional. Default: "sqlite". Example: "pg"
+# Registry backend: "sqlite", "pg", or "redis".
+# Optional. Default: "sqlite". Example: "redis"
 job_registry_db = "sqlite"
 
 # When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
 # Optional. No default. Example: "postgres://user:pass@host:5432/db"
 # job_registry_pg_url is read from env only.
+
+# When job_registry_db is "redis", configure this or set JOB_REGISTRY_REDIS_URL/REDIS_URL.
+# Optional. No default. Example: "redis://localhost:6379/1"
+# job_registry_redis_url = "redis://localhost:6379/1"
 
 [worker]
 # Friendly bot name shown in UIs.

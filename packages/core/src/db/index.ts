@@ -12,13 +12,21 @@ export async function getJobRegistryDb(): Promise<JobRegistryClient> {
   if (!jobRegistryClient) {
     jobRegistryClient = (async () => {
       const config = loadCoreConfig();
-      if (config.jobRegistryDriver === 'pg') {
-        if (!config.jobRegistryPgUrl) {
-          throw new Error('JOB_REGISTRY_PG_URL is required when JOB_REGISTRY_DB=pg');
+      switch (config.jobRegistryDriver) {
+        case 'pg':
+          if (!config.jobRegistryPgUrl) {
+            throw new Error('JOB_REGISTRY_PG_URL is required when JOB_REGISTRY_DB=pg');
+          }
+          return createPgClient(config.jobRegistryPgUrl);
+        case 'sqlite':
+          return createSqliteClient(config.jobRegistryPath);
+        case 'redis':
+          throw new Error('SQL job registry DB client is unavailable when JOB_REGISTRY_DB=redis');
+        default: {
+          const exhaustive: never = config.jobRegistryDriver;
+          throw new Error(`Unsupported JOB_REGISTRY_DB: ${String(exhaustive)}`);
         }
-        return createPgClient(config.jobRegistryPgUrl);
       }
-      return createSqliteClient(config.jobRegistryPath);
     })();
   }
   return jobRegistryClient;
