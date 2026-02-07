@@ -38,3 +38,17 @@ export async function getJobRegistryDb(): Promise<JobRegistryClient> {
 export function resetJobRegistryDb(): void {
   jobRegistryClient = null;
 }
+
+export async function closeJobRegistryDb(): Promise<void> {
+  if (!jobRegistryClient) return;
+  try {
+    const client = await jobRegistryClient;
+    if (client.kind === 'pg') {
+      await client.pool.end();
+    } else {
+      client.raw.close();
+    }
+  } finally {
+    jobRegistryClient = null;
+  }
+}

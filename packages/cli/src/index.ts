@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerBotCommand } from './commands/bot.js';
 import { registerRunJobCommand } from './commands/run-job.js';
+import { registerReposCommand } from './commands/repos.js';
 import { registerSlackManifestCommand } from './commands/slack-manifest.js';
 import { registerWorkerCommand } from './commands/worker.js';
 
@@ -26,6 +27,7 @@ program.name('sniptail').description('Sniptail CLI').version(resolveVersion());
 registerBotCommand(program);
 registerWorkerCommand(program);
 registerRunJobCommand(program);
+registerReposCommand(program);
 registerSlackManifestCommand(program);
 
 await program.parseAsync(process.argv);
