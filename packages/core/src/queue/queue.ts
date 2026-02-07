@@ -10,20 +10,7 @@ export const bootstrapQueueName = 'sniptail-bootstrap';
 export const workerEventQueueName = 'sniptail-worker-events';
 
 export function createConnectionOptions(redisUrl: string): ConnectionOptions {
-  const url = new URL(redisUrl);
-  const options: Record<string, string | number> = {
-    host: url.hostname,
-    port: url.port ? Number(url.port) : 6379,
-  };
-
-  if (url.username) options.username = url.username;
-  if (url.password) options.password = url.password;
-  if (url.pathname && url.pathname.length > 1) {
-    const db = Number(url.pathname.slice(1));
-    if (!Number.isNaN(db)) options.db = db;
-  }
-
-  return options as ConnectionOptions;
+  return { url: redisUrl };
 }
 
 export function createJobQueue(redisUrl: string): Queue<JobSpec> {
