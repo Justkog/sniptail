@@ -29,6 +29,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'ADMIN_USER_IDS',
     'JOB_REGISTRY_DB',
     'JOB_REGISTRY_PG_URL',
+    'JOB_REGISTRY_REDIS_URL',
     'PRIMARY_AGENT',
     'SLACK_ENABLED',
     'DISCORD_ENABLED',

@@ -4,24 +4,29 @@
 
 [core]
 # Path to the repo allowlist JSON file.
-# Required. No default. Example: "/srv/sniptail/allowlist.json"
-repo_allowlist_path = "/srv/sniptail/allowlist.json"
+# Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
+# The bot reads repositories from the configured registry catalog; this file is only used if you run manual sync tooling.
+repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 
 # Path to the job working root.
-# Required. No default. Example: "/srv/sniptail/jobs"
-job_work_root = "/srv/sniptail/jobs"
+# Required. No default. Example: "$HOME/.sniptail/jobs"
+job_work_root = "$HOME/.sniptail/jobs"
 
-# Path to the job registry database file (used for sqlite).
-# Required. No default. Example: "/srv/sniptail/job-registry"
-job_registry_path = "/srv/sniptail/job-registry"
+# Path to the job registry file/directory (used for sqlite).
+# Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
+job_registry_path = "$HOME/.sniptail/job-registry"
 
-# Registry backend: "sqlite" or "pg".
-# Optional. Default: "sqlite". Example: "pg"
+# Registry backend: "sqlite", "pg", or "redis".
+# Optional. Default: "sqlite". Example: "redis"
 job_registry_db = "sqlite"
 
 # When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
 # Optional. No default. Example: "postgres://user:pass@host:5432/db"
 # job_registry_pg_url is read from env only.
+
+# When job_registry_db is "redis", configure this or set JOB_REGISTRY_REDIS_URL/REDIS_URL.
+# Optional. No default. Example: "redis://localhost:6379/1"
+# job_registry_redis_url = "redis://localhost:6379/1"
 
 [bot]
 # Friendly bot name shown in UIs.
@@ -72,4 +77,3 @@ redis_url = "redis://localhost:6379"
 # Discord channel IDs to allow.
 # Optional. Default: [] (empty). Example: ["123", "456"]
 # channel_ids = ["123456789012345678"]
-

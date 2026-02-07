@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 import { join, resolve } from 'node:path';
 import { runRuntime } from '../lib/runtime.js';
 

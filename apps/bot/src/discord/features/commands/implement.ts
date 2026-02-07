@@ -9,7 +9,7 @@ export async function handleImplementStart(
   interaction: ChatInputCommandInteraction,
   config: BotConfig,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const repoKeys = Object.keys(config.repoAllowlist);
   if (!repoKeys.length) {

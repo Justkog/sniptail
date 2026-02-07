@@ -1,13 +1,12 @@
-import { parseRepoAllowlist } from '@sniptail/core/config/config.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
-import type { RepoConfig } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
+import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 
 export function registerBootstrapSubmitView({
   app,
@@ -38,7 +37,6 @@ export function registerBootstrapSubmitView({
     const namespaceIdRaw = state.gitlab_namespace_id?.gitlab_namespace_id?.value?.trim();
     const namespaceId = parseOptionalInt(namespaceIdRaw);
     const repoKey = sanitizeRepoKey(repoKeyInput || repoName);
-    const allowlistPath = config.repoAllowlistPath;
 
     const errors: Record<string, string> = {};
     if (!repoName) {
@@ -53,23 +51,14 @@ export function registerBootstrapSubmitView({
     if (namespaceIdRaw && namespaceId === undefined) {
       errors.gitlab_namespace_id = 'Namespace ID must be a number.';
     }
-    if (!allowlistPath) {
-      errors.repo_name = 'Repo allowlist path is not set in config.';
-    }
     if (service === 'local' && !localPathInput) {
       errors.local_path = 'Local directory path is required.';
     }
 
-    let allowlist: Record<string, RepoConfig> | null = null;
-    if (allowlistPath && !Object.keys(errors).length) {
-      try {
-        allowlist = parseRepoAllowlist(allowlistPath);
-        if (allowlist[repoKey]) {
-          errors.repo_key = `Allowlist key "${repoKey}" already exists.`;
-        }
-      } catch (err) {
-        logger.warn({ err, allowlistPath }, 'Failed to read repo allowlist');
-        errors.repo_name = 'Unable to read repo allowlist. Check JSON formatting.';
+    if (!Object.keys(errors).length) {
+      await refreshRepoAllowlist(config);
+      if (config.repoAllowlist[repoKey]) {
+        errors.repo_key = `Allowlist key "${repoKey}" already exists.`;
       }
     }
 
@@ -84,8 +73,8 @@ export function registerBootstrapSubmitView({
     const responseUser = metadata?.userId ?? body.user.id;
 
     try {
-      if (!allowlistPath || !allowlist || !service) {
-        throw new Error('Missing allowlist or service selection.');
+      if (!service) {
+        throw new Error('Missing service selection.');
       }
 
       const requestId = createJobId('bootstrap');

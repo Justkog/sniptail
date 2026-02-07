@@ -2,12 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/config.js', () => ({
   loadCoreConfig: () => ({
-    repoAllowlist: {
-      'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },
-    },
+    repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
     jobRegistryPath: '/tmp/sniptail/registry',
-    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     jobRegistryDriver: 'sqlite',
   }),
 }));
@@ -32,6 +29,9 @@ describe('jobs/utils', () => {
   });
 
   it('validates repo allowlist and git ref for non-mention jobs', () => {
+    const repoAllowlist = {
+      'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },
+    };
     const baseJob = {
       jobId: 'job-123',
       type: 'ASK' as const,
@@ -41,11 +41,11 @@ describe('jobs/utils', () => {
       channel: { provider: 'slack', channelId: 'C123', userId: 'U123' },
     };
 
-    expect(() => validateJob(baseJob)).not.toThrow();
-    expect(() => validateJob({ ...baseJob, repoKeys: ['missing-repo'] })).toThrow(
+    expect(() => validateJob(baseJob, repoAllowlist)).not.toThrow();
+    expect(() => validateJob({ ...baseJob, repoKeys: ['missing-repo'] }, repoAllowlist)).toThrow(
       'Repo missing-repo is not in allowlist.',
     );
-    expect(() => validateJob({ ...baseJob, gitRef: 'bad ref' })).toThrow(
+    expect(() => validateJob({ ...baseJob, gitRef: 'bad ref' }, repoAllowlist)).toThrow(
       'Invalid git ref: bad ref',
     );
   });

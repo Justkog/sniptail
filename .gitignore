@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 **/*.tsbuildinfo
+
+release/
+sniptail-v*.tar.gz
+sniptail-v*.sha256

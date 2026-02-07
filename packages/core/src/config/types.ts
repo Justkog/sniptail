@@ -8,13 +8,16 @@ export type JobModelConfig = {
   modelReasoningEffort?: ModelReasoningEffort;
 };
 
+export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
+
 export type CoreConfig = {
-  repoAllowlistPath: string;
+  repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
-  jobRegistryPath: string;
-  jobRegistryDriver: 'sqlite' | 'pg';
+  jobRegistryPath?: string;
+  jobRegistryDriver: JobRegistryDriver;
   jobRegistryPgUrl?: string;
+  jobRegistryRedisUrl?: string;
 };
 
 export type BotConfig = CoreConfig & {
