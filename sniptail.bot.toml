@@ -13,7 +13,7 @@ repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 job_work_root = "$HOME/.sniptail/jobs"
 
 # Path to the job registry file/directory (used for sqlite).
-# Required. No default. Example: "$HOME/.sniptail/job-registry"
+# Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
 job_registry_path = "$HOME/.sniptail/job-registry"
 
 # Registry backend: "sqlite", "pg", or "redis".
