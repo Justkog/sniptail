@@ -45,11 +45,11 @@ export async function handleWorkerEvent(
         } else {
           await botEvents.publish({
             provider: 'discord',
-            type: 'postMessage',
+            type: 'editInteractionReply',
             payload: {
-              channelId: event.payload.channelId,
+              interactionApplicationId: event.payload.interactionApplicationId,
+              interactionToken: event.payload.interactionToken,
               text: message,
-              ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
             },
           });
         }
@@ -69,11 +69,11 @@ export async function handleWorkerEvent(
         } else {
           await botEvents.publish({
             provider: 'discord',
-            type: 'postMessage',
+            type: 'editInteractionReply',
             payload: {
-              channelId: event.payload.channelId,
+              interactionApplicationId: event.payload.interactionApplicationId,
+              interactionToken: event.payload.interactionToken,
               text: 'Failed to fetch Codex usage status. Please try again shortly.',
-              ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
             },
           });
         }
