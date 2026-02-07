@@ -18,7 +18,7 @@ export async function handleAskModalSubmit(
   config: BotConfig,
   queue: Queue<JobSpec>,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const selection = askSelectionByUser.get(interaction.user.id);
   const repoKeys = selection?.repoKeys ?? [];

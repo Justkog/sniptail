@@ -9,7 +9,7 @@ export type JobModelConfig = {
 };
 
 export type CoreConfig = {
-  repoAllowlistPath: string;
+  repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
   jobRegistryPath: string;

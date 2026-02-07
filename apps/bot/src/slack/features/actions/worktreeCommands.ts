@@ -5,6 +5,7 @@ import {
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
+import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
 import { buildWorktreeCommandsText } from '../../lib/worktree.js';
 
 export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackHandlerContext) {
@@ -20,6 +21,7 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackH
       return;
     }
 
+    await refreshRepoAllowlist(config);
     const record = await loadJobRecord(jobId).catch((err) => {
       logger.warn({ err, jobId }, 'Failed to load job record');
       return undefined;

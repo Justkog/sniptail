@@ -9,7 +9,7 @@ export async function handlePlanSelection(
   interaction: StringSelectMenuInteraction,
   config: BotConfig,
 ) {
-  refreshRepoAllowlist(config);
+  await refreshRepoAllowlist(config);
 
   const repoKeys = interaction.values ?? [];
   if (!repoKeys.length) {

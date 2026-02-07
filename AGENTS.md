@@ -30,12 +30,15 @@
 - `apps/worker/src/merge-requests/`: PR/MR creation + description helpers
 - `apps/worker/src/channels/`: notification abstraction (Slack notifier today)
 - `apps/worker/src/slack/`: Slack-specific payload helpers
+- `packages/core/src/repos/catalog.ts`: repository catalog storage (DB-backed allowlist + seed/sync helpers)
 - `packages/core/src/slack/`: Slack commands, modals, and event handlers
 - `packages/core/src/queue/`: BullMQ queue wiring
 - `packages/core/src/git/`: Git operations and repo management
 - `packages/core/src/codex/`: Codex SDK integration and execution
 - `packages/core/src/config/env.ts`: env var schema + validation
 - `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)
+
+For multi-machine deployments, use Postgres for shared state (`JOB_REGISTRY_DB=pg` + `JOB_REGISTRY_PG_URL`).
 
 ## Environment
 Populate `.env` from `.env.example`. Required vars are enforced in `packages/core/src/config/env.ts`.
@@ -44,13 +47,13 @@ Notable variables:
 - `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_SIGNING_SECRET`
 - `REDIS_URL`
 - `GITLAB_BASE_URL`, `GITLAB_TOKEN`
-- `REPO_ALLOWLIST_PATH` (JSON file; see below)
-- `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `JOB_REGISTRY_PATH`
+- `REPO_ALLOWLIST_PATH` (optional seed/projection JSON file; see below)
+- `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `JOB_REGISTRY_PATH`, `JOB_REGISTRY_DB`
 - `LOCAL_REPO_ROOT` (optional; restricts local bootstrap paths)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
 - `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`
 
-`REPO_ALLOWLIST_PATH` JSON shape:
+`REPO_ALLOWLIST_PATH` JSON shape (used to seed the DB-backed repo catalog on worker startup when the catalog is empty):
 ```json
 {
   "repo-key": {

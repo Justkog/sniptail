@@ -4,7 +4,8 @@
 
 [core]
 # Path to the repo allowlist JSON file.
-# Required. No default. Example: "$HOME/.sniptail/allowlist.json"
+# Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
+# The bot reads repositories from the DB catalog; this file is only used if you run manual sync tooling.
 repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 
 # Path to the job working root.

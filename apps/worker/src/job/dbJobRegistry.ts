@@ -12,7 +12,7 @@ import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import type { JobRegistry } from './jobRegistry.js';
 
-export class PostgresJobRegistry implements JobRegistry {
+export class DbJobRegistry implements JobRegistry {
   async loadJobRecord(jobId: string): Promise<JobRecord | undefined> {
     return loadJobRecordDb(jobId);
   }

@@ -23,7 +23,6 @@ import {
   resolvePathValue,
   resolveStringValue,
 } from './resolve.js';
-import { parseRepoAllowlist } from './repoAllowlist.js';
 import { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
 
 let coreConfigCache: CoreConfig | null = null;
@@ -108,16 +107,15 @@ function loadCoreConfigFromToml(coreToml?: TomlTable): CoreConfig {
     'REPO_ALLOWLIST_PATH',
     coreToml?.repo_allowlist_path,
     {
-      required: true,
+      required: false,
     },
   );
-  const repoAllowlist = parseRepoAllowlist(repoAllowlistPath as string);
   const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
   const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
 
   return {
-    repoAllowlistPath: repoAllowlistPath as string,
-    repoAllowlist,
+    ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
+    repoAllowlist: {},
     jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
       required: true,
     }) as string,
