@@ -33,6 +33,17 @@ export type BotEvent =
       };
     })
   | (BotEventBase & {
+      provider: 'slack';
+      type: 'postEphemeral';
+      payload: {
+        channelId: string;
+        userId: string;
+        text: string;
+        threadId?: string;
+        blocks?: unknown[];
+      };
+    })
+  | (BotEventBase & {
       provider: 'discord';
       type: 'postMessage';
       payload: {
