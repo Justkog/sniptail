@@ -463,8 +463,6 @@ void main()
     try {
       await closeJobRegistryDb();
     } catch (err) {
-      process.stderr.write(
-        `Warning: Failed to close job registry DB: ${(err as Error).message}\n`,
-      );
+      process.stderr.write(`Warning: Failed to close job registry DB: ${(err as Error).message}\n`);
     }
   });
