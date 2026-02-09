@@ -24,8 +24,8 @@ export function createNotifier(events: BotEventSink): Notifier {
         type: 'uploadFile',
         payload: {
           channelId: ref.channelId,
-          ...(file.filePath ? { filePath: file.filePath } : {}),
-          ...(file.fileContent ? { fileContent: file.fileContent } : {}),
+          ...(file.filePath !== undefined ? { filePath: file.filePath } : {}),
+          ...(file.fileContent !== undefined ? { fileContent: file.fileContent } : {}),
           title: file.title,
           ...(ref.threadId ? { threadId: ref.threadId } : {}),
         },
