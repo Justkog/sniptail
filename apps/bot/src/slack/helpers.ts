@@ -2,6 +2,7 @@ import type { App } from '@slack/bolt';
 import type { ChatPostMessageResponse, FilesUploadV2Arguments } from '@slack/web-api';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { logger } from '@sniptail/core/logger.js';
 
 export async function postMessage(
@@ -46,20 +47,25 @@ export async function postEphemeral(
 
 export async function uploadFile(
   app: App,
-  options: {
-    channel: string;
-    filePath: string;
-    title: string;
-    threadTs?: string;
-  },
+  options:
+    | { channel: string; filePath: string; fileContent?: never; title: string; threadTs?: string }
+    | { channel: string; filePath?: never; fileContent: string; title: string; threadTs?: string },
 ) {
   try {
+    if (!options.filePath && !options.fileContent) {
+      throw new Error('Slack upload requires filePath or fileContent.');
+    }
+
     let fileSize: number | undefined;
-    try {
-      const fileStat = await stat(options.filePath);
-      fileSize = fileStat.size;
-    } catch (err) {
-      logger.warn({ err, filePath: options.filePath }, 'Failed to stat Slack upload file');
+    if (options.filePath) {
+      try {
+        const fileStat = await stat(options.filePath);
+        fileSize = fileStat.size;
+      } catch (err) {
+        logger.warn({ err, filePath: options.filePath }, 'Failed to stat Slack upload file');
+      }
+    } else if (options.fileContent !== undefined) {
+      fileSize = Buffer.byteLength(options.fileContent, 'utf8');
     }
 
     logger.info(
@@ -67,15 +73,20 @@ export async function uploadFile(
         channel: options.channel,
         threadTs: options.threadTs,
         threadTsType: typeof options.threadTs,
-        filePath: options.filePath,
+        ...(options.filePath ? { filePath: options.filePath } : {}),
+        uploadSource: options.fileContent ? 'inline-content' : 'local-file',
         fileSize,
       },
       'Uploading Slack file',
     );
 
+    const fileInput = options.filePath
+      ? createReadStream(options.filePath)
+      : Readable.from(options.fileContent ?? '');
+
     const payload = {
       channel_id: options.channel,
-      file: createReadStream(options.filePath),
+      file: fileInput,
       filename: options.title,
       title: options.title,
       ...(options.threadTs && { thread_ts: options.threadTs }),
