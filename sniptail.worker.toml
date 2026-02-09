@@ -84,8 +84,8 @@ execution_mode = "local"
 idle_retries = 2
 
 # Dockerfile path for Copilot execution (if execution_mode = "docker").
-# Optional. Default: "./Dockerfile.copilot". Example: "./Dockerfile.copilot"
-# dockerfile_path = "./Dockerfile.copilot"
+# Optional. Default: "../../Dockerfile.copilot". Example: "../../Dockerfile.copilot"
+# dockerfile_path = "../../Dockerfile.copilot"
 
 # Docker image name for Copilot execution (if execution_mode = "docker").
 # Optional. Default: "snatch-copilot:local". Example: "snatch-copilot:local"
@@ -115,8 +115,8 @@ idle_retries = 2
 execution_mode = "local"
 
 # Dockerfile path for Codex execution (if execution_mode = "docker").
-# Optional. Default: "./Dockerfile.codex". Example: "./Dockerfile.codex"
-# dockerfile_path = "./Dockerfile.codex"
+# Optional. Default: "../../Dockerfile.codex". Example: "../../Dockerfile.codex"
+# dockerfile_path = "../../Dockerfile.codex"
 
 # Docker image name for Codex execution (if execution_mode = "docker").
 # Optional. Default: "snatch-codex:local". Example: "snatch-codex:local"

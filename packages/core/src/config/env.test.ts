@@ -154,9 +154,9 @@ describe('config loaders', () => {
     process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
 
     const config = loadWorkerConfig();
-    expect(config.copilot.dockerfilePath).toBe('./Dockerfile.copilot');
+    expect(config.copilot.dockerfilePath).toBe('../../Dockerfile.copilot');
     expect(config.copilot.dockerImage).toBe('snatch-copilot:local');
-    expect(config.codex.dockerfilePath).toBe('./Dockerfile.codex');
+    expect(config.codex.dockerfilePath).toBe('../../Dockerfile.codex');
     expect(config.codex.dockerImage).toBe('snatch-codex:local');
   });
 
