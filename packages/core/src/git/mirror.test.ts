@@ -23,6 +23,7 @@ describe('git mirror ensureClone', () => {
 
   it('forces local branch update by default when remote ref exists', async () => {
     vi.mocked(existsSync).mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/require-await
     vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
       const joined = args.join(' ');
       if (joined === 'fetch --prune origin main:refs/remotes/origin/main') {
@@ -113,6 +114,7 @@ describe('git mirror ensureClone', () => {
 
   it('does not force-update a local branch when disabled (resume-safe mode)', async () => {
     vi.mocked(existsSync).mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/require-await
     vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
       const joined = args.join(' ');
       if (joined === 'fetch --prune origin sniptail/job-1:refs/remotes/origin/sniptail/job-1') {
