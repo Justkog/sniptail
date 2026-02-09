@@ -38,15 +38,21 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
               ...(event.payload.blocks ? { blocks: event.payload.blocks } : {}),
             });
             break;
-          case 'uploadFile':
-            await uploadFile(slackApp, {
+          case 'uploadFile': {
+            const baseOptions = {
               channel: event.payload.channelId,
-              ...(event.payload.filePath ? { filePath: event.payload.filePath } : {}),
-              ...(event.payload.fileContent ? { fileContent: event.payload.fileContent } : {}),
               title: event.payload.title,
               ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
-            });
+            };
+            let options;
+            if ('filePath' in event.payload) {
+              options = { ...baseOptions, filePath: event.payload.filePath };
+            } else {
+              options = { ...baseOptions, fileContent: event.payload.fileContent };
+            }
+            await uploadFile(slackApp, options);
             break;
+          }
           case 'addReaction':
             await addReaction(slackApp, {
               channel: event.payload.channelId,
@@ -82,17 +88,21 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
             ...(event.payload.components ? { components: event.payload.components } : {}),
           });
           break;
-        case 'uploadFile':
-          await uploadDiscordFile(discordClient, {
+        case 'uploadFile': {
+          const baseOptions = {
             channelId: event.payload.channelId,
-            ...(event.payload.filePath !== undefined ? { filePath: event.payload.filePath } : {}),
-            ...(event.payload.fileContent !== undefined
-              ? { fileContent: event.payload.fileContent }
-              : {}),
             title: event.payload.title,
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
-          });
+          };
+          let options;
+          if ('filePath' in event.payload) {
+            options = { ...baseOptions, filePath: event.payload.filePath };
+          } else {
+            options = { ...baseOptions, fileContent: event.payload.fileContent };
+          }
+          await uploadDiscordFile(discordClient, options);
           break;
+        }
         case 'editInteractionReply':
           await editDiscordInteractionReply(discordClient, {
             interactionApplicationId: event.payload.interactionApplicationId,

@@ -1,10 +1,8 @@
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 
-export type FileUpload = {
-  title: string;
-  filePath?: string;
-  fileContent?: string;
-};
+export type FileUpload =
+  | { title: string; filePath: string; fileContent?: never }
+  | { title: string; filePath?: never; fileContent: string };
 
 export type MessageOptions = {
   blocks?: unknown[];

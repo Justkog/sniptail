@@ -19,21 +19,23 @@ export function createNotifier(events: BotEventSink): Notifier {
       });
     },
     async uploadFile(ref, file) {
-      // Validate that at least one of filePath or fileContent is present
-      if (file.filePath === undefined && file.fileContent === undefined) {
-        throw new Error('uploadFile requires either filePath or fileContent');
+      const basePayload = {
+        channelId: ref.channelId,
+        title: file.title,
+        ...(ref.threadId ? { threadId: ref.threadId } : {}),
+      };
+
+      let payload;
+      if ('filePath' in file) {
+        payload = { ...basePayload, filePath: file.filePath };
+      } else {
+        payload = { ...basePayload, fileContent: file.fileContent };
       }
 
       await events.publish({
         provider: ref.provider,
         type: 'uploadFile',
-        payload: {
-          channelId: ref.channelId,
-          ...(file.filePath !== undefined ? { filePath: file.filePath } : {}),
-          ...(file.fileContent !== undefined ? { fileContent: file.fileContent } : {}),
-          title: file.title,
-          ...(ref.threadId ? { threadId: ref.threadId } : {}),
-        },
+        payload,
       });
     },
   };

@@ -18,13 +18,9 @@ type DiscordMessageOptions = {
   components?: unknown[];
 };
 
-type DiscordFileOptions = {
-  channelId: string;
-  filePath?: string;
-  fileContent?: string;
-  title: string;
-  threadId?: string;
-};
+type DiscordFileOptions =
+  | { channelId: string; filePath: string; fileContent?: never; title: string; threadId?: string }
+  | { channelId: string; filePath?: never; fileContent: string; title: string; threadId?: string };
 
 type DiscordInteractionReplyOptions = {
   interactionToken: string;
