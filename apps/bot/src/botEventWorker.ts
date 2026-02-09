@@ -86,7 +86,9 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
           await uploadDiscordFile(discordClient, {
             channelId: event.payload.channelId,
             ...(event.payload.filePath !== undefined ? { filePath: event.payload.filePath } : {}),
-            ...(event.payload.fileContent !== undefined ? { fileContent: event.payload.fileContent } : {}),
+            ...(event.payload.fileContent !== undefined
+              ? { fileContent: event.payload.fileContent }
+              : {}),
             title: event.payload.title,
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
           });
