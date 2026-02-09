@@ -94,11 +94,7 @@ export async function editDiscordInteractionReply(
   options: DiscordInteractionReplyOptions,
 ) {
   await client.rest.patch(
-    Routes.webhookMessage(
-      options.interactionApplicationId,
-      options.interactionToken,
-      '@original',
-    ),
+    Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
     { body: { content: options.text } },
   );
 }

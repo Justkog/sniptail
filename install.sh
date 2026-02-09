@@ -112,18 +112,27 @@ else
 
     find_asset_id() {
       local name="$1"
-      printf '%s' "${release_json}" \
-        | tr '{' '\n' \
-        | awk -v n="${name}" '
-            $0 ~ "\"name\":\""n"\"" {
-              if (match($0, /"id":[0-9]+/)) {
-                print substr($0, RSTART+5, RLENGTH-5); exit
-              }
-            }'
+      node -e '
+        const fs = require("fs");
+        const target = process.argv[1];
+        const json = JSON.parse(fs.readFileSync(0, "utf8"));
+        const assets = json.assets || [];
+        const hit = assets.find(a => a && a.name === target);
+        if (!hit) process.exit(2);
+        process.stdout.write(String(hit.id));
+      ' "${name}" <<<"${release_json}"
     }
 
-    tar_id="$(find_asset_id "${TARBALL}")"
-    [[ -n "${tar_id}" ]] || fail "Could not find asset '${TARBALL}' in release ${TAG}."
+    tar_id="$(find_asset_id "${TARBALL}")" || true
+    if [[ -z "${tar_id}" ]]; then
+      warn "Assets in release ${TAG}:"
+      node -e '
+        const fs = require("fs");
+        const j = JSON.parse(fs.readFileSync(0, "utf8"));
+        for (const a of (j.assets || [])) console.log(" - " + a.name);
+      ' <<<"${release_json}" >&2
+      fail "Could not find asset '${TARBALL}' in release ${TAG}."
+    fi
 
     curl -fL "${curl_auth_args[@]}" \
       -H "Accept: application/octet-stream" \
@@ -131,7 +140,7 @@ else
       -o "${TARBALL_PATH}"
 
     log "Checking checksum (if available)"
-    sha_id="$(find_asset_id "${SHA_FILE}")"
+    sha_id="$(find_asset_id "${SHA_FILE}")" || true
     if [[ -n "${sha_id}" ]]; then
       curl -fL "${curl_auth_args[@]}" \
         -H "Accept: application/octet-stream" \
