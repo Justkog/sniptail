@@ -59,6 +59,9 @@ export async function prepareRepoWorktrees(
       env,
       baseRef,
       redactionPatterns,
+      {
+        forceLocalBranchUpdate: !resumeRecord,
+      },
     );
     await addWorktree({
       clonePath,
