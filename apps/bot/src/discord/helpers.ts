@@ -56,7 +56,7 @@ export async function postDiscordMessage(client: Client, options: DiscordMessage
 
 export async function uploadDiscordFile(client: Client, options: DiscordFileOptions) {
   try {
-    if (!options.filePath && !options.fileContent) {
+    if (options.filePath === undefined && options.fileContent === undefined) {
       throw new Error('Discord upload requires filePath or fileContent.');
     }
 
@@ -68,7 +68,7 @@ export async function uploadDiscordFile(client: Client, options: DiscordFileOpti
       } catch (err) {
         logger.warn({ err, filePath: options.filePath }, 'Failed to stat Discord upload file');
       }
-    } else if (options.fileContent) {
+    } else if (options.fileContent !== undefined) {
       fileSize = Buffer.byteLength(options.fileContent, 'utf8');
     }
 
@@ -77,7 +77,7 @@ export async function uploadDiscordFile(client: Client, options: DiscordFileOpti
         channelId: options.channelId,
         threadId: options.threadId,
         ...(options.filePath ? { filePath: options.filePath } : {}),
-        uploadSource: options.fileContent ? 'inline-content' : 'local-file',
+        uploadSource: options.fileContent !== undefined ? 'inline-content' : 'local-file',
         fileSize,
       },
       'Uploading Discord file',
