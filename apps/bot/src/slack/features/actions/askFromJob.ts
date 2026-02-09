@@ -1,6 +1,6 @@
 import type { SlackHandlerContext } from '../context.js';
 import { buildAskModal } from '../../modals.js';
-import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 
 export function registerAskFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
   app.action(slackIds.actions.askFromJob, async ({ ack, body, client, action }) => {

@@ -7,6 +7,7 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import { StdoutBotEventSink } from '../channels/botEventSink.js';
 import { CollectingJobRegistry } from '../job/collectingJobRegistry.js';
 import { runJob } from '../pipeline.js';
+import { assertDockerPreflight } from '../docker/preflight.js';
 
 function printUsage() {
   process.stderr.write('Usage: run-job <path-to-job.json>\\n');
@@ -20,7 +21,8 @@ async function main() {
     return;
   }
 
-  loadWorkerConfig();
+  const config = loadWorkerConfig();
+  await assertDockerPreflight(config);
 
   const resolvedPath = resolve(process.cwd(), jobPath);
   let job: JobSpec;

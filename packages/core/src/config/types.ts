@@ -59,6 +59,8 @@ export type WorkerConfig = CoreConfig & {
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
   repoCacheRoot: string;
+  worktreeSetupCommand?: string;
+  worktreeSetupAllowFailure?: boolean;
   jobRootCopyGlob?: string;
   cleanupMaxAge?: string;
   cleanupMaxEntries?: number;

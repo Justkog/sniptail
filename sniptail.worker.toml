@@ -66,6 +66,14 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # Optional. Default: false. Example: true
 # include_raw_request_in_mr = false
 
+# Optional command executed in each prepared repo worktree.
+# Optional. No default. Example: "pnpm install --prefer-offline --no-lockfile"
+# worktree_setup_command = "pnpm install --prefer-offline --no-lockfile"
+
+# If true, continue jobs even when worktree_setup_command exits non-zero.
+# Optional. Default: false. Example: true
+# worktree_setup_allow_failure = false
+
 [copilot]
 # Execution mode for GitHub Copilot agent.
 # Optional. Default: "local". Example: "docker"
@@ -76,12 +84,12 @@ execution_mode = "local"
 idle_retries = 2
 
 # Dockerfile path for Copilot execution (if execution_mode = "docker").
-# Optional. No default. Example: "./Dockerfile.copilot"
+# Optional. Default: "./Dockerfile.copilot". Example: "./Dockerfile.copilot"
 # dockerfile_path = "./Dockerfile.copilot"
 
 # Docker image name for Copilot execution (if execution_mode = "docker").
-# Optional. No default. Example: "sniptail/copilot:latest"
-# docker_image = "sniptail/copilot:latest"
+# Optional. Default: "snatch-copilot:local". Example: "snatch-copilot:local"
+# docker_image = "snatch-copilot:local"
 
 # Docker build context for Copilot execution (if execution_mode = "docker").
 # Optional. No default. Example: "."
@@ -107,12 +115,12 @@ idle_retries = 2
 execution_mode = "local"
 
 # Dockerfile path for Codex execution (if execution_mode = "docker").
-# Optional. No default. Example: "./Dockerfile.codex"
+# Optional. Default: "./Dockerfile.codex". Example: "./Dockerfile.codex"
 # dockerfile_path = "./Dockerfile.codex"
 
 # Docker image name for Codex execution (if execution_mode = "docker").
-# Optional. No default. Example: "sniptail/codex:latest"
-# docker_image = "sniptail/codex:latest"
+# Optional. Default: "snatch-codex:local". Example: "snatch-codex:local"
+# docker_image = "snatch-codex:local"
 
 # Docker build context for Codex execution (if execution_mode = "docker").
 # Optional. No default. Example: "."

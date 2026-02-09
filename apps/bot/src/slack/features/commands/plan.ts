@@ -1,6 +1,6 @@
 import type { SlackHandlerContext } from '../context.js';
 import { dedupe } from '../../lib/dedupe.js';
-import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildPlanModal } from '../../modals.js';
 
 export function registerPlanCommand({ app, slackIds, config }: SlackHandlerContext) {
