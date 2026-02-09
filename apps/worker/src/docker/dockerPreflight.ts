@@ -1,29 +1,11 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
-
-type ExecFileLike = (file: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
-
-const execFileAsync = promisify(execFile);
+import { execFileAsync, stringifyError, type ExecFileLike } from '../preflight/common.js';
 
 function dockerModeAgents(config: WorkerConfig): string[] {
   const agents: string[] = [];
   if (config.codex.executionMode === 'docker') agents.push('codex');
   if (config.copilot.executionMode === 'docker') agents.push('copilot');
   return agents;
-}
-
-function stringifyError(err: unknown): string {
-  if (err && typeof err === 'object') {
-    const withStderr = err as { stderr?: unknown; message?: unknown };
-    if (typeof withStderr.stderr === 'string' && withStderr.stderr.trim()) {
-      return withStderr.stderr.trim();
-    }
-    if (typeof withStderr.message === 'string' && withStderr.message.trim()) {
-      return withStderr.message.trim();
-    }
-  }
-  return String(err);
 }
 
 export async function assertDockerPreflight(
