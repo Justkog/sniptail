@@ -38,6 +38,11 @@ export async function runAgentJob(options: {
       : agentId === 'codex'
         ? config.codex.models?.[job.type]
         : undefined;
+  const additionalDirectories =
+    job.type !== 'MENTION' &&
+    ((agentId === 'codex') || (agentId === 'copilot' && config.copilot.executionMode === 'docker'))
+      ? [config.repoCacheRoot]
+      : undefined;
 
   const agentResult = await agent.run(
     job,
@@ -50,6 +55,7 @@ export async function runAgentJob(options: {
       ...(modelOverride?.modelReasoningEffort
         ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
         : {}),
+      ...(additionalDirectories ? { additionalDirectories } : {}),
       onEvent: async (event) => {
         if (agent.formatEvent) {
           try {

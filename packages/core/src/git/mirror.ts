@@ -4,6 +4,10 @@ import { dirname } from 'node:path';
 import { runCommand } from '../runner/commandRunner.js';
 import type { RepoConfig } from '../types/job.js';
 
+type EnsureCloneOptions = {
+  forceLocalBranchUpdate?: boolean;
+};
+
 export async function ensureClone(
   repoKey: string,
   repo: RepoConfig,
@@ -12,7 +16,9 @@ export async function ensureClone(
   env: NodeJS.ProcessEnv,
   gitRef: string,
   redact: Array<string | RegExp> = [],
+  options: EnsureCloneOptions = {},
 ): Promise<void> {
+  const forceLocalBranchUpdate = options.forceLocalBranchUpdate ?? true;
   await mkdir(dirname(clonePath), { recursive: true });
 
   const common = {
@@ -79,12 +85,25 @@ export async function ensureClone(
       allowFailure: true,
     });
     const currentBranch = headRef.stdout.trim();
+    const localRef = `refs/heads/${gitRef}`;
+    const localRefCheck = await runCommand('git', ['show-ref', '--verify', localRef], {
+      ...common,
+      cwd: clonePath,
+      allowFailure: true,
+    });
+    const localBranchExists = (localRefCheck.exitCode ?? 1) === 0;
+
     if (currentBranch === gitRef) {
       await runCommand('git', ['reset', '--hard', remoteRef], {
         ...common,
         cwd: clonePath,
       });
-    } else {
+    } else if (!localBranchExists) {
+      await runCommand('git', ['branch', gitRef, remoteRef], {
+        ...common,
+        cwd: clonePath,
+      });
+    } else if (forceLocalBranchUpdate) {
       await runCommand('git', ['branch', '--force', gitRef, remoteRef], {
         ...common,
         cwd: clonePath,
