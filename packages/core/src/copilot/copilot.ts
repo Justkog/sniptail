@@ -70,11 +70,17 @@ export async function runCopilot(
       ? copilotEnv[containerNameEnvKey]
       : undefined;
 
+  const cliArgs = (options.additionalDirectories ?? []).flatMap((directory) => [
+    '--add-dir',
+    directory,
+  ]);
+
   const client = new CopilotClient({
     cwd: workDir,
     env: copilotEnv,
     autoRestart: false,
     ...(options.copilot?.cliPath ? { cliPath: options.copilot.cliPath } : {}),
+    ...(cliArgs.length ? { cliArgs } : {}),
   });
   let sessionId: string | undefined;
   let finalResponse = '';
