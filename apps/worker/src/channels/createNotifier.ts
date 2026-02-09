@@ -19,13 +19,18 @@ export function createNotifier(events: BotEventSink): Notifier {
       });
     },
     async uploadFile(ref, file) {
+      // Validate that at least one of filePath or fileContent is present
+      if (file.filePath === undefined && file.fileContent === undefined) {
+        throw new Error('uploadFile requires either filePath or fileContent');
+      }
+
       await events.publish({
         provider: ref.provider,
         type: 'uploadFile',
         payload: {
           channelId: ref.channelId,
-          ...(file.filePath ? { filePath: file.filePath } : {}),
-          ...(file.fileContent ? { fileContent: file.fileContent } : {}),
+          ...(file.filePath !== undefined ? { filePath: file.filePath } : {}),
+          ...(file.fileContent !== undefined ? { fileContent: file.fileContent } : {}),
           title: file.title,
           ...(ref.threadId ? { threadId: ref.threadId } : {}),
         },
