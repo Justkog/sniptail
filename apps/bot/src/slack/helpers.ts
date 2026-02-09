@@ -64,7 +64,7 @@ export async function uploadFile(
       } catch (err) {
         logger.warn({ err, filePath: options.filePath }, 'Failed to stat Slack upload file');
       }
-    } else if (options.fileContent) {
+    } else if (options.fileContent !== undefined) {
       fileSize = Buffer.byteLength(options.fileContent, 'utf8');
     }
 
