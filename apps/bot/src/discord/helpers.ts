@@ -20,7 +20,8 @@ type DiscordMessageOptions = {
 
 type DiscordFileOptions = {
   channelId: string;
-  filePath: string;
+  filePath?: string;
+  fileContent?: string;
   title: string;
   threadId?: string;
 };
@@ -59,19 +60,28 @@ export async function postDiscordMessage(client: Client, options: DiscordMessage
 
 export async function uploadDiscordFile(client: Client, options: DiscordFileOptions) {
   try {
+    if (!options.filePath && !options.fileContent) {
+      throw new Error('Discord upload requires filePath or fileContent.');
+    }
+
     let fileSize: number | undefined;
-    try {
-      const fileStat = await stat(options.filePath);
-      fileSize = fileStat.size;
-    } catch (err) {
-      logger.warn({ err, filePath: options.filePath }, 'Failed to stat Discord upload file');
+    if (options.filePath) {
+      try {
+        const fileStat = await stat(options.filePath);
+        fileSize = fileStat.size;
+      } catch (err) {
+        logger.warn({ err, filePath: options.filePath }, 'Failed to stat Discord upload file');
+      }
+    } else if (options.fileContent) {
+      fileSize = Buffer.byteLength(options.fileContent, 'utf8');
     }
 
     logger.info(
       {
         channelId: options.channelId,
         threadId: options.threadId,
-        filePath: options.filePath,
+        ...(options.filePath ? { filePath: options.filePath } : {}),
+        uploadSource: options.fileContent ? 'inline-content' : 'local-file',
         fileSize,
       },
       'Uploading Discord file',
@@ -79,9 +89,14 @@ export async function uploadDiscordFile(client: Client, options: DiscordFileOpti
 
     const targetId = options.threadId ?? options.channelId;
     const channel = await resolveChannel(client, targetId);
-    const attachment = new AttachmentBuilder(createReadStream(options.filePath), {
-      name: options.title,
-    });
+    const attachment = new AttachmentBuilder(
+      options.filePath
+        ? createReadStream(options.filePath)
+        : Buffer.from(options.fileContent ?? '', 'utf8'),
+      {
+        name: options.title,
+      },
+    );
     await channel.send({ files: [attachment] });
   } catch (err) {
     logger.error({ err }, 'Failed to upload Discord file');
