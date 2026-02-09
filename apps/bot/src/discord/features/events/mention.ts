@@ -22,7 +22,16 @@ async function isReplyToBot(message: Message): Promise<boolean> {
     const referenced = await message.fetchReference();
     return referenced.author.id === message.client.user.id;
   } catch (err) {
-    logger.debug({ err, messageId: message.id }, 'Failed to fetch referenced message');
+    logger.debug(
+      {
+        err,
+        messageId: message.id,
+        referencedMessageId: message.reference?.messageId,
+        channelId: message.channelId,
+        guildId: message.guildId,
+      },
+      'Failed to fetch referenced message',
+    );
     return false;
   }
 }
