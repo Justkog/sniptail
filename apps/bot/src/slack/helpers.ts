@@ -47,13 +47,9 @@ export async function postEphemeral(
 
 export async function uploadFile(
   app: App,
-  options: {
-    channel: string;
-    filePath?: string;
-    fileContent?: string;
-    title: string;
-    threadTs?: string;
-  },
+  options:
+    | { channel: string; filePath: string; fileContent?: never; title: string; threadTs?: string }
+    | { channel: string; filePath?: never; fileContent: string; title: string; threadTs?: string },
 ) {
   try {
     if (!options.filePath && !options.fileContent) {
