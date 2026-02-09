@@ -204,4 +204,95 @@ describe('git mirror ensureClone', () => {
       expect.anything(),
     );
   });
+
+  it('creates local branch when remote ref exists but local branch does not', async () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/require-await
+    vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ');
+      if (joined === 'fetch --prune origin feature:refs/remotes/origin/feature') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/remotes/origin/feature') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/remotes/origin/feature\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'rev-parse --abbrev-ref HEAD') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'main\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/heads/feature') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 1,
+          signal: null,
+          stdout: '',
+          stderr: 'error: ref refs/heads/feature not found',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      return {
+        cmd: 'git',
+        args,
+        durationMs: 1,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+        cwd: '/tmp/cache/repo.git',
+      };
+    });
+
+    await ensureClone(
+      'repo',
+      { sshUrl: 'git@github.com:org/repo.git' },
+      '/tmp/cache/repo.git',
+      '/tmp/log.txt',
+      {},
+      'feature',
+    );
+
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['branch', 'feature', 'refs/remotes/origin/feature'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+  });
 });
