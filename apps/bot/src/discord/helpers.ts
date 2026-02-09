@@ -72,7 +72,7 @@ export async function uploadDiscordFile(client: Client, options: DiscordFileOpti
       } catch (err) {
         logger.warn({ err, filePath: options.filePath }, 'Failed to stat Discord upload file');
       }
-    } else if (options.fileContent) {
+    } else if (options.fileContent !== undefined) {
       fileSize = Buffer.byteLength(options.fileContent, 'utf8');
     }
 
