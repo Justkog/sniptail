@@ -26,7 +26,7 @@ export function createNotifier(events: BotEventSink): Notifier {
       };
 
       let payload;
-      if ('filePath' in file && file.filePath !== undefined) {
+      if ('filePath' in file) {
         payload = { ...basePayload, filePath: file.filePath };
       } else {
         payload = { ...basePayload, fileContent: file.fileContent };
