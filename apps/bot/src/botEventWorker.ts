@@ -41,7 +41,8 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
           case 'uploadFile':
             await uploadFile(slackApp, {
               channel: event.payload.channelId,
-              filePath: event.payload.filePath,
+              ...(event.payload.filePath ? { filePath: event.payload.filePath } : {}),
+              ...(event.payload.fileContent ? { fileContent: event.payload.fileContent } : {}),
               title: event.payload.title,
               ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
             });
@@ -84,7 +85,8 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
         case 'uploadFile':
           await uploadDiscordFile(discordClient, {
             channelId: event.payload.channelId,
-            filePath: event.payload.filePath,
+            ...(event.payload.filePath ? { filePath: event.payload.filePath } : {}),
+            ...(event.payload.fileContent ? { fileContent: event.payload.fileContent } : {}),
             title: event.payload.title,
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
           });

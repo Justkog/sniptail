@@ -18,7 +18,8 @@ export type BotEvent =
       type: 'uploadFile';
       payload: {
         channelId: string;
-        filePath: string;
+        filePath?: string;
+        fileContent?: string;
         title: string;
         threadId?: string;
       };
@@ -58,7 +59,8 @@ export type BotEvent =
       type: 'uploadFile';
       payload: {
         channelId: string;
-        filePath: string;
+        filePath?: string;
+        fileContent?: string;
         title: string;
         threadId?: string;
       };

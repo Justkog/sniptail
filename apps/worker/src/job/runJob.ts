@@ -198,7 +198,7 @@ export async function runJob(
       const channelRef = buildChannelRef(job, threadId);
       if (report) {
         await notifier.uploadFile(channelRef, {
-          filePath: reportPath,
+          fileContent: report,
           title: `sniptail-${job.jobId}-${reportFileName}`,
         });
       }
@@ -363,11 +363,10 @@ export async function runJob(
     }
     const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
-    const summaryPath = join(paths.artifactsRoot, 'summary.md');
     const threadId = await resolveThreadId(job, registry);
     const channelRef = buildChannelRef(job, threadId);
     await notifier.uploadFile(channelRef, {
-      filePath: summaryPath,
+      fileContent: summary,
       title: `sniptail-${job.jobId}-summary.md`,
     });
 
