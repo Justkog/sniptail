@@ -45,7 +45,7 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
               ...(event.payload.threadId ? { threadTs: event.payload.threadId } : {}),
             };
             let options;
-            if ('filePath' in event.payload && event.payload.filePath !== undefined) {
+            if ('filePath' in event.payload) {
               options = { ...baseOptions, filePath: event.payload.filePath };
             } else {
               options = { ...baseOptions, fileContent: event.payload.fileContent };
@@ -95,7 +95,7 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
             ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
           };
           let options;
-          if ('filePath' in event.payload && event.payload.filePath !== undefined) {
+          if ('filePath' in event.payload) {
             options = { ...baseOptions, filePath: event.payload.filePath };
           } else {
             options = { ...baseOptions, fileContent: event.payload.fileContent };
