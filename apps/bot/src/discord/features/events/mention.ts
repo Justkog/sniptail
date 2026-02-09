@@ -1,4 +1,4 @@
-import type { Message } from 'discord.js';
+import { MessageType, type Message } from 'discord.js';
 import type { Queue } from 'bullmq';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
@@ -14,8 +14,17 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 const defaultGitRef = 'main';
 
 async function isReplyToBot(message: Message): Promise<boolean> {
-  if (!message.reference?.messageId) {
+  if (message.type !== MessageType.Reply || !message.reference?.messageId) {
     return false;
+  }
+
+  if (message.mentions.repliedUser?.id === message.client.user.id) {
+    return true;
+  }
+
+  const cachedReferenced = message.channel.messages.cache.get(message.reference.messageId);
+  if (cachedReferenced) {
+    return cachedReferenced.author.id === message.client.user.id;
   }
 
   try {
