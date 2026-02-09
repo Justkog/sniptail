@@ -7,7 +7,8 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import { StdoutBotEventSink } from '../channels/botEventSink.js';
 import { CollectingJobRegistry } from '../job/collectingJobRegistry.js';
 import { runJob } from '../pipeline.js';
-import { assertDockerPreflight } from '../docker/preflight.js';
+import { assertDockerPreflight } from '../docker/dockerPreflight.js';
+import { assertGitCommitIdentityPreflight } from '../git/gitPreflight.js';
 
 function printUsage() {
   process.stderr.write('Usage: run-job <path-to-job.json>\\n');
@@ -24,6 +25,7 @@ async function main() {
   const config = loadWorkerConfig();
   await mkdir(config.repoCacheRoot, { recursive: true });
   await assertDockerPreflight(config);
+  await assertGitCommitIdentityPreflight();
 
   const resolvedPath = resolve(process.cwd(), jobPath);
   let job: JobSpec;
