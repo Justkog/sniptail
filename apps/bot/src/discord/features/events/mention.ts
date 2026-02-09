@@ -1,4 +1,4 @@
-import type { Message } from 'discord.js';
+import { MessageType, type Message } from 'discord.js';
 import type { Queue } from 'bullmq';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
@@ -13,8 +13,43 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 
 const defaultGitRef = 'main';
 
+async function isReplyToBot(message: Message): Promise<boolean> {
+  if (message.type !== MessageType.Reply || !message.reference?.messageId) {
+    return false;
+  }
+
+  if (message.mentions.repliedUser?.id === message.client.user.id) {
+    return true;
+  }
+
+  const cachedReferenced = message.channel.messages.cache.get(message.reference.messageId);
+  if (cachedReferenced) {
+    return cachedReferenced.author.id === message.client.user.id;
+  }
+
+  try {
+    const referenced = await message.fetchReference();
+    return referenced.author.id === message.client.user.id;
+  } catch (err) {
+    logger.debug(
+      {
+        err,
+        messageId: message.id,
+        referencedMessageId: message.reference?.messageId,
+        channelId: message.channelId,
+        guildId: message.guildId,
+      },
+      'Failed to fetch referenced message',
+    );
+    return false;
+  }
+}
+
 export async function handleMention(message: Message, config: BotConfig, queue: Queue<JobSpec>) {
-  if (!message.mentions.has(message.client.user)) {
+  const isMention = message.mentions.has(message.client.user);
+  const isReply = isMention ? false : await isReplyToBot(message);
+
+  if (!isMention && !isReply) {
     return;
   }
 
