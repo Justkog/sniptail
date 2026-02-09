@@ -2,6 +2,16 @@ export type BotEventBase = {
   jobId?: string;
 };
 
+type FileUploadPayloadBase = {
+  channelId: string;
+  title: string;
+  threadId?: string;
+};
+
+type FileUploadPayload =
+  | (FileUploadPayloadBase & { filePath: string; fileContent?: never })
+  | (FileUploadPayloadBase & { filePath?: never; fileContent: string });
+
 export type BotEvent =
   | (BotEventBase & {
       provider: 'slack';
@@ -16,13 +26,7 @@ export type BotEvent =
   | (BotEventBase & {
       provider: 'slack';
       type: 'uploadFile';
-      payload: {
-        channelId: string;
-        filePath?: string;
-        fileContent?: string;
-        title: string;
-        threadId?: string;
-      };
+      payload: FileUploadPayload;
     })
   | (BotEventBase & {
       provider: 'slack';
@@ -57,13 +61,7 @@ export type BotEvent =
   | (BotEventBase & {
       provider: 'discord';
       type: 'uploadFile';
-      payload: {
-        channelId: string;
-        filePath?: string;
-        fileContent?: string;
-        title: string;
-        threadId?: string;
-      };
+      payload: FileUploadPayload;
     })
   | (BotEventBase & {
       provider: 'discord';
