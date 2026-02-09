@@ -236,6 +236,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const copilotDockerImage = resolveStringValue(
     'GH_COPILOT_DOCKER_IMAGE',
     copilotToml?.docker_image,
+    { defaultValue: 'snatch-copilot:local' },
   );
   const copilotDockerBuildContext = resolveStringValue(
     'GH_COPILOT_DOCKER_BUILD_CONTEXT',
@@ -250,7 +251,9 @@ export function loadWorkerConfig(): WorkerConfig {
   const dockerfilePath = resolveStringValue('CODEX_DOCKERFILE_PATH', codexToml?.dockerfile_path, {
     defaultValue: './Dockerfile.codex',
   });
-  const dockerImage = resolveStringValue('CODEX_DOCKER_IMAGE', codexToml?.docker_image);
+  const dockerImage = resolveStringValue('CODEX_DOCKER_IMAGE', codexToml?.docker_image, {
+    defaultValue: 'snatch-codex:local',
+  });
   const dockerBuildContext = resolveStringValue(
     'CODEX_DOCKER_BUILD_CONTEXT',
     codexToml?.docker_build_context,
