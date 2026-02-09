@@ -1,6 +1,6 @@
 import type { SlackHandlerContext } from '../context.js';
 import { dedupe } from '../../lib/dedupe.js';
-import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildAskModal } from '../../modals.js';
 
 export function registerAskCommand({ app, slackIds, config }: SlackHandlerContext) {

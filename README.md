@@ -297,6 +297,8 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
 ## Repo execution notes
 
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
+- Worktree bootstrap is optional and configurable. Set `[worker].worktree_setup_command` (or `WORKTREE_SETUP_COMMAND`) to run a custom command in each worktree (for example `pnpm install`, `npm ci`, `poetry install`, etc.).
+- To continue a job even when the setup command fails, set `[worker].worktree_setup_allow_failure = true` (or `WORKTREE_SETUP_ALLOW_FAILURE=true`).
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
 

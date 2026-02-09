@@ -1,7 +1,7 @@
 import type { SlackHandlerContext } from '../context.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { resolveBootstrapServices } from '../../lib/bootstrap.js';
-import { refreshRepoAllowlist } from '../../lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildRepoBootstrapModal } from '../../modals.js';
 
 export function registerBootstrapCommand({ app, slackIds, config }: SlackHandlerContext) {

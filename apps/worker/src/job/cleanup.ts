@@ -60,6 +60,7 @@ export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
   const records = await registry.loadAllJobRecords();
   const eligibleRecords = records.filter(
     (record) =>
+      record.job.type === 'MENTION' ||
       record.job.type === 'ASK' ||
       record.job.type === 'PLAN' ||
       record.job.type === 'REVIEW' ||

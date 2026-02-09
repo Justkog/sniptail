@@ -123,4 +123,49 @@ describe('config loaders', () => {
     expect(config.jobRegistryDriver).toBe('redis');
     expect(config.jobRegistryRedisUrl).toBe('redis://localhost:6379/3');
   });
+
+  it('defaults dockerfile paths when not configured', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.copilot.dockerfilePath).toBe('./Dockerfile.copilot');
+    expect(config.codex.dockerfilePath).toBe('./Dockerfile.codex');
+  });
+
+  it('loads optional worktree setup hook settings', () => {
+    applyRequiredEnv({
+      WORKTREE_SETUP_COMMAND: 'pnpm install --prefer-offline --no-lockfile',
+      WORKTREE_SETUP_ALLOW_FAILURE: 'true',
+    });
+
+    const config = loadWorkerConfig();
+    expect(config.worktreeSetupCommand).toBe('pnpm install --prefer-offline --no-lockfile');
+    expect(config.worktreeSetupAllowFailure).toBe(true);
+  });
 });
