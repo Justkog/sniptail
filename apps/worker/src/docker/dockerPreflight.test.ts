@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
-import { assertDockerPreflight } from './preflight.js';
+import { assertDockerPreflight } from './dockerPreflight.js';
 
 function buildConfig(): WorkerConfig {
   return {
