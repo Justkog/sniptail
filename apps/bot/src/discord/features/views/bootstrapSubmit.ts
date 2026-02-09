@@ -4,7 +4,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
-import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { parseBootstrapExtras } from '../../lib/bootstrap.js';

@@ -5,7 +5,7 @@ import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
-import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { askSelectionByUser } from '../../state.js';

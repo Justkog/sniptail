@@ -6,11 +6,23 @@ export async function addWorktree(options: {
   worktreePath: string;
   baseRef: string;
   branch?: string;
+  setupCommand?: string;
+  setupAllowFailure?: boolean;
   logFilePath: string;
   env: NodeJS.ProcessEnv;
   redact?: Array<string | RegExp>;
 }): Promise<void> {
-  const { clonePath, worktreePath, baseRef, branch, logFilePath, env, redact = [] } = options;
+  const {
+    clonePath,
+    worktreePath,
+    baseRef,
+    branch,
+    setupCommand,
+    setupAllowFailure,
+    logFilePath,
+    env,
+    redact = [],
+  } = options;
 
   await mkdir(worktreePath, { recursive: true });
 
@@ -18,17 +30,21 @@ export async function addWorktree(options: {
   if (branch) {
     args.push('-b', branch, baseRef);
   } else {
-    args.push(baseRef);
+    args.push('--detach', baseRef);
   }
 
   await runCommand('git', args, { cwd: clonePath, env, logFilePath, timeoutMs: 60_000, redact });
-  await runCommand('pnpm', ['install', '--prefer-offline', '--no-lockfile'], {
-    cwd: worktreePath,
-    env,
-    logFilePath,
-    timeoutMs: 10 * 60_000,
-    redact,
-  });
+  const normalizedSetupCommand = setupCommand?.trim();
+  if (normalizedSetupCommand) {
+    await runCommand('bash', ['-lc', normalizedSetupCommand], {
+      cwd: worktreePath,
+      env,
+      logFilePath,
+      timeoutMs: 10 * 60_000,
+      redact,
+      allowFailure: setupAllowFailure ?? false,
+    });
+  }
 }
 
 export async function removeWorktree(options: {
