@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { runCommand } from '../runner/commandRunner.js';
 import type { RepoConfig } from '../types/job.js';
 
-type EnsureCloneOptions = {
+export type EnsureCloneOptions = {
   forceLocalBranchUpdate?: boolean;
 };
 
