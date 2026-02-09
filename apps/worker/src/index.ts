@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
+import { mkdir } from 'node:fs/promises';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { seedRepoCatalogFromAllowlistFile } from '@sniptail/core/repos/catalog.js';
@@ -19,8 +20,11 @@ import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
 import { createJobRegistry } from './job/createJobRegistry.js';
+import { assertDockerPreflight } from './docker/preflight.js';
 
 const config = loadWorkerConfig();
+await mkdir(config.repoCacheRoot, { recursive: true });
+await assertDockerPreflight(config);
 await seedRepoCatalogFromAllowlistFile({
   mode: 'if-empty',
   ...(config.repoAllowlistPath ? { filePath: config.repoAllowlistPath } : {}),

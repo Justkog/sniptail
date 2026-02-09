@@ -21,9 +21,7 @@ export function registerUsageCommand({ app, slackIds, workerEventQueue }: SlackH
           provider: 'slack',
           channelId: body.channel_id,
           userId,
-          ...((body.thread_ts as string | undefined)
-            ? { threadId: body.thread_ts as string }
-            : {}),
+          ...((body.thread_ts as string | undefined) ? { threadId: body.thread_ts as string } : {}),
         },
       });
     } catch (err) {

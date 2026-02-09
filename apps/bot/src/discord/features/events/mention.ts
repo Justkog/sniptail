@@ -9,6 +9,7 @@ import { createJobId } from '../../../lib/jobs.js';
 import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadContext.js';
 import { buildChannelContext } from '../../lib/channel.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 
 const defaultGitRef = 'main';
 
@@ -36,11 +37,13 @@ export async function handleMention(message: Message, config: BotConfig, queue: 
     strippedText ||
     (threadContext ? 'Please answer based on the thread history.' : '') ||
     'Say hello and ask how you can help.';
+  await refreshRepoAllowlist(config);
+  const repoKeys = Object.keys(config.repoAllowlist);
 
   const job: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
-    repoKeys: [],
+    repoKeys,
     gitRef: defaultGitRef,
     requestText,
     agent: config.primaryAgent,

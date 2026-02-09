@@ -68,6 +68,8 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'JOB_WORK_ROOT',
     'JOB_REGISTRY_PATH',
     'REPO_CACHE_ROOT',
+    'WORKTREE_SETUP_COMMAND',
+    'WORKTREE_SETUP_ALLOW_FAILURE',
     'JOB_ROOT_COPY_GLOB',
     'INCLUDE_RAW_REQUEST_IN_MR',
     'GH_COPILOT_EXECUTION_MODE',

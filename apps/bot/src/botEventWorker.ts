@@ -6,7 +6,11 @@ import { logger } from '@sniptail/core/logger.js';
 import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './slack/helpers.js';
-import { editDiscordInteractionReply, postDiscordMessage, uploadDiscordFile } from './discord/helpers.js';
+import {
+  editDiscordInteractionReply,
+  postDiscordMessage,
+  uploadDiscordFile,
+} from './discord/helpers.js';
 
 type BotEventWorkerDeps = {
   redisUrl: string;

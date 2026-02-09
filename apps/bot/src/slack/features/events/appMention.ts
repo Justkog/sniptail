@@ -7,6 +7,7 @@ import { addReaction, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 
 export function registerAppMentionEvent({ app, config, queue }: SlackHandlerContext) {
   app.event('app_mention', async ({ event, client }) => {
@@ -45,10 +46,12 @@ export function registerAppMentionEvent({ app, config, queue }: SlackHandlerCont
       strippedText ||
       (threadContext ? 'Please answer based on the thread history.' : '') ||
       'Say hello and ask how you can help.';
+    await refreshRepoAllowlist(config);
+    const repoKeys = Object.keys(config.repoAllowlist);
     const job: JobSpec = {
       jobId: createJobId('mention'),
       type: 'MENTION',
-      repoKeys: [],
+      repoKeys,
       gitRef: 'main',
       requestText,
       agent: config.primaryAgent,

@@ -5,7 +5,7 @@ import {
   findLatestJobByChannelThreadAndTypes,
   loadJobRecord,
 } from '@sniptail/core/jobs/registry.js';
-import { refreshRepoAllowlist } from '../../../slack/lib/repoAllowlist.js';
+import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildWorktreeCommandsText } from '../../../slack/lib/worktree.js';
 
 export async function handleWorktreeCommandsButton(

@@ -64,6 +64,10 @@ export async function prepareRepoWorktrees(
       clonePath,
       worktreePath,
       baseRef,
+      ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
+      ...(config.worktreeSetupAllowFailure !== undefined
+        ? { setupAllowFailure: config.worktreeSetupAllowFailure }
+        : {}),
       ...(branch ? { branch } : {}),
       logFilePath: paths.logFile,
       env,
