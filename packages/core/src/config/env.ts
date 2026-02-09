@@ -231,10 +231,12 @@ export function loadWorkerConfig(): WorkerConfig {
   const copilotDockerfilePath = resolveStringValue(
     'GH_COPILOT_DOCKERFILE_PATH',
     copilotToml?.dockerfile_path,
+    { defaultValue: './Dockerfile.copilot' },
   );
   const copilotDockerImage = resolveStringValue(
     'GH_COPILOT_DOCKER_IMAGE',
     copilotToml?.docker_image,
+    { defaultValue: 'snatch-copilot:local' },
   );
   const copilotDockerBuildContext = resolveStringValue(
     'GH_COPILOT_DOCKER_BUILD_CONTEXT',
@@ -246,8 +248,12 @@ export function loadWorkerConfig(): WorkerConfig {
   );
 
   const executionMode = resolveCodexExecutionMode(codexToml?.execution_mode);
-  const dockerfilePath = resolveStringValue('CODEX_DOCKERFILE_PATH', codexToml?.dockerfile_path);
-  const dockerImage = resolveStringValue('CODEX_DOCKER_IMAGE', codexToml?.docker_image);
+  const dockerfilePath = resolveStringValue('CODEX_DOCKERFILE_PATH', codexToml?.dockerfile_path, {
+    defaultValue: './Dockerfile.codex',
+  });
+  const dockerImage = resolveStringValue('CODEX_DOCKER_IMAGE', codexToml?.docker_image, {
+    defaultValue: 'snatch-codex:local',
+  });
   const dockerBuildContext = resolveStringValue(
     'CODEX_DOCKER_BUILD_CONTEXT',
     codexToml?.docker_build_context,
@@ -258,6 +264,15 @@ export function loadWorkerConfig(): WorkerConfig {
   );
 
   const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
+  const worktreeSetupCommand = resolveStringValue(
+    'WORKTREE_SETUP_COMMAND',
+    workerToml?.worktree_setup_command,
+  );
+  const worktreeSetupAllowFailure = resolveOptionalFlagFromSources(
+    'WORKTREE_SETUP_ALLOW_FAILURE',
+    workerToml?.worktree_setup_allow_failure,
+    false,
+  );
   const cleanupMaxAge = resolveStringValue('CLEANUP_MAX_AGE', workerToml?.cleanup_max_age);
   const cleanupMaxEntriesEnv = process.env.CLEANUP_MAX_ENTRIES?.trim();
   let cleanupMaxEntries = getTomlNumber(
@@ -307,6 +322,8 @@ export function loadWorkerConfig(): WorkerConfig {
     repoCacheRoot: resolvePathValue('REPO_CACHE_ROOT', workerToml?.repo_cache_root, {
       required: true,
     }) as string,
+    ...(worktreeSetupCommand ? { worktreeSetupCommand } : {}),
+    ...(worktreeSetupAllowFailure ? { worktreeSetupAllowFailure } : {}),
     ...(jobRootCopyGlob && { jobRootCopyGlob }),
     ...(cleanupMaxAge && { cleanupMaxAge }),
     ...(cleanupMaxEntries !== undefined && { cleanupMaxEntries }),
