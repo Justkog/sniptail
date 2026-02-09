@@ -13,8 +13,25 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 
 const defaultGitRef = 'main';
 
+async function isReplyToBot(message: Message): Promise<boolean> {
+  if (!message.reference?.messageId) {
+    return false;
+  }
+
+  try {
+    const referenced = await message.fetchReference();
+    return referenced.author.id === message.client.user.id;
+  } catch (err) {
+    logger.debug({ err, messageId: message.id }, 'Failed to fetch referenced message');
+    return false;
+  }
+}
+
 export async function handleMention(message: Message, config: BotConfig, queue: Queue<JobSpec>) {
-  if (!message.mentions.has(message.client.user)) {
+  const isMention = message.mentions.has(message.client.user);
+  const isReply = isMention ? false : await isReplyToBot(message);
+
+  if (!isMention && !isReply) {
     return;
   }
 
