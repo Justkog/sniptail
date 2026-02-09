@@ -20,11 +20,13 @@ import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
 import { createJobRegistry } from './job/createJobRegistry.js';
-import { assertDockerPreflight } from './docker/preflight.js';
+import { assertDockerPreflight } from './docker/dockerPreflight.js';
+import { assertGitCommitIdentityPreflight } from './git/gitPreflight.js';
 
 const config = loadWorkerConfig();
 await mkdir(config.repoCacheRoot, { recursive: true });
 await assertDockerPreflight(config);
+await assertGitCommitIdentityPreflight();
 await seedRepoCatalogFromAllowlistFile({
   mode: 'if-empty',
   ...(config.repoAllowlistPath ? { filePath: config.repoAllowlistPath } : {}),
