@@ -6,9 +6,9 @@
   <em>Or any codebase, really.</em>
 </p>
 
-Sniptail is a Slack and Discord bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
+Sniptail is an omnichannel bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. Slack and Discord are the currently supported channels. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
-## Bot mention (quick demo)
+## Bot mention
 
 You can also mention the bot directly in a channel to kick off work without remembering a slash command. This is the simplest "wow" moment: mention the bot, ask a quick question, and it will casually check the configured repositories and answer in natural language right where it was mentioned.
 
@@ -21,9 +21,95 @@ You can also mention the bot directly in a channel to kick off work without reme
 - `/sniptail-clear-before`: Admin-only cleanup of historical job data.
 - `/sniptail-usage`: Shows Codex usage for the day/week and quota reset timing.
 
+## Quickstart
+
+This quickstart assumes:
+
+- bot and worker run on the same machine
+- one shared `.env` file is used for both
+- Codex CLI is installed, configured, and authenticated on your machine (`codex` works in your shell)
+- you want to test with this repository: `git@github.com:Justkog/sniptail.git`
+
+### 1) Install and prepare config
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
+```
+
+Edit `~/.sniptail/current/.env` and set at least:
+
+- `REDIS_URL`
+- `DISCORD_BOT_TOKEN`
+- `GITHUB_API_TOKEN` (recommended for GitHub PR creation)
+
+If you do not already have Redis running, start one quickly with Docker:
+
+```bash
+docker run -d --name sniptail-redis -p 6379:6379 redis:7-alpine
+```
+
+Then set `REDIS_URL=redis://127.0.0.1:6379` in `~/.sniptail/current/.env`.
+
+Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
+
+### 2) Enable Discord in bot config
+
+Edit `~/.sniptail/current/sniptail.bot.toml` and set:
+
+```toml
+[discord]
+enabled = true
+app_id = "YOUR_DISCORD_APPLICATION_ID"
+```
+
+### 3) Add the `sniptail` repo to the catalog
+
+```bash
+sniptail repos add sniptail --ssh-url git@github.com:Justkog/sniptail.git
+sniptail repos list
+```
+
+### 4) Start bot and worker
+
+Run in two terminals:
+
+```bash
+sniptail bot
+```
+
+```bash
+sniptail worker
+```
+
+### 5) End-to-end check in Discord
+
+In a Discord server where the bot is installed, run:
+
+```text
+/sniptail-ask
+```
+
+Then, in the Discord modal that opens:
+
+- write your request in the `question` input, for example:
+
+```text
+I’m about to confidently mis-explain /sniptail-ask. Walk me through only that flow from command to final message, no side quests.
+```
+
+- submit the modal
+
+Expected result:
+
+- Sniptail queues a job when you submit it.
+- Worker clones/prepares `git@github.com:Justkog/sniptail.git`.
+- Agent runs and produces a Markdown report.
+- Bot posts the report and completion message back in the same Discord channel/thread.
+
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today it is Slack/Discord + Codex/Github_Copilot + GitHub/GitLab, but the goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack and Discord, alongside Codex/Github_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 > **Sniptail is source-available, self-hostable, and free to use and modify.**
 >
@@ -72,11 +158,12 @@ Sniptail is meant to grow along three axes: where requests come from, which codi
 
 ## Repo layout
 
-Sniptail is a PNPM monorepo with two apps and one shared package:
+Sniptail is a PNPM monorepo with two apps and two shared packages:
 
 - `apps/bot`: Slack Bolt app (Socket Mode), slash commands, Slack events
 - `apps/worker`: job runner and pipeline execution
 - `packages/core`: shared queue wiring, coding agent execution, Git/GitLab/GitHub integrations, config
+- `packages/cli`: `sniptail` command entrypoint and runtime command launcher
 
 ## Dependencies
 
@@ -113,7 +200,25 @@ curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | 
 
 This installs into `~/.sniptail` and links the CLI into `~/.local/bin`.
 
-#### 2) Configure Redis (URL + optional overrides)
+#### 2) Configure environment variables
+
+Start from `.env.example` (from the repo, or `~/.sniptail/current/.env.example` if you installed via `install.sh`) and set at least:
+
+```bash
+cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
+```
+
+- Slack (only if enabled):
+  - `SLACK_BOT_TOKEN`
+  - `SLACK_APP_TOKEN` (Socket Mode app-level token)
+  - `SLACK_SIGNING_SECRET`
+- Discord (only if enabled):
+  - `DISCORD_BOT_TOKEN`
+- Worker (required in practice for most setups):
+  - `GITLAB_TOKEN` (for GitLab merge requests)
+  - `GITHUB_API_TOKEN` (for GitHub PR creation)
+
+#### 3) Configure Redis (URL + optional overrides)
 
 Sniptail uses two TOML config files so the bot and worker can be run on different machines.
 By default, the installer runs Sniptail with the config files located in the install root:
@@ -135,24 +240,6 @@ Optional: if you want the job registry to use a different Redis than the queue, 
 If you want to keep the TOML files somewhere else (for example so upgrades don’t overwrite them), pass `--config` or set:
 - `SNIPTAIL_BOT_CONFIG_PATH`
 - `SNIPTAIL_WORKER_CONFIG_PATH`
-
-#### 3) Configure environment variables
-
-Start from `.env.example` (from the repo, or `~/.sniptail/current/.env.example` if you installed via `install.sh`) and set at least:
-
-```bash
-cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
-```
-
-- Slack (only if enabled):
-  - `SLACK_BOT_TOKEN`
-  - `SLACK_APP_TOKEN` (Socket Mode app-level token)
-  - `SLACK_SIGNING_SECRET`
-- Discord (only if enabled):
-  - `DISCORD_BOT_TOKEN`
-- Worker (required in practice for most setups):
-  - `GITLAB_TOKEN` (for GitLab merge requests)
-  - `GITHUB_API_TOKEN` (for GitHub PR creation)
 
 #### 4) Choose local vs docker agent execution
 
