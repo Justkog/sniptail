@@ -109,7 +109,7 @@ Expected result:
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack and Discord, alongside Codex/Github_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack and Discord, alongside Codex/GitHub_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 > **Sniptail is source-available, self-hostable, and free to use and modify.**
 >
