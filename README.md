@@ -177,7 +177,7 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 
 ## Installation
 
-### Operators / quickstart (prebuilt release + `sniptail` CLI)
+### Operators (prebuilt release + `sniptail` CLI)
 
 This path is intended for people who want to run Sniptail, not hack on it locally. You’ll use `install.sh` + the `sniptail` CLI (no `pnpm` required).
 
@@ -436,7 +436,7 @@ Self-hosting will remain a supported and valid way to run Sniptail.
 
 ### Starting Open, Moving to Cloud (Later)
 
-Many teams may start by self-hosting Sniptail and later look for ways to reduce operational overhead.
+Teams may start by self-hosting Sniptail and later look for ways to reduce operational overhead.
 
 Sniptail Cloud is being designed to make that transition straightforward:
 - configurations and repo allowlists will map directly
