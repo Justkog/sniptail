@@ -1,5 +1,5 @@
 import { getTomlNumber, getTomlString, getTomlStringArray } from './toml.js';
-import type { AgentId } from '../types/job.js';
+import { AGENT_IDS, type AgentId } from '../types/job.js';
 import os from 'node:os';
 
 export function requireEnv(name: string): string {
@@ -128,10 +128,10 @@ export function resolvePrimaryAgent(tomlValue: unknown): AgentId {
   const raw = (resolveStringValue('PRIMARY_AGENT', tomlValue, { defaultValue: 'codex' }) || 'codex')
     .trim()
     .toLowerCase();
-  if (raw !== 'codex' && raw !== 'copilot') {
+  if (!AGENT_IDS.includes(raw as AgentId)) {
     throw new Error(`Invalid PRIMARY_AGENT: ${raw}`);
   }
-  return raw;
+  return raw as AgentId;
 }
 
 export function resolveCopilotExecutionMode(tomlValue: unknown): 'local' | 'docker' {

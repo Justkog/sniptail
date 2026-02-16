@@ -1,18 +1,12 @@
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
+import { getDockerModeAgents } from '@sniptail/core/agents/agentRegistry.js';
 import { execFileAsync, stringifyError, type ExecFileLike } from '../preflight/common.js';
-
-function dockerModeAgents(config: WorkerConfig): string[] {
-  const agents: string[] = [];
-  if (config.codex.executionMode === 'docker') agents.push('codex');
-  if (config.copilot.executionMode === 'docker') agents.push('copilot');
-  return agents;
-}
 
 export async function assertDockerPreflight(
   config: WorkerConfig,
   runExec: ExecFileLike = execFileAsync,
 ): Promise<void> {
-  const agents = dockerModeAgents(config);
+  const agents = getDockerModeAgents(config);
   if (!agents.length) return;
 
   try {
