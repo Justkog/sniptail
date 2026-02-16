@@ -1,10 +1,15 @@
+DO $$ BEGIN
+ CREATE TYPE "public"."repo_provider" AS ENUM('github', 'gitlab', 'local');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "repositories" (
   "repo_key" text PRIMARY KEY,
-  "provider" text NOT NULL,
+  "provider" "repo_provider" NOT NULL,
   "ssh_url" text,
   "local_path" text,
   "project_id" integer,
-  "provider_data" jsonb,
   "base_branch" text NOT NULL DEFAULT 'main',
   "is_active" boolean NOT NULL DEFAULT true,
   "created_at" timestamptz NOT NULL DEFAULT now(),
