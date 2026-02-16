@@ -7,6 +7,7 @@ import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { resolveBootstrapServices } from '../../lib/bootstrap.js';
 
 export function registerBootstrapSubmitView({
   app,
@@ -48,8 +49,9 @@ export function registerBootstrapSubmitView({
     if (!service) {
       errors.service = 'Choose a repository service.';
     }
-    if (service && !config.bootstrapServices.includes(service) && service !== 'local') {
-      errors.service = `Service must be one of: ${config.bootstrapServices.join(', ') || 'local'}.`;
+    const allowedServices = resolveBootstrapServices(config);
+    if (service && !allowedServices.includes(service)) {
+      errors.service = `Service must be one of: ${allowedServices.join(', ')}.`;
     }
     if (namespaceIdRaw && namespaceId === undefined) {
       errors.gitlab_namespace_id = 'Namespace ID must be a number.';
