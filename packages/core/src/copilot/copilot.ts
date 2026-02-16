@@ -1,13 +1,7 @@
 import { CopilotClient, type SessionConfig, type SessionEvent } from '@github/copilot-sdk';
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
-import {
-  buildAskPrompt,
-  buildImplementPrompt,
-  buildMentionPrompt,
-  buildPlanPrompt,
-  buildReviewPrompt,
-} from '../codex/prompts.js';
+import { buildPromptForJob } from '../agents/buildPrompt.js';
 import { logger } from '../logger.js';
 import type { JobSpec } from '../types/job.js';
 import type { AgentRunOptions, AgentRunResult } from '../agents/types.js';
@@ -21,18 +15,6 @@ function toEnvRecord(env: NodeJS.ProcessEnv): Record<string, string> {
     }
   }
   return record;
-}
-
-function buildPrompt(job: JobSpec, botName: string): string {
-  return job.type === 'ASK'
-    ? buildAskPrompt(job, botName)
-    : job.type === 'IMPLEMENT'
-      ? buildImplementPrompt(job, botName)
-      : job.type === 'PLAN'
-        ? buildPlanPrompt(job, botName)
-        : job.type === 'REVIEW'
-          ? buildReviewPrompt(job, botName)
-          : buildMentionPrompt(job, botName);
 }
 
 const continuationPrompt = continuationPromptSource.trimEnd();
@@ -121,7 +103,7 @@ export async function runCopilot(
     registerSessionHandlers(session);
 
     const botName = options.botName?.trim() || 'Sniptail';
-    const prompt = buildPrompt(job, botName);
+    const prompt = buildPromptForJob(job, botName);
     const maxIdleRetries = options.copilotIdleRetries ?? 2;
     let attempt = 0;
     let response: SessionEvent | undefined;
