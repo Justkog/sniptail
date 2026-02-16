@@ -3,6 +3,13 @@ import type { PgJobRegistryClient } from '../db/index.js';
 import { repositories } from '../db/pg/schema.js';
 import type { RepoCatalogStore, RepoRow } from './catalogTypes.js';
 
+function toProviderData(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
 export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatalogStore {
   return {
     kind: 'pg',
@@ -22,7 +29,9 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
         .where(eq(repositories.isActive, true))
         .orderBy(asc(repositories.repoKey));
 
-      return rows.map((row) => ({
+      return rows.map((row) => {
+        const providerData = toProviderData(row.providerData);
+        return {
         repoKey: row.repoKey,
         provider: row.provider,
         ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
@@ -30,10 +39,11 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
         ...(row.projectId !== null && row.projectId !== undefined
           ? { projectId: row.projectId }
           : {}),
-        ...(row.providerData ? { providerData: row.providerData } : {}),
+        ...(providerData ? { providerData } : {}),
         baseBranch: row.baseBranch,
         isActive: Boolean(row.isActive),
-      }));
+        };
+      });
     },
     async upsertRow(row: RepoRow): Promise<void> {
       const now = new Date();
