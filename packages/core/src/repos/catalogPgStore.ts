@@ -14,6 +14,7 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
           sshUrl: repositories.sshUrl,
           localPath: repositories.localPath,
           projectId: repositories.projectId,
+          providerData: repositories.providerData,
           baseBranch: repositories.baseBranch,
           isActive: repositories.isActive,
         })
@@ -29,6 +30,7 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
         ...(row.projectId !== null && row.projectId !== undefined
           ? { projectId: row.projectId }
           : {}),
+        ...(row.providerData ? { providerData: row.providerData } : {}),
         baseBranch: row.baseBranch,
         isActive: Boolean(row.isActive),
       }));
@@ -43,6 +45,7 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
           ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
           ...(row.localPath ? { localPath: row.localPath } : {}),
           ...(row.projectId !== undefined ? { projectId: row.projectId } : {}),
+          ...(row.providerData ? { providerData: row.providerData } : {}),
           baseBranch: row.baseBranch,
           isActive: row.isActive,
           createdAt: now,
@@ -55,6 +58,7 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
             ...(row.sshUrl ? { sshUrl: row.sshUrl } : { sshUrl: null }),
             ...(row.localPath ? { localPath: row.localPath } : { localPath: null }),
             ...(row.projectId !== undefined ? { projectId: row.projectId } : { projectId: null }),
+            ...(row.providerData ? { providerData: row.providerData } : { providerData: null }),
             baseBranch: row.baseBranch,
             isActive: row.isActive,
             updatedAt: now,

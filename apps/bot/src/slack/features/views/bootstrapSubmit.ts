@@ -48,6 +48,9 @@ export function registerBootstrapSubmitView({
     if (!service) {
       errors.service = 'Choose a repository service.';
     }
+    if (service && !config.bootstrapServices.includes(service) && service !== 'local') {
+      errors.service = `Service must be one of: ${config.bootstrapServices.join(', ') || 'local'}.`;
+    }
     if (namespaceIdRaw && namespaceId === undefined) {
       errors.gitlab_namespace_id = 'Namespace ID must be a number.';
     }
@@ -88,6 +91,7 @@ export function registerBootstrapSubmitView({
         ...(visibility ? { visibility } : {}),
         ...(quickstart ? { quickstart } : {}),
         ...(namespaceId !== undefined ? { gitlabNamespaceId: namespaceId } : {}),
+        ...(namespaceId !== undefined ? { providerData: { namespaceId } } : {}),
         ...(service === 'local' && localPathInput ? { localPath: localPathInput } : {}),
         channel: {
           provider: 'slack',

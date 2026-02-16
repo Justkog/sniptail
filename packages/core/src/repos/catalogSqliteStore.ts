@@ -3,6 +3,22 @@ import type { SqliteJobRegistryClient } from '../db/index.js';
 import { repositories } from '../db/sqlite/schema.js';
 import type { RepoCatalogStore, RepoRow } from './catalogTypes.js';
 
+function parseProviderData(raw?: string): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildProviderData(raw?: string): { providerData: Record<string, unknown> } | {} {
+  const providerData = parseProviderData(raw);
+  return providerData ? { providerData } : {};
+}
+
 export function createSqliteRepoCatalogStore(client: SqliteJobRegistryClient): RepoCatalogStore {
   return {
     kind: 'sqlite',
@@ -14,6 +30,7 @@ export function createSqliteRepoCatalogStore(client: SqliteJobRegistryClient): R
           sshUrl: repositories.sshUrl,
           localPath: repositories.localPath,
           projectId: repositories.projectId,
+          providerData: repositories.providerData,
           baseBranch: repositories.baseBranch,
           isActive: repositories.isActive,
         })
@@ -29,6 +46,7 @@ export function createSqliteRepoCatalogStore(client: SqliteJobRegistryClient): R
         ...(row.projectId !== null && row.projectId !== undefined
           ? { projectId: row.projectId }
           : {}),
+        ...buildProviderData(row.providerData),
         baseBranch: row.baseBranch,
         isActive: Boolean(row.isActive),
       }));
@@ -43,6 +61,7 @@ export function createSqliteRepoCatalogStore(client: SqliteJobRegistryClient): R
           ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
           ...(row.localPath ? { localPath: row.localPath } : {}),
           ...(row.projectId !== undefined ? { projectId: row.projectId } : {}),
+          ...(row.providerData ? { providerData: JSON.stringify(row.providerData) } : {}),
           baseBranch: row.baseBranch,
           isActive: row.isActive,
           createdAt: nowIso,
@@ -55,6 +74,9 @@ export function createSqliteRepoCatalogStore(client: SqliteJobRegistryClient): R
             ...(row.sshUrl ? { sshUrl: row.sshUrl } : { sshUrl: null }),
             ...(row.localPath ? { localPath: row.localPath } : { localPath: null }),
             ...(row.projectId !== undefined ? { projectId: row.projectId } : { projectId: null }),
+            ...(row.providerData
+              ? { providerData: JSON.stringify(row.providerData) }
+              : { providerData: null }),
             baseBranch: row.baseBranch,
             isActive: row.isActive,
             updatedAt: nowIso,

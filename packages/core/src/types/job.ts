@@ -4,6 +4,8 @@ export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
 export type AgentId = 'codex' | 'copilot';
 
 export type RepoConfig = {
+  provider?: string;
+  providerData?: Record<string, unknown>;
   sshUrl?: string;
   localPath?: string;
   projectId?: number;
