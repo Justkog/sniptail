@@ -14,7 +14,9 @@ function parseProviderData(raw?: string | null): Record<string, unknown> | undef
   }
 }
 
-function buildProviderData(raw?: string | null): { providerData: Record<string, unknown> } | {} {
+function buildProviderData(
+  raw?: string | null,
+): { providerData: Record<string, unknown> } | Record<string, never> {
   const providerData = parseProviderData(raw);
   return providerData ? { providerData } : {};
 }
