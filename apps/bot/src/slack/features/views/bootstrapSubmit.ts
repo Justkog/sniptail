@@ -1,7 +1,7 @@
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
-import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
+import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
@@ -22,9 +22,7 @@ export function registerBootstrapSubmitView({
       : undefined;
     const repoName = state.repo_name?.repo_name?.value?.trim() ?? '';
     const repoKeyInput = state.repo_key?.repo_key?.value?.trim() ?? '';
-    const service = state.service?.service?.selected_option?.value as
-      | RepoBootstrapService
-      | undefined;
+    const service = state.service?.service?.selected_option?.value;
     const localPathInput = state.local_path?.local_path?.value?.trim() ?? '';
     const owner = state.owner?.owner?.value?.trim() || undefined;
     const description = state.description?.description?.value?.trim() || undefined;

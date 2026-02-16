@@ -45,8 +45,8 @@ export async function handleBootstrapExtrasSelection(
 
   const selection = getSelection(interaction.user.id, services);
   if (interaction.customId === bootstrapServiceSelectCustomId) {
-    if (services.includes(value as BootstrapExtrasSelection['service'])) {
-      selection.service = value as BootstrapExtrasSelection['service'];
+    if (services.includes(value)) {
+      selection.service = value;
     }
   }
   if (interaction.customId === bootstrapVisibilitySelectCustomId) {

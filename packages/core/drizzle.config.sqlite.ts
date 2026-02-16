@@ -9,6 +9,7 @@ const JOB_REGISTRY_FILENAME = 'job-registry.sqlite';
 
 const envPath =
   process.env.DOTENV_CONFIG_PATH ?? fileURLToPath(new URL('../../.env', import.meta.url));
+// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 loadEnv({ path: envPath });
 
 function resolveSqliteDbPath(configured: string): string {
