@@ -1,5 +1,7 @@
 import type { JobSpec, AgentId } from '../types/job.js';
 import type { ModelReasoningEffort } from '@openai/codex-sdk';
+import type { WorkerConfig, JobModelConfig } from '../config/types.js';
+import type { JobType } from '../types/job.js';
 
 export type AgentRunResult = {
   finalResponse: string;
@@ -48,3 +50,14 @@ export type AgentAdapter = {
 };
 
 export type AgentRegistry = Record<AgentId, AgentAdapter>;
+
+export type AgentDescriptor = {
+  id: AgentId;
+  adapter: AgentAdapter;
+  isDockerMode: (config: WorkerConfig) => boolean;
+  resolveModelConfig: (config: WorkerConfig, jobType: JobType) => JobModelConfig | undefined;
+  shouldIncludeRepoCache: (config: WorkerConfig, jobType: JobType) => boolean;
+  buildRunOptions: (config: WorkerConfig) => Partial<AgentRunOptions>;
+};
+
+export type AgentDescriptorRegistry = Record<AgentId, AgentDescriptor>;
