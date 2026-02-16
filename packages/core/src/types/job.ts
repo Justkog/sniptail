@@ -1,7 +1,8 @@
 import type { ChannelContext } from './channel.js';
 
 export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
-export type AgentId = 'codex' | 'copilot';
+export const AGENT_IDS = ['codex', 'copilot'] as const;
+export type AgentId = (typeof AGENT_IDS)[number];
 
 export type RepoConfig = {
   sshUrl?: string;

@@ -69,12 +69,30 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
   };
 });
 
-vi.mock('@sniptail/core/agents/agentRegistry.js', () => ({
-  AGENT_REGISTRY: {
-    codex: { run: vi.fn() },
-    copilot: { run: vi.fn() },
-  },
-}));
+vi.mock('@sniptail/core/agents/agentRegistry.js', () => {
+  const codexRun = vi.fn();
+  const copilotRun = vi.fn();
+  return {
+    AGENT_DESCRIPTORS: {
+      codex: {
+        id: 'codex',
+        adapter: { run: codexRun },
+        isDockerMode: () => false,
+        resolveModelConfig: () => undefined,
+        shouldIncludeRepoCache: () => false,
+        buildRunOptions: () => ({}),
+      },
+      copilot: {
+        id: 'copilot',
+        adapter: { run: copilotRun },
+        isDockerMode: () => false,
+        resolveModelConfig: () => undefined,
+        shouldIncludeRepoCache: () => false,
+        buildRunOptions: () => ({}),
+      },
+    },
+  };
+});
 
 vi.mock('@sniptail/core/git/mirror.js', () => ({
   ensureClone: vi.fn(),
@@ -129,7 +147,7 @@ vi.mock('node:fs/promises', () => ({
 
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import type { Queue } from 'bullmq';
-import { AGENT_REGISTRY } from '@sniptail/core/agents/agentRegistry.js';
+import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
@@ -341,7 +359,7 @@ describe('worker/pipeline runJob', () => {
     const registry = createRegistryMock();
     const loadJobRecordMock = registry.loadJobRecord;
     const updateJobRecordMock = registry.updateJobRecord;
-    const runAgentMock = vi.mocked(AGENT_REGISTRY.codex.run);
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
     const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
     const mkdirMock = vi.mocked(mkdir);
     const writeFileMock = vi.mocked(writeFile);
