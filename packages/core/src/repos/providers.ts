@@ -113,7 +113,7 @@ const localProvider: RepoProviderDefinition = {
       repoName: input.repoName,
       baseBranch: defaultLocalBaseBranch,
       quickstart: Boolean(input.quickstart),
-      env: input.env,
+      ...(input.env ? { env: input.env } : {}),
     });
     return {
       repoConfig: {

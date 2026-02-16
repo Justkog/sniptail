@@ -3,7 +3,7 @@ import type { SqliteJobRegistryClient } from '../db/index.js';
 import { repositories } from '../db/sqlite/schema.js';
 import type { RepoCatalogStore, RepoRow } from './catalogTypes.js';
 
-function parseProviderData(raw?: string): Record<string, unknown> | undefined {
+function parseProviderData(raw?: string | null): Record<string, unknown> | undefined {
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -14,7 +14,7 @@ function parseProviderData(raw?: string): Record<string, unknown> | undefined {
   }
 }
 
-function buildProviderData(raw?: string): { providerData: Record<string, unknown> } | {} {
+function buildProviderData(raw?: string | null): { providerData: Record<string, unknown> } | {} {
   const providerData = parseProviderData(raw);
   return providerData ? { providerData } : {};
 }
