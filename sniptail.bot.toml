@@ -76,4 +76,5 @@ redis_url = "redis://localhost:6379"
 
 # Discord channel IDs to allow.
 # Optional. Default: [] (empty). Example: ["123", "456"]
+# Mentions/commands in threads are also allowed when the thread's parent channel ID is listed.
 # channel_ids = ["123456789012345678"]
