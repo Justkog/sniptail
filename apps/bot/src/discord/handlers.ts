@@ -32,6 +32,7 @@ import { handleImplementModalSubmit } from './features/views/implementSubmit.js'
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
 import { handleAskFromJobButton } from './features/actions/askFromJob.js';
+import { handlePlanFromJobButton } from './features/actions/planFromJob.js';
 import {
   handleClearJobButton,
   handleClearJobCancelButton,
@@ -157,6 +158,9 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         switch (parsed.action) {
           case 'askFromJob':
             await handleAskFromJobButton(interaction, parsed.jobId, config);
+            return;
+          case 'planFromJob':
+            await handlePlanFromJobButton(interaction, parsed.jobId, config);
             return;
           case 'answerQuestions':
             try {
