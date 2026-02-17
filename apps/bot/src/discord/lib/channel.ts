@@ -1,9 +1,15 @@
 import type { ChatInputCommandInteraction, Message, ModalSubmitInteraction } from 'discord.js';
 import type { ChannelContext } from '@sniptail/core/types/channel.js';
 
-export function isChannelAllowed(channelIds: string[] | undefined, channelId: string): boolean {
+export function isChannelAllowed(
+  channelIds: string[] | undefined,
+  channelId: string,
+  parentChannelId?: string,
+): boolean {
   if (!channelIds || channelIds.length === 0) return true;
-  return channelIds.includes(channelId);
+  if (channelIds.includes(channelId)) return true;
+  if (parentChannelId && channelIds.includes(parentChannelId)) return true;
+  return false;
 }
 
 export function buildChannelContext(message: Message): ChannelContext {

@@ -78,6 +78,7 @@ app_id = "123456789012345678"
 guild_id = "123456789012345678"
 
 # Optional: restrict the bot to specific channels.
+# For thread mentions/commands, allowlist the parent channel ID.
 channel_ids = ["123456789012345678"]
 ```
 
@@ -131,4 +132,3 @@ pnpm run dev
 ### Threads aren’t created
 
 - Grant **Create Public Threads** and **Send Messages in Threads** permissions, or Sniptail will fall back to replying in the channel.
-
