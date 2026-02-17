@@ -2,7 +2,11 @@ import 'dotenv/config';
 import process from 'node:process';
 import { parseArgs } from 'node:util';
 import { loadBotConfig, loadWorkerConfig } from '@sniptail/core/config/config.js';
-import { getDbMigrationStatus, migrateDb, type DbMigrationStatus } from '@sniptail/core/db/migrations.js';
+import {
+  getDbMigrationStatus,
+  migrateDb,
+  type DbMigrationStatus,
+} from '@sniptail/core/db/migrations.js';
 import { logger } from '@sniptail/core/logger.js';
 
 type Scope = 'bot' | 'worker';
@@ -74,11 +78,7 @@ function writeJson(payload: unknown): void {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
-async function runStatus(
-  scope: Scope,
-  asJson: boolean,
-  requireUpToDate: boolean,
-): Promise<void> {
+async function runStatus(scope: Scope, asJson: boolean, requireUpToDate: boolean): Promise<void> {
   const status = await getDbMigrationStatus(getRegistryConfig(scope));
 
   if (asJson) {

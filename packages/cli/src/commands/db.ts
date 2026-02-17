@@ -50,7 +50,8 @@ export function registerDbCommand(program: Command): void {
   const db = program.command('db').description('Inspect and apply SQL job-registry migrations');
 
   appendRuntimeOptions(
-    db.command('status')
+    db
+      .command('status')
       .description('Show migration status for the configured job registry DB')
       .action(async (options: RuntimeOptions) => {
         const args = ['status'];
@@ -60,7 +61,8 @@ export function registerDbCommand(program: Command): void {
   );
 
   appendRuntimeOptions(
-    db.command('migrate')
+    db
+      .command('migrate')
       .description('Apply pending SQL migrations for the configured job registry DB')
       .action(async (options: RuntimeOptions) => {
         const args = ['migrate'];
