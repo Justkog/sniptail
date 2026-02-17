@@ -67,7 +67,10 @@ export function registerReposCommand(program: Command) {
       .option('--local-path <path>', 'Local filesystem path for local repositories')
       .option('--project-id <number>', 'GitLab project ID (required for GitLab)')
       .option('--base-branch <name>', 'Default base branch (default: main)')
-      .option('--provider <provider>', 'Repository provider id (for example: github, gitlab, local)')
+      .option(
+        '--provider <provider>',
+        'Repository provider id (for example: github, gitlab, local)',
+      )
       .option('--if-missing', 'Skip when the repository key already exists')
       .option('--upsert', 'Update the repository if the key already exists')
       .option('--json', 'Print JSON output')

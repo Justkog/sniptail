@@ -32,7 +32,9 @@ function toRepoConfig(row: RepoRow): RepoConfig {
     }) ?? row.providerData;
   const projectIdRaw = providerData?.projectId;
   const projectId =
-    typeof projectIdRaw === 'number' && Number.isFinite(projectIdRaw) && Number.isInteger(projectIdRaw)
+    typeof projectIdRaw === 'number' &&
+    Number.isFinite(projectIdRaw) &&
+    Number.isInteger(projectIdRaw)
       ? projectIdRaw
       : row.projectId;
   return {
@@ -103,10 +105,13 @@ export async function upsertRepoCatalogEntry(
 
   const hasLocalPath = provider === 'local' && Boolean(normalized.localPath);
   const shouldUseSshUrl = provider !== 'local' && Boolean(normalized.sshUrl);
-  const providerData = handler.serializeProviderData?.({ repo: normalized }) ?? normalized.providerData;
+  const providerData =
+    handler.serializeProviderData?.({ repo: normalized }) ?? normalized.providerData;
   const projectIdRaw = providerData?.projectId;
   const projectId =
-    typeof projectIdRaw === 'number' && Number.isFinite(projectIdRaw) && Number.isInteger(projectIdRaw)
+    typeof projectIdRaw === 'number' &&
+    Number.isFinite(projectIdRaw) &&
+    Number.isInteger(projectIdRaw)
       ? projectIdRaw
       : normalized.projectId;
 

@@ -81,7 +81,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
     if (!interaction.isChatInputCommand()) return;
 
     const interactionParentChannelId = interaction.channel?.isThread()
-      ? interaction.channel.parentId ?? undefined
+      ? (interaction.channel.parentId ?? undefined)
       : undefined;
     if (
       !isChannelAllowed(
@@ -287,7 +287,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
     if (message.author.bot) return;
     if (!message.client.user) return;
     const messageParentChannelId = message.channel.isThread()
-      ? message.channel.parentId ?? undefined
+      ? (message.channel.parentId ?? undefined)
       : undefined;
     if (!isChannelAllowed(config.discord?.channelIds, message.channelId, messageParentChannelId)) {
       return;
