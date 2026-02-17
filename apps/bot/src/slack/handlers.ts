@@ -7,6 +7,7 @@ import { registerBootstrapCommand } from './features/commands/bootstrap.js';
 import { registerImplementCommand } from './features/commands/implement.js';
 import { registerUsageCommand } from './features/commands/usage.js';
 import { registerAskFromJobAction } from './features/actions/askFromJob.js';
+import { registerPlanFromJobAction } from './features/actions/planFromJob.js';
 import { registerClearJobAction } from './features/actions/clearJob.js';
 import { registerAnswerQuestionsAction } from './features/actions/answerQuestions.js';
 import { registerImplementFromJobAction } from './features/actions/implementFromJob.js';
@@ -28,6 +29,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerClearBeforeCommand(context);
   registerUsageCommand(context);
   registerAskFromJobAction(context);
+  registerPlanFromJobAction(context);
   registerImplementFromJobAction(context);
   registerReviewFromJobAction(context);
   registerWorktreeCommandsAction(context);

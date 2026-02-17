@@ -1,5 +1,6 @@
 export type CompletionActionIds = {
   askFromJob: string;
+  planFromJob: string;
   implementFromJob: string;
   reviewFromJob: string;
   worktreeCommands: string;
@@ -9,6 +10,7 @@ export type CompletionActionIds = {
 
 export type CompletionBlockOptions = {
   includeAskFromJob?: boolean;
+  includePlanFromJob?: boolean;
   includeImplementFromJob?: boolean;
   includeReviewFromJob?: boolean;
   answerQuestionsFirst?: boolean;
@@ -21,6 +23,7 @@ export function buildCompletionBlocks(
   options?: CompletionBlockOptions,
 ) {
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
@@ -37,15 +40,23 @@ export function buildCompletionBlocks(
   if (includeAskFromJob) {
     elements.push({
       type: 'button' as const,
-      text: { type: 'plain_text' as const, text: 'Ask from there' },
+      text: { type: 'plain_text' as const, text: 'Ask' },
       action_id: actionIds.askFromJob,
+      value: jobId,
+    });
+  }
+  if (includePlanFromJob) {
+    elements.push({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: 'Plan' },
+      action_id: actionIds.planFromJob,
       value: jobId,
     });
   }
   if (includeImplementFromJob) {
     elements.push({
       type: 'button' as const,
-      text: { type: 'plain_text' as const, text: 'Implement from there' },
+      text: { type: 'plain_text' as const, text: 'Implement' },
       action_id: actionIds.implementFromJob,
       value: jobId,
     });
@@ -53,7 +64,7 @@ export function buildCompletionBlocks(
   if (includeReviewFromJob) {
     elements.push({
       type: 'button' as const,
-      text: { type: 'plain_text' as const, text: 'Review changes' },
+      text: { type: 'plain_text' as const, text: 'Review' },
       action_id: actionIds.reviewFromJob,
       value: jobId,
     });
