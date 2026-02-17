@@ -8,7 +8,6 @@ import {
 import { getRepoProvider, getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
-import type { RepoConfig } from '@sniptail/core/types/job.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 
@@ -47,7 +46,6 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
       throw new Error(`Allowlist key "${request.repoKey}" already exists.`);
     }
 
-    let allowlistEntry: RepoConfig;
     let repoUrl = '';
     let repoLabel = '';
     const provider = getRepoProvider(request.service);
@@ -76,7 +74,7 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
         env: process.env,
       },
     );
-    allowlistEntry = created.repoConfig;
+    const allowlistEntry = created.repoConfig;
     repoUrl = created.repoUrl;
     repoLabel = created.repoLabel;
 
