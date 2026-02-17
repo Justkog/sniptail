@@ -5,28 +5,37 @@ labels: ["question"]
 body:
   - type: markdown
     attributes:
-      value: "If this is a general question, Discussions may be a better fit if enabled."
+      value: "Ask your question with enough context for a quick, accurate answer."
   - type: textarea
-    id: reproduction
+    id: goal
     attributes:
-      label: Reproduction steps
-      description: "If relevant, share steps or context to help us understand your question."
-      placeholder: "1. ...\n2. ...\n3. ..."
+      label: What are you trying to do?
+      description: "Describe your goal and where you are blocked."
+      placeholder: "I want to ... but I am blocked at ..."
     validations:
       required: true
   - type: textarea
-    id: expected-actual
+    id: attempted
     attributes:
-      label: Expected vs actual behavior
-      description: "What you expected vs what you are seeing or unsure about."
-      placeholder: "Expected: ...\nActual: ..."
+      label: What have you tried?
+      description: "Share commands, code snippets, or docs/issues you already checked."
+      placeholder: "I tried ... and checked ..."
     validations:
       required: true
+  - type: textarea
+    id: error-output
+    attributes:
+      label: Error output or logs (optional)
+      description: "Paste any relevant error messages, stack traces, or output."
+      placeholder: "Paste logs or errors here."
+      render: shell
+    validations:
+      required: false
   - type: textarea
     id: environment
     attributes:
       label: Environment info
-      description: "OS, Node.js version, and any other relevant details."
+      description: "Optional: OS, Node.js version, package version, and other relevant details."
       placeholder: "OS: ...\nNode: ...\nOther: ..."
     validations:
-      required: true
+      required: false
