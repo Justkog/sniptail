@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # Enable pnpm via Corepack (needs root to write /usr/local/bin).
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.5.0 --activate
 
 # non-root user
 RUN useradd -m -s /bin/bash codex \
