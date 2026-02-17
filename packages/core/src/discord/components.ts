@@ -1,5 +1,6 @@
 export type DiscordCompletionAction =
   | 'askFromJob'
+  | 'planFromJob'
   | 'implementFromJob'
   | 'reviewFromJob'
   | 'worktreeCommands'
@@ -22,6 +23,7 @@ const completionPrefix = 'sniptail:completion';
 
 const actionTokens = {
   askFromJob: 'ask',
+  planFromJob: 'plan',
   implementFromJob: 'implement',
   reviewFromJob: 'review',
   worktreeCommands: 'worktree',
@@ -36,6 +38,7 @@ const tokenToAction: Record<
   DiscordCompletionAction
 > = {
   [actionTokens.askFromJob]: 'askFromJob',
+  [actionTokens.planFromJob]: 'planFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
   [actionTokens.reviewFromJob]: 'reviewFromJob',
   [actionTokens.worktreeCommands]: 'worktreeCommands',
@@ -68,6 +71,7 @@ export function buildDiscordCompletionComponents(
   options?: {
     includeAnswerQuestions?: boolean;
     includeAskFromJob?: boolean;
+    includePlanFromJob?: boolean;
     includeImplementFromJob?: boolean;
     includeReviewFromJob?: boolean;
     answerQuestionsFirst?: boolean;
@@ -75,6 +79,7 @@ export function buildDiscordCompletionComponents(
 ): DiscordActionRow[] {
   const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
@@ -91,15 +96,23 @@ export function buildDiscordCompletionComponents(
     components.push({
       type: 2,
       style: 1,
-      label: 'Ask from there',
+      label: 'Ask',
       custom_id: buildDiscordCompletionCustomId('askFromJob', jobId),
+    });
+  }
+  if (includePlanFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Plan',
+      custom_id: buildDiscordCompletionCustomId('planFromJob', jobId),
     });
   }
   if (includeImplementFromJob) {
     components.push({
       type: 2,
       style: 1,
-      label: 'Implement from there',
+      label: 'Implement',
       custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
     });
   }
@@ -107,7 +120,7 @@ export function buildDiscordCompletionComponents(
     components.push({
       type: 2,
       style: 1,
-      label: 'Review changes',
+      label: 'Review',
       custom_id: buildDiscordCompletionCustomId('reviewFromJob', jobId),
     });
   }

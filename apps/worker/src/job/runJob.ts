@@ -214,6 +214,7 @@ export async function runJob(
           job.jobId,
           {
             askFromJob: slackIds.actions.askFromJob,
+            planFromJob: slackIds.actions.planFromJob,
             implementFromJob: slackIds.actions.implementFromJob,
             reviewFromJob: slackIds.actions.reviewFromJob,
             worktreeCommands: slackIds.actions.worktreeCommands,
@@ -223,6 +224,7 @@ export async function runJob(
           openQuestions.length
             ? {
                 includeAskFromJob: false,
+                includePlanFromJob: false,
                 includeImplementFromJob: false,
                 includeReviewFromJob: false,
                 answerQuestionsFirst: true,
@@ -234,6 +236,7 @@ export async function runJob(
         const components = buildDiscordCompletionComponents(job.jobId, {
           includeAnswerQuestions: openQuestions.length > 0,
           includeAskFromJob: !openQuestions.length,
+          includePlanFromJob: !openQuestions.length,
           includeImplementFromJob: !openQuestions.length,
           includeReviewFromJob: false,
           answerQuestionsFirst: openQuestions.length > 0,
@@ -356,6 +359,7 @@ export async function runJob(
         job.jobId,
         {
           askFromJob: slackIds.actions.askFromJob,
+          planFromJob: slackIds.actions.planFromJob,
           implementFromJob: slackIds.actions.implementFromJob,
           reviewFromJob: slackIds.actions.reviewFromJob,
           worktreeCommands: slackIds.actions.worktreeCommands,

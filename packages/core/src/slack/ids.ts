@@ -12,6 +12,7 @@ export type SlackIds = {
   };
   actions: {
     askFromJob: string;
+    planFromJob: string;
     implementFromJob: string;
     reviewFromJob: string;
     worktreeCommands: string;
@@ -40,6 +41,7 @@ export function buildSlackIds(botName: string): SlackIds {
     },
     actions: {
       askFromJob: `${commandPrefix}-ask-from-job`,
+      planFromJob: `${commandPrefix}-plan-from-job`,
       implementFromJob: `${commandPrefix}-implement-from-job`,
       reviewFromJob: `${commandPrefix}-review-from-job`,
       worktreeCommands: `${commandPrefix}-worktree-commands`,
