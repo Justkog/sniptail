@@ -7,6 +7,7 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { expandHomePath } from '@sniptail/core/config/resolve.js';
 import { closeJobRegistryDb } from '@sniptail/core/db/index.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
+import { inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { closeRepoCatalogStore } from '@sniptail/core/repos/catalogStore.js';
 import {
   deactivateRepoCatalogEntry,
@@ -55,10 +56,10 @@ function resolveInputPath(input: string): string {
 function parseRepoProvider(raw?: string): RepoProvider | undefined {
   if (!raw) return undefined;
   const normalized = raw.trim().toLowerCase();
-  if (normalized === 'github' || normalized === 'gitlab' || normalized === 'local') {
-    return normalized;
+  if (!normalized) {
+    throw new Error('Invalid --provider value: expected a non-empty string.');
   }
-  throw new Error(`Invalid --provider value: ${raw}. Expected github, gitlab, or local.`);
+  return normalized;
 }
 
 function parseProjectId(raw?: string): number | undefined {
@@ -76,10 +77,7 @@ function parseProjectId(raw?: string): number | undefined {
 }
 
 function inferProviderFromInput(repo: RepoConfig): RepoProvider {
-  if (repo.localPath) return 'local';
-  if (repo.projectId !== undefined) return 'gitlab';
-  if (repo.sshUrl?.toLowerCase().includes('gitlab')) return 'gitlab';
-  return 'github';
+  return inferRepoProvider(repo);
 }
 
 function normalizeRepoKey(input: string): { repoKey: string; normalized: boolean } {
@@ -176,6 +174,7 @@ async function handleAdd(args: string[]): Promise<void> {
     ...(sshUrl ? { sshUrl } : {}),
     ...(localPathRaw ? { localPath: resolveInputPath(localPathRaw) } : {}),
     ...(projectId !== undefined ? { projectId } : {}),
+    ...(projectId !== undefined ? { providerData: { projectId } } : {}),
     ...(baseBranch ? { baseBranch } : {}),
   };
 
@@ -254,7 +253,7 @@ async function handleList(args: string[]): Promise<void> {
   });
 
   if (parsed.positionals.length > 0) {
-    throw new Error('Usage: repos list [--provider github|gitlab|local] [--json]');
+    throw new Error('Usage: repos list [--provider <provider>] [--json]');
   }
 
   loadWorkerConfig();

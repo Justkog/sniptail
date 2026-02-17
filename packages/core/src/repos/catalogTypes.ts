@@ -1,4 +1,4 @@
-export type RepoProvider = 'github' | 'gitlab' | 'local';
+export type RepoProvider = string;
 
 export type RepoRow = {
   repoKey: string;
@@ -6,6 +6,7 @@ export type RepoRow = {
   sshUrl?: string;
   localPath?: string;
   projectId?: number;
+  providerData?: Record<string, unknown>;
   baseBranch: string;
   isActive: boolean;
 };

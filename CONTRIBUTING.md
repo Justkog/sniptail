@@ -7,6 +7,21 @@ and what to expect when contributing.
 
 Sniptail is designed to expand along three axes: the medium (where jobs are requested), the coding agent (what executes jobs), and the Git service (where changes land). Today the stack is Slack + Codex + GitHub/GitLab. Contributions that add new integrations in any of these areas are especially welcome; see the tables in `README.md` for the current support matrix.
 
+### Adding a Git provider
+
+Sniptail now uses a shared Git provider contract in `packages/core/src/repos/providers.ts`.
+To add a provider:
+
+1. Add a `RepoProviderDefinition` entry (id, display name, capabilities).
+2. Implement provider-specific hooks:
+   - `validateRepoConfig`
+   - `serializeProviderData` / `deserializeProviderData`
+   - `createReviewRequest` (for IMPLEMENT PR/MR creation)
+   - `createRepository` (for `/bootstrap`)
+3. Register the provider in `REPO_PROVIDERS`.
+
+The worker and bot bootstrap flows resolve providers through this registry, so most new-provider work is isolated to that file plus any provider-specific API client.
+
 ## Local setup
 
 Prereqs:

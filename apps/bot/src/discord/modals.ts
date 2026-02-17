@@ -10,6 +10,7 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
+import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
@@ -243,7 +244,7 @@ export function buildBootstrapExtrasPrompt(
     .addOptions(
       services.map((service) =>
         new StringSelectMenuOptionBuilder()
-          .setLabel(`Service: ${service}`)
+          .setLabel(`Service: ${getRepoProviderDisplayName(service)}`)
           .setValue(service)
           .setDefault(selection.service === service),
       ),

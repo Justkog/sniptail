@@ -1,12 +1,13 @@
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
-import type { BootstrapRequest, RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
+import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { resolveBootstrapServices } from '../../lib/bootstrap.js';
 
 export function registerBootstrapSubmitView({
   app,
@@ -21,9 +22,7 @@ export function registerBootstrapSubmitView({
       : undefined;
     const repoName = state.repo_name?.repo_name?.value?.trim() ?? '';
     const repoKeyInput = state.repo_key?.repo_key?.value?.trim() ?? '';
-    const service = state.service?.service?.selected_option?.value as
-      | RepoBootstrapService
-      | undefined;
+    const service = state.service?.service?.selected_option?.value;
     const localPathInput = state.local_path?.local_path?.value?.trim() ?? '';
     const owner = state.owner?.owner?.value?.trim() || undefined;
     const description = state.description?.description?.value?.trim() || undefined;
@@ -47,6 +46,10 @@ export function registerBootstrapSubmitView({
     }
     if (!service) {
       errors.service = 'Choose a repository service.';
+    }
+    const allowedServices = resolveBootstrapServices(config);
+    if (service && !allowedServices.includes(service)) {
+      errors.service = `Service must be one of: ${allowedServices.join(', ')}.`;
     }
     if (namespaceIdRaw && namespaceId === undefined) {
       errors.gitlab_namespace_id = 'Namespace ID must be a number.';
@@ -88,6 +91,7 @@ export function registerBootstrapSubmitView({
         ...(visibility ? { visibility } : {}),
         ...(quickstart ? { quickstart } : {}),
         ...(namespaceId !== undefined ? { gitlabNamespaceId: namespaceId } : {}),
+        ...(namespaceId !== undefined ? { providerData: { namespaceId } } : {}),
         ...(service === 'local' && localPathInput ? { localPath: localPathInput } : {}),
         channel: {
           provider: 'slack',
