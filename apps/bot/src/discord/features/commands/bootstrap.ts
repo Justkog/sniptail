@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
 import { buildBootstrapExtrasPrompt } from '../../modals.js';
 import { bootstrapExtrasByUser } from '../../state.js';
 
@@ -7,7 +8,8 @@ export async function handleBootstrapStart(
   interaction: ChatInputCommandInteraction,
   config: BotConfig,
 ) {
-  if (!config.bootstrapServices.length) {
+  const services = listBootstrapProviderIds(config.bootstrapServices);
+  if (!services.length) {
     await interaction.reply({
       content: 'No bootstrap services are configured for this bot.',
       ephemeral: true,
@@ -16,7 +18,7 @@ export async function handleBootstrapStart(
   }
 
   const selection = {
-    service: config.bootstrapServices[0]!,
+    service: services[0]!,
     visibility: 'private' as const,
     quickstart: false,
   };
@@ -25,7 +27,7 @@ export async function handleBootstrapStart(
     requestedAt: Date.now(),
   });
 
-  const prompt = buildBootstrapExtrasPrompt(config.botName, selection, config.bootstrapServices);
+  const prompt = buildBootstrapExtrasPrompt(config.botName, selection, services);
   await interaction.reply({
     content: prompt.content,
     components: prompt.components,

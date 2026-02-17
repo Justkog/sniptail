@@ -11,6 +11,12 @@
       "when": 1760000000000,
       "tag": "0001_create_repositories",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "when": 1760000100000,
+      "tag": "0002_add_provider_data",
+      "breakpoints": true
     }
   ]
 }

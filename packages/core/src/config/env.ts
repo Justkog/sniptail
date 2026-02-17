@@ -161,7 +161,7 @@ export function loadBotConfig(): BotConfig {
   const bootstrapServices = resolveStringArrayFromSources(
     'BOOTSTRAP_SERVICES',
     botToml?.bootstrap_services,
-  ) as Array<'local' | 'github' | 'gitlab'>;
+  );
   const slackEnabled = resolveOptionalFlagFromSources('SLACK_ENABLED', slackToml?.enabled, false);
   const discordEnabled = resolveOptionalFlagFromSources(
     'DISCORD_ENABLED',

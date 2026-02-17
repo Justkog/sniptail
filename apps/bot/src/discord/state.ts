@@ -11,7 +11,7 @@ export const implementSelectionByUser = new Map<
 export const bootstrapExtrasByUser = new Map<
   string,
   {
-    service: 'github' | 'gitlab' | 'local';
+    service: string;
     visibility: 'private' | 'public';
     quickstart: boolean;
     requestedAt: number;

@@ -9,10 +9,11 @@ export const jobs = sqliteTable(JOBS_TABLE, {
 
 export const repositories = sqliteTable(REPOSITORIES_TABLE, {
   repoKey: text('repo_key').primaryKey(),
-  provider: text('provider', { enum: ['github', 'gitlab', 'local'] }).notNull(),
+  provider: text('provider').notNull(),
   sshUrl: text('ssh_url'),
   localPath: text('local_path'),
   projectId: integer('project_id'),
+  providerData: text('provider_data'),
   baseBranch: text('base_branch').notNull().default('main'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull(),

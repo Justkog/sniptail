@@ -13,7 +13,7 @@ function toRedisKey(repoKey: string): string {
 }
 
 function isRepoProvider(value: unknown): value is RepoProvider {
-  return value === 'github' || value === 'gitlab' || value === 'local';
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function asString(value: unknown): string | undefined {
@@ -26,6 +26,11 @@ function asNumber(value: unknown): number | undefined {
 
 function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
 }
 
 function parseRepoRow(value: string): RepoRow | undefined {
@@ -46,6 +51,7 @@ function parseRepoRow(value: string): RepoRow | undefined {
     const sshUrl = asString(row.sshUrl);
     const localPath = asString(row.localPath);
     const projectId = asNumber(row.projectId);
+    const providerData = asObject(row.providerData);
 
     return {
       repoKey,
@@ -53,6 +59,7 @@ function parseRepoRow(value: string): RepoRow | undefined {
       ...(sshUrl !== undefined ? { sshUrl } : {}),
       ...(localPath !== undefined ? { localPath } : {}),
       ...(projectId !== undefined ? { projectId } : {}),
+      ...(providerData !== undefined ? { providerData } : {}),
       baseBranch,
       isActive,
     };

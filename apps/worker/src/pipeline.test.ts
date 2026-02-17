@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@sniptail/core/config/config.js', () => ({
   loadCoreConfig: () => ({
@@ -69,12 +69,30 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
   };
 });
 
-vi.mock('@sniptail/core/agents/agentRegistry.js', () => ({
-  AGENT_REGISTRY: {
-    codex: { run: vi.fn() },
-    copilot: { run: vi.fn() },
-  },
-}));
+vi.mock('@sniptail/core/agents/agentRegistry.js', () => {
+  const codexRun = vi.fn();
+  const copilotRun = vi.fn();
+  return {
+    AGENT_DESCRIPTORS: {
+      codex: {
+        id: 'codex',
+        adapter: { run: codexRun },
+        isDockerMode: () => false,
+        resolveModelConfig: () => undefined,
+        shouldIncludeRepoCache: () => false,
+        buildRunOptions: () => ({}),
+      },
+      copilot: {
+        id: 'copilot',
+        adapter: { run: copilotRun },
+        isDockerMode: () => false,
+        resolveModelConfig: () => undefined,
+        shouldIncludeRepoCache: () => false,
+        buildRunOptions: () => ({}),
+      },
+    },
+  };
+});
 
 vi.mock('@sniptail/core/git/mirror.js', () => ({
   ensureClone: vi.fn(),
@@ -121,15 +139,19 @@ vi.mock('@sniptail/core/gitlab/client.js', () => ({
 
 vi.mock('node:fs/promises', () => ({
   appendFile: vi.fn(),
+  copyFile: vi.fn(),
   mkdir: vi.fn(),
+  readdir: vi.fn(),
   readFile: vi.fn(),
   rm: vi.fn(),
   writeFile: vi.fn(),
 }));
 
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { constants } from 'node:fs';
+import { appendFile, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
 import type { Queue } from 'bullmq';
-import { AGENT_REGISTRY } from '@sniptail/core/agents/agentRegistry.js';
+import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
@@ -137,6 +159,7 @@ import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import {
+  copyArtifactsFromResumedJob,
   copyJobRootSeed,
   resolveAgentThreadId,
   resolveMentionWorkingDirectory,
@@ -157,6 +180,10 @@ function createRegistryMock() {
     findLatestJobByChannelThreadAndTypes: vi.fn(),
   } satisfies JobRegistry;
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('worker/pipeline helpers', () => {
   it('copyJobRootSeed skips when glob is empty', async () => {
@@ -191,6 +218,75 @@ describe('worker/pipeline helpers', () => {
         }) as RunOptions['env'],
       }),
     );
+  });
+
+  it('copyArtifactsFromResumedJob copies regular files and skips job-spec', async () => {
+    const readdirMock = vi.mocked(readdir);
+    const copyFileMock = vi.mocked(copyFile);
+
+    readdirMock.mockResolvedValueOnce([
+      { name: 'plan.md', isFile: () => true } as Dirent,
+      { name: 'job-spec.json', isFile: () => true } as Dirent,
+      { name: 'attachments', isFile: () => false } as Dirent,
+    ]);
+    copyFileMock.mockResolvedValueOnce(undefined);
+
+    await copyArtifactsFromResumedJob('job-prev', {
+      root: '/tmp/sniptail/job-root/job-next',
+      reposRoot: '/tmp/sniptail/job-root/job-next/repos',
+      artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
+      logsRoot: '/tmp/sniptail/job-root/job-next/logs',
+      logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
+    });
+
+    expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/artifacts', {
+      withFileTypes: true,
+    });
+    expect(copyFileMock).toHaveBeenCalledTimes(1);
+    expect(copyFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail/job-root/job-prev/artifacts/plan.md',
+      '/tmp/sniptail/job-root/job-next/artifacts/plan.md',
+      constants.COPYFILE_EXCL,
+    );
+  });
+
+  it('copyArtifactsFromResumedJob skips when source artifact path is missing', async () => {
+    const readdirMock = vi.mocked(readdir);
+    const copyFileMock = vi.mocked(copyFile);
+
+    readdirMock.mockRejectedValueOnce(
+      Object.assign(new Error('missing artifacts path'), { code: 'ENOENT' }),
+    );
+
+    await expect(
+      copyArtifactsFromResumedJob('job-prev', {
+        root: '/tmp/sniptail/job-root/job-next',
+        reposRoot: '/tmp/sniptail/job-root/job-next/repos',
+        artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
+        logsRoot: '/tmp/sniptail/job-root/job-next/logs',
+        logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(copyFileMock).not.toHaveBeenCalled();
+  });
+
+  it('copyArtifactsFromResumedJob ignores destination collisions', async () => {
+    const readdirMock = vi.mocked(readdir);
+    const copyFileMock = vi.mocked(copyFile);
+
+    readdirMock.mockResolvedValueOnce([{ name: 'plan.md', isFile: () => true } as Dirent]);
+    copyFileMock.mockRejectedValueOnce(Object.assign(new Error('exists'), { code: 'EEXIST' }));
+
+    await expect(
+      copyArtifactsFromResumedJob('job-prev', {
+        root: '/tmp/sniptail/job-root/job-next',
+        reposRoot: '/tmp/sniptail/job-root/job-next/repos',
+        artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
+        logsRoot: '/tmp/sniptail/job-root/job-next/logs',
+        logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('resolveAgentThreadId returns explicit thread id', async () => {
@@ -341,7 +437,7 @@ describe('worker/pipeline runJob', () => {
     const registry = createRegistryMock();
     const loadJobRecordMock = registry.loadJobRecord;
     const updateJobRecordMock = registry.updateJobRecord;
-    const runAgentMock = vi.mocked(AGENT_REGISTRY.codex.run);
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
     const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
     const mkdirMock = vi.mocked(mkdir);
     const writeFileMock = vi.mocked(writeFile);

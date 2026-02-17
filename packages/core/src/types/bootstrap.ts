@@ -1,12 +1,13 @@
 import type { ChannelContext } from './channel.js';
 
-export type RepoBootstrapService = 'github' | 'gitlab' | 'local';
+export type RepoBootstrapService = string;
 
 export type BootstrapRequest = {
   requestId: string;
   repoName: string;
   repoKey: string;
   service: RepoBootstrapService;
+  providerData?: Record<string, unknown>;
   owner?: string;
   description?: string;
   visibility?: 'private' | 'public';

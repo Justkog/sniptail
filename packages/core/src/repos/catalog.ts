@@ -1,6 +1,7 @@
 import { parseRepoAllowlist, writeRepoAllowlist } from '../config/repoAllowlist.js';
 import { logger } from '../logger.js';
 import type { RepoConfig } from '../types/job.js';
+import { getRepoProvider, inferRepoProvider } from './providers.js';
 import { getRepoCatalogStore } from './catalogStore.js';
 import type { RepoProvider, RepoRow } from './catalogTypes.js';
 
@@ -13,52 +14,35 @@ function normalizeBaseBranch(value?: string): string {
   return trimmed ? trimmed : 'main';
 }
 
-function inferProvider(repo: RepoConfig): 'github' | 'gitlab' | 'local' {
-  if (repo.localPath) return 'local';
-  if (repo.projectId !== undefined) return 'gitlab';
-  if (repo.sshUrl?.toLowerCase().includes('gitlab')) {
-    throw new Error(
-      `Repository appears to be a GitLab repository (sshUrl contains 'gitlab'), but projectId is not provided. Please add a projectId to the repository configuration.`,
-    );
-  }
-  return 'github';
-}
-
 function validateRepoForProvider(provider: RepoProvider, repo: RepoConfig): void {
-  if (provider === 'local') {
-    if (!repo.localPath) {
-      throw new Error('Local repositories require localPath.');
-    }
-    if (repo.sshUrl) {
-      throw new Error('Local repositories must not define sshUrl.');
-    }
-    if (repo.projectId !== undefined) {
-      throw new Error('Local repositories must not define projectId.');
-    }
-    return;
+  const handler = getRepoProvider(provider);
+  if (!handler) {
+    throw new Error(`Unsupported repository provider: ${provider}`);
   }
-
-  if (!repo.sshUrl) {
-    throw new Error('Remote repositories require sshUrl.');
-  }
-  if (repo.localPath) {
-    throw new Error('Remote repositories must not define localPath.');
-  }
-
-  if (provider === 'github' && repo.projectId !== undefined) {
-    throw new Error('GitHub repositories must not define projectId.');
-  }
-  if (provider === 'gitlab' && repo.projectId === undefined) {
-    throw new Error('GitLab repositories require projectId.');
-  }
+  handler.validateRepoConfig?.(repo);
 }
 
 function toRepoConfig(row: RepoRow): RepoConfig {
   const baseBranch = normalizeBaseBranch(row.baseBranch);
+  const provider = getRepoProvider(row.provider);
+  const providerData =
+    provider?.deserializeProviderData?.({
+      ...(row.providerData ? { providerData: row.providerData } : {}),
+      ...(row.projectId !== undefined ? { legacyProjectId: row.projectId } : {}),
+    }) ?? row.providerData;
+  const projectIdRaw = providerData?.projectId;
+  const projectId =
+    typeof projectIdRaw === 'number' &&
+    Number.isFinite(projectIdRaw) &&
+    Number.isInteger(projectIdRaw)
+      ? projectIdRaw
+      : row.projectId;
   return {
+    provider: row.provider,
+    ...(providerData ? { providerData } : {}),
     ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
     ...(row.localPath ? { localPath: row.localPath } : {}),
-    ...(row.projectId !== undefined ? { projectId: row.projectId } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
     ...(baseBranch ? { baseBranch } : {}),
   };
 }
@@ -66,6 +50,8 @@ function toRepoConfig(row: RepoRow): RepoConfig {
 function normalizeRecord(record: RepoConfig): RepoConfig {
   const baseBranch = normalizeBaseBranch(record.baseBranch);
   return {
+    ...(record.provider ? { provider: record.provider } : {}),
+    ...(record.providerData ? { providerData: record.providerData } : {}),
     ...(record.sshUrl ? { sshUrl: record.sshUrl } : {}),
     ...(record.localPath ? { localPath: record.localPath } : {}),
     ...(record.projectId !== undefined ? { projectId: record.projectId } : {}),
@@ -109,19 +95,33 @@ export async function upsertRepoCatalogEntry(
   options: { provider?: RepoProvider; isActive?: boolean } = {},
 ): Promise<void> {
   const normalized = normalizeRecord(repo);
-  const provider = options.provider ?? inferProvider(normalized);
+  const provider = options.provider ?? inferRepoProvider(normalized);
+  const handler = getRepoProvider(provider);
+  if (!handler) {
+    throw new Error(`Unsupported repository provider: ${provider}`);
+  }
   validateRepoForProvider(provider, normalized);
   const store = await getRepoCatalogStore();
 
   const hasLocalPath = provider === 'local' && Boolean(normalized.localPath);
   const shouldUseSshUrl = provider !== 'local' && Boolean(normalized.sshUrl);
+  const providerData =
+    handler.serializeProviderData?.({ repo: normalized }) ?? normalized.providerData;
+  const projectIdRaw = providerData?.projectId;
+  const projectId =
+    typeof projectIdRaw === 'number' &&
+    Number.isFinite(projectIdRaw) &&
+    Number.isInteger(projectIdRaw)
+      ? projectIdRaw
+      : normalized.projectId;
 
   await store.upsertRow({
     repoKey,
     provider,
+    ...(providerData ? { providerData } : {}),
     ...(shouldUseSshUrl ? { sshUrl: normalized.sshUrl } : {}),
     ...(hasLocalPath ? { localPath: normalized.localPath } : {}),
-    ...(normalized.projectId !== undefined ? { projectId: normalized.projectId } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
     baseBranch: normalizeBaseBranch(normalized.baseBranch),
     isActive: options.isActive ?? true,
   });
@@ -138,6 +138,7 @@ export async function deactivateRepoCatalogEntry(repoKey: string): Promise<boole
       ...(existing.sshUrl ? { sshUrl: existing.sshUrl } : {}),
       ...(existing.localPath ? { localPath: existing.localPath } : {}),
       ...(existing.projectId !== undefined ? { projectId: existing.projectId } : {}),
+      ...(existing.providerData ? { providerData: existing.providerData } : {}),
       baseBranch: existing.baseBranch,
     },
     { provider: existing.provider, isActive: false },

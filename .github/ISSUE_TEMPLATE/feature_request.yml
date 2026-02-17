@@ -1,32 +1,51 @@
 name: "✨ Feature request"
 description: "Suggest a new feature or improvement"
 title: "[Feature]: "
-labels: ["enhancement", "documentation", "good first issue", "help wanted"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
-      value: "Thanks for the idea. Please share the details below."
+      value: "Thanks for the idea. Share the problem and the proposal so we can evaluate impact and scope."
   - type: textarea
-    id: reproduction
+    id: problem
     attributes:
-      label: Reproduction steps
-      description: "If this request addresses a pain point, describe how to reproduce it."
-      placeholder: "1. ...\n2. ...\n3. ..."
+      label: Problem to solve
+      description: "What pain point are you experiencing today?"
+      placeholder: "Describe the problem, who is affected, and why it matters."
     validations:
       required: true
   - type: textarea
-    id: expected-actual
+    id: proposal
     attributes:
-      label: Expected vs actual behavior
-      description: "What you expected vs what happens today."
-      placeholder: "Expected: ...\nActual: ..."
+      label: Proposed solution
+      description: "What change would you like to see?"
+      placeholder: "Describe your preferred solution and how it would work."
     validations:
       required: true
   - type: textarea
-    id: environment
+    id: alternatives
     attributes:
-      label: Environment info
-      description: "OS, Node.js version, and any other relevant details."
-      placeholder: "OS: ...\nNode: ...\nOther: ..."
+      label: Alternatives considered
+      description: "Optional: other solutions or workarounds you considered."
+      placeholder: "List alternatives and why they are not ideal."
+    validations:
+      required: false
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Expected impact
+      description: "How broadly would this affect users?"
+      options:
+        - "Low (nice-to-have improvement)"
+        - "Medium (meaningful productivity/usability gain)"
+        - "High (unblocks critical workflows)"
     validations:
       required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: "Optional: links, screenshots, related issues, or technical notes."
+      placeholder: "Anything else that helps with triage."
+    validations:
+      required: false

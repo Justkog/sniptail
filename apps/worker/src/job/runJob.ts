@@ -1,20 +1,19 @@
 import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
-import { buildJobPaths, parseReviewerIds, validateJob } from '@sniptail/core/jobs/utils.js';
+import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
-import { isGitHubSshUrl } from '@sniptail/core/git/ssh.js';
+import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
-import { createGitHubPullRequest } from '../merge-requests/github.js';
-import { createGitLabMergeRequest } from '../merge-requests/gitlab.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { createNotifier } from '../channels/createNotifier.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
+  copyArtifactsFromResumedJob,
   copyJobRootSeed,
   ensureJobDirectories,
   readJobPlan,
@@ -116,6 +115,14 @@ export async function runJob(
       paths.logFile,
       redactionPatterns,
     );
+    if (job.resumeFromJobId) {
+      await copyArtifactsFromResumedJob(job.resumeFromJobId, paths).catch((err) => {
+        logger.warn(
+          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+          'Failed to copy artifacts from resumed job',
+        );
+      });
+    }
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
       job,
@@ -216,6 +223,7 @@ export async function runJob(
           job.jobId,
           {
             askFromJob: slackIds.actions.askFromJob,
+            planFromJob: slackIds.actions.planFromJob,
             implementFromJob: slackIds.actions.implementFromJob,
             reviewFromJob: slackIds.actions.reviewFromJob,
             worktreeCommands: slackIds.actions.worktreeCommands,
@@ -225,6 +233,7 @@ export async function runJob(
           openQuestions.length
             ? {
                 includeAskFromJob: false,
+                includePlanFromJob: false,
                 includeImplementFromJob: false,
                 includeReviewFromJob: false,
                 answerQuestionsFirst: true,
@@ -236,6 +245,7 @@ export async function runJob(
         const components = buildDiscordCompletionComponents(job.jobId, {
           includeAnswerQuestions: openQuestions.length > 0,
           includeAskFromJob: !openQuestions.length,
+          includePlanFromJob: !openQuestions.length,
           includeImplementFromJob: !openQuestions.length,
           includeReviewFromJob: false,
           answerQuestionsFirst: openQuestions.length > 0,
@@ -313,45 +323,24 @@ export async function runJob(
         throw new Error(`Missing sshUrl for repo ${repoKey}.`);
       }
 
-      if (isGitHubSshUrl(repoConfig.sshUrl)) {
-        if (!config.github) {
-          throw new Error('GITHUB_API_TOKEN is required to create GitHub pull requests.');
-        }
-        const pr = await createGitHubPullRequest({
-          config: config.github,
-          sshUrl: repoConfig.sshUrl,
+      const providerId = inferRepoProvider(repoConfig);
+      const reviewRequest = await createRepoReviewRequest({
+        providerId,
+        repo: repoConfig,
+        context: {
+          ...(config.github ? { github: config.github } : {}),
+          ...(config.gitlab ? { gitlab: config.gitlab } : {}),
+        },
+        input: {
           head: repo.branch,
           base: job.gitRef,
           title,
-          body: description,
+          description,
           ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
           ...(reviewers && reviewers.length ? { reviewers } : {}),
-        });
-        mergeRequests.push({ repoKey, url: pr.url, iid: pr.iid });
-        continue;
-      }
-
-      if (!repoConfig.projectId) {
-        throw new Error(`Missing projectId for GitLab repo ${repoKey}.`);
-      }
-      if (!config.gitlab) {
-        throw new Error(
-          'GITLAB_BASE_URL and GITLAB_TOKEN are required to create GitLab merge requests.',
-        );
-      }
-
-      const reviewerIds = parseReviewerIds(job.settings?.reviewers);
-      const mr = await createGitLabMergeRequest({
-        config: config.gitlab,
-        projectId: repoConfig.projectId,
-        sourceBranch: repo.branch,
-        targetBranch: job.gitRef,
-        title,
-        description,
-        ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
-        ...(reviewerIds ? { reviewerIds } : {}),
+        },
       });
-      mergeRequests.push({ repoKey, url: mr.url, iid: mr.iid });
+      mergeRequests.push({ repoKey, url: reviewRequest.url, iid: reviewRequest.iid });
     }
 
     const mrTextParts: string[] = [];
@@ -379,6 +368,7 @@ export async function runJob(
         job.jobId,
         {
           askFromJob: slackIds.actions.askFromJob,
+          planFromJob: slackIds.actions.planFromJob,
           implementFromJob: slackIds.actions.implementFromJob,
           reviewFromJob: slackIds.actions.reviewFromJob,
           worktreeCommands: slackIds.actions.worktreeCommands,

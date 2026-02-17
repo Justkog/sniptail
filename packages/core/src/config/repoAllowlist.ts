@@ -14,6 +14,17 @@ export function parseRepoAllowlist(filePath: string): Record<string, RepoConfig>
       if (!value || typeof value !== 'object') {
         throw new Error(`Repo allowlist entry invalid for ${key}.`);
       }
+      if (value.provider !== undefined && typeof value.provider !== 'string') {
+        throw new Error(`Repo allowlist entry provider invalid for ${key}.`);
+      }
+      if (
+        value.providerData !== undefined &&
+        (typeof value.providerData !== 'object' ||
+          value.providerData === null ||
+          Array.isArray(value.providerData))
+      ) {
+        throw new Error(`Repo allowlist entry providerData invalid for ${key}.`);
+      }
       if (value.sshUrl !== undefined && typeof value.sshUrl !== 'string') {
         throw new Error(`Repo allowlist entry sshUrl invalid for ${key}.`);
       }
