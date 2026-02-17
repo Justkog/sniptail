@@ -12,12 +12,9 @@ CREATE TABLE IF NOT EXISTS repositories (
     (ssh_url IS NOT NULL AND local_path IS NULL)
     OR
     (ssh_url IS NULL AND local_path IS NOT NULL)
-  ),
-  CHECK (
-    provider <> 'gitlab'
-    OR
-    project_id IS NOT NULL
   )
 );
+
+--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS repositories_is_active_idx ON repositories (is_active);

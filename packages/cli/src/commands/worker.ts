@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { join } from 'node:path';
+import { assertDbMigrationsUpToDate } from '../lib/db.js';
 import { runRuntime } from '../lib/runtime.js';
 
 type WorkerOptions = {
@@ -18,6 +19,12 @@ export function registerWorkerCommand(program: Command) {
     .option('--cwd <path>', 'Working directory')
     .option('--root <path>', 'Sniptail install root')
     .action(async (options: WorkerOptions) => {
+      await assertDbMigrationsUpToDate('worker', {
+        ...(options.config ? { config: options.config } : {}),
+        ...(options.env ? { env: options.env } : {}),
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...(options.root ? { root: options.root } : {}),
+      });
       await runRuntime({
         app: 'worker',
         entry: join('dist', 'index.js'),

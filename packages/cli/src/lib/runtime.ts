@@ -56,6 +56,7 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
   const baseCwd = resolve(options.cwd ?? process.cwd());
 
   const childEnv: NodeJS.ProcessEnv = {
+    SNIPTAIL_ROOT: root,
     ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
     ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
   };

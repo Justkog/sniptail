@@ -1,5 +1,6 @@
 import type { ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
 import {
   buildBootstrapExtrasPrompt,
   buildBootstrapModal,
@@ -35,16 +36,17 @@ export async function handleBootstrapExtrasSelection(
   interaction: StringSelectMenuInteraction,
   config: BotConfig,
 ) {
+  const services = listBootstrapProviderIds(config.bootstrapServices);
   const value = interaction.values?.[0];
   if (!value) {
     await interaction.reply({ content: 'Please select an option.', ephemeral: true });
     return;
   }
 
-  const selection = getSelection(interaction.user.id, config.bootstrapServices);
+  const selection = getSelection(interaction.user.id, services);
   if (interaction.customId === bootstrapServiceSelectCustomId) {
-    if (config.bootstrapServices.includes(value as BootstrapExtrasSelection['service'])) {
-      selection.service = value as BootstrapExtrasSelection['service'];
+    if (services.includes(value)) {
+      selection.service = value;
     }
   }
   if (interaction.customId === bootstrapVisibilitySelectCustomId) {
@@ -61,7 +63,7 @@ export async function handleBootstrapExtrasSelection(
     requestedAt: Date.now(),
   });
 
-  const prompt = buildBootstrapExtrasPrompt(config.botName, selection, config.bootstrapServices);
+  const prompt = buildBootstrapExtrasPrompt(config.botName, selection, services);
   await interaction.update({
     content: prompt.content,
     components: prompt.components,
@@ -72,7 +74,8 @@ export async function handleBootstrapExtrasContinue(
   interaction: ButtonInteraction,
   config: BotConfig,
 ) {
-  const selection = getSelection(interaction.user.id, config.bootstrapServices);
+  const services = listBootstrapProviderIds(config.bootstrapServices);
+  const selection = getSelection(interaction.user.id, services);
   bootstrapExtrasByUser.set(interaction.user.id, {
     ...selection,
     requestedAt: Date.now(),

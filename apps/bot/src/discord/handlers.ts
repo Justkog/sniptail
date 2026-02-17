@@ -32,6 +32,7 @@ import { handleImplementModalSubmit } from './features/views/implementSubmit.js'
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
 import { handleAskFromJobButton } from './features/actions/askFromJob.js';
+import { handlePlanFromJobButton } from './features/actions/planFromJob.js';
 import {
   handleClearJobButton,
   handleClearJobCancelButton,
@@ -80,7 +81,16 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    if (!isChannelAllowed(config.discord?.channelIds, interaction.channelId)) {
+    const interactionParentChannelId = interaction.channel?.isThread()
+      ? (interaction.channel.parentId ?? undefined)
+      : undefined;
+    if (
+      !isChannelAllowed(
+        config.discord?.channelIds,
+        interaction.channelId,
+        interactionParentChannelId,
+      )
+    ) {
       await interaction.reply({
         content: 'This command is not enabled in this channel.',
         ephemeral: true,
@@ -148,6 +158,9 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         switch (parsed.action) {
           case 'askFromJob':
             await handleAskFromJobButton(interaction, parsed.jobId, config);
+            return;
+          case 'planFromJob':
+            await handlePlanFromJobButton(interaction, parsed.jobId, config);
             return;
           case 'answerQuestions':
             try {
@@ -277,7 +290,12 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     if (!message.client.user) return;
-    if (!isChannelAllowed(config.discord?.channelIds, message.channelId)) return;
+    const messageParentChannelId = message.channel.isThread()
+      ? (message.channel.parentId ?? undefined)
+      : undefined;
+    if (!isChannelAllowed(config.discord?.channelIds, message.channelId, messageParentChannelId)) {
+      return;
+    }
 
     try {
       await handleMention(message, config, queue);

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerBotCommand } from './commands/bot.js';
+import { registerDbCommand } from './commands/db.js';
 import { registerRunJobCommand } from './commands/run-job.js';
 import { registerReposCommand } from './commands/repos.js';
 import { registerSlackManifestCommand } from './commands/slack-manifest.js';
@@ -28,6 +29,7 @@ registerBotCommand(program);
 registerWorkerCommand(program);
 registerRunJobCommand(program);
 registerReposCommand(program);
+registerDbCommand(program);
 registerSlackManifestCommand(program);
 
 await program.parseAsync(process.argv);

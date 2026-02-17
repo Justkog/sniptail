@@ -1,5 +1,4 @@
-import { resolve } from 'node:path';
-import { AGENT_REGISTRY } from '@sniptail/core/agents/agentRegistry.js';
+import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
@@ -26,23 +25,17 @@ export async function runAgentJob(options: {
   const { job, config, paths, env, registry } = options;
 
   const agentId = job.agent ?? config.primaryAgent;
-  const agent = AGENT_REGISTRY[agentId];
+  const descriptor = AGENT_DESCRIPTORS[agentId];
+  const agent = descriptor.adapter;
 
   logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
 
   const agentThreadId = await resolveAgentThreadId(job, agentId, registry);
   const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot, registry);
-  const modelOverride =
-    agentId === 'copilot'
-      ? config.copilot.models?.[job.type]
-      : agentId === 'codex'
-        ? config.codex.models?.[job.type]
-        : undefined;
-  const additionalDirectories =
-    job.type !== 'MENTION' &&
-    ((agentId === 'codex') || (agentId === 'copilot' && config.copilot.executionMode === 'docker'))
-      ? [config.repoCacheRoot]
-      : undefined;
+  const modelOverride = descriptor.resolveModelConfig(config, job.type);
+  const additionalDirectories = descriptor.shouldIncludeRepoCache(config, job.type)
+    ? [config.repoCacheRoot]
+    : undefined;
 
   const agentResult = await agent.run(
     job,
@@ -74,36 +67,7 @@ export async function runAgentJob(options: {
           logger.info({ jobId: job.jobId }, summary.text);
         }
       },
-      ...(agentId === 'copilot' ? { copilotIdleRetries: config.copilot.idleRetries } : {}),
-      ...(agentId === 'copilot' && config.copilot.executionMode === 'docker'
-        ? {
-            copilot: {
-              cliPath: resolve(process.cwd(), 'scripts', 'copilot-docker.sh'),
-              docker: {
-                enabled: true,
-                ...(config.copilot.dockerfilePath && {
-                  dockerfilePath: config.copilot.dockerfilePath,
-                }),
-                ...(config.copilot.dockerImage && { image: config.copilot.dockerImage }),
-                ...(config.copilot.dockerBuildContext && {
-                  buildContext: config.copilot.dockerBuildContext,
-                }),
-              },
-            },
-          }
-        : {}),
-      ...(agentId === 'codex' && config.codex.executionMode === 'docker'
-        ? {
-            docker: {
-              enabled: true,
-              ...(config.codex.dockerfilePath && { dockerfilePath: config.codex.dockerfilePath }),
-              ...(config.codex.dockerImage && { image: config.codex.dockerImage }),
-              ...(config.codex.dockerBuildContext && {
-                buildContext: config.codex.dockerBuildContext,
-              }),
-            },
-          }
-        : {}),
+      ...descriptor.buildRunOptions(config),
       ...(job.type === 'MENTION'
         ? {
             sandboxMode: 'read-only' as const,

@@ -18,7 +18,7 @@ export function registerBootstrapCommand({ app, slackIds, config }: SlackHandler
         await client.chat.postEphemeral({
           channel: body.channel_id,
           user: body.user_id,
-          text: 'Repository bootstrap is not configured. Set GITHUB_API_TOKEN or GITLAB_BASE_URL + GITLAB_TOKEN.',
+          text: 'Repository bootstrap is not configured. Enable bootstrap_services and configure at least one provider.',
         });
       }
       return;

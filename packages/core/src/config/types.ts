@@ -24,7 +24,7 @@ export type BotConfig = CoreConfig & {
   botName: string;
   debugJobSpecMessages: boolean;
   primaryAgent: AgentId;
-  bootstrapServices: Array<'local' | 'github' | 'gitlab'>;
+  bootstrapServices: string[];
   slackEnabled: boolean;
   discordEnabled: boolean;
   slack?: {
