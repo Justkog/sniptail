@@ -32,16 +32,16 @@ export function createPgRepoCatalogStore(client: PgJobRegistryClient): RepoCatal
       return rows.map((row) => {
         const providerData = toProviderData(row.providerData);
         return {
-        repoKey: row.repoKey,
-        provider: row.provider,
-        ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
-        ...(row.localPath ? { localPath: row.localPath } : {}),
-        ...(row.projectId !== null && row.projectId !== undefined
-          ? { projectId: row.projectId }
-          : {}),
-        ...(providerData ? { providerData } : {}),
-        baseBranch: row.baseBranch,
-        isActive: Boolean(row.isActive),
+          repoKey: row.repoKey,
+          provider: row.provider,
+          ...(row.sshUrl ? { sshUrl: row.sshUrl } : {}),
+          ...(row.localPath ? { localPath: row.localPath } : {}),
+          ...(row.projectId !== null && row.projectId !== undefined
+            ? { projectId: row.projectId }
+            : {}),
+          ...(providerData ? { providerData } : {}),
+          baseBranch: row.baseBranch,
+          isActive: Boolean(row.isActive),
         };
       });
     },

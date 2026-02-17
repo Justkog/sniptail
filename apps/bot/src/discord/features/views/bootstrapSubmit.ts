@@ -30,9 +30,7 @@ export async function handleBootstrapModalSubmit(
   const quickstart = selection?.quickstart ?? false;
   const bootstrapServices = listBootstrapProviderIds(config.bootstrapServices);
   if (!service || !bootstrapServices.includes(service)) {
-    const allowedServices = bootstrapServices.length
-      ? bootstrapServices.join(', ')
-      : 'none';
+    const allowedServices = bootstrapServices.length ? bootstrapServices.join(', ') : 'none';
     await interaction.reply({
       content: `Service must be one of: ${allowedServices}.`,
       ephemeral: true,

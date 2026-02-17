@@ -6,11 +6,7 @@ import {
 } from '../git/bootstrap.js';
 import { parseGitHubRepo } from '../git/ssh.js';
 import { createPullRequest, createRepository, type GitHubConfig } from '../github/client.js';
-import {
-  createMergeRequest,
-  createProject,
-  type GitLabConfig,
-} from '../gitlab/client.js';
+import { createMergeRequest, createProject, type GitLabConfig } from '../gitlab/client.js';
 import type { RepoConfig } from '../types/job.js';
 
 export type RepoProviderCapabilities = {

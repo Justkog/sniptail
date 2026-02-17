@@ -67,7 +67,12 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
         ...(request.visibility !== undefined ? { visibility: request.visibility } : {}),
         ...(request.providerData ? { providerData: request.providerData } : {}),
         ...(request.gitlabNamespaceId !== undefined
-          ? { providerData: { ...(request.providerData ?? {}), namespaceId: request.gitlabNamespaceId } }
+          ? {
+              providerData: {
+                ...(request.providerData ?? {}),
+                namespaceId: request.gitlabNamespaceId,
+              },
+            }
           : {}),
         ...(request.service === 'local' ? { localPath: request.localPath } : {}),
         ...(config.localRepoRoot ? { localRepoRoot: config.localRepoRoot } : {}),
