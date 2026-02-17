@@ -15,4 +15,6 @@ CREATE TABLE IF NOT EXISTS repositories (
   )
 );
 
+--> statement-breakpoint
+
 CREATE INDEX IF NOT EXISTS repositories_is_active_idx ON repositories (is_active);

@@ -156,6 +156,7 @@ main() {
   cp -R apps/worker/dist "${stage_root}/apps/worker/"
   cp -R apps/worker/scripts "${stage_root}/apps/worker/"
   cp -R packages/core/dist "${stage_root}/packages/core/"
+  cp -R packages/core/drizzle "${stage_root}/packages/core/"
   cp -R packages/cli/dist "${stage_root}/packages/cli/"
 
   log "Installing production dependencies in staged release root"

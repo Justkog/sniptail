@@ -1,6 +1,8 @@
 -- Add provider_data column
 ALTER TABLE repositories ADD COLUMN provider_data text;
 
+--> statement-breakpoint
+
 -- SQLite doesn't support dropping CHECK constraints directly,
 -- so we keep the provider field as text but remove the CHECK constraint
 -- by recreating the table without the enum constraint
@@ -22,6 +24,8 @@ CREATE TABLE repositories_new (
   )
 );
 
+--> statement-breakpoint
+
 -- Copy data from old table to new table
 INSERT INTO repositories_new SELECT 
   repo_key,
@@ -36,9 +40,16 @@ INSERT INTO repositories_new SELECT
   updated_at
 FROM repositories;
 
+--> statement-breakpoint
+
 -- Drop old table and rename new table
 DROP TABLE repositories;
+
+--> statement-breakpoint
+
 ALTER TABLE repositories_new RENAME TO repositories;
+
+--> statement-breakpoint
 
 -- Recreate index
 CREATE INDEX IF NOT EXISTS repositories_is_active_idx ON repositories (is_active);
