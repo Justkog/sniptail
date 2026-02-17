@@ -13,6 +13,7 @@ import { createNotifier } from '../channels/createNotifier.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
+  copyArtifactsFromResumedJob,
   copyJobRootSeed,
   ensureJobDirectories,
   readJobPlan,
@@ -114,6 +115,14 @@ export async function runJob(
       paths.logFile,
       redactionPatterns,
     );
+    if (job.resumeFromJobId) {
+      await copyArtifactsFromResumedJob(job.resumeFromJobId, paths).catch((err) => {
+        logger.warn(
+          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+          'Failed to copy artifacts from resumed job',
+        );
+      });
+    }
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
       job,

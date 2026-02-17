@@ -1,7 +1,8 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { appendFile, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 
@@ -37,6 +38,40 @@ export async function readJobSummary(paths: JobPaths): Promise<string> {
 
 export async function appendAgentEventLog(logFile: string, content: string): Promise<void> {
   await appendFile(logFile, content);
+}
+
+function isMissingPath(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
+function isDestinationFilePresent(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | undefined)?.code === 'EEXIST';
+}
+
+export async function copyArtifactsFromResumedJob(
+  resumeFromJobId: string,
+  paths: JobPaths,
+): Promise<void> {
+  const sourceArtifactsRoot = buildJobPaths(resumeFromJobId).artifactsRoot;
+  const sourceEntries = await readdir(sourceArtifactsRoot, { withFileTypes: true }).catch((err) => {
+    if (isMissingPath(err)) {
+      return [];
+    }
+    throw err;
+  });
+
+  for (const sourceEntry of sourceEntries) {
+    if (!sourceEntry.isFile()) continue;
+    if (sourceEntry.name === 'job-spec.json') continue;
+    const sourcePath = join(sourceArtifactsRoot, sourceEntry.name);
+    const destinationPath = join(paths.artifactsRoot, sourceEntry.name);
+    await copyFile(sourcePath, destinationPath, constants.COPYFILE_EXCL).catch((err) => {
+      if (isDestinationFilePresent(err)) {
+        return;
+      }
+      throw err;
+    });
+  }
 }
 
 export async function copyJobRootSeed(
