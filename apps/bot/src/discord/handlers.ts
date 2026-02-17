@@ -80,7 +80,16 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    if (!isChannelAllowed(config.discord?.channelIds, interaction.channelId)) {
+    const interactionParentChannelId = interaction.channel?.isThread()
+      ? interaction.channel.parentId ?? undefined
+      : undefined;
+    if (
+      !isChannelAllowed(
+        config.discord?.channelIds,
+        interaction.channelId,
+        interactionParentChannelId,
+      )
+    ) {
       await interaction.reply({
         content: 'This command is not enabled in this channel.',
         ephemeral: true,
@@ -277,7 +286,12 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     if (!message.client.user) return;
-    if (!isChannelAllowed(config.discord?.channelIds, message.channelId)) return;
+    const messageParentChannelId = message.channel.isThread()
+      ? message.channel.parentId ?? undefined
+      : undefined;
+    if (!isChannelAllowed(config.discord?.channelIds, message.channelId, messageParentChannelId)) {
+      return;
+    }
 
     try {
       await handleMention(message, config, queue);
