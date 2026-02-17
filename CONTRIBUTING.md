@@ -9,7 +9,7 @@ Sniptail is designed to expand along three axes: the medium (where jobs are requ
 
 ### Adding a Git provider
 
-Sniptail now uses a shared Git provider contract in `packages/core/src/repos/providers.ts`.
+Sniptail uses a shared Git provider contract in `packages/core/src/repos/providers.ts`.
 To add a provider:
 
 1. Add a `RepoProviderDefinition` entry (id, display name, capabilities).
@@ -21,6 +21,49 @@ To add a provider:
 3. Register the provider in `REPO_PROVIDERS`.
 
 The worker and bot bootstrap flows resolve providers through this registry, so most new-provider work is isolated to that file plus any provider-specific API client.
+
+### Adding an agent
+
+Agents are registered through the shared descriptor registry in
+`packages/core/src/agents/agentRegistry.ts` and executed by the worker in
+`apps/worker/src/agents/runAgent.ts`.
+
+To add a new coding agent:
+
+1. Extend agent identifiers:
+   - Add the new id in `packages/core/src/types/job.ts` (`AGENT_IDS`).
+   - This automatically enables `PRIMARY_AGENT` validation in
+     `packages/core/src/config/resolve.ts`.
+2. Implement the adapter:
+   - Add a runtime module (for example `packages/core/src/<agent>/<agent>.ts`)
+     exposing `run(job, workDir, env, options)` and returning
+     `{ finalResponse, threadId? }`.
+   - Reuse `buildPromptForJob` from `packages/core/src/agents/buildPrompt.ts`
+     unless the agent needs provider-specific prompt shaping.
+   - Optionally add event format/summary helpers for logs.
+3. Register a descriptor in `packages/core/src/agents/agentRegistry.ts`:
+   - `adapter` (required)
+   - `isDockerMode(config)` (for Docker preflight checks)
+   - `resolveModelConfig(config, jobType)` (per job-type model overrides)
+   - `shouldIncludeRepoCache(config, jobType)` (controls `--add-dir` style access)
+   - `buildRunOptions(config)` (agent-specific runtime flags/paths)
+4. Wire configuration:
+   - Add agent config shape in `packages/core/src/config/types.ts`
+     (`WorkerConfig` and optionally `BotConfig` if needed).
+   - Parse TOML/env values in `packages/core/src/config/env.ts`.
+   - Add any parsing helpers in `packages/core/src/config/resolve.ts`.
+   - Document new config in `sniptail.worker.toml`/`sniptail.bot.toml`
+     and `.env.example` as applicable.
+5. Update tests:
+   - Extend config tests in `packages/core/src/config/env.test.ts`.
+   - Update worker pipeline mocks in `apps/worker/src/pipeline.test.ts`
+     (mocked `AGENT_DESCRIPTORS`).
+   - Add/adjust Docker preflight tests in
+     `apps/worker/src/docker/dockerPreflight.test.ts` when docker mode is supported.
+
+The worker execution path is already generic (`job.agent ?? config.primaryAgent`),
+so once the agent id and descriptor are registered, ASK/IMPLEMENT/PLAN/MENTION/REVIEW
+jobs can route to the new adapter without additional job-runner branching.
 
 ## Local setup
 
