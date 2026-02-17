@@ -7,7 +7,10 @@ import type { CoreConfig } from '../config/types.js';
 import { createPgClient } from './pg/client.js';
 import { createSqliteClient } from './sqlite/client.js';
 
-type DbMigrationConfig = Pick<CoreConfig, 'jobRegistryDriver' | 'jobRegistryPath' | 'jobRegistryPgUrl'>;
+type DbMigrationConfig = Pick<
+  CoreConfig,
+  'jobRegistryDriver' | 'jobRegistryPath' | 'jobRegistryPgUrl'
+>;
 
 type MigrationJournal = {
   entries: Array<{
