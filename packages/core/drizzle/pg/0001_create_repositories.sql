@@ -1,14 +1,12 @@
-DO $$
-BEGIN
-  CREATE TYPE repo_provider AS ENUM ('github', 'gitlab', 'local');
+DO $$ BEGIN
+ CREATE TYPE "public"."repo_provider" AS ENUM('github', 'gitlab', 'local');
 EXCEPTION
-  WHEN duplicate_object THEN null;
-END
-$$;
+ WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "repositories" (
   "repo_key" text PRIMARY KEY,
-  "provider" repo_provider NOT NULL,
+  "provider" "repo_provider" NOT NULL,
   "ssh_url" text,
   "local_path" text,
   "project_id" integer,
@@ -20,11 +18,6 @@ CREATE TABLE IF NOT EXISTS "repositories" (
     ("ssh_url" IS NOT NULL AND "local_path" IS NULL)
     OR
     ("ssh_url" IS NULL AND "local_path" IS NOT NULL)
-  ),
-  CONSTRAINT repositories_gitlab_chk CHECK (
-    "provider" <> 'gitlab'
-    OR
-    "project_id" IS NOT NULL
   )
 );
 

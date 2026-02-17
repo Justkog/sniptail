@@ -4,6 +4,8 @@ import { defineConfig } from 'drizzle-kit';
 
 const envPath =
   process.env.DOTENV_CONFIG_PATH ?? fileURLToPath(new URL('../../.env', import.meta.url));
+// dotenv config() has weak typing that doesn't expose the overloaded signatures
+// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 loadEnv({ path: envPath });
 
 const pgUrl = process.env.JOB_REGISTRY_PG_URL;

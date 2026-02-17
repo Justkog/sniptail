@@ -1,6 +1,7 @@
 import type { ModalSubmitInteraction } from 'discord.js';
 import type { Queue } from 'bullmq';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
@@ -27,9 +28,10 @@ export async function handleBootstrapModalSubmit(
   const service = selection?.service;
   const visibility = selection?.visibility ?? 'private';
   const quickstart = selection?.quickstart ?? false;
-  if (!service || !config.bootstrapServices.includes(service)) {
-    const allowedServices = config.bootstrapServices.length
-      ? config.bootstrapServices.join(', ')
+  const bootstrapServices = listBootstrapProviderIds(config.bootstrapServices);
+  if (!service || !bootstrapServices.includes(service)) {
+    const allowedServices = bootstrapServices.length
+      ? bootstrapServices.join(', ')
       : 'none';
     await interaction.reply({
       content: `Service must be one of: ${allowedServices}.`,
@@ -68,6 +70,9 @@ export async function handleBootstrapModalSubmit(
     ...(quickstart ? { quickstart } : {}),
     ...(extras.gitlabNamespaceId !== undefined
       ? { gitlabNamespaceId: extras.gitlabNamespaceId }
+      : {}),
+    ...(extras.gitlabNamespaceId !== undefined
+      ? { providerData: { namespaceId: extras.gitlabNamespaceId } }
       : {}),
     ...(service === 'local' && extras.localPath ? { localPath: extras.localPath } : {}),
     channel: buildInteractionChannelContext(interaction),

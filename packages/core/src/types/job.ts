@@ -5,6 +5,8 @@ export const AGENT_IDS = ['codex', 'copilot'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 export type RepoConfig = {
+  provider?: string;
+  providerData?: Record<string, unknown>;
   sshUrl?: string;
   localPath?: string;
   projectId?: number;

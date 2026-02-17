@@ -1,5 +1,6 @@
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
+import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 
 export function resolveDefaultBaseBranch(
   repoAllowlist: Record<string, RepoConfig>,
@@ -294,7 +295,7 @@ export function buildRepoBootstrapModal(
   const serviceOptions = services.map((service) => ({
     text: {
       type: 'plain_text' as const,
-      text: service === 'github' ? 'GitHub' : service === 'gitlab' ? 'GitLab' : 'Local',
+      text: getRepoProviderDisplayName(service),
     },
     value: service,
   }));

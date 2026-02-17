@@ -14,14 +14,14 @@ type ReposAddOptions = RuntimeOptions & {
   localPath?: string;
   projectId?: string;
   baseBranch?: string;
-  provider?: 'github' | 'gitlab' | 'local';
+  provider?: string;
   ifMissing?: boolean;
   upsert?: boolean;
   json?: boolean;
 };
 
 type ReposListOptions = RuntimeOptions & {
-  provider?: 'github' | 'gitlab' | 'local';
+  provider?: string;
   json?: boolean;
 };
 
@@ -67,7 +67,7 @@ export function registerReposCommand(program: Command) {
       .option('--local-path <path>', 'Local filesystem path for local repositories')
       .option('--project-id <number>', 'GitLab project ID (required for GitLab)')
       .option('--base-branch <name>', 'Default base branch (default: main)')
-      .option('--provider <provider>', 'Repository provider (github, gitlab, local)')
+      .option('--provider <provider>', 'Repository provider id (for example: github, gitlab, local)')
       .option('--if-missing', 'Skip when the repository key already exists')
       .option('--upsert', 'Update the repository if the key already exists')
       .option('--json', 'Print JSON output')
@@ -90,7 +90,7 @@ export function registerReposCommand(program: Command) {
     repos
       .command('list')
       .description('List active repository catalog entries')
-      .option('--provider <provider>', 'Filter by provider (github, gitlab, local)')
+      .option('--provider <provider>', 'Filter by provider id')
       .option('--json', 'Print JSON output')
       .action(async (options: ReposListOptions) => {
         const args = ['list'];
