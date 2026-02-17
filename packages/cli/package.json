@@ -3,7 +3,7 @@
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "licenseFile": "../../LICENSE",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "bin": {
     "sniptail": "./dist/index.js"
