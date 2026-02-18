@@ -1,5 +1,83 @@
+import { constants as fsConstants } from 'node:fs';
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { logger } from '../logger.js';
 import { runCommand } from '../runner/commandRunner.js';
+
+const SNIPTAIL_CONTRACT_DIR = '.sniptail';
+const SETUP_CONTRACT_NAME = 'setup';
+const CHECK_CONTRACT_NAME = 'check';
+
+function isMissingPath(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+function getContractPath(repoPath: string, contractName: string): string {
+  return join(repoPath, SNIPTAIL_CONTRACT_DIR, contractName);
+}
+
+async function resolveContractPath(
+  repoPath: string,
+  contractName: string,
+): Promise<string | undefined> {
+  const contractPath = getContractPath(repoPath, contractName);
+  try {
+    await access(contractPath, fsConstants.F_OK);
+    return contractPath;
+  } catch (err) {
+    if (isMissingPath(err)) return undefined;
+    throw err;
+  }
+}
+
+async function ensureExecutableContract(contractPath: string, contractName: string): Promise<void> {
+  try {
+    await access(contractPath, fsConstants.X_OK);
+  } catch {
+    throw new Error(
+      `Repo contract "${SNIPTAIL_CONTRACT_DIR}/${contractName}" exists but is not executable: ${contractPath}. Run chmod +x ${contractPath}.`,
+    );
+  }
+}
+
+async function runContract(
+  repoPath: string,
+  contractName: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<boolean> {
+  const contractPath = await resolveContractPath(repoPath, contractName);
+  if (!contractPath) return false;
+  await ensureExecutableContract(contractPath, contractName);
+  await runCommand(contractPath, [], {
+    cwd: repoPath,
+    env,
+    logFilePath: logFile,
+    timeoutMs: 10 * 60_000,
+    redact,
+  });
+  return true;
+}
+
+export async function runSetupContract(
+  repoPath: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<boolean> {
+  return runContract(repoPath, SETUP_CONTRACT_NAME, env, logFile, redact);
+}
+
+export async function runCheckContract(
+  repoPath: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<boolean> {
+  return runContract(repoPath, CHECK_CONTRACT_NAME, env, logFile, redact);
+}
 
 export async function ensureCleanRepo(
   repoPath: string,
@@ -27,8 +105,11 @@ export async function runChecks(
   logFile: string,
   redact: Array<string | RegExp>,
 ) {
+  const ranContract = await runCheckContract(repoPath, env, logFile, redact);
   if (!checks || checks.length === 0) {
-    logger.info({ repoPath }, 'No validations configured');
+    if (!ranContract) {
+      logger.info({ repoPath }, 'No validations configured');
+    }
     return;
   }
 
