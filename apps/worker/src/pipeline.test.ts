@@ -106,6 +106,7 @@ vi.mock('@sniptail/core/git/worktree.js', () => ({
 vi.mock('@sniptail/core/git/jobOps.js', () => ({
   commitAndPush: vi.fn(),
   ensureCleanRepo: vi.fn(),
+  runSetupContract: vi.fn(),
   runChecks: vi.fn(),
 }));
 

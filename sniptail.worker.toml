@@ -67,6 +67,7 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # include_raw_request_in_mr = false
 
 # Optional command executed in each prepared repo worktree.
+# Runs before an optional repo-local ".sniptail/setup" contract script.
 # Optional. No default. Example: "pnpm install --prefer-offline --no-lockfile"
 # worktree_setup_command = "pnpm install --prefer-offline --no-lockfile"
 
