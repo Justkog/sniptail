@@ -3,6 +3,7 @@ import type { TomlTable } from './toml.js';
 import { loadTomlConfig, getTomlTable, getTomlString, getTomlNumber } from './toml.js';
 import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
+import type { ChannelProvider } from '../types/channel.js';
 import {
   BOT_CONFIG_PATH_ENV,
   WORKER_CONFIG_PATH_ENV,
@@ -131,6 +132,25 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
   };
 }
 
+function normalizeProviderId(value: string): ChannelProvider {
+  return value.trim().toLowerCase();
+}
+
+function uniqueProviderList(values: string[]): ChannelProvider[] {
+  const normalized = values.map(normalizeProviderId).filter(Boolean);
+  return [...new Set(normalized)];
+}
+
+function parseTomlOptionalBoolean(value: unknown, name: string): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  throw new Error(`Invalid ${name} in TOML. Use true/false.`);
+}
+
 export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
@@ -145,8 +165,9 @@ export function loadBotConfig(): BotConfig {
   const toml = loadTomlConfig(BOT_CONFIG_PATH_ENV, DEFAULT_BOT_CONFIG_PATH, 'bot');
   const coreToml = getTomlTable(toml.core, 'core');
   const botToml = getTomlTable(toml.bot, 'bot');
-  const slackToml = getTomlTable(toml.slack, 'slack');
-  const discordToml = getTomlTable(toml.discord, 'discord');
+  const channelsToml = getTomlTable(toml.channels, 'channels');
+  const channelsSlackToml = getTomlTable(channelsToml?.slack, 'channels.slack');
+  const channelsDiscordToml = getTomlTable(channelsToml?.discord, 'channels.discord');
 
   const core = loadCoreConfigFromToml(coreToml, botToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
@@ -162,25 +183,51 @@ export function loadBotConfig(): BotConfig {
     'BOOTSTRAP_SERVICES',
     botToml?.bootstrap_services,
   );
-  const slackEnabled = resolveOptionalFlagFromSources('SLACK_ENABLED', slackToml?.enabled, false);
-  const discordEnabled = resolveOptionalFlagFromSources(
-    'DISCORD_ENABLED',
-    discordToml?.enabled,
-    false,
+  const hasRuntimeChannelOverride = process.env.SNIPTAIL_CHANNELS !== undefined;
+  const runtimeEnabledChannels = uniqueProviderList(
+    resolveStringArrayFromSources('SNIPTAIL_CHANNELS', undefined),
   );
-  const discordGuildId = resolveStringValue('DISCORD_GUILD_ID', discordToml?.guild_id);
+  const slackEnabledByTable = parseTomlOptionalBoolean(
+    channelsSlackToml?.enabled,
+    'channels.slack.enabled',
+  );
+  const discordEnabledByTable = parseTomlOptionalBoolean(
+    channelsDiscordToml?.enabled,
+    'channels.discord.enabled',
+  );
+  const enabledChannels = hasRuntimeChannelOverride
+    ? runtimeEnabledChannels
+    : uniqueProviderList([
+        ...(slackEnabledByTable ? ['slack'] : []),
+        ...(discordEnabledByTable ? ['discord'] : []),
+      ]);
+
+  const slackEnabled = enabledChannels.includes('slack');
+  const discordEnabled = enabledChannels.includes('discord');
+
+  const discordGuildId = resolveStringValue('DISCORD_GUILD_ID', channelsDiscordToml?.guild_id);
   const discordChannelIds = resolveStringArrayFromSources(
     'DISCORD_CHANNEL_IDS',
-    discordToml?.channel_ids,
+    channelsDiscordToml?.channel_ids,
   );
   const discordBotToken = process.env.DISCORD_BOT_TOKEN?.trim();
-  const discordAppId = resolveStringValue('DISCORD_APP_ID', discordToml?.app_id, {
+  const discordAppId = resolveStringValue('DISCORD_APP_ID', channelsDiscordToml?.app_id, {
     required: false,
   });
   const adminUserIds = resolveStringArrayFromSources('ADMIN_USER_IDS', botToml?.admin_user_ids);
   const redisUrl = resolveStringValue('REDIS_URL', botToml?.redis_url, {
     required: true,
   }) as string;
+  const channels = enabledChannels.reduce<Record<ChannelProvider, { enabled: boolean }>>(
+    (acc, provider) => ({
+      ...acc,
+      [provider]: { enabled: true },
+    }),
+    {
+      slack: { enabled: slackEnabled },
+      discord: { enabled: discordEnabled },
+    },
+  );
 
   botConfigCache = {
     ...core,
@@ -188,6 +235,8 @@ export function loadBotConfig(): BotConfig {
     primaryAgent,
     bootstrapServices,
     debugJobSpecMessages,
+    enabledChannels,
+    channels,
     slackEnabled,
     discordEnabled,
     ...(slackEnabled && {

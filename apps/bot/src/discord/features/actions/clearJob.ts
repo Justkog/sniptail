@@ -2,7 +2,10 @@ import type { ButtonInteraction } from 'discord.js';
 import type { Queue } from 'bullmq';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import {
+  WORKER_EVENT_SCHEMA_VERSION,
+  type WorkerEvent,
+} from '@sniptail/core/types/worker-event.js';
 import { buildDiscordClearJobConfirmComponents } from '@sniptail/core/discord/components.js';
 
 export async function handleClearJobButton(interaction: ButtonInteraction, jobId: string) {
@@ -20,7 +23,8 @@ export async function handleClearJobConfirmButton(
 ) {
   try {
     await enqueueWorkerEvent(workerEventQueue, {
-      type: 'clearJob',
+      schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+      type: 'jobs.clear',
       payload: {
         jobId,
         ttlMs: 5 * 60_000,

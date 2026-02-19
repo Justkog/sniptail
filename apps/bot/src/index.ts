@@ -26,6 +26,15 @@ void (async () => {
   const { startBotEventWorker } = await import('./botEventWorker.js');
 
   const config = loadBotConfig();
+  const unknownChannels = config.enabledChannels.filter(
+    (provider) => provider !== 'slack' && provider !== 'discord',
+  );
+  if (unknownChannels.length) {
+    logger.warn(
+      { channels: unknownChannels },
+      'Unsupported channels are enabled but no bot runtime adapter is registered for them',
+    );
+  }
   const jobQueue = createJobQueue(config.redisUrl);
   const bootstrapQueue = createBootstrapQueue(config.redisUrl);
   const workerEventQueue = createWorkerEventQueue(config.redisUrl);
@@ -43,7 +52,10 @@ void (async () => {
   }
 
   if (!slackApp && !discordClient) {
-    logger.error('No bot providers enabled. Enable slack/discord in sniptail.bot.toml.');
+    logger.error(
+      { enabledChannels: config.enabledChannels },
+      'No supported bot providers enabled. Enable slack/discord via [channels.<provider>] configuration.',
+    );
     process.exitCode = 1;
     return;
   }

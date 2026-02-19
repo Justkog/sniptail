@@ -7,8 +7,10 @@ import {
 } from '@sniptail/core/repos/catalog.js';
 import { getRepoProvider, getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
+import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { BotEventSink } from './channels/botEventSink.js';
+import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
 import { createNotifier } from './channels/createNotifier.js';
 
 const config = loadWorkerConfig();
@@ -21,17 +23,22 @@ function buildRepoDisplay(
   service: BootstrapRequest['service'],
   repoLabel: string,
   repoUrl: string,
+  channelProvider: ChannelProvider,
 ) {
   if (service === 'local') {
     return repoLabel;
   }
-  return `<${repoUrl}|${repoLabel}>`;
+  if (channelProvider === 'slack') {
+    return `<${repoUrl}|${repoLabel}>`;
+  }
+  return `${repoLabel} (${repoUrl})`;
 }
 
 export async function runBootstrap(events: BotEventSink, request: BootstrapRequest): Promise<void> {
   const responseChannel = request.channel.channelId;
   const userPrefix = formatUserMention(request.channel.userId);
   const notifier = createNotifier(events);
+  const channelAdapter = resolveWorkerChannelAdapter(request.channel.provider);
   const channelRef: ChannelRef = {
     provider: request.channel.provider,
     channelId: responseChannel,
@@ -95,30 +102,20 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
     }
 
     const serviceName = getRepoProviderDisplayName(request.service);
-    const repoDisplay = buildRepoDisplay(request.service, repoLabel, repoUrl);
-
-    if (request.channel.provider === 'slack') {
-      await notifier.postMessage(
-        channelRef,
-        `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`,
-        {
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*${serviceName} repo created*\\n• Repo: ${repoDisplay}\\n• Allowlist key: \`${request.repoKey}\``,
-              },
-            },
-          ],
-        },
-      );
-    } else {
-      await notifier.postMessage(
-        channelRef,
-        `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`,
-      );
-    }
+    const repoDisplay = buildRepoDisplay(
+      request.service,
+      repoLabel,
+      repoUrl,
+      request.channel.provider,
+    );
+    const successText = `${userPrefix}Created ${serviceName} repo ${repoLabel} and added allowlist entry ${request.repoKey}.`;
+    const rendered = channelAdapter.renderBootstrapSuccessMessage({
+      text: successText,
+      serviceName,
+      repoDisplay,
+      repoKey: request.repoKey,
+    });
+    await notifier.postMessage(channelRef, rendered.text, rendered.options);
   } catch (err) {
     logger.error({ err, requestId: request.requestId }, 'Failed to bootstrap repository');
     await notifier.postMessage(

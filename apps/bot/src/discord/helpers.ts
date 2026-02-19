@@ -28,6 +28,19 @@ type DiscordInteractionReplyOptions = {
   text: string;
 };
 
+type DiscordReactionOptions = {
+  channelId: string;
+  name: string;
+  timestamp: string;
+};
+
+type DiscordEphemeralOptions = {
+  channelId: string;
+  userId: string;
+  text: string;
+  threadId?: string;
+};
+
 export type SendableTextChannel = Exclude<TextBasedChannel, PartialGroupDMChannel>;
 
 export function isSendableTextChannel(channel: TextBasedChannel): channel is SendableTextChannel {
@@ -108,4 +121,50 @@ export async function editDiscordInteractionReply(
     Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
     { body: { content: options.text } },
   );
+}
+
+function normalizeReactionName(name: string): string {
+  return name.replace(/^:|:$/g, '');
+}
+
+export async function addDiscordReaction(client: Client, options: DiscordReactionOptions) {
+  try {
+    const channel = await resolveChannel(client, options.channelId);
+    const message = await channel.messages.fetch(options.timestamp);
+    await message.react(normalizeReactionName(options.name));
+  } catch (err) {
+    logger.warn(
+      {
+        err,
+        channelId: options.channelId,
+        timestamp: options.timestamp,
+        name: options.name,
+      },
+      'Failed to add Discord reaction',
+    );
+  }
+}
+
+export async function postDiscordEphemeral(client: Client, options: DiscordEphemeralOptions) {
+  try {
+    const user = await client.users.fetch(options.userId);
+    await user.send({ content: options.text });
+    return;
+  } catch (err) {
+    logger.warn(
+      {
+        err,
+        channelId: options.channelId,
+        userId: options.userId,
+      },
+      'Failed to send Discord DM fallback for ephemeral message',
+    );
+  }
+
+  const mentionText = `<@${options.userId}> ${options.text}`;
+  await postDiscordMessage(client, {
+    channelId: options.channelId,
+    text: mentionText,
+    ...(options.threadId ? { threadId: options.threadId } : {}),
+  });
 }

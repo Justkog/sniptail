@@ -1,6 +1,7 @@
 import type { RepoConfig, AgentId, JobType } from '../types/job.js';
 import type { GitHubConfig } from '../github/client.js';
 import type { GitLabConfig } from '../gitlab/client.js';
+import type { ChannelProvider } from '../types/channel.js';
 import type { ModelReasoningEffort } from '@openai/codex-sdk';
 
 export type JobModelConfig = {
@@ -25,6 +26,8 @@ export type BotConfig = CoreConfig & {
   debugJobSpecMessages: boolean;
   primaryAgent: AgentId;
   bootstrapServices: string[];
+  enabledChannels: ChannelProvider[];
+  channels: Record<ChannelProvider, { enabled: boolean }>;
   slackEnabled: boolean;
   discordEnabled: boolean;
   slack?: {

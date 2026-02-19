@@ -2,7 +2,10 @@ import type { ChatInputCommandInteraction } from 'discord.js';
 import type { Queue } from 'bullmq';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import {
+  WORKER_EVENT_SCHEMA_VERSION,
+  type WorkerEvent,
+} from '@sniptail/core/types/worker-event.js';
 
 export async function handleUsage(
   interaction: ChatInputCommandInteraction,
@@ -10,7 +13,8 @@ export async function handleUsage(
 ) {
   try {
     await enqueueWorkerEvent(workerEventQueue, {
-      type: 'codexUsage',
+      schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+      type: 'status.codexUsage',
       payload: {
         provider: 'discord',
         channelId: interaction.channelId,

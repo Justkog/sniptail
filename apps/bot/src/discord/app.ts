@@ -17,7 +17,7 @@ export async function startDiscordBot(
   const config = loadBotConfig();
   if (!config.discord) {
     throw new Error(
-      'Discord is not configured. Enable discord in sniptail.bot.toml and set DISCORD_BOT_TOKEN.',
+      'Discord is not configured. Enable channels.discord in sniptail.bot.toml and set DISCORD_BOT_TOKEN.',
     );
   }
 

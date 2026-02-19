@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadCoreConfig } from '../config/config.js';
 import { logger } from '../logger.js';
+import type { ChannelProvider } from '../types/channel.js';
 import type { AgentId, JobSpec, JobType } from '../types/job.js';
 import { getJobRegistryStore } from './registryStore.js';
 import type { JobRecord } from './registryTypes.js';
@@ -113,7 +114,7 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
 }
 
 export async function findLatestJobByChannelThread(
-  provider: 'slack' | 'discord',
+  provider: ChannelProvider,
   channelId: string,
   threadId: string,
   agentId: AgentId,
@@ -140,7 +141,7 @@ export async function findLatestJobByChannelThread(
 }
 
 export async function findLatestJobByChannelThreadAndTypes(
-  provider: 'slack' | 'discord',
+  provider: ChannelProvider,
   channelId: string,
   threadId: string,
   types: JobType[],

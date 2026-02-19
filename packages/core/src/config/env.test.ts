@@ -13,7 +13,7 @@ describe('config loaders', () => {
   });
 
   it('throws when required bot env vars are missing', () => {
-    applyRequiredEnv({ SLACK_ENABLED: 'true', SLACK_BOT_TOKEN: undefined });
+    applyRequiredEnv({ SNIPTAIL_CHANNELS: 'slack', SLACK_BOT_TOKEN: undefined });
 
     expect(() => loadBotConfig()).toThrow('Missing required env var: SLACK_BOT_TOKEN');
   });
@@ -42,6 +42,29 @@ describe('config loaders', () => {
     expect(config.botName).toBe('Sniptail');
     expect(config.debugJobSpecMessages).toBe(false);
     expect(config.repoAllowlist).toEqual({});
+  });
+
+  it('enables channels from SNIPTAIL_CHANNELS when provided', () => {
+    applyRequiredEnv({
+      SNIPTAIL_CHANNELS: 'discord',
+      DISCORD_APP_ID: '123456789012345678',
+      DISCORD_BOT_TOKEN: 'discord-test-token',
+    });
+
+    const config = loadBotConfig();
+
+    expect(config.enabledChannels).toEqual(['discord']);
+    expect(config.slackEnabled).toBe(false);
+    expect(config.discordEnabled).toBe(true);
+  });
+
+  it('uses per-channel enabled flags when SNIPTAIL_CHANNELS is absent', () => {
+    applyRequiredEnv({ SNIPTAIL_CHANNELS: undefined });
+    const config = loadBotConfig();
+
+    expect(config.enabledChannels).toEqual(['slack']);
+    expect(config.slackEnabled).toBe(true);
+    expect(config.discordEnabled).toBe(false);
   });
 
   it('enables job spec messages when debug flag is set', () => {

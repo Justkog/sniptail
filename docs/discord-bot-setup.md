@@ -70,7 +70,7 @@ Sniptail can optionally restrict where the bot responds via an allowlist.
 Edit `sniptail.bot.toml`:
 
 ```toml
-[discord]
+[channels.discord]
 enabled = true
 app_id = "123456789012345678"
 
@@ -88,7 +88,7 @@ Then ensure `DISCORD_BOT_TOKEN` is set in the environment where you run the bot.
 
 You can override TOML values with env vars:
 
-- `DISCORD_ENABLED=1`
+- `SNIPTAIL_CHANNELS=discord`
 - `DISCORD_APP_ID=...`
 - `DISCORD_GUILD_ID=...` (optional)
 - `DISCORD_CHANNEL_IDS=...` (optional, comma-separated)
@@ -97,7 +97,7 @@ You can override TOML values with env vars:
 Example:
 
 ```bash
-export DISCORD_ENABLED=1
+export SNIPTAIL_CHANNELS=discord
 export DISCORD_APP_ID="123456789012345678"
 export DISCORD_GUILD_ID="123456789012345678"
 export DISCORD_CHANNEL_IDS="123456789012345678,234567890123456789"

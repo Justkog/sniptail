@@ -16,7 +16,7 @@ export function createSlackApp(
   const config = loadBotConfig();
   if (!config.slack) {
     throw new Error(
-      'Slack is not configured. Enable slack in sniptail.bot.toml and set SLACK_* env vars.',
+      'Slack is not configured. Enable channels.slack in sniptail.bot.toml and set SLACK_* env vars.',
     );
   }
   const slackIds = buildSlackIds(config.botName);

@@ -1,5 +1,6 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 
@@ -23,7 +24,8 @@ export function registerClearJobAction({ app, slackIds, workerEventQueue }: Slac
 
     try {
       await enqueueWorkerEvent(workerEventQueue, {
-        type: 'clearJob',
+        schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+        type: 'jobs.clear',
         payload: {
           jobId,
           ttlMs: 5 * 60_000,

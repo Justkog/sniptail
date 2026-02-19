@@ -98,6 +98,19 @@ When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it'
 
 See `docs/slack-bot-setup.md` and `docs/discord-bot-setup.md`.
 
+Enable channels in `sniptail.bot.toml` using the channel section:
+
+```toml
+[channels.slack]
+enabled = true
+
+[channels.discord]
+enabled = true
+app_id = "123456789012345678"
+```
+
+For single-channel bot processes, set `SNIPTAIL_CHANNELS` at runtime (for example `SNIPTAIL_CHANNELS=slack` or `SNIPTAIL_CHANNELS=discord`).
+
 To generate a Slack manifest from the template:
 
 ```bash

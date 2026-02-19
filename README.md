@@ -49,7 +49,7 @@ Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
 Edit `~/.sniptail/current/sniptail.bot.toml` and set:
 
 ```toml
-[discord]
+[channels.discord]
 enabled = true
 app_id = "YOUR_DISCORD_APPLICATION_ID"
 ```

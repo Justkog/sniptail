@@ -486,8 +486,9 @@ describe('worker/pipeline runJob', () => {
     expect(enqueueBotEventMock).toHaveBeenCalledWith(
       botQueue,
       expect.objectContaining({
+        schemaVersion: 1,
         provider: 'slack',
-        type: 'postMessage',
+        type: 'message.post',
         payload: expect.objectContaining({
           channelId: 'C1',
           text: 'Hello there!',

@@ -1,5 +1,6 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
 
 export function registerUsageCommand({ app, slackIds, workerEventQueue }: SlackHandlerContext) {
@@ -16,7 +17,8 @@ export function registerUsageCommand({ app, slackIds, workerEventQueue }: SlackH
 
     try {
       await enqueueWorkerEvent(workerEventQueue, {
-        type: 'codexUsage',
+        schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+        type: 'status.codexUsage',
         payload: {
           provider: 'slack',
           channelId: body.channel_id,
