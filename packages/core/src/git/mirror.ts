@@ -32,6 +32,7 @@ export async function ensureClone(
   if (!source) {
     throw new Error(`Repo ${repoKey} missing sshUrl or localPath.`);
   }
+  const remoteRef = `refs/remotes/origin/${gitRef}`;
 
   if (!existsSync(clonePath)) {
     await runCommand('git', ['clone', '--single-branch', '-b', gitRef, source, clonePath], common);
@@ -45,11 +46,13 @@ export async function ensureClone(
     if ((fetchResult.exitCode ?? 1) !== 0) {
       const stderr = fetchResult.stderr ?? '';
       const missingRemoteRef = stderr.includes("couldn't find remote ref");
-      const cannotLockRef =
-        stderr.includes('cannot lock ref') && stderr.includes(`refs/remotes/origin/${gitRef}`);
+      const cannotLockRef = stderr.includes('cannot lock ref') && stderr.includes(remoteRef);
+      const nonFastForwardRemoteRef =
+        stderr.includes('non-fast-forward') &&
+        (stderr.includes(`-> origin/${gitRef}`) || stderr.includes(remoteRef));
       let retryResult: Awaited<ReturnType<typeof runCommand>> | undefined;
-      if (cannotLockRef) {
-        await runCommand('git', ['update-ref', '-d', `refs/remotes/origin/${gitRef}`], {
+      if (cannotLockRef || nonFastForwardRemoteRef) {
+        await runCommand('git', ['update-ref', '-d', remoteRef], {
           ...common,
           cwd: clonePath,
           allowFailure: true,
@@ -71,7 +74,6 @@ export async function ensureClone(
     }
   }
 
-  const remoteRef = `refs/remotes/origin/${gitRef}`;
   const remoteRefCheck = await runCommand('git', ['show-ref', '--verify', remoteRef], {
     ...common,
     cwd: clonePath,
