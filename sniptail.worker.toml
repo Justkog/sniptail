@@ -41,6 +41,18 @@ primary_agent = "codex"
 # Required. No default. Example: "redis://localhost:6379"
 redis_url = "redis://localhost:6379"
 
+# Main job worker concurrency for queue "sniptail-jobs".
+# Optional. Default: 2. Example: 4
+# job_concurrency = 2
+
+# Bootstrap request worker concurrency for queue "sniptail-bootstrap".
+# Optional. Default: 2. Example: 2
+# bootstrap_concurrency = 2
+
+# Worker-event concurrency for queue "sniptail-worker-events".
+# Optional. Default: 2. Example: 4
+# worker_event_concurrency = 2
+
 # Root directory for cached repos.
 # Required. No default. Example: "$HOME/.sniptail/repo-cache"
 repo_cache_root = "$HOME/.sniptail/repo-cache"

@@ -42,7 +42,7 @@ const worker = new Worker<JobSpec>(
     logger.info({ jobId: job.id }, 'Worker picked up job');
     return runJob(botEvents, job.data, jobRegistry);
   },
-  { connection, concurrency: 2 },
+  { connection, concurrency: config.jobConcurrency },
 );
 
 const bootstrapWorker = new Worker<BootstrapRequest>(
@@ -51,7 +51,7 @@ const bootstrapWorker = new Worker<BootstrapRequest>(
     logger.info({ requestId: job.id }, 'Worker picked up bootstrap request');
     await runBootstrap(botEvents, job.data);
   },
-  { connection, concurrency: 2 },
+  { connection, concurrency: config.bootstrapConcurrency },
 );
 
 const workerEventWorker = new Worker<WorkerEvent>(
@@ -60,7 +60,7 @@ const workerEventWorker = new Worker<WorkerEvent>(
     logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
     await handleWorkerEvent(job.data, jobRegistry, botEvents);
   },
-  { connection, concurrency: 2 },
+  { connection, concurrency: config.workerEventConcurrency },
 );
 
 worker.on('failed', (job: Job<JobSpec> | undefined, err: Error) => {
