@@ -193,4 +193,61 @@ describe('config loaders', () => {
     expect(config.worktreeSetupCommand).toBe('pnpm install --prefer-offline --no-lockfile');
     expect(config.worktreeSetupAllowFailure).toBe(true);
   });
+
+  it('defaults worker concurrency settings to 2', () => {
+    applyRequiredEnv();
+
+    const config = loadWorkerConfig();
+    expect(config.jobConcurrency).toBe(2);
+    expect(config.bootstrapConcurrency).toBe(2);
+    expect(config.workerEventConcurrency).toBe(2);
+  });
+
+  it('loads worker concurrency settings from TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_concurrency = 4',
+      'bootstrap_concurrency = 3',
+      'worker_event_concurrency = 5',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.jobConcurrency).toBe(4);
+    expect(config.bootstrapConcurrency).toBe(3);
+    expect(config.workerEventConcurrency).toBe(5);
+  });
+
+  it('throws when worker concurrency env values are invalid', () => {
+    applyRequiredEnv({
+      JOB_CONCURRENCY: '0',
+    });
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Invalid JOB_CONCURRENCY. Expected a positive integer.',
+    );
+  });
 });

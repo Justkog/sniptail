@@ -151,6 +151,36 @@ function parseTomlOptionalBoolean(value: unknown, name: string): boolean | undef
   throw new Error(`Invalid ${name} in TOML. Use true/false.`);
 }
 
+function resolvePositiveIntegerFromSources(
+  envName: string,
+  tomlValue: unknown,
+  tomlName: string,
+  defaultValue: number,
+): number {
+  const envRaw = process.env[envName];
+  if (envRaw !== undefined && envRaw.trim() !== '') {
+    const normalized = envRaw.trim();
+    if (!/^\d+$/.test(normalized)) {
+      throw new Error(`Invalid ${envName}. Expected a positive integer.`);
+    }
+    const parsed = Number.parseInt(normalized, 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new Error(`Invalid ${envName}. Expected a positive integer.`);
+    }
+    return parsed;
+  }
+
+  const tomlNumber = getTomlNumber(tomlValue, tomlName);
+  if (tomlNumber !== undefined) {
+    if (!Number.isInteger(tomlNumber) || tomlNumber < 1) {
+      throw new Error(`Invalid ${tomlName} in TOML. Expected a positive integer.`);
+    }
+    return tomlNumber;
+  }
+
+  return defaultValue;
+}
+
 export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
@@ -340,6 +370,24 @@ export function loadWorkerConfig(): WorkerConfig {
     workerToml?.include_raw_request_in_mr,
     false,
   );
+  const jobConcurrency = resolvePositiveIntegerFromSources(
+    'JOB_CONCURRENCY',
+    workerToml?.job_concurrency,
+    'worker.job_concurrency',
+    2,
+  );
+  const bootstrapConcurrency = resolvePositiveIntegerFromSources(
+    'BOOTSTRAP_CONCURRENCY',
+    workerToml?.bootstrap_concurrency,
+    'worker.bootstrap_concurrency',
+    2,
+  );
+  const workerEventConcurrency = resolvePositiveIntegerFromSources(
+    'WORKER_EVENT_CONCURRENCY',
+    workerToml?.worker_event_concurrency,
+    'worker.worker_event_concurrency',
+    2,
+  );
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey && primaryAgent === 'codex') {
     logger.warn('OPENAI_API_KEY is not set.');
@@ -356,6 +404,9 @@ export function loadWorkerConfig(): WorkerConfig {
     botName,
     redisUrl,
     primaryAgent,
+    jobConcurrency,
+    bootstrapConcurrency,
+    workerEventConcurrency,
     ...(localRepoRoot ? { localRepoRoot } : {}),
     copilot: {
       executionMode: copilotExecutionMode,
