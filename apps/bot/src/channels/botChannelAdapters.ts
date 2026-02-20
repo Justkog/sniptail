@@ -1,4 +1,4 @@
-import { ChannelRegistry } from '@sniptail/core/channels/registry.js';
+import { ChannelRegistry } from '@sniptail/core/channels/channelRegistry.js';
 import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { RuntimeBotChannelAdapter } from './runtimeBotChannelAdapter.js';

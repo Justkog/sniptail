@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ChannelRegistry } from './registry.js';
+import { ChannelRegistry } from './channelRegistry.js';
 import type { ChannelAdapterBase } from './adapter.js';
 
 type TestAdapter = ChannelAdapterBase & { name: string };

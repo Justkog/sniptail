@@ -1,4 +1,4 @@
-import { ChannelRegistry } from '@sniptail/core/channels/registry.js';
+import { ChannelRegistry } from '@sniptail/core/channels/channelRegistry.js';
 import { BOT_EVENT_SCHEMA_VERSION, type CoreBotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelProvider, ChannelRef } from '@sniptail/core/types/channel.js';
 import { DiscordWorkerChannelAdapter } from '../discord/discordWorkerChannelAdapter.js';
