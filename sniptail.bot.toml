@@ -53,20 +53,18 @@ redis_url = "redis://localhost:6379"
 # Optional. Default: [] (empty). Example: ["U123", "U456"]
 # admin_user_ids = ["U12345678"]
 
-# Slack configuration toggle.
-# Optional. Default: false. Example: true
-# Set SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET in env when enabled.
-[slack]
+# Slack channel settings.
+# Optional. Default: false.
+[channels.slack]
 # enabled = false
 
-# Discord configuration toggle.
-# Optional. Default: false. Example: true
-# Set DISCORD_BOT_TOKEN in env when enabled.
-[discord]
+# Discord channel settings.
+# Optional. Default: false.
+[channels.discord]
 # enabled = false
 
 # Discord app ID.
-# Required when discord.enabled = true.
+# Required when channels.discord.enabled = true.
 # Optional otherwise. Example: "123456789012345678"
 # app_id = "123456789012345678"
 

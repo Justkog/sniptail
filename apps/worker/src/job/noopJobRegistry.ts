@@ -1,4 +1,5 @@
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 import type { JobRegistry } from './jobRegistry.js';
 
@@ -39,7 +40,7 @@ export class NoopJobRegistry implements JobRegistry {
   // eslint-disable-next-line @typescript-eslint/require-await
   async findLatestJobByChannelThread(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _provider: 'slack' | 'discord',
+    _provider: ChannelProvider,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _channelId: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -53,7 +54,7 @@ export class NoopJobRegistry implements JobRegistry {
   // eslint-disable-next-line @typescript-eslint/require-await
   async findLatestJobByChannelThreadAndTypes(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _provider: 'slack' | 'discord',
+    _provider: ChannelProvider,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _channelId: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

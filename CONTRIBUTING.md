@@ -5,7 +5,33 @@ and what to expect when contributing.
 
 ## Project direction
 
-Sniptail is designed to expand along three axes: the medium (where jobs are requested), the coding agent (what executes jobs), and the Git service (where changes land). Today the stack is Slack + Codex + GitHub/GitLab. Contributions that add new integrations in any of these areas are especially welcome; see the tables in `README.md` for the current support matrix.
+Sniptail is designed to expand along three axes: the medium (where jobs are requested), the coding agent (what executes jobs), and the Git service (where changes land). Today the stack is Slack/Discord + Codex/Copilot + GitHub/GitLab. Contributions that add new integrations in any of these areas are especially welcome; see the tables in `README.md` for the current support matrix.
+
+### Adding a channel
+
+Channel support is adapter-driven and split by runtime:
+
+1. Core contracts:
+   - Add/extend event/context types in `packages/core/src/types/channel.ts`, `packages/core/src/types/bot-event.ts`, and `packages/core/src/types/worker-event.ts`.
+   - Keep `schemaVersion` and event vocabulary consistency so queue contracts remain safe.
+2. Worker adapter:
+   - Implement provider behavior in `apps/worker/src/channels/workerChannelAdapters.ts` that can:
+     - build outbound bot events (`message.post`, `file.upload`, etc.)
+     - render completion/bootstrap payloads using channel capabilities
+     - render Codex usage status replies
+3. Bot adapter:
+   - Implement provider-specific adapters in:
+     - `apps/bot/src/slack/slackBotChannelAdapter.ts`
+     - `apps/bot/src/discord/discordBotChannelAdapter.ts`
+   - Register them in `apps/bot/src/channels/botChannelAdapters.ts` (which uses the shared channel registry from `packages/core/src/channels/registry.ts`).
+4. Config wiring:
+   - Add channel enablement in `[channels.<provider>]` in `sniptail.bot.toml`.
+   - Keep bot configuration channels-only (`[channels.<provider>]`) and use `SNIPTAIL_CHANNELS` only as a runtime filter/override in `packages/core/src/config/env.ts`.
+5. Tests:
+   - Add compatibility and registry tests in core (`packages/core/src/types/*.test.ts`, `packages/core/src/channels/*.test.ts`).
+   - Add worker/bot adapter behavior tests for rendering and dispatch paths.
+6. File naming:
+   - For new files and renames, keep basenames unique across the repository (for example, avoid introducing multiple `adapters.ts` files).
 
 ### Adding a Git provider
 

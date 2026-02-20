@@ -2,16 +2,14 @@ import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
-import { buildSlackIds } from '@sniptail/core/slack/ids.js';
-import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
+import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
 import { createNotifier } from '../channels/createNotifier.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
-import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
   copyArtifactsFromResumedJob,
   copyJobRootSeed,
@@ -79,6 +77,7 @@ export async function runJob(
   config.repoAllowlist = repoAllowlist;
   validateJob(job, repoAllowlist);
   const notifier = createNotifier(events);
+  const channelAdapter = resolveWorkerChannelAdapter(job.channel.provider);
 
   await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
@@ -216,44 +215,13 @@ export async function runJob(
           : job.type === 'REVIEW'
             ? `All set! I finished job ${job.jobId}, but no review report was produced.`
             : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
-      if (job.channel.provider === 'slack') {
-        const slackIds = buildSlackIds(config.botName);
-        const blocks = buildCompletionBlocks(
-          askText,
-          job.jobId,
-          {
-            askFromJob: slackIds.actions.askFromJob,
-            planFromJob: slackIds.actions.planFromJob,
-            implementFromJob: slackIds.actions.implementFromJob,
-            reviewFromJob: slackIds.actions.reviewFromJob,
-            worktreeCommands: slackIds.actions.worktreeCommands,
-            clearJob: slackIds.actions.clearJob,
-            ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
-          },
-          openQuestions.length
-            ? {
-                includeAskFromJob: false,
-                includePlanFromJob: false,
-                includeImplementFromJob: false,
-                includeReviewFromJob: false,
-                answerQuestionsFirst: true,
-              }
-            : undefined,
-        );
-        await notifier.postMessage(channelRef, askText, { blocks });
-      } else if (job.channel.provider === 'discord') {
-        const components = buildDiscordCompletionComponents(job.jobId, {
-          includeAnswerQuestions: openQuestions.length > 0,
-          includeAskFromJob: !openQuestions.length,
-          includePlanFromJob: !openQuestions.length,
-          includeImplementFromJob: !openQuestions.length,
-          includeReviewFromJob: false,
-          answerQuestionsFirst: openQuestions.length > 0,
-        });
-        await notifier.postMessage(channelRef, askText, { components });
-      } else {
-        await notifier.postMessage(channelRef, askText);
-      }
+      const rendered = channelAdapter.renderCompletionMessage({
+        botName: config.botName,
+        text: askText,
+        jobId: job.jobId,
+        ...(openQuestions.length ? { openQuestions } : {}),
+      });
+      await notifier.postMessage(channelRef, rendered.text, rendered.options);
       const summary = report ? report.slice(0, 500) : `${job.type} complete`;
       await registry
         .updateJobRecord(job.jobId, {
@@ -361,32 +329,13 @@ export async function runJob(
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
     const includeReviewFromJob = Object.keys(branchByRepo).length > 0;
-    if (job.channel.provider === 'slack') {
-      const slackIds = buildSlackIds(config.botName);
-      const blocks = buildCompletionBlocks(
-        implText,
-        job.jobId,
-        {
-          askFromJob: slackIds.actions.askFromJob,
-          planFromJob: slackIds.actions.planFromJob,
-          implementFromJob: slackIds.actions.implementFromJob,
-          reviewFromJob: slackIds.actions.reviewFromJob,
-          worktreeCommands: slackIds.actions.worktreeCommands,
-          clearJob: slackIds.actions.clearJob,
-        },
-        {
-          includeReviewFromJob,
-        },
-      );
-      await notifier.postMessage(channelRef, implText, { blocks });
-    } else if (job.channel.provider === 'discord') {
-      const components = buildDiscordCompletionComponents(job.jobId, {
-        includeReviewFromJob,
-      });
-      await notifier.postMessage(channelRef, implText, { components });
-    } else {
-      await notifier.postMessage(channelRef, implText);
-    }
+    const rendered = channelAdapter.renderCompletionMessage({
+      botName: config.botName,
+      text: implText,
+      jobId: job.jobId,
+      includeReviewFromJob,
+    });
+    await notifier.postMessage(channelRef, rendered.text, rendered.options);
 
     await registry
       .updateJobRecord(job.jobId, {

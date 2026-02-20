@@ -73,7 +73,7 @@ Sniptail uses Socket Mode, which requires an **app-level token**.
 Edit `sniptail.bot.toml`:
 
 ```toml
-[slack]
+[channels.slack]
 enabled = true
 ```
 
@@ -96,7 +96,7 @@ export SLACK_SIGNING_SECRET="..."
 
 You can enable Slack and supply credentials via env vars:
 
-- `SLACK_ENABLED=1`
+- `SNIPTAIL_CHANNELS=slack`
 - `SLACK_BOT_TOKEN=...`
 - `SLACK_APP_TOKEN=...`
 - `SLACK_SIGNING_SECRET=...`
@@ -118,7 +118,7 @@ pnpm run dev
 
 ### “No bot providers enabled”
 
-- Enable Slack in `sniptail.bot.toml` (`[slack].enabled = true`) or set `SLACK_ENABLED=1`.
+- Enable Slack in `sniptail.bot.toml` (`[channels.slack] enabled = true`) or set `SNIPTAIL_CHANNELS=slack`.
 
 ### Bot connects but slash commands don’t work
 
@@ -133,4 +133,3 @@ pnpm run dev
 ### “Slack is not configured…” at startup
 
 - Ensure `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_SIGNING_SECRET` are set in the environment where you run `apps/bot`.
-

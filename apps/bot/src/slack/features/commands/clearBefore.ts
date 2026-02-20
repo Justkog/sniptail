@@ -1,5 +1,6 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
 import { parseCutoffDateInput } from '../../lib/parsing.js';
 
@@ -35,7 +36,8 @@ export function registerClearBeforeCommand({
 
     try {
       await enqueueWorkerEvent(workerEventQueue, {
-        type: 'clearJobsBefore',
+        schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+        type: 'jobs.clearBefore',
         payload: {
           cutoffIso: cutoff.toISOString(),
         },

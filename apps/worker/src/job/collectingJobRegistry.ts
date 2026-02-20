@@ -1,4 +1,5 @@
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobSpec, JobType } from '@sniptail/core/types/job.js';
 import type { JobRegistrySnapshot, SnapshottingJobRegistry } from './jobRegistry.js';
 
@@ -99,7 +100,7 @@ export class CollectingJobRegistry implements SnapshottingJobRegistry {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async findLatestJobByChannelThread(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     agentId: AgentId,
@@ -126,7 +127,7 @@ export class CollectingJobRegistry implements SnapshottingJobRegistry {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async findLatestJobByChannelThreadAndTypes(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     types: JobType[],

@@ -52,7 +52,7 @@ export function registerAnswerQuestionsSubmitView({
       .join('\n\n');
 
     const channelId = metadata?.channelId ?? record.job.channel.channelId;
-    const userId = metadata?.userId ?? record.job.channel.userId;
+    const userId = metadata?.userId ?? record.job.channel.userId ?? body.user.id;
     const threadId = metadata?.threadId ?? record.job.channel.threadId;
 
     const job: JobSpec = {

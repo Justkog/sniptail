@@ -1,4 +1,5 @@
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 
 export type JobRegistrySnapshot = {
@@ -13,13 +14,13 @@ export interface JobRegistry {
   markJobForDeletion(jobId: string, ttlMs: number): Promise<JobRecord | undefined>;
   clearJobsBefore(cutoff: Date): Promise<number>;
   findLatestJobByChannelThread(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     agentId: AgentId,
   ): Promise<JobRecord | undefined>;
   findLatestJobByChannelThreadAndTypes(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     types: JobType[],
