@@ -233,6 +233,18 @@ export class PermissionsRuntimeService {
       };
     }
 
+    const matchesApprovers = await this.#actorMatchesApproverSubjects(
+      request.approverSubjects,
+      input,
+    );
+    if (!matchesApprovers) {
+      return {
+        status: 'forbidden',
+        message: 'You are not one of the designated approvers for this request.',
+        request,
+      };
+    }
+
     const approvalAction =
       input.resolutionAction === 'approval.grant' ? 'approval.grant' : 'approval.deny';
     const auth = await this.authorize({
@@ -372,6 +384,39 @@ export class PermissionsRuntimeService {
       return false;
     }
     return true;
+  }
+
+  async #actorMatchesApproverSubjects(
+    subjects: PermissionSubject[],
+    input: AuthorizationInput,
+  ): Promise<boolean> {
+    if (subjects.length === 0) {
+      return true;
+    }
+    const candidateGroupIds = subjects
+      .filter(
+        (s): s is Extract<PermissionSubject, { kind: 'group' }> =>
+          s.kind === 'group' && s.provider === input.provider,
+      )
+      .map((s) => s.groupId);
+    const preResolvedGroupIds = input.groupIds ?? [];
+    const resolvedGroupIds =
+      input.resolveGroups && candidateGroupIds.length
+        ? await input.resolveGroups(candidateGroupIds)
+        : [];
+    const allGroupIds = [...new Set([...preResolvedGroupIds, ...resolvedGroupIds])];
+    return subjects.some((subject) => {
+      if (subject.kind === 'user') {
+        return subject.userId === '*' || subject.userId === input.userId;
+      }
+      if (subject.kind === 'group') {
+        if (subject.provider !== input.provider) {
+          return false;
+        }
+        return allGroupIds.includes(subject.groupId);
+      }
+      return false;
+    });
   }
 
   async #evaluate(input: AuthorizationInput): Promise<PermissionDecision> {
