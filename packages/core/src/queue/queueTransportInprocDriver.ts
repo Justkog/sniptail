@@ -102,9 +102,7 @@ class InprocQueueChannel<T> {
       name,
       data: payload,
     };
-    if (jobId) {
-      this.#pendingJobIds.add(jobId);
-    }
+    this.#pendingJobIds.add(id);
     this.#pending.push({ job });
     this.#schedule();
     return job;

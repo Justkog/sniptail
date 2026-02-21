@@ -131,4 +131,21 @@ describe('queueTransportInprocDriver', () => {
       runtime.queues.jobs.add('ASK', createJob('job-dup'), { jobId: 'job-dup' }),
     ).rejects.toThrow('Duplicate inproc job id "job-dup"');
   });
+
+  it('tracks auto-generated job IDs in pendingJobIds to prevent collisions', async () => {
+    runtime.consumeJobs({
+      concurrency: 1,
+      handler: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    });
+
+    // Enqueue without an explicit jobId — auto-generated id will be "sniptail-jobs-1"
+    await runtime.queues.jobs.add('ASK', createJob('job-auto'));
+
+    // An explicit jobId matching the auto-generated one should be rejected
+    await expect(
+      runtime.queues.jobs.add('ASK', createJob('job-auto'), { jobId: 'sniptail-jobs-1' }),
+    ).rejects.toThrow('Duplicate inproc job id "sniptail-jobs-1"');
+  });
 });
