@@ -9,7 +9,7 @@ import {
 } from './toml.js';
 import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
-import type { ChannelProvider } from '../types/channel.js';
+import { isKnownChannelProvider, KNOWN_CHANNEL_PROVIDERS, type ChannelProvider } from '../types/channel.js';
 import { isPermissionAction } from '../permissions/permissionsActionCatalog.js';
 import type {
   PermissionEffect,
@@ -366,6 +366,13 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
       .filter(Boolean);
     if (providersRaw && (!providers || providers.length !== providersRaw.length)) {
       throw new Error(`Invalid ${ruleLabel}.providers in TOML. Expected non-empty strings.`);
+    }
+    for (const provider of providers ?? []) {
+      if (!isKnownChannelProvider(provider)) {
+        throw new Error(
+          `Invalid ${ruleLabel}.providers in TOML. Unknown provider: "${provider}". Supported providers: ${KNOWN_CHANNEL_PROVIDERS.join(', ')}.`,
+        );
+      }
     }
     const channelIdsRaw = getTomlStringArray(ruleToml.channel_ids, `${ruleLabel}.channel_ids`);
     const channelIds = channelIdsRaw?.map((channelId) => channelId.trim()).filter(Boolean);
