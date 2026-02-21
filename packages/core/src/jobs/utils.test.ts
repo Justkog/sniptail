@@ -1,20 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('../config/config.js', () => ({
-  loadCoreConfig: () => ({
-    repoAllowlist: {},
-    jobWorkRoot: '/tmp/sniptail/job-root',
-    queueDriver: 'redis',
-    jobRegistryPath: '/tmp/sniptail/registry',
-    jobRegistryDriver: 'sqlite',
-  }),
-}));
+import { describe, expect, it } from 'vitest';
 
 import { buildJobPaths, parseReviewerIds, validateJob } from './utils.js';
 
 describe('jobs/utils', () => {
   it('builds job paths from JOB_WORK_ROOT', () => {
-    const paths = buildJobPaths('job-123');
+    const paths = buildJobPaths('/tmp/sniptail/job-root', 'job-123');
 
     expect(paths.root).toBe('/tmp/sniptail/job-root/job-123');
     expect(paths.reposRoot).toBe('/tmp/sniptail/job-root/job-123/repos');

@@ -66,6 +66,7 @@ export async function resolveMentionWorkingDirectory(
   job: JobSpec,
   fallback: string,
   registry: JobRegistry,
+  jobWorkRoot: string,
 ): Promise<string> {
   if (job.type !== 'MENTION') return fallback;
   const threadId = await resolveThreadId(job, registry);
@@ -78,7 +79,7 @@ export async function resolveMentionWorkingDirectory(
       ['ASK', 'PLAN', 'IMPLEMENT'],
     );
     if (!record) return fallback;
-    return buildJobPaths(record.job.jobId).root;
+    return buildJobPaths(jobWorkRoot, record.job.jobId).root;
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to resolve working directory from previous job');
     return fallback;
