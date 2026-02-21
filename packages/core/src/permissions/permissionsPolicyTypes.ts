@@ -28,6 +28,8 @@ export type PermissionRule = {
 
 export type PermissionsConfig = {
   defaultEffect: PermissionEffect;
+  defaultApproverSubjects?: PermissionSubject[];
+  defaultNotifySubjects?: PermissionSubject[];
   approvalTtlSeconds: number;
   groupCacheTtlSeconds: number;
   rules: PermissionRule[];
