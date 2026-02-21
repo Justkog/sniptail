@@ -1,4 +1,4 @@
-import { eq, inArray, like } from 'drizzle-orm';
+import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import type { PgJobRegistryClient } from '../db/index.js';
 import { jobs as pgJobs } from '../db/pg/schema.js';
 import { logger } from '../logger.js';
@@ -48,6 +48,23 @@ export function createPgJobRegistryStore(client: PgJobRegistryClient): JobRegist
         target: pgJobs.jobId,
         set: { record },
       });
+    },
+    async conditionalUpdateRecord(
+      key: string,
+      record: JobRecord,
+      condition: { statusEquals: string },
+    ): Promise<boolean> {
+      const rows = await client.db
+        .update(pgJobs)
+        .set({ record })
+        .where(
+          and(
+            eq(pgJobs.jobId, key),
+            sql`(${pgJobs.record}->>'status') = ${condition.statusEquals}`,
+          ),
+        )
+        .returning({ jobId: pgJobs.jobId });
+      return rows.length > 0;
     },
     async deleteRecordsByKeys(keys: string[]): Promise<void> {
       if (!keys.length) return;

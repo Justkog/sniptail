@@ -15,7 +15,9 @@ function parseRedisRecord(value: string | null): JobRecord | undefined {
   }
 }
 
-type RegistryRedisClient = Pick<RedisClient, 'scan' | 'mget' | 'get' | 'set' | 'del'>;
+type RegistryRedisClient = Pick<RedisClient, 'scan' | 'mget' | 'get' | 'set' | 'del'> & {
+  eval(script: string, numkeys: number, ...args: string[]): Promise<unknown>;
+};
 
 async function getClient(connection: RedisConnection): Promise<RegistryRedisClient> {
   return (await connection.client) as RegistryRedisClient;
@@ -63,6 +65,24 @@ export function createRedisJobRegistryStore(redisUrl: string): JobRegistryStore 
     async upsertRecord(key: string, record: JobRecord): Promise<void> {
       const client = await getClient(connection);
       await client.set(key, JSON.stringify(record));
+    },
+    async conditionalUpdateRecord(
+      key: string,
+      record: JobRecord,
+      condition: { statusEquals: string },
+    ): Promise<boolean> {
+      const client = await getClient(connection);
+      const lua = [
+        'local v = redis.call("GET", KEYS[1])',
+        'if not v then return 0 end',
+        'local ok, t = pcall(cjson.decode, v)',
+        'if not ok then return 0 end',
+        'if t.status ~= ARGV[2] then return 0 end',
+        'redis.call("SET", KEYS[1], ARGV[1])',
+        'return 1',
+      ].join('\n');
+      const result = await client.eval(lua, 1, key, JSON.stringify(record), condition.statusEquals);
+      return result === 1;
     },
     async deleteRecordsByKeys(keys: string[]): Promise<void> {
       if (!keys.length) return;

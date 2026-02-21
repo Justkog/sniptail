@@ -176,4 +176,45 @@ describe('permissionsApprovalStore', () => {
     expect(expired.changed).toBe(true);
     expect(expired.request?.status).toBe('expired');
   });
+
+  it('is idempotent under concurrent approvals', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.clearBefore',
+        provider: 'slack',
+        context: {
+          provider: 'slack',
+          channelId: 'C3',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'group', provider: 'slack', groupId: 'S1' }],
+        notifySubjects: [{ kind: 'group', provider: 'slack', groupId: 'S1' }],
+        operation: {
+          kind: 'enqueueWorkerEvent',
+          event: {
+            schemaVersion: 1,
+            type: 'jobs.clearBefore',
+            payload: {
+              cutoffIso: '2025-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        summary: 'Concurrent approve test',
+      },
+      ttlSeconds: 60,
+    });
+
+    const [result1, result2] = await Promise.all([
+      approveIfPending(request.id, 'U_APPROVER_1'),
+      approveIfPending(request.id, 'U_APPROVER_2'),
+    ]);
+
+    const changedCount = [result1.changed, result2.changed].filter(Boolean).length;
+    expect(changedCount).toBe(1);
+
+    const loaded = await loadApprovalRequest(request.id);
+    expect(loaded?.status).toBe('approved');
+  });
 });
