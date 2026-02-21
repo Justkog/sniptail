@@ -33,20 +33,12 @@ Edit `~/.sniptail/current/.env` and set at least:
 - `DISCORD_BOT_TOKEN`
 - `GITHUB_API_TOKEN` (recommended for GitHub PR creation)
 
-For single-machine mode without Redis queue transport, set:
+For single-machine quickstart mode, set:
 
 ```bash
 QUEUE_DRIVER=inproc
 JOB_REGISTRY_DB=sqlite
 ```
-
-If you prefer Redis queue transport, also set `REDIS_URL` and start Redis (for example with Docker):
-
-```bash
-docker run -d --name sniptail-redis -p 6379:6379 redis:7-alpine
-```
-
-Then set `REDIS_URL=redis://127.0.0.1:6379` in `~/.sniptail/current/.env` (only needed for `QUEUE_DRIVER=redis`).
 
 Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
 
@@ -69,13 +61,13 @@ sniptail repos list
 
 ### 4) Start Sniptail
 
-For single-machine mode (recommended quickstart), run:
+Run:
 
 ```bash
 sniptail local
 ```
 
-If you use Redis transport and separate processes, run `sniptail bot` and `sniptail worker` in separate terminals.
+This quickstart uses the single-process local runtime. For split bot/worker deployments, see `docs/setup-and-operations.md`.
 
 ### 5) End-to-end check in Discord
 
