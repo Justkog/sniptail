@@ -9,6 +9,7 @@ import {
   resolveSlackActorGroups,
   type GroupMembershipCacheEntry,
 } from './slackPermissionsActorGroups.js';
+import { logger } from '@sniptail/core/logger.js';
 
 const slackGroupMembershipCache = new Map<string, GroupMembershipCacheEntry>();
 const defaultPendingApprovalText = 'Approval required. Your request has been submitted.';
@@ -84,27 +85,35 @@ export async function authorizeSlackPrecheck(input: {
   threadId?: string;
   workspaceId?: string;
 }): Promise<PermissionGuardResult> {
-  const authorization = await input.permissions.authorize({
-    action: input.action,
-    provider: 'slack',
-    userId: input.userId,
-    channelId: input.channelId,
-    ...(input.threadId ? { threadId: input.threadId } : {}),
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    resolveGroups: async (candidateGroupIds) =>
-      resolveSlackActorGroups({
-        client: input.client,
-        userId: input.userId,
-        candidateGroupIds,
-        cache: slackGroupMembershipCache,
-        cacheTtlMs: input.permissions.getGroupCacheTtlMs(),
-      }),
-  });
+  try {
+    const authorization = await input.permissions.authorize({
+      action: input.action,
+      provider: 'slack',
+      userId: input.userId,
+      channelId: input.channelId,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      resolveGroups: async (candidateGroupIds) =>
+        resolveSlackActorGroups({
+          client: input.client,
+          userId: input.userId,
+          candidateGroupIds,
+          cache: slackGroupMembershipCache,
+          cacheTtlMs: input.permissions.getGroupCacheTtlMs(),
+        }),
+    });
 
-  if (authorization.allowed || authorization.requiresApproval) {
-    return { status: 'allow' };
+    if (authorization.allowed || authorization.requiresApproval) {
+      return { status: 'allow' };
+    }
+    return { status: 'deny' };
+  } catch (err) {
+    logger.error(
+      { err, action: input.action, userId: input.userId, channelId: input.channelId },
+      'Group resolution failed during precheck; denying (fail-closed)',
+    );
+    return { status: 'deny' };
   }
-  return { status: 'deny' };
 }
 
 export async function authorizeSlackPrecheckAndRespond(input: {
@@ -148,44 +157,52 @@ export async function authorizeSlackOperation(input: {
     blocks: Array<Record<string, unknown>>;
   }>
 > {
-  const authorization = await input.permissions.authorizeOrCreateApproval({
-    action: input.action,
-    provider: 'slack',
-    userId: input.userId,
-    channelId: input.channelId,
-    ...(input.threadId ? { threadId: input.threadId } : {}),
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    resolveGroups: async (candidateGroupIds) =>
-      resolveSlackActorGroups({
-        client: input.client,
-        userId: input.userId,
-        candidateGroupIds,
-        cache: slackGroupMembershipCache,
-        cacheTtlMs: input.permissions.getGroupCacheTtlMs(),
-      }),
-    summary: input.summary,
-    operation: input.operation,
-  });
+  try {
+    const authorization = await input.permissions.authorizeOrCreateApproval({
+      action: input.action,
+      provider: 'slack',
+      userId: input.userId,
+      channelId: input.channelId,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      resolveGroups: async (candidateGroupIds) =>
+        resolveSlackActorGroups({
+          client: input.client,
+          userId: input.userId,
+          candidateGroupIds,
+          cache: slackGroupMembershipCache,
+          cacheTtlMs: input.permissions.getGroupCacheTtlMs(),
+        }),
+      summary: input.summary,
+      operation: input.operation,
+    });
 
-  if (authorization.status === 'allow') {
-    return { status: 'allow' };
-  }
-  if (authorization.status === 'deny') {
+    if (authorization.status === 'allow') {
+      return { status: 'allow' };
+    }
+    if (authorization.status === 'deny') {
+      return { status: 'deny' };
+    }
+    if (!resolvePermissionsProviderCapabilities('slack').approvalButtons) {
+      return { status: 'deny' };
+    }
+
+    const text = input.permissions.buildApprovalMessage('slack', authorization.request);
+    return {
+      status: 'require_approval',
+      approval: {
+        id: authorization.request.id,
+        text,
+        blocks: buildSlackApprovalBlocks(text, input.slackIds, authorization.request.id),
+      },
+    };
+  } catch (err) {
+    logger.error(
+      { err, action: input.action, userId: input.userId, channelId: input.channelId },
+      'Group resolution failed during authorization; denying (fail-closed)',
+    );
     return { status: 'deny' };
   }
-  if (!resolvePermissionsProviderCapabilities('slack').approvalButtons) {
-    return { status: 'deny' };
-  }
-
-  const text = input.permissions.buildApprovalMessage('slack', authorization.request);
-  return {
-    status: 'require_approval',
-    approval: {
-      id: authorization.request.id,
-      text,
-      blocks: buildSlackApprovalBlocks(text, input.slackIds, authorization.request.id),
-    },
-  };
 }
 
 async function postSlackApprovalMessage(input: {

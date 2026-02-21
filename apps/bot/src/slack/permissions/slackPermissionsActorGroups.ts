@@ -46,6 +46,7 @@ export async function resolveSlackActorGroups(input: {
       }
     } catch (err) {
       logger.warn({ err, groupId }, 'Failed to resolve Slack usergroup members');
+      throw err;
     }
   }
 
