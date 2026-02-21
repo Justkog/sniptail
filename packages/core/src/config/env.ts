@@ -253,6 +253,25 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
   const defaultEffect = defaultEffectValue
     ? parsePermissionEffect(defaultEffectValue, 'permissions.default_effect')
     : 'allow';
+  const rawDefaultApproverSubjects = getTomlStringArray(
+    permissionsToml.default_approver_subjects,
+    'permissions.default_approver_subjects',
+  );
+  const defaultApproverSubjects = rawDefaultApproverSubjects?.map((subject) =>
+    parsePermissionSubjectToken(subject, 'permissions.default_approver_subjects'),
+  );
+  const rawDefaultNotifySubjects = getTomlStringArray(
+    permissionsToml.default_notify_subjects,
+    'permissions.default_notify_subjects',
+  );
+  const defaultNotifySubjects = rawDefaultNotifySubjects?.map((subject) =>
+    parsePermissionSubjectToken(subject, 'permissions.default_notify_subjects'),
+  );
+  if (defaultEffect === 'require_approval' && (!defaultApproverSubjects || defaultApproverSubjects.length === 0)) {
+    throw new Error(
+      'Invalid permissions.default_approver_subjects in TOML. default_effect=require_approval requires at least one default_approver_subjects entry.',
+    );
+  }
   const approvalTtlSeconds = resolvePositiveIntegerFromSources(
     'PERMISSIONS_APPROVAL_TTL_SECONDS',
     permissionsToml.approval_ttl_seconds,
@@ -269,6 +288,8 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
   if (rulesValue === undefined) {
     return {
       defaultEffect,
+      ...(defaultApproverSubjects?.length ? { defaultApproverSubjects } : {}),
+      ...(defaultNotifySubjects?.length ? { defaultNotifySubjects } : {}),
       approvalTtlSeconds,
       groupCacheTtlSeconds,
       rules: [],
@@ -363,6 +384,8 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
 
   return {
     defaultEffect,
+    ...(defaultApproverSubjects?.length ? { defaultApproverSubjects } : {}),
+    ...(defaultNotifySubjects?.length ? { defaultNotifySubjects } : {}),
     approvalTtlSeconds,
     groupCacheTtlSeconds,
     rules,

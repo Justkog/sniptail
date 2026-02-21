@@ -56,10 +56,11 @@ export function evaluatePermissionDecision(input: {
       notifySubjects: matchedRule.notifySubjects ?? matchedRule.approverSubjects ?? [],
     };
   }
+  const defaultApprovers = config.defaultApproverSubjects ?? [];
   return {
     effect: config.defaultEffect,
     action,
-    approverSubjects: [],
-    notifySubjects: [],
+    approverSubjects: defaultApprovers,
+    notifySubjects: config.defaultNotifySubjects ?? defaultApprovers,
   };
 }

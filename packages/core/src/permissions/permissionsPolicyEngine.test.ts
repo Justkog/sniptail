@@ -82,4 +82,27 @@ describe('permissionsPolicyEngine', () => {
     expect(decision.effect).toBe('allow');
     expect(decision.ruleId).toBeUndefined();
   });
+
+  it('uses defaultApproverSubjects when no rules match and defaultEffect=require_approval', () => {
+    const requireApprovalConfig: PermissionsConfig = {
+      defaultEffect: 'require_approval',
+      defaultApproverSubjects: [{ kind: 'group', provider: 'slack', groupId: 'S_GLOBAL' }],
+      defaultNotifySubjects: [{ kind: 'user', userId: 'U_NOTIFY' }],
+      approvalTtlSeconds: 86_400,
+      groupCacheTtlSeconds: 60,
+      rules: [],
+    };
+    const decision = evaluatePermissionDecision({
+      config: requireApprovalConfig,
+      actor: { provider: 'slack', userId: 'U1', groupIds: [] },
+      context: { provider: 'slack', channelId: 'C1' },
+      action: 'jobs.ask',
+    });
+
+    expect(decision.effect).toBe('require_approval');
+    expect(decision.approverSubjects).toEqual([
+      { kind: 'group', provider: 'slack', groupId: 'S_GLOBAL' },
+    ]);
+    expect(decision.notifySubjects).toEqual([{ kind: 'user', userId: 'U_NOTIFY' }]);
+  });
 });
