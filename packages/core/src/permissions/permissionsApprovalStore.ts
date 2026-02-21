@@ -47,11 +47,9 @@ async function conditionalUpsert(
   requiredStatus: ApprovalRequest['status'],
 ): Promise<boolean> {
   const store = await getJobRegistryStore();
-  return store.conditionalUpdateRecord(
-    approvalKey(id),
-    updated as unknown as JobRecord,
-    { statusEquals: requiredStatus },
-  );
+  return store.conditionalUpdateRecord(approvalKey(id), updated as unknown as JobRecord, {
+    statusEquals: requiredStatus,
+  });
 }
 
 function makeTransitionResult(

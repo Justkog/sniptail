@@ -1,5 +1,5 @@
 import { App } from '@slack/bolt';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
@@ -10,9 +10,9 @@ import { registerSlackHandlers } from './handlers.js';
 import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
 export function createSlackApp(
-  queue: Queue<JobSpec>,
-  bootstrapQueue: Queue<BootstrapRequest>,
-  workerEventQueue: Queue<WorkerEvent>,
+  queue: QueuePublisher<JobSpec>,
+  bootstrapQueue: QueuePublisher<BootstrapRequest>,
+  workerEventQueue: QueuePublisher<WorkerEvent>,
 ) {
   const config = loadBotConfig();
   if (!config.slack) {

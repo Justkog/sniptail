@@ -4,6 +4,7 @@ vi.mock('../config/config.js', () => ({
   loadCoreConfig: () => ({
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
     jobRegistryPath: '/tmp/sniptail/registry',
     jobRegistryDriver: 'sqlite',
   }),

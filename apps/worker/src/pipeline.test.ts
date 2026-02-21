@@ -5,6 +5,7 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
     jobRegistryPath: '/tmp/sniptail/registry',
     jobRegistryDriver: 'sqlite',
   }),
@@ -13,6 +14,7 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
     jobRegistryPath: '/tmp/sniptail/registry',
     jobRegistryDriver: 'sqlite',
     repoCacheRoot: '/tmp/sniptail/repo-cache',
@@ -151,11 +153,11 @@ vi.mock('node:fs/promises', () => ({
 import type { Dirent } from 'node:fs';
 import { constants } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
-import type { Queue } from 'bullmq';
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
@@ -465,7 +467,7 @@ describe('worker/pipeline runJob', () => {
     writeFileMock.mockResolvedValue(undefined);
     appendFileMock.mockResolvedValue(undefined);
 
-    const botQueue = {} as Queue<BotEvent>;
+    const botQueue = {} as QueuePublisher<BotEvent>;
     const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
 
     expect(result).toEqual({

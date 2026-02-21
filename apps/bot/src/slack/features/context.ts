@@ -1,5 +1,5 @@
 import type { App } from '@slack/bolt';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { SlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
@@ -11,8 +11,8 @@ export type SlackHandlerContext = {
   app: App;
   slackIds: SlackIds;
   config: BotConfig;
-  queue: Queue<JobSpec>;
-  bootstrapQueue: Queue<BootstrapRequest>;
-  workerEventQueue: Queue<WorkerEvent>;
+  queue: QueuePublisher<JobSpec>;
+  bootstrapQueue: QueuePublisher<BootstrapRequest>;
+  workerEventQueue: QueuePublisher<WorkerEvent>;
   permissions: PermissionsRuntimeService;
 };

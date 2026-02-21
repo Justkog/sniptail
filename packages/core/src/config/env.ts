@@ -9,7 +9,11 @@ import {
 } from './toml.js';
 import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
-import { isKnownChannelProvider, KNOWN_CHANNEL_PROVIDERS, type ChannelProvider } from '../types/channel.js';
+import {
+  isKnownChannelProvider,
+  KNOWN_CHANNEL_PROVIDERS,
+  type ChannelProvider,
+} from '../types/channel.js';
 import { isPermissionAction } from '../permissions/permissionsActionCatalog.js';
 import type {
   PermissionEffect,
@@ -26,6 +30,7 @@ import {
 import {
   requireEnv,
   resolveBotName,
+  resolveQueueDriver,
   resolveJobRegistryDriver,
   resolveJobRegistryPgUrl,
   resolveJobRegistryRedisUrl,
@@ -121,6 +126,7 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
   const repoAllowlistPath = resolvePathValue('REPO_ALLOWLIST_PATH', coreToml?.repo_allowlist_path, {
     required: false,
   });
+  const queueDriver = resolveQueueDriver(coreToml?.queue_driver);
   const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
   const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
   const jobRegistryRedisUrl = resolveJobRegistryRedisUrl(
@@ -138,6 +144,7 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
     jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
       required: true,
     }) as string,
+    queueDriver,
     ...(jobRegistryPath ? { jobRegistryPath } : {}),
     jobRegistryDriver,
     ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
@@ -267,7 +274,10 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
   const defaultNotifySubjects = rawDefaultNotifySubjects?.map((subject) =>
     parsePermissionSubjectToken(subject, 'permissions.default_notify_subjects'),
   );
-  if (defaultEffect === 'require_approval' && (!defaultApproverSubjects || defaultApproverSubjects.length === 0)) {
+  if (
+    defaultEffect === 'require_approval' &&
+    (!defaultApproverSubjects || defaultApproverSubjects.length === 0)
+  ) {
     throw new Error(
       'Invalid permissions.default_approver_subjects in TOML. default_effect=require_approval requires at least one default_approver_subjects entry.',
     );
@@ -465,8 +475,8 @@ export function loadBotConfig(): BotConfig {
   });
   const permissions = parsePermissionsConfig(permissionsToml);
   const redisUrl = resolveStringValue('REDIS_URL', botToml?.redis_url, {
-    required: true,
-  }) as string;
+    required: core.queueDriver === 'redis',
+  });
   const channels = enabledChannels.reduce<Record<ChannelProvider, { enabled: boolean }>>(
     (acc, provider) => ({
       ...acc,
@@ -504,7 +514,7 @@ export function loadBotConfig(): BotConfig {
       },
     }),
     permissions,
-    redisUrl,
+    ...(redisUrl ? { redisUrl } : {}),
   };
   return botConfigCache;
 }
@@ -614,14 +624,14 @@ export function loadWorkerConfig(): WorkerConfig {
   const gitlab = resolveGitLabConfig(gitlabToml);
   const github = resolveGitHubConfig(githubToml);
   const redisUrl = resolveStringValue('REDIS_URL', workerToml?.redis_url, {
-    required: true,
-  }) as string;
+    required: core.queueDriver === 'redis',
+  });
   const localRepoRoot = resolvePathValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
 
   workerConfigCache = {
     ...core,
     botName,
-    redisUrl,
+    ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,
     jobConcurrency,
     bootstrapConcurrency,

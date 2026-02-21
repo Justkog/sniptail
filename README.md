@@ -30,17 +30,23 @@ cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
 
 Edit `~/.sniptail/current/.env` and set at least:
 
-- `REDIS_URL`
 - `DISCORD_BOT_TOKEN`
 - `GITHUB_API_TOKEN` (recommended for GitHub PR creation)
 
-If you do not already have Redis running, start one quickly with Docker:
+For single-machine mode without Redis queue transport, set:
+
+```bash
+QUEUE_DRIVER=inproc
+JOB_REGISTRY_DB=sqlite
+```
+
+If you prefer Redis queue transport, also set `REDIS_URL` and start Redis (for example with Docker):
 
 ```bash
 docker run -d --name sniptail-redis -p 6379:6379 redis:7-alpine
 ```
 
-Then set `REDIS_URL=redis://127.0.0.1:6379` in `~/.sniptail/current/.env`.
+Then set `REDIS_URL=redis://127.0.0.1:6379` in `~/.sniptail/current/.env` (only needed for `QUEUE_DRIVER=redis`).
 
 Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
 
@@ -61,17 +67,15 @@ sniptail repos add sniptail --ssh-url git@github.com:Justkog/sniptail.git
 sniptail repos list
 ```
 
-### 4) Start bot and worker
+### 4) Start Sniptail
 
-Run in two terminals:
-
-```bash
-sniptail bot
-```
+For single-machine mode (recommended quickstart), run:
 
 ```bash
-sniptail worker
+sniptail local
 ```
+
+If you use Redis transport and separate processes, run `sniptail bot` and `sniptail worker` in separate terminals.
 
 ### 5) End-to-end check in Discord
 
@@ -115,7 +119,7 @@ Roadmap detail tables are in `docs/project-roadmap.md`.
 ## How it works (high level)
 
 1. A user triggers a slash command or mentions the bot in Slack or Discord.
-2. The bot queues a job in Redis and records metadata in the configured job registry (Redis recommended).
+2. The bot queues a job via the configured transport (`redis` or in-process `inproc`) and records metadata in the configured job registry.
 3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex or Copilot).
 4. Results are posted back to Slack or Discord as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 

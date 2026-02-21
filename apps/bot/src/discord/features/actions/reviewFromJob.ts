@@ -1,5 +1,5 @@
 import type { ButtonInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
@@ -13,7 +13,7 @@ export async function handleReviewFromJobButton(
   interaction: ButtonInteraction,
   jobId: string,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
   permissions: PermissionsRuntimeService,
 ) {
   const record = await loadJobRecord(jobId).catch((err) => {

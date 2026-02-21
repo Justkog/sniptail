@@ -1,0 +1,23 @@
+{
+  "name": "@sniptail/local",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "licenseFile": "../../LICENSE",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "QUEUE_DRIVER=inproc JOB_REGISTRY_DB=sqlite DOTENV_CONFIG_PATH=../../.env node --watch --watch-path=src --watch-path=../bot/src --watch-path=../worker/src --watch-path=../../packages/core/src --import ../../scripts/register-loaders.mjs src/localProcessRuntime.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "QUEUE_DRIVER=inproc JOB_REGISTRY_DB=sqlite DOTENV_CONFIG_PATH=../../.env node --import ../../scripts/register-loaders.mjs dist/localProcessRuntime.js",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
+    "lint": "eslint . --ignore-pattern **/dist/**",
+    "format": "prettier . --ignore-path ../../.prettierignore --write",
+    "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
+  },
+  "dependencies": {
+    "@sniptail/bot": "workspace:*",
+    "@sniptail/core": "workspace:*",
+    "@sniptail/worker": "workspace:*",
+    "dotenv": "^17.2.3"
+  }
+}

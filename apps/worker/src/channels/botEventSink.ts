@@ -1,4 +1,4 @@
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 
@@ -8,7 +8,7 @@ export interface BotEventSink {
 }
 
 export class BullMqBotEventSink implements BotEventSink {
-  constructor(private readonly queue: Queue<BotEvent>) {}
+  constructor(private readonly queue: QueuePublisher<BotEvent>) {}
 
   async publish(event: BotEvent): Promise<void> {
     await enqueueBotEvent(this.queue, event);

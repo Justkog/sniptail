@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
@@ -10,7 +10,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 
 export async function handleClearBefore(
   interaction: ChatInputCommandInteraction,
-  workerEventQueue: Queue<WorkerEvent>,
+  workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
   const cutoffInput = interaction.options.getString('cutoff', true);

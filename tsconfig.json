@@ -5,6 +5,7 @@
     { "path": "./packages/core" },
     { "path": "./packages/cli" },
     { "path": "./apps/bot" },
-    { "path": "./apps/worker" }
+    { "path": "./apps/worker" },
+    { "path": "./apps/local" }
   ]
 }

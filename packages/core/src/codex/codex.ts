@@ -9,6 +9,7 @@ import {
 } from '@openai/codex-sdk';
 import { resolve } from 'node:path';
 import os from 'node:os';
+import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScriptPath.js';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
 import type { JobSpec } from '../types/job.js';
 
@@ -75,12 +76,11 @@ export async function runCodex(
     }
     codexEnv.CODEX_DOCKER_HOST_HOME = codexEnv.CODEX_DOCKER_HOST_HOME || os.homedir();
   }
+  const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : undefined;
 
   const codex = new Codex({
     env: codexEnv,
-    ...(useDocker
-      ? { codexPathOverride: resolve(process.cwd(), 'scripts', 'codex-docker.sh') }
-      : {}),
+    ...(codexPathOverride ? { codexPathOverride } : {}),
   });
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,

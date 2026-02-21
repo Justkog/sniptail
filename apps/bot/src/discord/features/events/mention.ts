@@ -1,5 +1,5 @@
 import { MessageType, type Message } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -50,7 +50,7 @@ async function isReplyToBot(message: Message): Promise<boolean> {
 export async function handleMention(
   message: Message,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
   permissions: PermissionsRuntimeService,
 ) {
   const isMention = message.mentions.has(message.client.user);

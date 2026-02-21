@@ -47,6 +47,7 @@ export function createSqliteJobRegistryStore(client: SqliteJobRegistryClient): J
           set: { record: serialized },
         });
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async conditionalUpdateRecord(
       key: string,
       record: JobRecord,

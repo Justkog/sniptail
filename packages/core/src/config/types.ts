@@ -10,12 +10,14 @@ export type JobModelConfig = {
   modelReasoningEffort?: ModelReasoningEffort;
 };
 
+export type QueueDriver = 'redis' | 'inproc';
 export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
 
 export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
+  queueDriver: QueueDriver;
   jobRegistryPath?: string;
   jobRegistryDriver: JobRegistryDriver;
   jobRegistryPgUrl?: string;
@@ -43,12 +45,12 @@ export type BotConfig = CoreConfig & {
     channelIds?: string[];
   };
   permissions: PermissionsConfig;
-  redisUrl: string;
+  redisUrl?: string;
 };
 
 export type WorkerConfig = CoreConfig & {
   botName: string;
-  redisUrl: string;
+  redisUrl?: string;
   openAiKey?: string;
   primaryAgent: AgentId;
   jobConcurrency: number;

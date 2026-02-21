@@ -1,5 +1,5 @@
 import type { ButtonInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import {
@@ -21,7 +21,7 @@ export async function handleClearJobButton(interaction: ButtonInteraction, jobId
 export async function handleClearJobConfirmButton(
   interaction: ButtonInteraction,
   jobId: string,
-  workerEventQueue: Queue<WorkerEvent>,
+  workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
   const event: WorkerEvent = {

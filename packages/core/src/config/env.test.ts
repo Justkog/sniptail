@@ -213,7 +213,9 @@ describe('config loaders', () => {
     writeFileSync(botConfigPath, botToml, 'utf8');
     process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
 
-    expect(() => loadBotConfig()).toThrow('default_effect=require_approval requires at least one default_approver_subjects entry');
+    expect(() => loadBotConfig()).toThrow(
+      'default_effect=require_approval requires at least one default_approver_subjects entry',
+    );
   });
 
   it('loads default_approver_subjects and default_notify_subjects when default_effect=require_approval', () => {
@@ -302,6 +304,26 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Invalid COPILOT_IDLE_RETRIES');
   });
 
+  it('defaults queue driver to redis', () => {
+    applyRequiredEnv({ QUEUE_DRIVER: undefined });
+
+    const config = loadWorkerConfig();
+    expect(config.queueDriver).toBe('redis');
+  });
+
+  it('accepts QUEUE_DRIVER=inproc from env', () => {
+    applyRequiredEnv({ QUEUE_DRIVER: 'inproc' });
+
+    const config = loadWorkerConfig();
+    expect(config.queueDriver).toBe('inproc');
+  });
+
+  it('throws on invalid QUEUE_DRIVER value', () => {
+    applyRequiredEnv({ QUEUE_DRIVER: 'invalid-driver' });
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid QUEUE_DRIVER: invalid-driver');
+  });
+
   it('requires a redis registry URL when JOB_REGISTRY_DB=redis and no fallback exists', () => {
     applyRequiredEnv({
       JOB_REGISTRY_DB: 'redis',
@@ -337,6 +359,44 @@ describe('config loaders', () => {
     expect(() => loadCoreConfig()).toThrow(
       'JOB_REGISTRY_REDIS_URL or REDIS_URL is required when JOB_REGISTRY_DB=redis',
     );
+  });
+
+  it('does not require redis_url when queue_driver=inproc', () => {
+    applyRequiredEnv({
+      REDIS_URL: undefined,
+      QUEUE_DRIVER: undefined,
+      SNIPTAIL_WORKER_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'queue_driver = "inproc"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.queueDriver).toBe('inproc');
+    expect(config.redisUrl).toBeUndefined();
   });
 
   it('falls back to worker.toml redis_url when JOB_REGISTRY_DB=redis', () => {

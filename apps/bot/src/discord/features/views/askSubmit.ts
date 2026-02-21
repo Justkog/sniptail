@@ -1,5 +1,5 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -18,7 +18,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 export async function handleAskModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
   permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
