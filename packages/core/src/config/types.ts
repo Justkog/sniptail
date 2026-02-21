@@ -3,6 +3,7 @@ import type { GitHubConfig } from '../github/client.js';
 import type { GitLabConfig } from '../gitlab/client.js';
 import type { ChannelProvider } from '../types/channel.js';
 import type { ModelReasoningEffort } from '@openai/codex-sdk';
+import type { PermissionsConfig } from '../permissions/permissionsPolicyTypes.js';
 
 export type JobModelConfig = {
   model: string;
@@ -41,7 +42,7 @@ export type BotConfig = CoreConfig & {
     guildId?: string;
     channelIds?: string[];
   };
-  adminUserIds: string[];
+  permissions: PermissionsConfig;
   redisUrl: string;
 };
 

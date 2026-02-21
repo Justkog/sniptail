@@ -8,8 +8,15 @@ import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerAppMentionEvent({ app, config, queue }: SlackHandlerContext) {
+export function registerAppMentionEvent({
+  app,
+  config,
+  queue,
+  permissions,
+  slackIds,
+}: SlackHandlerContext) {
   app.event('app_mention', async ({ event, client }) => {
     const channelId = (event as { channel?: string }).channel;
     const text = (event as { text?: string }).text ?? '';
@@ -63,6 +70,39 @@ export function registerAppMentionEvent({ app, config, queue }: SlackHandlerCont
       },
       ...(threadContext ? { threadContext } : {}),
     };
+
+    if (!userId) {
+      return;
+    }
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions,
+      client,
+      slackIds,
+      action: 'jobs.mention',
+      summary: `Queue mention job ${job.jobId}`,
+      operation: {
+        kind: 'enqueueJob',
+        job,
+      },
+      actor: {
+        userId,
+        channelId,
+        ...(threadId ? { threadId } : {}),
+        ...((event as { team?: string }).team
+          ? { workspaceId: (event as { team?: string }).team }
+          : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: channelId,
+          text: 'You are not authorized to mention this bot for jobs.',
+          threadTs: threadId,
+        });
+      },
+    });
+    if (!authorized) {
+      return;
+    }
 
     try {
       await saveJobQueued(job);

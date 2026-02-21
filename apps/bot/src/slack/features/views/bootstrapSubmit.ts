@@ -8,12 +8,14 @@ import { createJobId } from '../../../lib/jobs.js';
 import { parseOptionalInt } from '../../lib/parsing.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveBootstrapServices } from '../../lib/bootstrap.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
 export function registerBootstrapSubmitView({
   app,
   slackIds,
   bootstrapQueue,
   config,
+  permissions,
 }: SlackHandlerContext) {
   app.view(slackIds.actions.bootstrapSubmit, async ({ ack, body, view, client }) => {
     const state = view.state.values;
@@ -99,6 +101,31 @@ export function registerBootstrapSubmitView({
           userId: responseUser,
         },
       };
+
+      const authorized = await authorizeSlackOperationAndRespond({
+        permissions,
+        client: app.client,
+        slackIds,
+        action: 'jobs.bootstrap',
+        summary: `Queue bootstrap request ${bootstrapRequest.requestId} for ${repoName}`,
+        operation: {
+          kind: 'enqueueBootstrap',
+          request: bootstrapRequest,
+        },
+        actor: {
+          userId: responseUser,
+          channelId: responseChannel,
+        },
+        onDeny: async () => {
+          await postMessage(app, {
+            channel: responseChannel,
+            text: 'You are not authorized to bootstrap repositories.',
+          });
+        },
+      });
+      if (!authorized) {
+        return;
+      }
 
       await enqueueBootstrap(bootstrapQueue, bootstrapRequest);
 

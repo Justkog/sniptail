@@ -62,6 +62,7 @@ Sniptail can optionally restrict where the bot responds via an allowlist.
 2. Copy IDs as needed:
    - **Guild ID** (server): right-click the server icon → **Copy Server ID**
    - **Channel IDs**: right-click the channel → **Copy Channel ID**
+   - **Role IDs** (for group-based permissions): Server Settings → Roles → right-click role → **Copy Role ID**
 
 ## 6) Configure Sniptail
 
@@ -116,6 +117,7 @@ pnpm run dev
 3. In a Discord channel the bot can read/write:
    - Try a slash command, e.g. `/sniptail-usage`
    - Mention the bot: `@Sniptail hello`
+   - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
 
 ## Troubleshooting
 

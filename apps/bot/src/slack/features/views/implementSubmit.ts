@@ -9,8 +9,15 @@ import { resolveDefaultBaseBranch } from '../../modals.js';
 import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
 import { parseCommaList } from '../../lib/parsing.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerImplementSubmitView({ app, slackIds, config, queue }: SlackHandlerContext) {
+export function registerImplementSubmitView({
+  app,
+  slackIds,
+  config,
+  queue,
+  permissions,
+}: SlackHandlerContext) {
   app.view(slackIds.actions.implementSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
@@ -65,6 +72,32 @@ export function registerImplementSubmitView({ app, slackIds, config, queue }: Sl
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
     const job: JobSpec = Object.keys(settings).length ? { ...jobBase, settings } : jobBase;
+
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions,
+      client: app.client,
+      slackIds,
+      action: 'jobs.implement',
+      summary: `Queue implement job ${job.jobId}`,
+      operation: {
+        kind: 'enqueueJob',
+        job,
+      },
+      actor: {
+        userId: job.channel.userId ?? body.user.id,
+        channelId: job.channel.channelId,
+        ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: metadata?.channelId ?? body.user.id,
+          text: 'You are not authorized to run implement jobs.',
+        });
+      },
+    });
+    if (!authorized) {
+      return;
+    }
 
     try {
       await saveJobQueued(job);

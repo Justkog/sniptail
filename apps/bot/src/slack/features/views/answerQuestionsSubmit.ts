@@ -5,12 +5,14 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
 export function registerAnswerQuestionsSubmitView({
   app,
   slackIds,
   config,
   queue,
+  permissions,
 }: SlackHandlerContext) {
   app.view(slackIds.actions.answerQuestionsSubmit, async ({ ack, body, view }) => {
     await ack();
@@ -71,6 +73,33 @@ export function registerAnswerQuestionsSubmitView({
       },
       resumeFromJobId: record.job.jobId,
     };
+
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions,
+      client: app.client,
+      slackIds,
+      action: 'jobs.answerQuestions',
+      summary: `Queue answer-questions job ${job.jobId}`,
+      operation: {
+        kind: 'enqueueJob',
+        job,
+      },
+      actor: {
+        userId,
+        channelId,
+        ...(threadId ? { threadId } : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: channelId,
+          text: 'You are not authorized to submit answers for this job.',
+          ...(threadId ? { threadTs: threadId } : {}),
+        });
+      },
+    });
+    if (!authorized) {
+      return;
+    }
 
     try {
       await saveJobQueued(job);

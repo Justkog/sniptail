@@ -1,8 +1,14 @@
 import type { SlackHandlerContext } from '../context.js';
 import { buildAskModal } from '../../modals.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerAskFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
+export function registerAskFromJobAction({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
   app.action(slackIds.actions.askFromJob, async ({ ack, body, client, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -14,6 +20,27 @@ export function registerAskFromJobAction({ app, slackIds, config }: SlackHandler
     const userId = (body as { user?: { id?: string } }).user?.id;
 
     if (!jobId || !triggerId || !channelId || !userId) {
+      return;
+    }
+
+    const authorized = await authorizeSlackPrecheckAndRespond({
+      permissions,
+      client,
+      action: 'jobs.ask',
+      actor: {
+        userId,
+        channelId,
+        ...(threadId ? { threadId } : {}),
+      },
+      onDeny: async () => {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: 'You are not authorized to run ask jobs.',
+        });
+      },
+    });
+    if (!authorized) {
       return;
     }
 

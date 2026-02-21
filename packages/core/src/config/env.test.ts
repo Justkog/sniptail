@@ -42,6 +42,142 @@ describe('config loaders', () => {
     expect(config.botName).toBe('Sniptail');
     expect(config.debugJobSpecMessages).toBe(false);
     expect(config.repoAllowlist).toEqual({});
+    expect(config.permissions.defaultEffect).toBe('allow');
+    expect(config.permissions.rules).toEqual([]);
+  });
+
+  it('parses permission rules from TOML', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      'approval_ttl_seconds = 7200',
+      'group_cache_ttl_seconds = 45',
+      '',
+      '[[permissions.rules]]',
+      'id = "clear-before-rule"',
+      'effect = "require_approval"',
+      'actions = ["jobs.clearBefore"]',
+      'subjects = ["user:*"]',
+      'approver_subjects = ["group:slack:S123"]',
+      'notify_subjects = ["group:slack:S123"]',
+      'providers = ["slack"]',
+      'channel_ids = ["C123"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    const config = loadBotConfig();
+    expect(config.permissions.approvalTtlSeconds).toBe(7200);
+    expect(config.permissions.groupCacheTtlSeconds).toBe(45);
+    expect(config.permissions.rules[0]?.id).toBe('clear-before-rule');
+  });
+
+  it('fails on invalid permission subject token', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "bad-subject-rule"',
+      'effect = "deny"',
+      'actions = ["jobs.clear"]',
+      'subjects = ["team:abc"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    expect(() => loadBotConfig()).toThrow('Invalid permissions.rules[0].subjects in TOML');
+  });
+
+  it('fails when require_approval is missing approver_subjects', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "missing-approvers"',
+      'effect = "require_approval"',
+      'actions = ["jobs.clearBefore"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    expect(() => loadBotConfig()).toThrow('require_approval needs approver subjects');
   });
 
   it('enables channels from SNIPTAIL_CHANNELS when provided', () => {

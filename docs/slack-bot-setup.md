@@ -58,8 +58,9 @@ Sniptail uses Socket Mode, which requires an **app-level token**.
 
 1. Go to **OAuth & Permissions**.
 2. Confirm the bot scopes from the manifest are present (Sniptail needs things like `commands`, `chat:write`, `files:write`, `app_mentions:read`, history scopes, etc.).
-3. Click **Install to Workspace** (or **Reinstall to Workspace** after changes).
-4. Copy the **Bot User OAuth Token** — you’ll use it as `SLACK_BOT_TOKEN` (typically starts with `xoxb-`).
+3. If you use group-based permissions (`group:slack:<usergroup_id>`), add `usergroups:read` so Sniptail can resolve approver/requester group membership.
+4. Click **Install to Workspace** (or **Reinstall to Workspace** after changes).
+5. Copy the **Bot User OAuth Token** — you’ll use it as `SLACK_BOT_TOKEN` (typically starts with `xoxb-`).
 
 ## 6) Get the signing secret
 
@@ -113,6 +114,7 @@ pnpm run dev
 3. In Slack:
    - Try `/sniptail-usage` (or your custom prefix)
    - Mention the bot in a channel it’s in: `@Sniptail hello`
+   - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
 
 ## Troubleshooting
 

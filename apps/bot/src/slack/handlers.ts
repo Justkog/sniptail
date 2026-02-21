@@ -13,6 +13,7 @@ import { registerAnswerQuestionsAction } from './features/actions/answerQuestion
 import { registerImplementFromJobAction } from './features/actions/implementFromJob.js';
 import { registerReviewFromJobAction } from './features/actions/reviewFromJob.js';
 import { registerWorktreeCommandsAction } from './features/actions/worktreeCommands.js';
+import { registerApprovalActions } from './features/actions/approvalActions.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
 import { registerAskSubmitView } from './features/views/askSubmit.js';
 import { registerPlanSubmitView } from './features/views/planSubmit.js';
@@ -34,6 +35,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerReviewFromJobAction(context);
   registerWorktreeCommandsAction(context);
   registerClearJobAction(context);
+  registerApprovalActions(context);
   registerAnswerQuestionsAction(context);
   registerAppMentionEvent(context);
   registerBootstrapSubmitView(context);

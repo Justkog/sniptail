@@ -13,11 +13,14 @@ import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { parseCommaList } from '../../../slack/lib/parsing.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleImplementModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
   queue: Queue<JobSpec>,
+  permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
 
@@ -67,6 +70,33 @@ export async function handleImplementModalSubmit(
       ...(reviewers ? { reviewers } : {}),
       ...(labels ? { labels } : {}),
     };
+  }
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.implement',
+    summary: `Queue implement job ${job.jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId: job.channel.channelId,
+      ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.editReply('You are not authorized to run implement jobs.');
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.editReply(message);
+    },
+  });
+  if (!authorized) {
+    return;
   }
 
   try {

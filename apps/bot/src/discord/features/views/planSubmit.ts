@@ -12,11 +12,14 @@ import { planSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handlePlanModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
   queue: Queue<JobSpec>,
+  permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
 
@@ -64,6 +67,33 @@ export async function handlePlanModalSubmit(
     ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.plan',
+    summary: `Queue plan job ${job.jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId: job.channel.channelId,
+      ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.editReply('You are not authorized to run plan jobs.');
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.editReply(message);
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   try {
     await saveJobQueued(job);

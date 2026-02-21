@@ -5,8 +5,15 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerReviewFromJobAction({ app, slackIds, config, queue }: SlackHandlerContext) {
+export function registerReviewFromJobAction({
+  app,
+  slackIds,
+  config,
+  queue,
+  permissions,
+}: SlackHandlerContext) {
   app.action(slackIds.actions.reviewFromJob, async ({ ack, body, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -54,6 +61,33 @@ export function registerReviewFromJobAction({ app, slackIds, config, queue }: Sl
       resumeFromJobId: jobId,
       ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
     };
+
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions,
+      client: app.client,
+      slackIds,
+      action: 'jobs.review',
+      summary: `Start review job from ${jobId}`,
+      operation: {
+        kind: 'enqueueJob',
+        job,
+      },
+      actor: {
+        userId,
+        channelId,
+        ...(effectiveThreadId ? { threadId: effectiveThreadId } : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: channelId,
+          text: 'You are not authorized to start review jobs.',
+          ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
+        });
+      },
+    });
+    if (!authorized) {
+      return;
+    }
 
     try {
       await saveJobQueued(job);

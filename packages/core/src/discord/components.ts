@@ -9,6 +9,8 @@ export type DiscordCompletionAction =
   | 'clearJobConfirm'
   | 'clearJobCancel';
 
+export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
+
 type DiscordActionRow = {
   type: 1;
   components: Array<{
@@ -20,6 +22,7 @@ type DiscordActionRow = {
 };
 
 const completionPrefix = 'sniptail:completion';
+const approvalPrefix = 'sniptail:approval';
 
 const actionTokens = {
   askFromJob: 'ask',
@@ -48,6 +51,21 @@ const tokenToAction: Record<
   [actionTokens.clearJobCancel]: 'clearJobCancel',
 };
 
+const approvalActionTokens = {
+  approvalApprove: 'approve',
+  approvalDeny: 'deny',
+  approvalCancel: 'cancel',
+} as const;
+
+const approvalTokenToAction: Record<
+  (typeof approvalActionTokens)[DiscordApprovalAction],
+  DiscordApprovalAction
+> = {
+  [approvalActionTokens.approvalApprove]: 'approvalApprove',
+  [approvalActionTokens.approvalDeny]: 'approvalDeny',
+  [approvalActionTokens.approvalCancel]: 'approvalCancel',
+};
+
 export function buildDiscordCompletionCustomId(action: DiscordCompletionAction, jobId: string) {
   return `${completionPrefix}:${actionTokens[action]}:${jobId}`;
 }
@@ -64,6 +82,24 @@ export function parseDiscordCompletionCustomId(
   const action = tokenToAction[actionToken];
   if (!action) return undefined;
   return { action, jobId };
+}
+
+export function buildDiscordApprovalCustomId(action: DiscordApprovalAction, approvalId: string) {
+  return `${approvalPrefix}:${approvalActionTokens[action]}:${approvalId}`;
+}
+
+export function parseDiscordApprovalCustomId(
+  customId: string,
+): { action: DiscordApprovalAction; approvalId: string } | undefined {
+  if (!customId.startsWith(`${approvalPrefix}:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 3) return undefined;
+  const actionToken = parts[1] as (typeof approvalActionTokens)[DiscordApprovalAction];
+  const approvalId = parts.slice(2).join(':').trim();
+  if (!approvalId) return undefined;
+  const action = approvalTokenToAction[actionToken];
+  if (!action) return undefined;
+  return { action, approvalId };
 }
 
 export function buildDiscordCompletionComponents(
@@ -168,6 +204,34 @@ export function buildDiscordClearJobConfirmComponents(jobId: string): DiscordAct
           style: 2,
           label: 'Cancel',
           custom_id: buildDiscordCompletionCustomId('clearJobCancel', jobId),
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDiscordApprovalComponents(approvalId: string): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 1,
+          label: 'Approve',
+          custom_id: buildDiscordApprovalCustomId('approvalApprove', approvalId),
+        },
+        {
+          type: 2,
+          style: 4,
+          label: 'Deny',
+          custom_id: buildDiscordApprovalCustomId('approvalDeny', approvalId),
+        },
+        {
+          type: 2,
+          style: 2,
+          label: 'Cancel',
+          custom_id: buildDiscordApprovalCustomId('approvalCancel', approvalId),
         },
       ],
     },
