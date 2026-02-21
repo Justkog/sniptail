@@ -1,10 +1,11 @@
 export type KnownChannelProvider = 'slack' | 'discord';
+export const KNOWN_CHANNEL_PROVIDERS: KnownChannelProvider[] = ['slack', 'discord'];
 export type ChannelProvider = KnownChannelProvider | (string & {});
 
 export function isKnownChannelProvider(
   provider: ChannelProvider,
 ): provider is KnownChannelProvider {
-  return provider === 'slack' || provider === 'discord';
+  return (KNOWN_CHANNEL_PROVIDERS as string[]).includes(provider);
 }
 
 export type ChannelContextBase = {
