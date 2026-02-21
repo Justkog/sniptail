@@ -18,14 +18,17 @@ export function registerClearJobAction({
     const threadTs = (body as { message?: { ts?: string } }).message?.ts;
     const userId = (body as { user?: { id?: string } }).user?.id;
 
+    if (!channelId) {
+      logger.warn({ jobId }, 'clearJob action called without a channel id; skipping');
+      return;
+    }
+
     if (!jobId || !userId) {
-      if (channelId) {
-        await postMessage(app, {
-          channel: channelId,
-          text: 'Unable to clear job: missing job id.',
-          ...(threadTs ? { threadTs } : {}),
-        });
-      }
+      await postMessage(app, {
+        channel: channelId,
+        text: 'Unable to clear job: missing job id.',
+        ...(threadTs ? { threadTs } : {}),
+      });
       return;
     }
 
@@ -49,7 +52,7 @@ export function registerClearJobAction({
       },
       actor: {
         userId,
-        channelId: channelId ?? '',
+        channelId,
         ...(threadTs ? { threadId: threadTs } : {}),
       },
       onDeny: async () => {
