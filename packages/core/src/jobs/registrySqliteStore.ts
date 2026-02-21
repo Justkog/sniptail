@@ -47,6 +47,19 @@ export function createSqliteJobRegistryStore(client: SqliteJobRegistryClient): J
           set: { record: serialized },
         });
     },
+    async conditionalUpdateRecord(
+      key: string,
+      record: JobRecord,
+      condition: { statusEquals: string },
+    ): Promise<boolean> {
+      const serialized = JSON.stringify(record);
+      const result = client.raw
+        .prepare(
+          `UPDATE jobs SET record = ? WHERE job_id = ? AND json_extract(record, '$.status') = ?`,
+        )
+        .run(serialized, key, condition.statusEquals);
+      return result.changes > 0;
+    },
     async deleteRecordsByKeys(keys: string[]): Promise<void> {
       if (!keys.length) return;
       await client.db.delete(sqliteJobs).where(inArray(sqliteJobs.jobId, keys));

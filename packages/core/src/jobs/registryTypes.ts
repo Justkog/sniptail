@@ -20,6 +20,18 @@ export interface JobRegistryStore {
   loadAllRecordsByPrefix(prefix: string): Promise<JobRecord[]>;
   loadRecordByKey(key: string): Promise<JobRecord | undefined>;
   upsertRecord(key: string, record: JobRecord): Promise<void>;
+  /**
+   * Atomically updates the record at `key` only if the currently stored
+   * record has `status` equal to `condition.statusEquals`.
+   *
+   * Returns `true` when the record was updated, `false` when the condition
+   * was not satisfied or the record does not exist.
+   */
+  conditionalUpdateRecord(
+    key: string,
+    record: JobRecord,
+    condition: { statusEquals: string },
+  ): Promise<boolean>;
   deleteRecordsByKeys(keys: string[]): Promise<void>;
   deleteRecordByKey(key: string): Promise<void>;
 }

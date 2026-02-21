@@ -41,6 +41,19 @@ async function upsert(request: ApprovalRequest): Promise<void> {
   await store.upsertRecord(approvalKey(request.id), request as unknown as JobRecord);
 }
 
+async function conditionalUpsert(
+  id: string,
+  updated: ApprovalRequest,
+  requiredStatus: ApprovalRequest['status'],
+): Promise<boolean> {
+  const store = await getJobRegistryStore();
+  return store.conditionalUpdateRecord(
+    approvalKey(id),
+    updated as unknown as JobRecord,
+    { statusEquals: requiredStatus },
+  );
+}
+
 function makeTransitionResult(
   request: ApprovalRequest | undefined,
   changed: boolean,
@@ -76,7 +89,10 @@ async function resolveIfPending(input: {
       resolution: 'expired',
       resolvedAt: now.toISOString(),
     };
-    await upsert(expired);
+    const changed = await conditionalUpsert(request.id, expired, 'pending');
+    if (!changed) {
+      return makeTransitionResult(request, false, 'not_pending');
+    }
     return makeTransitionResult(expired, true, 'expired');
   }
 
@@ -87,7 +103,10 @@ async function resolveIfPending(input: {
     resolvedAt: now.toISOString(),
     ...(input.resolvedByUserId ? { resolvedBy: { userId: input.resolvedByUserId } } : {}),
   };
-  await upsert(resolved);
+  const changed = await conditionalUpsert(request.id, resolved, 'pending');
+  if (!changed) {
+    return makeTransitionResult(request, false, 'not_pending');
+  }
   return makeTransitionResult(resolved, true, 'updated');
 }
 
