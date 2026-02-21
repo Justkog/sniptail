@@ -93,9 +93,9 @@ export function parseDiscordApprovalCustomId(
 ): { action: DiscordApprovalAction; approvalId: string } | undefined {
   if (!customId.startsWith(`${approvalPrefix}:`)) return undefined;
   const parts = customId.split(':');
-  if (parts.length < 3) return undefined;
-  const actionToken = parts[1] as (typeof approvalActionTokens)[DiscordApprovalAction];
-  const approvalId = parts.slice(2).join(':').trim();
+  if (parts.length < 4) return undefined;
+  const actionToken = parts[2] as (typeof approvalActionTokens)[DiscordApprovalAction];
+  const approvalId = parts.slice(3).join(':').trim();
   if (!approvalId) return undefined;
   const action = approvalTokenToAction[actionToken];
   if (!action) return undefined;
