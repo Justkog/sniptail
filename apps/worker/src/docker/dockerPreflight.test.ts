@@ -6,6 +6,7 @@ function buildConfig(): WorkerConfig {
   return {
     repoAllowlist: {},
     jobWorkRoot: '/tmp/jobs',
+    queueDriver: 'redis',
     jobRegistryDriver: 'redis',
     jobRegistryRedisUrl: 'redis://localhost:6379/1',
     botName: 'Sniptail',

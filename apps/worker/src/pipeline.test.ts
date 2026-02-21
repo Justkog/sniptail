@@ -5,6 +5,7 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
     jobRegistryPath: '/tmp/sniptail/registry',
     jobRegistryDriver: 'sqlite',
   }),
@@ -13,6 +14,7 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
     jobRegistryPath: '/tmp/sniptail/registry',
     jobRegistryDriver: 'sqlite',
     repoCacheRoot: '/tmp/sniptail/repo-cache',
@@ -52,7 +54,7 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
   const jobWorkRoot = '/tmp/sniptail/job-root';
   return {
     validateJob: vi.fn(),
-    buildJobPaths: (jobId: string) => ({
+    buildJobPaths: (_jobRoot: string, jobId: string) => ({
       root: `${jobWorkRoot}/${jobId}`,
       reposRoot: `${jobWorkRoot}/${jobId}/repos`,
       artifactsRoot: `${jobWorkRoot}/${jobId}/artifacts`,
@@ -151,11 +153,11 @@ vi.mock('node:fs/promises', () => ({
 import type { Dirent } from 'node:fs';
 import { constants } from 'node:fs';
 import { appendFile, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
-import type { Queue } from 'bullmq';
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
@@ -232,7 +234,7 @@ describe('worker/pipeline helpers', () => {
     ]);
     copyFileMock.mockResolvedValueOnce(undefined);
 
-    await copyArtifactsFromResumedJob('job-prev', {
+    await copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
       root: '/tmp/sniptail/job-root/job-next',
       reposRoot: '/tmp/sniptail/job-root/job-next/repos',
       artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
@@ -260,7 +262,7 @@ describe('worker/pipeline helpers', () => {
     );
 
     await expect(
-      copyArtifactsFromResumedJob('job-prev', {
+      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
         root: '/tmp/sniptail/job-root/job-next',
         reposRoot: '/tmp/sniptail/job-root/job-next/repos',
         artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
@@ -280,7 +282,7 @@ describe('worker/pipeline helpers', () => {
     copyFileMock.mockRejectedValueOnce(Object.assign(new Error('exists'), { code: 'EEXIST' }));
 
     await expect(
-      copyArtifactsFromResumedJob('job-prev', {
+      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
         root: '/tmp/sniptail/job-root/job-next',
         reposRoot: '/tmp/sniptail/job-root/job-next/repos',
         artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
@@ -371,9 +373,9 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
-      '/tmp/fallback',
-    );
+    await expect(
+      resolveMentionWorkingDirectory(job, '/tmp/fallback', registry, '/tmp/sniptail/job-root'),
+    ).resolves.toBe('/tmp/fallback');
   });
 
   it('resolveMentionWorkingDirectory uses previous job root when available', async () => {
@@ -397,9 +399,9 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
-      '/tmp/sniptail/job-root/job-prev',
-    );
+    await expect(
+      resolveMentionWorkingDirectory(job, '/tmp/fallback', registry, '/tmp/sniptail/job-root'),
+    ).resolves.toBe('/tmp/sniptail/job-root/job-prev');
     expect(findLatestJobByChannelThreadAndTypesMock).toHaveBeenCalledWith(
       'slack',
       'C1',
@@ -427,9 +429,9 @@ describe('worker/pipeline helpers', () => {
       channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
     };
 
-    await expect(resolveMentionWorkingDirectory(job, '/tmp/fallback', registry)).resolves.toBe(
-      '/tmp/fallback',
-    );
+    await expect(
+      resolveMentionWorkingDirectory(job, '/tmp/fallback', registry, '/tmp/sniptail/job-root'),
+    ).resolves.toBe('/tmp/fallback');
   });
 });
 
@@ -465,7 +467,7 @@ describe('worker/pipeline runJob', () => {
     writeFileMock.mockResolvedValue(undefined);
     appendFileMock.mockResolvedValue(undefined);
 
-    const botQueue = {} as Queue<BotEvent>;
+    const botQueue = {} as QueuePublisher<BotEvent>;
     const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
 
     expect(result).toEqual({

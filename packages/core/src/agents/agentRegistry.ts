@@ -1,7 +1,7 @@
-import { resolve } from 'node:path';
 import type { AgentDescriptorRegistry } from './types.js';
 import type { WorkerConfig } from '../config/types.js';
 import { runCodex } from '../codex/codex.js';
+import { resolveWorkerAgentScriptPath } from './resolveWorkerAgentScriptPath.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
 import { runCopilot } from '../copilot/copilot.js';
 import { formatCopilotEvent, summarizeCopilotEvent } from '../copilot/logging.js';
@@ -53,7 +53,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
       ...(config.copilot.executionMode === 'docker'
         ? {
             copilot: {
-              cliPath: resolve(process.cwd(), 'scripts', 'copilot-docker.sh'),
+              cliPath: resolveWorkerAgentScriptPath('copilot-docker.sh'),
               docker: {
                 enabled: true,
                 ...(config.copilot.dockerfilePath && {

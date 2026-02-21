@@ -443,9 +443,9 @@ describe('git mirror ensureClone', () => {
             ...resultBase,
             exitCode: 1,
             stderr:
-              "remote: error: failed to update refs\n" +
+              'remote: error: failed to update refs\n' +
               "remote: error: cannot lock ref 'refs/remotes/origin/staging': is at abcdef1 but expected 1234567\n" +
-              "remote: error: update rejected for refs/remotes/origin/staging (non-fast-forward)\n",
+              'remote: error: update rejected for refs/remotes/origin/staging (non-fast-forward)\n',
           };
         }
 

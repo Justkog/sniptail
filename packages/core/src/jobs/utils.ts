@@ -1,9 +1,7 @@
 import { join } from 'node:path';
-import { loadCoreConfig } from '../config/config.js';
 import type { JobSpec, RepoConfig } from '../types/job.js';
 
 const gitRefPattern = /^[A-Za-z0-9._/-]+$/;
-const config = loadCoreConfig();
 
 export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConfig> = {}) {
   if (job.type !== 'MENTION' && job.repoKeys.length === 0) {
@@ -21,8 +19,8 @@ export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConf
   }
 }
 
-export function buildJobPaths(jobId: string) {
-  const root = join(config.jobWorkRoot, jobId);
+export function buildJobPaths(jobWorkRoot: string, jobId: string) {
+  const root = join(jobWorkRoot, jobId);
   return {
     root,
     reposRoot: join(root, 'repos'),

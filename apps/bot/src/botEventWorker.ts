@@ -1,24 +1,28 @@
-import { Worker } from 'bullmq';
-import type { Job } from 'bullmq';
 import type { App } from '@slack/bolt';
 import type { Client } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
-import { botEventQueueName, createConnectionOptions } from '@sniptail/core/queue/queue.js';
+import type {
+  QueueConsumerHandle,
+  QueueTransportRuntime,
+} from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import { resolveBotChannelAdapter } from './channels/botChannelAdapters.js';
 
 type BotEventWorkerDeps = {
-  redisUrl: string;
+  queueRuntime: QueueTransportRuntime;
   slackApp?: App;
   discordClient?: Client;
 };
 
-export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEventWorkerDeps) {
-  const connection = createConnectionOptions(redisUrl);
-  const worker = new Worker<BotEvent>(
-    botEventQueueName,
-    async (job) => {
-      const event = job.data;
+export function startBotEventWorker({
+  queueRuntime,
+  slackApp,
+  discordClient,
+}: BotEventWorkerDeps): QueueConsumerHandle {
+  return queueRuntime.consumeBotEvents({
+    concurrency: 4,
+    handler: async (job) => {
+      const event: BotEvent = job.data;
       const adapter = resolveBotChannelAdapter(event.provider);
       const handled = await adapter.handleEvent(event, {
         ...(slackApp ? { slackApp } : {}),
@@ -35,16 +39,11 @@ export function startBotEventWorker({ redisUrl, slackApp, discordClient }: BotEv
         );
       }
     },
-    { connection, concurrency: 4 },
-  );
-
-  worker.on('failed', (job: Job<BotEvent> | undefined, err: Error) => {
-    logger.error({ jobId: job?.data?.jobId, err }, 'Bot event failed');
+    onFailed: (job, err) => {
+      logger.error({ jobId: job?.data?.jobId, err }, 'Bot event failed');
+    },
+    onCompleted: (job) => {
+      logger.info({ jobId: job.data?.jobId, type: job.data?.type }, 'Bot event completed');
+    },
   });
-
-  worker.on('completed', (job: Job<BotEvent> | undefined) => {
-    logger.info({ jobId: job?.data?.jobId, type: job?.data?.type }, 'Bot event completed');
-  });
-
-  return worker;
 }

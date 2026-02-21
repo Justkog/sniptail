@@ -83,7 +83,7 @@ export async function runJob(
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
   });
 
-  const paths = buildJobPaths(job.jobId);
+  const paths = buildJobPaths(config.jobWorkRoot, job.jobId);
   await ensureJobDirectories(paths);
   await writeJobSpecArtifact(paths, job);
 
@@ -115,12 +115,14 @@ export async function runJob(
       redactionPatterns,
     );
     if (job.resumeFromJobId) {
-      await copyArtifactsFromResumedJob(job.resumeFromJobId, paths).catch((err) => {
-        logger.warn(
-          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
-          'Failed to copy artifacts from resumed job',
-        );
-      });
+      await copyArtifactsFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
+        (err) => {
+          logger.warn(
+            { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+            'Failed to copy artifacts from resumed job',
+          );
+        },
+      );
     }
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({

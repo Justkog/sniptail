@@ -9,8 +9,6 @@ import type { JobRecord } from './registryTypes.js';
 
 export type { JobRecord, JobStatus } from './registryTypes.js';
 
-const config = loadCoreConfig();
-
 const JOB_KEY_PREFIX = 'job:';
 
 function jobKey(jobId: string) {
@@ -22,7 +20,8 @@ function jobIdFromKey(key: string) {
 }
 
 function removeJobRoot(jobId: string) {
-  const jobRoot = join(config.jobWorkRoot, jobId);
+  const { jobWorkRoot } = loadCoreConfig();
+  const jobRoot = join(jobWorkRoot, jobId);
   return rm(jobRoot, { recursive: true, force: true })
     .then(() => {
       logger.info({ jobId, jobRoot }, 'Cleared expired job data');

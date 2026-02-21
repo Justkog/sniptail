@@ -31,7 +31,12 @@ export async function runAgentJob(options: {
   logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
 
   const agentThreadId = await resolveAgentThreadId(job, agentId, registry);
-  const mentionWorkDir = await resolveMentionWorkingDirectory(job, config.repoCacheRoot, registry);
+  const mentionWorkDir = await resolveMentionWorkingDirectory(
+    job,
+    config.repoCacheRoot,
+    registry,
+    config.jobWorkRoot,
+  );
   const modelOverride = descriptor.resolveModelConfig(config, job.type);
   const additionalDirectories = descriptor.shouldIncludeRepoCache(config, job.type)
     ? [config.repoCacheRoot]

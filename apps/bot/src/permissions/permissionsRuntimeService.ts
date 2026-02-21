@@ -1,4 +1,4 @@
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap, enqueueJob, enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
@@ -29,9 +29,9 @@ import { resolvePermissionsProviderCapabilities } from './permissionsProviderCap
 
 type RuntimeDeps = {
   config: BotConfig;
-  queue: Queue<JobSpec>;
-  bootstrapQueue: Queue<BootstrapRequest>;
-  workerEventQueue: Queue<WorkerEvent>;
+  queue: QueuePublisher<JobSpec>;
+  bootstrapQueue: QueuePublisher<BootstrapRequest>;
+  workerEventQueue: QueuePublisher<WorkerEvent>;
 };
 
 type AuthorizationInput = {
@@ -67,9 +67,9 @@ export type ApprovalInteractionResult =
 
 export class PermissionsRuntimeService {
   readonly #config: BotConfig;
-  readonly #queue: Queue<JobSpec>;
-  readonly #bootstrapQueue: Queue<BootstrapRequest>;
-  readonly #workerEventQueue: Queue<WorkerEvent>;
+  readonly #queue: QueuePublisher<JobSpec>;
+  readonly #bootstrapQueue: QueuePublisher<BootstrapRequest>;
+  readonly #workerEventQueue: QueuePublisher<WorkerEvent>;
 
   constructor(deps: RuntimeDeps) {
     this.#config = deps.config;
@@ -372,7 +372,10 @@ export class PermissionsRuntimeService {
 
   #matchesContext(
     request: ApprovalRequest,
-    input: Pick<AuthorizationInput, 'provider' | 'channelId' | 'threadId' | 'workspaceId' | 'guildId'>,
+    input: Pick<
+      AuthorizationInput,
+      'provider' | 'channelId' | 'threadId' | 'workspaceId' | 'guildId'
+    >,
   ): boolean {
     if (request.provider !== input.provider) {
       return false;

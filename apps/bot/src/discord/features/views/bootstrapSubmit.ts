@@ -1,5 +1,5 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
@@ -16,7 +16,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 export async function handleBootstrapModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: Queue<BootstrapRequest>,
+  queue: QueuePublisher<BootstrapRequest>,
   permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);

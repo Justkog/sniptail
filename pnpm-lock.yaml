@@ -67,6 +67,21 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
 
+  apps/local:
+    dependencies:
+      '@sniptail/bot':
+        specifier: workspace:*
+        version: link:../bot
+      '@sniptail/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@sniptail/worker':
+        specifier: workspace:*
+        version: link:../worker
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
+
   apps/worker:
     dependencies:
       '@sniptail/core':

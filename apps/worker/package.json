@@ -26,5 +26,11 @@
     "@sniptail/core": "workspace:*",
     "bullmq": "^5.51.0",
     "dotenv": "^17.2.3"
+  },
+  "exports": {
+    "./runtime": {
+      "types": "./dist/workerRuntimeLauncher.d.ts",
+      "default": "./dist/workerRuntimeLauncher.js"
+    }
   }
 }

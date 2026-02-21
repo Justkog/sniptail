@@ -91,6 +91,16 @@ export function resolveBotName(tomlValue: unknown): string {
   return rawBotName ? rawBotName : 'Sniptail';
 }
 
+export function resolveQueueDriver(tomlValue: unknown): 'redis' | 'inproc' {
+  const raw = (resolveStringValue('QUEUE_DRIVER', tomlValue, { defaultValue: 'redis' }) || 'redis')
+    .trim()
+    .toLowerCase();
+  if (raw !== 'redis' && raw !== 'inproc') {
+    throw new Error(`Invalid QUEUE_DRIVER: ${raw}`);
+  }
+  return raw;
+}
+
 export function resolveJobRegistryDriver(tomlValue: unknown): 'sqlite' | 'pg' | 'redis' {
   const raw = (
     resolveStringValue('JOB_REGISTRY_DB', tomlValue, { defaultValue: 'redis' }) || 'redis'

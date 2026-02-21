@@ -12,6 +12,10 @@ repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 # Required. No default. Example: "$HOME/.sniptail/jobs"
 job_work_root = "$HOME/.sniptail/jobs"
 
+# Queue transport driver: "redis" or "inproc".
+# Optional. Default: "redis". Use "inproc" with `sniptail local` only.
+queue_driver = "redis"
+
 # Path to the job registry file/directory (used for sqlite).
 # Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
 job_registry_path = "$HOME/.sniptail/job-registry"
@@ -46,7 +50,7 @@ primary_agent = "codex"
 # bootstrap_services = ["local", "github"]
 
 # Redis connection URL.
-# Required. No default. Example: "redis://localhost:6379"
+# Required when queue_driver="redis". No default. Example: "redis://localhost:6379"
 redis_url = "redis://localhost:6379"
 
 # Permission system defaults and rules.

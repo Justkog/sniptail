@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import {
@@ -11,7 +11,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 
 export async function handleUsage(
   interaction: ChatInputCommandInteraction,
-  workerEventQueue: Queue<WorkerEvent>,
+  workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
   const event: WorkerEvent = {
