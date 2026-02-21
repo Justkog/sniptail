@@ -7,6 +7,7 @@ export function buildCommandNames(prefix: string) {
     plan: `${prefix}-plan`,
     implement: `${prefix}-implement`,
     bootstrap: `${prefix}-bootstrap`,
+    clearBefore: `${prefix}-clear-before`,
     usage: `${prefix}-usage`,
   };
 }
@@ -46,6 +47,19 @@ export async function registerDiscordCommands(
       name: names.bootstrap,
       description: 'Bootstrap a new repository and allowlist entry',
       type: 1,
+    },
+    {
+      name: names.clearBefore,
+      description: 'Clear job data created before a cutoff date',
+      type: 1,
+      options: [
+        {
+          name: 'cutoff',
+          description: 'YYYY-MM-DD or ISO timestamp',
+          type: 3,
+          required: true,
+        },
+      ],
     },
   ];
   const route = guildId

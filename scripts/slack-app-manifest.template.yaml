@@ -44,6 +44,7 @@ oauth_config:
       - im:write
       - reactions:write
       - mpim:history
+      - usergroups:read
 settings:
   event_subscriptions:
     bot_events:

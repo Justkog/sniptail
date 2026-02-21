@@ -7,9 +7,15 @@ import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildWorktreeCommandsText } from '../../lib/worktree.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackHandlerContext) {
-  app.action(slackIds.actions.worktreeCommands, async ({ ack, body, action }) => {
+export function registerWorktreeCommandsAction({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
+  app.action(slackIds.actions.worktreeCommands, async ({ ack, body, action, client }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
     const channelId = (body as { channel?: { id?: string } }).channel?.id;
@@ -19,6 +25,30 @@ export function registerWorktreeCommandsAction({ app, slackIds, config }: SlackH
 
     if (!jobId || !channelId) {
       return;
+    }
+
+    const userId = (body as { user?: { id?: string } }).user?.id;
+    if (userId) {
+      const authorized = await authorizeSlackPrecheckAndRespond({
+        permissions,
+        client,
+        action: 'jobs.worktreeCommands',
+        actor: {
+          userId,
+          channelId,
+          ...(threadId ? { threadId } : {}),
+        },
+        onDeny: async () => {
+          await postMessage(app, {
+            channel: channelId,
+            text: 'You are not authorized to view worktree commands.',
+            ...(threadId ? { threadTs: threadId } : {}),
+          });
+        },
+      });
+      if (!authorized) {
+        return;
+      }
     }
 
     await refreshRepoAllowlist(config);

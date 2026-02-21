@@ -1,8 +1,14 @@
 import type { SlackHandlerContext } from '../context.js';
 import { buildImplementModal } from '../../modals.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerImplementFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
+export function registerImplementFromJobAction({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
   app.action(slackIds.actions.implementFromJob, async ({ ack, body, client, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -14,6 +20,27 @@ export function registerImplementFromJobAction({ app, slackIds, config }: SlackH
     const userId = (body as { user?: { id?: string } }).user?.id;
 
     if (!jobId || !triggerId || !channelId || !userId) {
+      return;
+    }
+
+    const authorized = await authorizeSlackPrecheckAndRespond({
+      permissions,
+      client,
+      action: 'jobs.implement',
+      actor: {
+        userId,
+        channelId,
+        ...(threadId ? { threadId } : {}),
+      },
+      onDeny: async () => {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: 'You are not authorized to run implement jobs.',
+        });
+      },
+    });
+    if (!authorized) {
       return;
     }
 

@@ -8,6 +8,7 @@ import type { Queue } from 'bullmq';
 import type { DiscordHandlerContext } from './context.js';
 import { registerDiscordCommands } from './lib/commands.js';
 import { registerDiscordHandlers } from './handlers.js';
+import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
 export async function startDiscordBot(
   jobQueue: Queue<JobSpec>,
@@ -44,6 +45,12 @@ export async function startDiscordBot(
     queue: jobQueue,
     bootstrapQueue,
     workerEventQueue,
+    permissions: new PermissionsRuntimeService({
+      config,
+      queue: jobQueue,
+      bootstrapQueue,
+      workerEventQueue,
+    }),
   };
 
   registerDiscordHandlers(context);

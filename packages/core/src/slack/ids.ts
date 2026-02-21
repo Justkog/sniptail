@@ -23,6 +23,9 @@ export type SlackIds = {
     bootstrapSubmit: string;
     answerQuestions: string;
     answerQuestionsSubmit: string;
+    approvalApprove: string;
+    approvalDeny: string;
+    approvalCancel: string;
   };
 };
 
@@ -52,6 +55,9 @@ export function buildSlackIds(botName: string): SlackIds {
       bootstrapSubmit: `${commandPrefix}-bootstrap-submit`,
       answerQuestions: `${commandPrefix}-answer-questions`,
       answerQuestionsSubmit: `${commandPrefix}-answer-questions-submit`,
+      approvalApprove: `${commandPrefix}-approval-approve`,
+      approvalDeny: `${commandPrefix}-approval-deny`,
+      approvalCancel: `${commandPrefix}-approval-cancel`,
     },
   };
 }

@@ -10,6 +10,8 @@ import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadCon
 import { buildChannelContext } from '../../lib/channel.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 const defaultGitRef = 'main';
 
@@ -45,7 +47,12 @@ async function isReplyToBot(message: Message): Promise<boolean> {
   }
 }
 
-export async function handleMention(message: Message, config: BotConfig, queue: Queue<JobSpec>) {
+export async function handleMention(
+  message: Message,
+  config: BotConfig,
+  queue: Queue<JobSpec>,
+  permissions: PermissionsRuntimeService,
+) {
   const isMention = message.mentions.has(message.client.user);
   const isReply = isMention ? false : await isReplyToBot(message);
 
@@ -85,6 +92,33 @@ export async function handleMention(message: Message, config: BotConfig, queue: 
     channel: buildChannelContext(message),
     ...(threadContext ? { threadContext } : {}),
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.mention',
+    summary: `Queue mention job ${job.jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: message.author.id,
+      channelId: message.channelId,
+      ...(message.channel.isThread() ? { threadId: message.channelId } : {}),
+      ...(message.guildId ? { guildId: message.guildId } : {}),
+      member: message.member,
+    },
+    client: message.client,
+    onDeny: async () => {
+      await message.reply('You are not authorized to trigger mention jobs.');
+    },
+    onRequireApprovalNotice: async (text) => {
+      await message.reply(text);
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   try {
     await saveJobQueued(job);

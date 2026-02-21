@@ -49,9 +49,33 @@ primary_agent = "codex"
 # Required. No default. Example: "redis://localhost:6379"
 redis_url = "redis://localhost:6379"
 
-# Admin Slack/Discord user IDs.
-# Optional. Default: [] (empty). Example: ["U123", "U456"]
-# admin_user_ids = ["U12345678"]
+# Permission system defaults and rules.
+# Optional. Default:
+# [permissions]
+# default_effect = "allow"
+# approval_ttl_seconds = 86400
+# group_cache_ttl_seconds = 60
+#
+# Subject token format:
+# - "user:<platform_user_id>" or "user:*"
+# - "group:slack:<usergroup_id>"
+# - "group:discord:<role_id>"
+#
+# Example:
+# [permissions]
+# default_effect = "allow"
+# approval_ttl_seconds = 86400
+# group_cache_ttl_seconds = 60
+#
+# [[permissions.rules]]
+# id = "clear-before-requires-approval"
+# effect = "require_approval"
+# actions = ["jobs.clearBefore"]
+# subjects = ["user:*"]
+# approver_subjects = ["group:slack:S12345", "group:discord:987654321"]
+# notify_subjects = ["group:slack:S12345", "group:discord:987654321"]
+# providers = ["slack", "discord"]
+# channel_ids = ["C123ABC", "123456789012345678"]
 
 # Slack channel settings.
 # Optional. Default: false.

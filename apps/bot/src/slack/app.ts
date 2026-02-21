@@ -7,6 +7,7 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from './features/context.js';
 import { registerSlackHandlers } from './handlers.js';
+import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
 export function createSlackApp(
   queue: Queue<JobSpec>,
@@ -20,6 +21,12 @@ export function createSlackApp(
     );
   }
   const slackIds = buildSlackIds(config.botName);
+  const permissions = new PermissionsRuntimeService({
+    config,
+    queue,
+    bootstrapQueue,
+    workerEventQueue,
+  });
   const app = new App({
     token: config.slack.botToken,
     appToken: config.slack.appToken,
@@ -34,6 +41,7 @@ export function createSlackApp(
     queue,
     bootstrapQueue,
     workerEventQueue,
+    permissions,
   };
 
   registerSlackHandlers(context);

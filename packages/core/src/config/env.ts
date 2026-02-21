@@ -1,9 +1,22 @@
 import { logger } from '../logger.js';
 import type { TomlTable } from './toml.js';
-import { loadTomlConfig, getTomlTable, getTomlString, getTomlNumber } from './toml.js';
+import {
+  loadTomlConfig,
+  getTomlTable,
+  getTomlString,
+  getTomlNumber,
+  getTomlStringArray,
+} from './toml.js';
 import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
 import type { JobType } from '../types/job.js';
-import type { ChannelProvider } from '../types/channel.js';
+import { isKnownChannelProvider, KNOWN_CHANNEL_PROVIDERS, type ChannelProvider } from '../types/channel.js';
+import { isPermissionAction } from '../permissions/permissionsActionCatalog.js';
+import type {
+  PermissionEffect,
+  PermissionRule,
+  PermissionSubject,
+  PermissionsConfig,
+} from '../permissions/permissionsPolicyTypes.js';
 import {
   BOT_CONFIG_PATH_ENV,
   WORKER_CONFIG_PATH_ENV,
@@ -181,6 +194,211 @@ function resolvePositiveIntegerFromSources(
   return defaultValue;
 }
 
+function parsePermissionSubjectToken(raw: string, label: string): PermissionSubject {
+  const token = raw.trim();
+  if (!token) {
+    throw new Error(`Invalid ${label} in TOML. Empty subject token.`);
+  }
+  if (token.startsWith('user:')) {
+    const userId = token.slice('user:'.length).trim();
+    if (!userId) {
+      throw new Error(`Invalid ${label} in TOML. Expected user:<id> or user:*.`);
+    }
+    return {
+      kind: 'user',
+      userId: userId === '*' ? '*' : userId,
+    };
+  }
+  if (token.startsWith('group:')) {
+    const parts = token.split(':');
+    if (parts.length !== 3) {
+      throw new Error(`Invalid ${label} in TOML. Expected group:slack:<id> or group:discord:<id>.`);
+    }
+    const provider = parts[1]?.trim();
+    const groupId = parts[2]?.trim();
+    if ((provider !== 'slack' && provider !== 'discord') || !groupId) {
+      throw new Error(`Invalid ${label} in TOML. Expected group:slack:<id> or group:discord:<id>.`);
+    }
+    return {
+      kind: 'group',
+      provider,
+      groupId,
+    };
+  }
+  throw new Error(`Invalid ${label} in TOML. Expected user:<id> or group:<provider>:<id>.`);
+}
+
+function parsePermissionEffect(value: unknown, label: string): PermissionEffect {
+  const raw = getTomlString(value, label)?.trim();
+  if (!raw) {
+    throw new Error(`Invalid ${label} in TOML. Expected allow, deny, or require_approval.`);
+  }
+  if (raw !== 'allow' && raw !== 'deny' && raw !== 'require_approval') {
+    throw new Error(`Invalid ${label} in TOML. Expected allow, deny, or require_approval.`);
+  }
+  return raw;
+}
+
+function parsePermissionsConfig(permissionsToml: TomlTable | undefined): PermissionsConfig {
+  if (!permissionsToml) {
+    return {
+      defaultEffect: 'allow',
+      approvalTtlSeconds: 86_400,
+      groupCacheTtlSeconds: 60,
+      rules: [],
+    };
+  }
+
+  const defaultEffectValue = permissionsToml.default_effect;
+  const defaultEffect = defaultEffectValue
+    ? parsePermissionEffect(defaultEffectValue, 'permissions.default_effect')
+    : 'allow';
+  const rawDefaultApproverSubjects = getTomlStringArray(
+    permissionsToml.default_approver_subjects,
+    'permissions.default_approver_subjects',
+  );
+  const defaultApproverSubjects = rawDefaultApproverSubjects?.map((subject) =>
+    parsePermissionSubjectToken(subject, 'permissions.default_approver_subjects'),
+  );
+  const rawDefaultNotifySubjects = getTomlStringArray(
+    permissionsToml.default_notify_subjects,
+    'permissions.default_notify_subjects',
+  );
+  const defaultNotifySubjects = rawDefaultNotifySubjects?.map((subject) =>
+    parsePermissionSubjectToken(subject, 'permissions.default_notify_subjects'),
+  );
+  if (defaultEffect === 'require_approval' && (!defaultApproverSubjects || defaultApproverSubjects.length === 0)) {
+    throw new Error(
+      'Invalid permissions.default_approver_subjects in TOML. default_effect=require_approval requires at least one default_approver_subjects entry.',
+    );
+  }
+  const approvalTtlSeconds = resolvePositiveIntegerFromSources(
+    'PERMISSIONS_APPROVAL_TTL_SECONDS',
+    permissionsToml.approval_ttl_seconds,
+    'permissions.approval_ttl_seconds',
+    86_400,
+  );
+  const groupCacheTtlSeconds = resolvePositiveIntegerFromSources(
+    'PERMISSIONS_GROUP_CACHE_TTL_SECONDS',
+    permissionsToml.group_cache_ttl_seconds,
+    'permissions.group_cache_ttl_seconds',
+    60,
+  );
+  const rulesValue = permissionsToml.rules;
+  if (rulesValue === undefined) {
+    return {
+      defaultEffect,
+      ...(defaultApproverSubjects?.length ? { defaultApproverSubjects } : {}),
+      ...(defaultNotifySubjects?.length ? { defaultNotifySubjects } : {}),
+      approvalTtlSeconds,
+      groupCacheTtlSeconds,
+      rules: [],
+    };
+  }
+  if (!Array.isArray(rulesValue)) {
+    throw new Error('Invalid permissions.rules in TOML. Expected an array of tables.');
+  }
+
+  const rules: PermissionRule[] = rulesValue.map((ruleValue, index) => {
+    const ruleLabel = `permissions.rules[${index}]`;
+    const ruleToml = getTomlTable(ruleValue, ruleLabel);
+    if (!ruleToml) {
+      throw new Error(`Invalid ${ruleLabel} in TOML. Expected a table.`);
+    }
+
+    const id = getTomlString(ruleToml.id, `${ruleLabel}.id`)?.trim();
+    if (!id) {
+      throw new Error(`Invalid ${ruleLabel}.id in TOML. Expected a non-empty string.`);
+    }
+    const effect = parsePermissionEffect(ruleToml.effect, `${ruleLabel}.effect`);
+    const rawActions = getTomlStringArray(ruleToml.actions, `${ruleLabel}.actions`) ?? [];
+    if (!rawActions.length) {
+      throw new Error(`Invalid ${ruleLabel}.actions in TOML. Expected at least one action.`);
+    }
+    const actions = rawActions.map((action) => {
+      const normalized = action.trim();
+      if (!isPermissionAction(normalized)) {
+        throw new Error(
+          `Invalid ${ruleLabel}.actions entry "${action}" in TOML. Unknown permission action.`,
+        );
+      }
+      return normalized;
+    });
+
+    if (
+      effect === 'require_approval' &&
+      actions.some(
+        (action) =>
+          action === 'approval.grant' || action === 'approval.deny' || action === 'approval.cancel',
+      )
+    ) {
+      throw new Error(
+        `Invalid ${ruleLabel} in TOML. approval.grant/deny/cancel cannot use require_approval.`,
+      );
+    }
+
+    const rawSubjects = getTomlStringArray(ruleToml.subjects, `${ruleLabel}.subjects`);
+    const subjects = rawSubjects?.map((subject) =>
+      parsePermissionSubjectToken(subject, `${ruleLabel}.subjects`),
+    );
+    const rawApproverSubjects = getTomlStringArray(
+      ruleToml.approver_subjects,
+      `${ruleLabel}.approver_subjects`,
+    );
+    const approverSubjects = rawApproverSubjects?.map((subject) =>
+      parsePermissionSubjectToken(subject, `${ruleLabel}.approver_subjects`),
+    );
+    const rawNotifySubjects = getTomlStringArray(
+      ruleToml.notify_subjects,
+      `${ruleLabel}.notify_subjects`,
+    );
+    const notifySubjects = rawNotifySubjects?.map((subject) =>
+      parsePermissionSubjectToken(subject, `${ruleLabel}.notify_subjects`),
+    );
+    if (effect === 'require_approval' && (!approverSubjects || approverSubjects.length === 0)) {
+      throw new Error(
+        `Invalid ${ruleLabel}.approver_subjects in TOML. require_approval needs approver subjects.`,
+      );
+    }
+    const providersRaw = getTomlStringArray(ruleToml.providers, `${ruleLabel}.providers`);
+    const providers = providersRaw
+      ?.map((provider) => provider.trim().toLowerCase())
+      .filter(Boolean);
+    if (providersRaw && (!providers || providers.length !== providersRaw.length)) {
+      throw new Error(`Invalid ${ruleLabel}.providers in TOML. Expected non-empty strings.`);
+    }
+    for (const provider of providers ?? []) {
+      if (!isKnownChannelProvider(provider)) {
+        throw new Error(
+          `Invalid ${ruleLabel}.providers in TOML. Unknown provider: "${provider}". Supported providers: ${KNOWN_CHANNEL_PROVIDERS.join(', ')}.`,
+        );
+      }
+    }
+    const channelIdsRaw = getTomlStringArray(ruleToml.channel_ids, `${ruleLabel}.channel_ids`);
+    const channelIds = channelIdsRaw?.map((channelId) => channelId.trim()).filter(Boolean);
+
+    return {
+      id,
+      effect,
+      actions,
+      ...(subjects?.length ? { subjects } : {}),
+      ...(approverSubjects?.length ? { approverSubjects } : {}),
+      ...(notifySubjects?.length ? { notifySubjects } : {}),
+      ...(providers?.length ? { providers: providers as ChannelProvider[] } : {}),
+      ...(channelIds?.length ? { channelIds } : {}),
+    };
+  });
+
+  return {
+    defaultEffect,
+    ...(defaultApproverSubjects?.length ? { defaultApproverSubjects } : {}),
+    ...(defaultNotifySubjects?.length ? { defaultNotifySubjects } : {}),
+    approvalTtlSeconds,
+    groupCacheTtlSeconds,
+    rules,
+  };
+}
+
 export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
@@ -196,6 +414,7 @@ export function loadBotConfig(): BotConfig {
   const coreToml = getTomlTable(toml.core, 'core');
   const botToml = getTomlTable(toml.bot, 'bot');
   const channelsToml = getTomlTable(toml.channels, 'channels');
+  const permissionsToml = getTomlTable(toml.permissions, 'permissions');
   const channelsSlackToml = getTomlTable(channelsToml?.slack, 'channels.slack');
   const channelsDiscordToml = getTomlTable(channelsToml?.discord, 'channels.discord');
 
@@ -244,7 +463,7 @@ export function loadBotConfig(): BotConfig {
   const discordAppId = resolveStringValue('DISCORD_APP_ID', channelsDiscordToml?.app_id, {
     required: false,
   });
-  const adminUserIds = resolveStringArrayFromSources('ADMIN_USER_IDS', botToml?.admin_user_ids);
+  const permissions = parsePermissionsConfig(permissionsToml);
   const redisUrl = resolveStringValue('REDIS_URL', botToml?.redis_url, {
     required: true,
   }) as string;
@@ -284,7 +503,7 @@ export function loadBotConfig(): BotConfig {
         ...(discordChannelIds.length ? { channelIds: discordChannelIds } : {}),
       },
     }),
-    adminUserIds,
+    permissions,
     redisUrl,
   };
   return botConfigCache;

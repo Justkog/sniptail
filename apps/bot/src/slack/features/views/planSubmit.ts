@@ -8,8 +8,15 @@ import { postMessage, uploadFile } from '../../helpers.js';
 import { resolveDefaultBaseBranch } from '../../modals.js';
 import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
+import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerPlanSubmitView({ app, slackIds, config, queue }: SlackHandlerContext) {
+export function registerPlanSubmitView({
+  app,
+  slackIds,
+  config,
+  queue,
+  permissions,
+}: SlackHandlerContext) {
   app.view(slackIds.actions.planSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
@@ -57,6 +64,32 @@ export function registerPlanSubmitView({ app, slackIds, config, queue }: SlackHa
       ...(threadContext ? { threadContext } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
+
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions,
+      client: app.client,
+      slackIds,
+      action: 'jobs.plan',
+      summary: `Queue plan job ${job.jobId}`,
+      operation: {
+        kind: 'enqueueJob',
+        job,
+      },
+      actor: {
+        userId: job.channel.userId ?? body.user.id,
+        channelId: job.channel.channelId,
+        ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: metadata?.channelId ?? body.user.id,
+          text: 'You are not authorized to run plan jobs.',
+        });
+      },
+    });
+    if (!authorized) {
+      return;
+    }
 
     try {
       await saveJobQueued(job);
