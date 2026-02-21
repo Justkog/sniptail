@@ -360,7 +360,7 @@ export class PermissionsRuntimeService {
 
   #matchesContext(
     request: ApprovalRequest,
-    input: Pick<AuthorizationInput, 'provider' | 'channelId' | 'threadId'>,
+    input: Pick<AuthorizationInput, 'provider' | 'channelId' | 'threadId' | 'workspaceId' | 'guildId'>,
   ): boolean {
     if (request.provider !== input.provider) {
       return false;
@@ -368,7 +368,13 @@ export class PermissionsRuntimeService {
     if (request.context.channelId !== input.channelId) {
       return false;
     }
-    if (request.context.threadId && request.context.threadId !== input.threadId) {
+    if (request.context.threadId !== input.threadId) {
+      return false;
+    }
+    if (request.context.workspaceId && request.context.workspaceId !== input.workspaceId) {
+      return false;
+    }
+    if (request.context.guildId && request.context.guildId !== input.guildId) {
       return false;
     }
     return true;
