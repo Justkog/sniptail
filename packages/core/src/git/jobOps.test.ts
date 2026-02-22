@@ -19,7 +19,7 @@ vi.mock('../runner/commandRunner.js', () => ({
 }));
 
 import { runCommand } from '../runner/commandRunner.js';
-import { runChecks, runNamedRunContract, runSetupContract } from './jobOps.js';
+import { runChecks, runNamedRunContractDetailed, runSetupContract } from './jobOps.js';
 
 function makeMissingPathError(): Error & { code: string } {
   return Object.assign(new Error('missing path'), { code: 'ENOENT' });
@@ -129,39 +129,60 @@ describe('git job operations contracts', () => {
     );
   });
 
-  it('runs named run contract when present and executable', async () => {
+  it('returns executed=false when named run contract is missing', async () => {
     const accessMock = vi.mocked(access);
-    const runCommandMock = vi.mocked(runCommand);
 
-    accessMock.mockResolvedValueOnce(undefined);
-    accessMock.mockResolvedValueOnce(undefined);
+    accessMock.mockRejectedValueOnce(makeMissingPathError());
 
     await expect(
-      runNamedRunContract('/tmp/repo', 'refresh-docs', {}, '/tmp/runner.log', []),
-    ).resolves.toBe(true);
-    expect(accessMock).toHaveBeenNthCalledWith(
-      1,
-      '/tmp/repo/.sniptail/run/refresh-docs',
-      fsConstants.F_OK,
-    );
-    expect(accessMock).toHaveBeenNthCalledWith(
-      2,
-      '/tmp/repo/.sniptail/run/refresh-docs',
-      fsConstants.X_OK,
-    );
-    expect(runCommandMock).toHaveBeenCalledWith(
-      '/tmp/repo/.sniptail/run/refresh-docs',
+      runNamedRunContractDetailed('/tmp/repo', 'refresh-docs', {}, '/tmp/runner.log', []),
+    ).resolves.toEqual({ executed: false });
+  });
+
+  it('returns detailed named run contract output when present and executable', async () => {
+    const accessMock = vi.mocked(access);
+    const runCommandMock = vi.mocked(runCommand);
+    runCommandMock.mockResolvedValueOnce({
+      cmd: '/tmp/repo/.sniptail/run/refresh-docs',
+      args: [],
+      cwd: '/tmp/repo',
+      durationMs: 17,
+      exitCode: 0,
+      signal: null,
+      stdout: 'ok\n',
+      stderr: '',
+      timedOut: false,
+      aborted: false,
+    });
+
+    accessMock.mockResolvedValueOnce(undefined);
+    accessMock.mockResolvedValueOnce(undefined);
+
+    const execution = await runNamedRunContractDetailed(
+      '/tmp/repo',
+      'refresh-docs',
+      {},
+      '/tmp/runner.log',
       [],
+    );
+
+    expect(execution).toEqual(
       expect.objectContaining({
-        cwd: '/tmp/repo',
-        logFilePath: '/tmp/runner.log',
+        executed: true,
+        contractPath: '/tmp/repo/.sniptail/run/refresh-docs',
       }),
     );
+    if (!execution.executed) {
+      throw new Error('Expected named run contract to execute.');
+    }
+    expect(execution.result.stdout).toBe('ok\n');
+    expect(execution.result.stderr).toBe('');
+    expect(execution.result.durationMs).toBe(17);
   });
 
   it('rejects traversal-like run contract ids', async () => {
     await expect(
-      runNamedRunContract('/tmp/repo', '../refresh', {}, '/tmp/runner.log', []),
+      runNamedRunContractDetailed('/tmp/repo', '../refresh', {}, '/tmp/runner.log', []),
     ).rejects.toThrow('Invalid run action id');
   });
 });
