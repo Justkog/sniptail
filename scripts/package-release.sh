@@ -37,7 +37,7 @@ detect_arch() {
 
 main() {
   local project_root version os_name arch output_dir release_dir name stage_root tarball_path sha_path
-  local sea_config_path sea_blob_path node_bin
+  local sea_config_path sea_blob_path node_bin local_runtime_entry
   local -a postject_args
 
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -98,7 +98,7 @@ main() {
 
   cd "${project_root}"
 
-  for required_dir in apps/bot/dist apps/worker/dist packages/core/dist packages/cli/dist; do
+  for required_dir in apps/bot/dist apps/worker/dist apps/local/dist packages/core/dist packages/cli/dist; do
     if [[ ! -d "${required_dir}" ]]; then
       echo "Missing ${required_dir}. Run \"pnpm run build\" first." >&2
       exit 1
@@ -152,18 +152,26 @@ main() {
   fi
 
   # Package manifests + builds.
-  mkdir -p "${stage_root}/apps/bot" "${stage_root}/apps/worker"
+  mkdir -p "${stage_root}/apps/bot" "${stage_root}/apps/worker" "${stage_root}/apps/local"
   mkdir -p "${stage_root}/packages/core" "${stage_root}/packages/cli"
   cp apps/bot/package.json "${stage_root}/apps/bot/"
   cp apps/worker/package.json "${stage_root}/apps/worker/"
+  cp apps/local/package.json "${stage_root}/apps/local/"
   cp packages/core/package.json "${stage_root}/packages/core/"
   cp packages/cli/package.json "${stage_root}/packages/cli/"
   cp -R apps/bot/dist "${stage_root}/apps/bot/"
   cp -R apps/worker/dist "${stage_root}/apps/worker/"
+  cp -R apps/local/dist "${stage_root}/apps/local/"
   cp -R apps/worker/scripts "${stage_root}/apps/worker/"
   cp -R packages/core/dist "${stage_root}/packages/core/"
   cp -R packages/core/drizzle "${stage_root}/packages/core/"
   cp -R packages/cli/dist "${stage_root}/packages/cli/"
+
+  local_runtime_entry="${stage_root}/apps/local/dist/localProcessRuntime.js"
+  if [[ ! -f "${local_runtime_entry}" ]]; then
+    echo "Missing local runtime entry at ${local_runtime_entry} after staging." >&2
+    exit 1
+  fi
 
   log "Installing production dependencies in staged release root"
   (

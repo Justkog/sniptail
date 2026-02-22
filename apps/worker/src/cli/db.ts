@@ -12,6 +12,10 @@ import { logger } from '@sniptail/core/logger.js';
 type Scope = 'bot' | 'worker';
 type Command = 'status' | 'migrate';
 
+function isJsonModeRequested(args: string[]): boolean {
+  return args.some((arg) => arg === '--json' || arg.startsWith('--json='));
+}
+
 function printUsage(): void {
   process.stderr.write(
     [
@@ -118,8 +122,10 @@ async function runMigrate(scope: Scope, asJson: boolean): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const jsonModeRequested = isJsonModeRequested(args);
   const parsed = parseArgs({
-    args: process.argv.slice(2),
+    args,
     allowPositionals: true,
     strict: true,
     options: {
@@ -129,8 +135,17 @@ async function main(): Promise<void> {
     },
   });
 
+  const asJson = Boolean(parsed.values.json);
+  const previousLoggerLevel = logger.level;
+  if (asJson) {
+    logger.level = 'silent';
+  }
+
   const commandRaw = parsed.positionals[0];
   if (!commandRaw) {
+    if (asJson || jsonModeRequested) {
+      throw new Error('Missing db command. Expected "status" or "migrate".');
+    }
     printUsage();
     process.exitCode = 1;
     return;
@@ -141,24 +156,35 @@ async function main(): Promise<void> {
 
   const command = commandRaw.trim().toLowerCase() as Command;
   const scope = parseScope(parsed.values.scope);
-  const asJson = Boolean(parsed.values.json);
   const requireUpToDate = Boolean(parsed.values['require-up-to-date']);
 
-  switch (command) {
-    case 'status':
-      await runStatus(scope, asJson, requireUpToDate);
-      return;
-    case 'migrate':
-      await runMigrate(scope, asJson);
-      return;
-    default:
-      throw new Error(`Unknown db command: ${commandRaw}`);
+  try {
+    switch (command) {
+      case 'status':
+        await runStatus(scope, asJson, requireUpToDate);
+        return;
+      case 'migrate':
+        await runMigrate(scope, asJson);
+        return;
+      default:
+        throw new Error(`Unknown db command: ${commandRaw}`);
+    }
+  } finally {
+    if (asJson) {
+      logger.level = previousLoggerLevel;
+    }
   }
 }
 
+const jsonModeRequested = isJsonModeRequested(process.argv.slice(2));
+
 void main().catch((err) => {
-  logger.error({ err }, 'DB command failed');
+  if (!jsonModeRequested) {
+    logger.error({ err }, 'DB command failed');
+  }
   process.stderr.write(`${(err as Error).message}\n`);
-  printUsage();
+  if (!jsonModeRequested) {
+    printUsage();
+  }
   process.exitCode = 1;
 });

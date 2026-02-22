@@ -88,6 +88,11 @@ jobs:
             exit 1
           fi
 
+          if [[ ! -f "${stage_root}/apps/local/dist/localProcessRuntime.js" ]]; then
+            echo "Missing packaged local runtime entry at ${stage_root}/apps/local/dist/localProcessRuntime.js"
+            exit 1
+          fi
+
           "${stage_root}/bin/sniptail" --help >/dev/null
 
           symlink_root="$(mktemp -d)"

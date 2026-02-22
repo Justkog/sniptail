@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import { runNode } from './exec.js';
+import { runNode, runNodeCapture, type RunNodeCaptureResult } from './exec.js';
 import { pathExists, pathIsDirectory, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
 
 type RuntimeOptions = {
@@ -68,6 +68,29 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
   }
 
   await runNode(entryPath, {
+    cwd: appDir,
+    env: childEnv,
+    nodeArgs: ['--import', join(root, 'scripts', 'register-loaders.mjs')],
+    ...(options.args ? { args: options.args } : {}),
+  });
+}
+
+export async function runRuntimeCapture(options: RuntimeOptions): Promise<RunNodeCaptureResult> {
+  const { root, appDir, entryPath, envPath } = resolveRuntime(options);
+  const baseCwd = resolve(options.cwd ?? process.cwd());
+
+  const childEnv: NodeJS.ProcessEnv = {
+    SNIPTAIL_ROOT: root,
+    ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
+    ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
+    ...(options.envOverrides ? options.envOverrides : {}),
+  };
+
+  if (envPath && pathExists(envPath)) {
+    childEnv.DOTENV_CONFIG_PATH = envPath;
+  }
+
+  return runNodeCapture(entryPath, {
     cwd: appDir,
     env: childEnv,
     nodeArgs: ['--import', join(root, 'scripts', 'register-loaders.mjs')],

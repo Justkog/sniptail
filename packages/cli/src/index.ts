@@ -34,4 +34,10 @@ registerDbCommand(program);
 registerSlackManifestCommand(program);
 registerLocalUnifiedCommand(program);
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`Error: ${message}\n`);
+  process.exitCode = 1;
+}
