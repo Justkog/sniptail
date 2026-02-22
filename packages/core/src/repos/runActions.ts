@@ -42,9 +42,6 @@ export function normalizeRunActionId(value: string): string {
       `Invalid run action id "${value}". Use lowercase letters, numbers, dot, underscore, or dash.`,
     );
   }
-  if (normalized.includes('/') || normalized.includes('\\') || normalized.includes('..')) {
-    throw new Error(`Invalid run action id "${value}". Path separators are not allowed.`);
-  }
   return normalized;
 }
 
