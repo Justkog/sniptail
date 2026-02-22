@@ -77,6 +77,32 @@ jobs:
             --os "${{ matrix.os_name }}" \
             --arch "${{ matrix.arch }}"
 
+      - name: Smoke test packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="sniptail-${GITHUB_REF_NAME}-${{ matrix.os_name }}-${{ matrix.arch }}"
+          stage_root="release/${name}"
+          if [[ ! -x "${stage_root}/bin/sniptail" ]]; then
+            echo "Missing packaged sniptail binary at ${stage_root}/bin/sniptail"
+            exit 1
+          fi
+
+          "${stage_root}/bin/sniptail" --help >/dev/null
+
+          symlink_root="$(mktemp -d)"
+          ln -s "${PWD}/${stage_root}" "${symlink_root}/current"
+          "${symlink_root}/current/bin/sniptail" bot --help >/dev/null
+
+          tmp_registry="$(mktemp -d)"
+          trap 'rm -rf "${tmp_registry}" "${symlink_root}"' EXIT
+          JOB_REGISTRY_DB=sqlite \
+          JOB_REGISTRY_PATH="${tmp_registry}" \
+          QUEUE_DRIVER=inproc \
+          "${stage_root}/bin/sniptail" db status --scope worker --json >/dev/null
+
+          "${stage_root}/bin/sniptail" slack-manifest --help >/dev/null
+
       - name: Upload assets
         uses: softprops/action-gh-release@v2
         with:

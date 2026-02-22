@@ -41,10 +41,6 @@ if ! command -v tar >/dev/null 2>&1; then
   fail "tar is required to install Sniptail."
 fi
 
-if ! command -v node >/dev/null 2>&1; then
-  fail "Node.js is required to run Sniptail."
-fi
-
 if [[ -z "${LOCAL_TARBALL}" ]]; then
   if ! command -v curl >/dev/null 2>&1; then
     fail "curl is required to install Sniptail."
