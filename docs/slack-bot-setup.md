@@ -4,7 +4,7 @@ This guide walks through creating a Slack app for Sniptail, enabling Socket Mode
 
 Sniptail’s Slack bot:
 - Runs in **Socket Mode** (no public HTTP endpoint required).
-- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-implement`).
+- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`).
 - Supports `@Sniptail …` mentions in channels (`app_mention` events).
 - Uses interactive components + modals (interactivity enabled).
 - Uploads Markdown reports as files.
@@ -19,8 +19,8 @@ Sniptail’s Slack bot:
 Sniptail derives Slack command names from the configured bot name.
 
 Examples:
-- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-implement`, etc.
-- Bot name `My Bot` → `/my-bot-ask`, `/my-bot-implement`, etc.
+- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, etc.
+- Bot name `My Bot` → `/my-bot-ask`, `/my-bot-explore`, `/my-bot-implement`, etc.
 
 Make sure these match:
 - Your Slack app manifest’s command names

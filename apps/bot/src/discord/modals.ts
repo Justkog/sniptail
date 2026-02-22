@@ -14,6 +14,8 @@ import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
+export const exploreRepoSelectCustomId = 'explore_repo_select';
+export const exploreModalCustomId = 'explore_modal';
 export const planRepoSelectCustomId = 'plan_repo_select';
 export const planModalCustomId = 'plan_modal';
 export const answerQuestionsModalCustomId = 'answer_questions_modal';
@@ -77,6 +79,24 @@ export function buildPlanRepoSelect(repoKeys: string[]) {
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(planRepoSelectCustomId)
+    .setPlaceholder('Select repositories')
+    .setMinValues(1)
+    .setMaxValues(Math.min(repoKeys.length, 25))
+    .addOptions(options);
+
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+}
+
+export function buildExploreRepoSelect(repoKeys: string[]) {
+  const options = repoKeys.map((key) =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(key)
+      .setValue(key)
+      .setDefault(repoKeys.length === 1),
+  );
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(exploreRepoSelectCustomId)
     .setPlaceholder('Select repositories')
     .setMinValues(1)
     .setMaxValues(Math.min(repoKeys.length, 25))
@@ -158,6 +178,45 @@ export function buildPlanModal(
 
   if (repoKeys.length > 1) {
     modal.setTitle(`${botName} Plan (${repoKeys.length} repos)`);
+  }
+
+  return modal;
+}
+
+export function buildExploreModal(
+  botName: string,
+  repoKeys: string[],
+  baseBranch: string,
+  resumeFromJobId?: string,
+) {
+  const modal = new ModalBuilder().setCustomId(exploreModalCustomId).setTitle(`${botName} Explore`);
+
+  const branchInput = new TextInputBuilder()
+    .setCustomId('git_ref')
+    .setStyle(TextInputStyle.Short)
+    .setValue(baseBranch);
+
+  const questionInput = new TextInputBuilder()
+    .setCustomId('question')
+    .setStyle(TextInputStyle.Paragraph);
+
+  const resumeInput = new TextInputBuilder()
+    .setCustomId('resume_from')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false);
+
+  if (resumeFromJobId) {
+    resumeInput.setValue(resumeFromJobId);
+  }
+
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput),
+    new LabelBuilder().setLabel('Explore request').setTextInputComponent(questionInput),
+    new LabelBuilder().setLabel('Resume from job ID (optional)').setTextInputComponent(resumeInput),
+  );
+
+  if (repoKeys.length > 1) {
+    modal.setTitle(`${botName} Explore (${repoKeys.length} repos)`);
   }
 
   return modal;

@@ -86,6 +86,7 @@ export class DiscordWorkerChannelAdapter implements WorkerChannelAdapter {
     const components = buildDiscordCompletionComponents(input.jobId, {
       includeAnswerQuestions: hasOpenQuestions,
       includeAskFromJob: !hasOpenQuestions,
+      includeExploreFromJob: !hasOpenQuestions,
       includePlanFromJob: !hasOpenQuestions,
       includeImplementFromJob: !hasOpenQuestions,
       includeReviewFromJob: hasOpenQuestions ? false : (input.includeReviewFromJob ?? false),

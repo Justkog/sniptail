@@ -1,5 +1,6 @@
 export type DiscordCompletionAction =
   | 'askFromJob'
+  | 'exploreFromJob'
   | 'planFromJob'
   | 'implementFromJob'
   | 'reviewFromJob'
@@ -26,6 +27,7 @@ const approvalPrefix = 'sniptail:approval';
 
 const actionTokens = {
   askFromJob: 'ask',
+  exploreFromJob: 'explore',
   planFromJob: 'plan',
   implementFromJob: 'implement',
   reviewFromJob: 'review',
@@ -41,6 +43,7 @@ const tokenToAction: Record<
   DiscordCompletionAction
 > = {
   [actionTokens.askFromJob]: 'askFromJob',
+  [actionTokens.exploreFromJob]: 'exploreFromJob',
   [actionTokens.planFromJob]: 'planFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
   [actionTokens.reviewFromJob]: 'reviewFromJob',
@@ -107,6 +110,7 @@ export function buildDiscordCompletionComponents(
   options?: {
     includeAnswerQuestions?: boolean;
     includeAskFromJob?: boolean;
+    includeExploreFromJob?: boolean;
     includePlanFromJob?: boolean;
     includeImplementFromJob?: boolean;
     includeReviewFromJob?: boolean;
@@ -115,6 +119,7 @@ export function buildDiscordCompletionComponents(
 ): DiscordActionRow[] {
   const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includeExploreFromJob = options?.includeExploreFromJob ?? true;
   const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
@@ -134,6 +139,14 @@ export function buildDiscordCompletionComponents(
       style: 1,
       label: 'Ask',
       custom_id: buildDiscordCompletionCustomId('askFromJob', jobId),
+    });
+  }
+  if (includeExploreFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Explore',
+      custom_id: buildDiscordCompletionCustomId('exploreFromJob', jobId),
     });
   }
   if (includePlanFromJob) {
@@ -180,12 +193,24 @@ export function buildDiscordCompletionComponents(
     label: 'Clear job data',
     custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
   });
-  return [
-    {
+  return chunkComponents(components);
+}
+
+function chunkComponents(
+  components: DiscordActionRow['components'],
+  maxPerRow = 5,
+): DiscordActionRow[] {
+  if (maxPerRow < 1) {
+    return [{ type: 1, components }];
+  }
+  const rows: DiscordActionRow[] = [];
+  for (let offset = 0; offset < components.length; offset += maxPerRow) {
+    rows.push({
       type: 1,
-      components,
-    },
-  ];
+      components: components.slice(offset, offset + maxPerRow),
+    });
+  }
+  return rows;
 }
 
 export function buildDiscordClearJobConfirmComponents(jobId: string): DiscordActionRow[] {

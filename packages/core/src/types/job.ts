@@ -1,6 +1,6 @@
 import type { ChannelContext } from './channel.js';
 
-export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
+export type JobType = 'ASK' | 'EXPLORE' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
 export const AGENT_IDS = ['codex', 'copilot'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 

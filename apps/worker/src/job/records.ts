@@ -76,7 +76,7 @@ export async function resolveMentionWorkingDirectory(
       job.channel.provider,
       job.channel.channelId,
       threadId,
-      ['ASK', 'PLAN', 'IMPLEMENT'],
+      ['ASK', 'EXPLORE', 'PLAN', 'IMPLEMENT'],
     );
     if (!record) return fallback;
     return buildJobPaths(jobWorkRoot, record.job.jobId).root;

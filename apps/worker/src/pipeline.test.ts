@@ -152,7 +152,7 @@ vi.mock('node:fs/promises', () => ({
 
 import type { Dirent } from 'node:fs';
 import { constants } from 'node:fs';
-import { appendFile, copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
@@ -160,6 +160,8 @@ import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
+import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
+import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import {
   copyArtifactsFromResumedJob,
@@ -406,7 +408,7 @@ describe('worker/pipeline helpers', () => {
       'slack',
       'C1',
       '111.222',
-      ['ASK', 'PLAN', 'IMPLEMENT'],
+      ['ASK', 'EXPLORE', 'PLAN', 'IMPLEMENT'],
     );
   });
 
@@ -509,5 +511,111 @@ describe('worker/pipeline runJob', () => {
       expect.objectContaining({ status: 'ok', summary: 'Hello there!' }),
     );
     expect(ensureCloneMock).not.toHaveBeenCalled();
+  });
+
+  it('runs an explore job and uploads report.md output', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
+    const readFileMock = vi.mocked(readFile);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-explore',
+      type: 'EXPLORE' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Explore options',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock.mockResolvedValue({
+      threadId: 'thread-explore-1',
+      finalResponse: 'Explore result',
+    });
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    readFileMock.mockResolvedValue('# Explore report\n\nOption A\n');
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result).toEqual({
+      jobId: 'job-explore',
+      status: 'ok',
+      summary: '# Explore report\n\nOption A\n',
+      reportPath: '/tmp/sniptail/job-root/job-explore/artifacts/report.md',
+    });
+    expect(readFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail/job-root/job-explore/artifacts/report.md',
+      'utf8',
+    );
+    expect(enqueueBotEventMock).toHaveBeenCalledWith(
+      botQueue,
+      expect.objectContaining({
+        provider: 'slack',
+        type: 'file.upload',
+        payload: expect.objectContaining({
+          channelId: 'C1',
+          title: 'sniptail-job-explore-report.md',
+          threadId: '123.456',
+        }) as {
+          channelId: string;
+          title: string;
+          threadId?: string;
+          filePath?: string;
+          fileContent?: string;
+        },
+      }),
+    );
+    expect(updateJobRecordMock).toHaveBeenCalledWith('job-explore', { status: 'running' });
+    expect(updateJobRecordMock).toHaveBeenCalledWith(
+      'job-explore',
+      expect.objectContaining({
+        status: 'ok',
+        summary: '# Explore report\n\nOption A\n',
+      }),
+    );
   });
 });

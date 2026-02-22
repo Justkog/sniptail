@@ -4,6 +4,7 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 export function buildCommandNames(prefix: string) {
   return {
     ask: `${prefix}-ask`,
+    explore: `${prefix}-explore`,
     plan: `${prefix}-plan`,
     implement: `${prefix}-implement`,
     bootstrap: `${prefix}-bootstrap`,
@@ -31,6 +32,11 @@ export async function registerDiscordCommands(
     {
       name: names.ask,
       description: 'Ask a question about one or more repositories',
+      type: 1,
+    },
+    {
+      name: names.explore,
+      description: 'Explore solution options for one or more repositories',
       type: 1,
     },
     {

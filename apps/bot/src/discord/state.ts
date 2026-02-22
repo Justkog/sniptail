@@ -1,4 +1,8 @@
 export const askSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
+export const exploreSelectionByUser = new Map<
+  string,
+  { repoKeys: string[]; requestedAt: number }
+>();
 export const planSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
 export const answerQuestionsByUser = new Map<
   string,

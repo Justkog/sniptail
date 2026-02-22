@@ -83,6 +83,25 @@ describe('permissionsPolicyEngine', () => {
     expect(decision.ruleId).toBeUndefined();
   });
 
+  it('supports jobs.explore action matching', () => {
+    const decision = evaluatePermissionDecision({
+      config,
+      actor: {
+        provider: 'discord',
+        userId: 'U2',
+        groupIds: [],
+      },
+      context: {
+        provider: 'discord',
+        channelId: 'D1',
+      },
+      action: 'jobs.explore',
+    });
+
+    expect(decision.effect).toBe('allow');
+    expect(decision.ruleId).toBeUndefined();
+  });
+
   it('uses defaultApproverSubjects when no rules match and defaultEffect=require_approval', () => {
     const requireApprovalConfig: PermissionsConfig = {
       defaultEffect: 'require_approval',
