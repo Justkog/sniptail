@@ -301,15 +301,10 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
   if (localBranchMessages.length) {
     mrTextParts.push(localBranchMessages.join('\n'));
   }
-  const mrText =
-    actionConfig.gitMode === 'implement'
-      ? mrTextParts.length
-        ? mrTextParts.join('\n')
-        : 'No merge requests created.'
-      : 'Git mode is execution-only; no merge requests were created.';
+  const mrText = mrTextParts.length ? mrTextParts.join('\n') : 'No merge requests created.';
 
   const executionRows = buildRunExecutionRows(executionRecords);
-  const report = [
+  const reportSections = [
     `# Run Job ${job.jobId}`,
     '',
     `- Action ID: \`${actionId}\``,
@@ -320,10 +315,11 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     '',
     '## Output Snippets',
     buildRunReportOutputSection(executionRecords),
-    '',
-    '## Git Output',
-    mrText,
-  ].join('\n');
+  ];
+  if (actionConfig.gitMode === 'implement') {
+    reportSections.push('', '## Git Output', mrText);
+  }
+  const report = reportSections.join('\n');
   const reportPath = join(paths.artifactsRoot, 'report.md');
   await writeFile(reportPath, `${report}\n`, 'utf8');
 
@@ -333,15 +329,16 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
   });
 
   const outputSummary = buildRunChannelSummary(executionRecords);
-  const completionText = [
+  const completionLines = [
     `All set! I finished run job ${job.jobId} (action: ${actionId}).`,
     '',
     'Run output preview:',
     outputSummary,
-    '',
-    'Git output:',
-    mrText,
-  ].join('\n');
+  ];
+  if (actionConfig.gitMode === 'implement') {
+    completionLines.push('', 'Git output:', mrText);
+  }
+  const completionText = completionLines.join('\n');
   const includeReviewFromJob =
     actionConfig.gitMode === 'implement' && Object.keys(branchByRepo).length > 0;
   const rendered = channelAdapter.renderCompletionMessage({
