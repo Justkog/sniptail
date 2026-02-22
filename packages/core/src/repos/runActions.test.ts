@@ -134,7 +134,9 @@ describe('getRepoRunActionsMetadata', () => {
 
   it('returns undefined when actionIds is not an array', () => {
     const data = {
-      sniptail: { run: { actionIds: 'build', syncedAt: '2024-01-01T00:00:00Z', sourceRef: 'main' } },
+      sniptail: {
+        run: { actionIds: 'build', syncedAt: '2024-01-01T00:00:00Z', sourceRef: 'main' },
+      },
     };
     expect(getRepoRunActionsMetadata(data)).toBeUndefined();
   });
@@ -254,17 +256,17 @@ describe('intersectRunActionIds', () => {
 
   it('returns actions present in all repo sets and in availableActionIds', () => {
     const result = intersectRunActionIds(
-      [['build', 'test', 'deploy'], ['build', 'deploy']],
+      [
+        ['build', 'test', 'deploy'],
+        ['build', 'deploy'],
+      ],
       ['build', 'deploy', 'test'],
     );
     expect(result).toEqual(['build', 'deploy']);
   });
 
   it('filters out actions not in availableActionIds', () => {
-    const result = intersectRunActionIds(
-      [['build', 'test']],
-      ['build'],
-    );
+    const result = intersectRunActionIds([['build', 'test']], ['build']);
     expect(result).toEqual(['build']);
   });
 
@@ -281,10 +283,7 @@ describe('intersectRunActionIds', () => {
   });
 
   it('normalizes IDs before intersecting', () => {
-    const result = intersectRunActionIds(
-      [['BUILD', 'Test']],
-      ['build', 'test'],
-    );
+    const result = intersectRunActionIds([['BUILD', 'Test']], ['build', 'test']);
     expect(result).toEqual(['build', 'test']);
   });
 

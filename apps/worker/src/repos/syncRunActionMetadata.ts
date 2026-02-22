@@ -66,25 +66,61 @@ async function resolveRepoInspectionPath(
   row: RepoRow,
   repoConfig: RepoConfig,
   logFilePath: string,
+  repoCacheRoot: string,
 ): Promise<string> {
   if (row.localPath) {
     return row.localPath;
   }
 
-  const config = loadWorkerConfig();
-  const clonePath = join(config.repoCacheRoot, `${row.repoKey}.git`);
+  const clonePath = join(repoCacheRoot, `${row.repoKey}.git`);
   const baseBranch = row.baseBranch?.trim() || 'main';
   await ensureClone(row.repoKey, repoConfig, clonePath, logFilePath, process.env, baseBranch, []);
   return clonePath;
 }
 
+function listFallbackActionIds(): string[] {
+  const config = loadWorkerConfig();
+  const runActions = config.run?.actions ?? {};
+  const actionIds = new Set<string>();
+
+  for (const [rawActionId, actionConfig] of Object.entries(runActions)) {
+    const fallbackCommand =
+      actionConfig.fallbackCommand?.map((segment) => segment.trim()).filter(Boolean) ?? [];
+    if (!fallbackCommand.length) {
+      continue;
+    }
+    try {
+      actionIds.add(normalizeRunActionId(rawActionId));
+    } catch {
+      logger.warn(
+        { actionId: rawActionId },
+        'Skipping invalid run action id discovered from worker fallback command config',
+      );
+    }
+  }
+
+  return Array.from(actionIds).sort((a, b) => a.localeCompare(b));
+}
+
 async function syncRepoRunActionsRow(
   row: RepoRow,
   logFilePath: string,
+  options: {
+    repoCacheRoot: string;
+    fallbackActionIds: string[];
+  },
 ): Promise<{ updated: boolean }> {
   const repoConfig = toRepoConfig(row);
-  const inspectionPath = await resolveRepoInspectionPath(row, repoConfig, logFilePath);
-  const actionIds = await listRunActionIdsFromRepoPath(inspectionPath);
+  const inspectionPath = await resolveRepoInspectionPath(
+    row,
+    repoConfig,
+    logFilePath,
+    options.repoCacheRoot,
+  );
+  const contractActionIds = await listRunActionIdsFromRepoPath(inspectionPath);
+  const actionIds = Array.from(
+    new Set<string>([...contractActionIds, ...options.fallbackActionIds]),
+  ).sort((a, b) => a.localeCompare(b));
   const syncedAt = new Date().toISOString();
 
   const providerData = withRepoRunActionsMetadata(repoConfig.providerData, {
@@ -115,6 +151,7 @@ export async function syncRunActionMetadata(
   } = {},
 ): Promise<RunActionMetadataSyncResult> {
   const config = loadWorkerConfig();
+  const fallbackActionIds = listFallbackActionIds();
   const logFilePath =
     options.logFilePath ?? join(config.jobWorkRoot, 'logs', 'run-action-metadata-sync.log');
 
@@ -130,7 +167,10 @@ export async function syncRunActionMetadata(
 
   for (const row of targetRows) {
     try {
-      await syncRepoRunActionsRow(row, logFilePath);
+      await syncRepoRunActionsRow(row, logFilePath, {
+        repoCacheRoot: config.repoCacheRoot,
+        fallbackActionIds,
+      });
       updated += 1;
     } catch (err) {
       const message = (err as Error).message;
