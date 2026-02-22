@@ -68,7 +68,7 @@ describe('run action availability helper', () => {
     ]);
   });
 
-  it('hides metadata actions that are not configured in bot run.actions', () => {
+  it('returns configured actions that exist in repo metadata for selected repos', () => {
     const config = makeConfig();
 
     const actions = computeAvailableRunActions(config, ['repoA']);
