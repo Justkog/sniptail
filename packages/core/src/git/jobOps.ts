@@ -2,7 +2,7 @@ import { constants as fsConstants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '../logger.js';
-import { runCommand } from '../runner/commandRunner.js';
+import { runCommand, type RunResult } from '../runner/commandRunner.js';
 import { normalizeRunActionId } from '../repos/runActions.js';
 
 const SNIPTAIL_CONTRACT_DIR = '.sniptail';
@@ -96,7 +96,11 @@ export async function runCheckContract(
   return runContract(repoPath, CHECK_CONTRACT_NAME, env, logFile, redact);
 }
 
-export async function runNamedRunContract(
+export type RunNamedRunContractDetailedResult =
+  | { executed: false }
+  | { executed: true; contractPath: string; result: RunResult };
+
+export async function runNamedRunContractDetailed(
   repoPath: string,
   actionId: string,
   env: NodeJS.ProcessEnv,
@@ -106,17 +110,17 @@ export async function runNamedRunContract(
     timeoutMs?: number;
     allowFailure?: boolean;
   } = {},
-): Promise<boolean> {
+): Promise<RunNamedRunContractDetailedResult> {
   const normalizedActionId = normalizeRunActionId(actionId);
   const contractPath = getRunContractPath(repoPath, normalizedActionId);
   try {
     await access(contractPath, fsConstants.F_OK);
   } catch (err) {
-    if (isMissingPath(err)) return false;
+    if (isMissingPath(err)) return { executed: false };
     throw err;
   }
   await ensureExecutableRunContract(contractPath, normalizedActionId);
-  await runCommand(contractPath, [], {
+  const result = await runCommand(contractPath, [], {
     cwd: repoPath,
     env,
     logFilePath: logFile,
@@ -124,7 +128,7 @@ export async function runNamedRunContract(
     redact,
     allowFailure: options.allowFailure ?? false,
   });
-  return true;
+  return { executed: true, contractPath, result };
 }
 
 export async function ensureCleanRepo(
