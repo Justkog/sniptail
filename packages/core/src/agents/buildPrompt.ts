@@ -24,11 +24,9 @@ export function buildPromptForJob(job: JobSpec, botName: string): string {
       return buildPlanPrompt(job, botName);
     case 'REVIEW':
       return buildReviewPrompt(job, botName);
-    case 'RUN':
-      return buildImplementPrompt(job, botName);
     case 'MENTION':
       return buildMentionPrompt(job, botName);
     default:
-      return assertNeverJobType(job.type);
+      return assertNeverJobType(job.type as never);
   }
 }
