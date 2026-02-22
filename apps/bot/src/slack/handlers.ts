@@ -6,6 +6,7 @@ import { registerSlackExploreCommand } from './features/commands/slackExploreCom
 import { registerPlanCommand } from './features/commands/plan.js';
 import { registerBootstrapCommand } from './features/commands/bootstrap.js';
 import { registerImplementCommand } from './features/commands/implement.js';
+import { registerRunCommand } from './features/commands/slackRunCommand.js';
 import { registerUsageCommand } from './features/commands/usage.js';
 import { registerAskFromJobAction } from './features/actions/askFromJob.js';
 import { registerSlackExploreFromJobAction } from './features/actions/slackExploreFromJobAction.js';
@@ -13,9 +14,11 @@ import { registerPlanFromJobAction } from './features/actions/planFromJob.js';
 import { registerClearJobAction } from './features/actions/clearJob.js';
 import { registerAnswerQuestionsAction } from './features/actions/answerQuestions.js';
 import { registerImplementFromJobAction } from './features/actions/implementFromJob.js';
+import { registerRunFromJobAction } from './features/actions/runFromJob.js';
 import { registerReviewFromJobAction } from './features/actions/reviewFromJob.js';
 import { registerWorktreeCommandsAction } from './features/actions/worktreeCommands.js';
 import { registerApprovalActions } from './features/actions/approvalActions.js';
+import { registerRunActionSelectOptions } from './features/actions/runActionSelect.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
 import { registerAskSubmitView } from './features/views/askSubmit.js';
 import { registerSlackExploreSubmitView } from './features/views/slackExploreSubmitView.js';
@@ -23,6 +26,7 @@ import { registerPlanSubmitView } from './features/views/planSubmit.js';
 import { registerAnswerQuestionsSubmitView } from './features/views/answerQuestionsSubmit.js';
 import { registerBootstrapSubmitView } from './features/views/bootstrapSubmit.js';
 import { registerImplementSubmitView } from './features/views/implementSubmit.js';
+import { registerRunSubmitView } from './features/views/slackRunSubmitView.js';
 import type { SlackHandlerContext } from './features/context.js';
 
 export function registerSlackHandlers(context: SlackHandlerContext): void {
@@ -30,6 +34,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerSlackExploreCommand(context);
   registerPlanCommand(context);
   registerImplementCommand(context);
+  registerRunCommand(context);
   registerBootstrapCommand(context);
   registerClearBeforeCommand(context);
   registerUsageCommand(context);
@@ -37,10 +42,12 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerSlackExploreFromJobAction(context);
   registerPlanFromJobAction(context);
   registerImplementFromJobAction(context);
+  registerRunFromJobAction(context);
   registerReviewFromJobAction(context);
   registerWorktreeCommandsAction(context);
   registerClearJobAction(context);
   registerApprovalActions(context);
+  registerRunActionSelectOptions(context);
   registerAnswerQuestionsAction(context);
   registerAppMentionEvent(context);
   registerBootstrapSubmitView(context);
@@ -49,6 +56,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerPlanSubmitView(context);
   registerAnswerQuestionsSubmitView(context);
   registerImplementSubmitView(context);
+  registerRunSubmitView(context);
 
   // eslint-disable-next-line @typescript-eslint/require-await
   context.app.error(async (err: CodedError) => {

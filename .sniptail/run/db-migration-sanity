@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required to run db-migration-sanity." >&2
+  exit 1
+fi
+
+tmp_dir="$(mktemp -d)"
+cleanup() {
+  rm -rf "${tmp_dir}"
+}
+trap cleanup EXIT
+
+sqlite_registry_path="${tmp_dir}/job-registry"
+
+echo "[db-migration-sanity] Validating migration metadata for sqlite and postgres..."
+pnpm --filter @sniptail/core exec drizzle-kit check --dialect sqlite --out drizzle/sqlite
+pnpm --filter @sniptail/core exec drizzle-kit check --dialect postgresql --out drizzle/pg
+
+echo "[db-migration-sanity] Applying sqlite migrations against an isolated temporary path..."
+JOB_REGISTRY_PATH="${sqlite_registry_path}" DOTENV_CONFIG_PATH=/dev/null \
+  pnpm --filter @sniptail/core exec drizzle-kit migrate --config drizzle.config.sqlite.ts
+
+echo "[db-migration-sanity] Completed successfully."

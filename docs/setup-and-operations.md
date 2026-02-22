@@ -174,6 +174,18 @@ To reconcile the registry catalog back into the allowlist file:
 sniptail repos sync-file
 ```
 
+To sync run action metadata (`providerData.sniptail.run`) from repo contracts:
+
+```bash
+sniptail repos sync-run-actions
+```
+
+To sync a single repo key:
+
+```bash
+sniptail repos sync-run-actions --repo my-api
+```
+
 #### 7) Run runtimes
 
 Single-machine local mode:
@@ -266,7 +278,9 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
 - Worktree bootstrap is optional and configurable. Set `[worker].worktree_setup_command` (or `WORKTREE_SETUP_COMMAND`) to run a custom command in each worktree (for example `pnpm install`, `npm ci`, `poetry install`, etc.).
 - Repos can define a local setup contract script at `.sniptail/setup` (no extension). If present, it runs in the repo worktree after `worktree_setup_command`.
 - Repos can define a local check contract script at `.sniptail/check` (no extension). If present, it runs during validation before configured check aliases.
-- Contract scripts must be executable (`chmod +x .sniptail/setup .sniptail/check`), and non-zero exits fail the job.
+- Repos can define run contracts at `.sniptail/run/<action-id>` (no extension). These are used by `/...-run` and take precedence over worker fallback commands.
+- Contract scripts must be executable (`chmod +x .sniptail/setup .sniptail/check .sniptail/run/<action-id>`), and non-zero exits fail the job unless an action is configured with `allow_failure = true`.
 - To continue a job even when the setup command fails, set `[worker].worktree_setup_allow_failure = true` (or `WORKTREE_SETUP_ALLOW_FAILURE=true`).
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
+- Run action availability in bot UIs is sourced from catalog metadata (`providerData.sniptail.run.actionIds`) synced on worker startup or via `sniptail repos sync-run-actions`.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.

@@ -1,10 +1,14 @@
 import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
+import { runNamedRunContract } from '@sniptail/core/git/jobOps.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
+import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
+import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
@@ -66,6 +70,101 @@ async function recordAgentThreadId(
     .catch((err) => {
       logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
     });
+}
+
+async function publishRepoChanges(options: {
+  job: JobSpec;
+  summary: string;
+  requestText: string;
+  repoWorktrees: Awaited<ReturnType<typeof prepareRepoWorktrees>>['repoWorktrees'];
+  checks?: string[];
+  labels?: string[];
+  reviewers?: string[];
+  env: NodeJS.ProcessEnv;
+  logFile: string;
+  redactionPatterns: Array<string | RegExp>;
+}): Promise<{ mergeRequests: MergeRequestResult[]; localBranchMessages: string[] }> {
+  const {
+    job,
+    summary,
+    requestText,
+    repoWorktrees,
+    checks,
+    labels,
+    reviewers,
+    env,
+    logFile,
+    redactionPatterns,
+  } = options;
+  const mergeRequests: MergeRequestResult[] = [];
+  const localBranchMessages: string[] = [];
+
+  for (const [repoKey, repo] of repoWorktrees.entries()) {
+    const repoConfig = config.repoAllowlist[repoKey];
+    if (!repoConfig) {
+      throw new Error(`Repo ${repoKey} is not in allowlist.`);
+    }
+
+    await runRepoChecks(repo.worktreePath, checks, env, logFile, redactionPatterns);
+
+    if (!repo.branch) {
+      continue;
+    }
+
+    const committed = await commitRepoChanges(
+      repo.worktreePath,
+      repo.branch,
+      job.jobId,
+      config.botName,
+      env,
+      logFile,
+      redactionPatterns,
+    );
+    if (!committed) {
+      continue;
+    }
+
+    const title = `${config.botName}: ${requestText.slice(0, 60)}`;
+    const description = config.includeRawRequestInMr
+      ? buildMergeRequestDescription(summary, requestText, config.botName, job.jobId)
+      : summary || `${config.botName} job ${job.jobId}`;
+    const normalizedReviewers = reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
+
+    if (repoConfig.localPath) {
+      localBranchMessages.push(
+        `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
+      );
+      continue;
+    }
+
+    if (!repoConfig.sshUrl) {
+      throw new Error(`Missing sshUrl for repo ${repoKey}.`);
+    }
+
+    const providerId = inferRepoProvider(repoConfig);
+    const reviewRequest = await createRepoReviewRequest({
+      providerId,
+      repo: repoConfig,
+      context: {
+        ...(config.github ? { github: config.github } : {}),
+        ...(config.gitlab ? { gitlab: config.gitlab } : {}),
+      },
+      input: {
+        head: repo.branch,
+        base: job.gitRef,
+        title,
+        description,
+        ...(labels?.length ? { labels } : {}),
+        ...(normalizedReviewers?.length ? { reviewers: normalizedReviewers } : {}),
+      },
+    });
+    mergeRequests.push({ repoKey, url: reviewRequest.url, iid: reviewRequest.iid });
+  }
+
+  return {
+    mergeRequests,
+    localBranchMessages,
+  };
 }
 
 export async function runJob(
@@ -139,6 +238,133 @@ export async function runJob(
       await registry.updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job branches');
       });
+    }
+
+    if (job.type === 'RUN') {
+      const actionId = normalizeRunActionId(job.run?.actionId ?? '');
+      const actionConfig = config.run?.actions[actionId];
+      if (!actionConfig) {
+        throw new Error(`Run action "${actionId}" is not configured in worker config.`);
+      }
+
+      const executionRows: string[] = [];
+      for (const [repoKey, repo] of repoWorktrees.entries()) {
+        const ranContract = await runNamedRunContract(
+          repo.worktreePath,
+          actionId,
+          env,
+          paths.logFile,
+          redactionPatterns,
+          {
+            timeoutMs: actionConfig.timeoutMs,
+            allowFailure: actionConfig.allowFailure,
+          },
+        );
+        if (ranContract) {
+          executionRows.push(`- ${repoKey}: contract (.sniptail/run/${actionId})`);
+          continue;
+        }
+
+        const fallbackCommand = actionConfig.fallbackCommand;
+        const command = fallbackCommand?.[0];
+        const args = fallbackCommand?.slice(1) ?? [];
+        if (!command) {
+          throw new Error(
+            `No run contract found for action "${actionId}" in repo "${repoKey}" and no fallback_command configured.`,
+          );
+        }
+        const result = await runCommand(command, args, {
+          cwd: repo.worktreePath,
+          env,
+          logFilePath: paths.logFile,
+          timeoutMs: actionConfig.timeoutMs,
+          redact: redactionPatterns,
+          allowFailure: actionConfig.allowFailure,
+        });
+        executionRows.push(
+          `- ${repoKey}: fallback (\`${[command, ...args].join(' ')}\`) exit=${result.exitCode ?? 'null'}`,
+        );
+      }
+
+      let mergeRequests: MergeRequestResult[] = [];
+      let localBranchMessages: string[] = [];
+      if (actionConfig.gitMode === 'implement') {
+        const published = await publishRepoChanges({
+          job,
+          summary: `Run action ${actionId} completed`,
+          requestText: `Run action ${actionId}`,
+          repoWorktrees,
+          ...(actionConfig.checks ? { checks: actionConfig.checks } : {}),
+          env,
+          logFile: paths.logFile,
+          redactionPatterns,
+        });
+        mergeRequests = published.mergeRequests;
+        localBranchMessages = published.localBranchMessages;
+      }
+
+      const mrTextParts: string[] = [];
+      if (mergeRequests.length) {
+        mrTextParts.push(mergeRequests.map((mr) => `${mr.repoKey}: ${mr.url}`).join('\n'));
+      }
+      if (localBranchMessages.length) {
+        mrTextParts.push(localBranchMessages.join('\n'));
+      }
+      const mrText =
+        actionConfig.gitMode === 'implement'
+          ? mrTextParts.length
+            ? mrTextParts.join('\n')
+            : 'No merge requests created.'
+          : 'Git mode is execution-only; no merge requests were created.';
+
+      const report = [
+        `# Run Job ${job.jobId}`,
+        '',
+        `- Action ID: \`${actionId}\``,
+        `- Git mode: \`${actionConfig.gitMode}\``,
+        '',
+        '## Execution',
+        ...executionRows,
+        '',
+        '## Git Output',
+        mrText,
+      ].join('\n');
+      const reportPath = join(paths.artifactsRoot, 'report.md');
+      await writeFile(reportPath, `${report}\n`, 'utf8');
+
+      const threadId = await resolveThreadId(job, registry);
+      const channelRef = buildChannelRef(job, threadId);
+      await notifier.uploadFile(channelRef, {
+        fileContent: report,
+        title: `sniptail-${job.jobId}-report.md`,
+      });
+
+      const completionText = `All set! I finished run job ${job.jobId} (action: ${actionId}).\n${mrText}`;
+      const includeReviewFromJob =
+        actionConfig.gitMode === 'implement' && Object.keys(branchByRepo).length > 0;
+      const rendered = channelAdapter.renderCompletionMessage({
+        botName: config.botName,
+        text: completionText,
+        jobId: job.jobId,
+        includeReviewFromJob,
+      });
+      await notifier.postMessage(channelRef, rendered.text, rendered.options);
+      await registry
+        .updateJobRecord(job.jobId, {
+          status: 'ok',
+          summary: report.slice(0, 500),
+          ...(mergeRequests.length ? { mergeRequests } : {}),
+        })
+        .catch((err) => {
+          logger.warn({ err, jobId: job.jobId }, 'Failed to mark RUN job as ok');
+        });
+      return {
+        jobId: job.jobId,
+        status: 'ok',
+        summary: report.slice(0, 500),
+        reportPath,
+        ...(mergeRequests.length ? { mergeRequests } : {}),
+      };
     }
 
     const agentRun = await runAgentJob({ job, config, paths, env, registry });
@@ -252,75 +478,18 @@ export async function runJob(
 
     const summary = await readJobSummary(paths);
 
-    const mergeRequests: MergeRequestResult[] = [];
-    const localBranchMessages: string[] = [];
-
-    for (const [repoKey, repo] of repoWorktrees.entries()) {
-      const repoConfig = config.repoAllowlist[repoKey];
-      if (!repoConfig) {
-        throw new Error(`Repo ${repoKey} is not in allowlist.`);
-      }
-      await runRepoChecks(
-        repo.worktreePath,
-        job.settings?.checks,
-        env,
-        paths.logFile,
-        redactionPatterns,
-      );
-
-      if (!repo.branch) {
-        continue;
-      }
-
-      const committed = await commitRepoChanges(
-        repo.worktreePath,
-        repo.branch,
-        job.jobId,
-        config.botName,
-        env,
-        paths.logFile,
-        redactionPatterns,
-      );
-      if (!committed) {
-        continue;
-      }
-
-      const title = `${config.botName}: ${job.requestText.slice(0, 60)}`;
-      const description = config.includeRawRequestInMr
-        ? buildMergeRequestDescription(summary, job.requestText, config.botName, job.jobId)
-        : summary || `${config.botName} job ${job.jobId}`;
-      const reviewers = job.settings?.reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
-
-      if (repoConfig.localPath) {
-        localBranchMessages.push(
-          `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
-        );
-        continue;
-      }
-
-      if (!repoConfig.sshUrl) {
-        throw new Error(`Missing sshUrl for repo ${repoKey}.`);
-      }
-
-      const providerId = inferRepoProvider(repoConfig);
-      const reviewRequest = await createRepoReviewRequest({
-        providerId,
-        repo: repoConfig,
-        context: {
-          ...(config.github ? { github: config.github } : {}),
-          ...(config.gitlab ? { gitlab: config.gitlab } : {}),
-        },
-        input: {
-          head: repo.branch,
-          base: job.gitRef,
-          title,
-          description,
-          ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
-          ...(reviewers && reviewers.length ? { reviewers } : {}),
-        },
-      });
-      mergeRequests.push({ repoKey, url: reviewRequest.url, iid: reviewRequest.iid });
-    }
+    const { mergeRequests, localBranchMessages } = await publishRepoChanges({
+      job,
+      summary,
+      requestText: job.requestText,
+      repoWorktrees,
+      ...(job.settings?.checks ? { checks: job.settings.checks } : {}),
+      ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
+      ...(job.settings?.reviewers ? { reviewers: job.settings.reviewers } : {}),
+      env,
+      logFile: paths.logFile,
+      redactionPatterns,
+    });
 
     const mrTextParts: string[] = [];
     if (mergeRequests.length) {

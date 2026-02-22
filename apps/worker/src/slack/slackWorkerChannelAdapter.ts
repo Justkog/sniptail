@@ -94,6 +94,7 @@ export class SlackWorkerChannelAdapter implements WorkerChannelAdapter {
         exploreFromJob: slackIds.actions.exploreFromJob,
         planFromJob: slackIds.actions.planFromJob,
         implementFromJob: slackIds.actions.implementFromJob,
+        runFromJob: slackIds.actions.runFromJob,
         reviewFromJob: slackIds.actions.reviewFromJob,
         worktreeCommands: slackIds.actions.worktreeCommands,
         clearJob: slackIds.actions.clearJob,
@@ -105,6 +106,7 @@ export class SlackWorkerChannelAdapter implements WorkerChannelAdapter {
             includeExploreFromJob: false,
             includePlanFromJob: false,
             includeImplementFromJob: false,
+            includeRunFromJob: false,
             includeReviewFromJob: false,
             answerQuestionsFirst: true,
           }

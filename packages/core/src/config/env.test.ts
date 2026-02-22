@@ -599,7 +599,164 @@ describe('config loaders', () => {
     process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
 
     expect(() => loadWorkerConfig()).toThrow(
-      'Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.',
+      'Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.',
     );
+  });
+
+  it('parses bot run actions from TOML', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+      '',
+      '[run.actions."refresh-docs"]',
+      'label = "Refresh docs"',
+      'description = "Build and refresh docs artifacts"',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    const config = loadBotConfig();
+    expect(config.run?.actions['refresh-docs']).toEqual({
+      label: 'Refresh docs',
+      description: 'Build and refresh docs artifacts',
+    });
+  });
+
+  it('parses worker run actions from TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[run.actions."refresh-docs"]',
+      'fallback_command = ["pnpm", "docs:refresh"]',
+      'timeout_ms = 120000',
+      'allow_failure = true',
+      'git_mode = "implement"',
+      'checks = ["npm-test"]',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.run?.actions['refresh-docs']).toEqual({
+      fallbackCommand: ['pnpm', 'docs:refresh'],
+      timeoutMs: 120000,
+      allowFailure: true,
+      gitMode: 'implement',
+      checks: ['npm-test'],
+    });
+  });
+
+  it('rejects invalid run action ids from worker TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[run.actions."../bad"]',
+      'fallback_command = ["echo", "bad"]',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid run action id');
+  });
+
+  it('rejects invalid run git_mode from worker TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[run.actions."refresh-docs"]',
+      'git_mode = "unknown"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    expect(() => loadWorkerConfig()).toThrow('Expected execution-only or implement');
   });
 });

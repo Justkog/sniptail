@@ -7,7 +7,14 @@ import {
   getTomlNumber,
   getTomlStringArray,
 } from './toml.js';
-import type { CoreConfig, BotConfig, WorkerConfig, JobModelConfig } from './types.js';
+import type {
+  CoreConfig,
+  BotConfig,
+  WorkerConfig,
+  JobModelConfig,
+  BotRunActionReference,
+  WorkerRunActionConfig,
+} from './types.js';
 import type { JobType } from '../types/job.js';
 import {
   isKnownChannelProvider,
@@ -44,6 +51,7 @@ import {
   resolveStringValue,
 } from './resolve.js';
 import { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
+import { normalizeRunActionId } from '../repos/runActions.js';
 
 let coreConfigCache: CoreConfig | null = null;
 let botConfigCache: BotConfig | null = null;
@@ -69,7 +77,15 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   if (!modelsToml) return undefined;
   const entries = Object.entries(modelsToml);
   if (!entries.length) return undefined;
-  const allowed = new Set<JobType>(['ASK', 'EXPLORE', 'IMPLEMENT', 'PLAN', 'REVIEW', 'MENTION']);
+  const allowed = new Set<JobType>([
+    'ASK',
+    'EXPLORE',
+    'IMPLEMENT',
+    'PLAN',
+    'REVIEW',
+    'RUN',
+    'MENTION',
+  ]);
   const allowedEfforts = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
   const models: Partial<Record<JobType, JobModelConfig>> = {};
 
@@ -88,7 +104,7 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   for (const [key, value] of entries) {
     if (!allowed.has(key as JobType)) {
       throw new Error(
-        `Invalid ${label} key: ${key}. Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.`,
+        `Invalid ${label} key: ${key}. Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.`,
       );
     }
 
@@ -199,6 +215,112 @@ function resolvePositiveIntegerFromSources(
   }
 
   return defaultValue;
+}
+
+function parsePositiveTomlInteger(value: unknown, name: string, defaultValue: number): number {
+  const parsed = getTomlNumber(value, name);
+  if (parsed === undefined) {
+    return defaultValue;
+  }
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`Invalid ${name} in TOML. Expected a positive integer.`);
+  }
+  return parsed;
+}
+
+function parseBotRunActions(
+  runToml: TomlTable | undefined,
+): Record<string, BotRunActionReference> | undefined {
+  if (!runToml) return undefined;
+  const actionsToml = getTomlTable(runToml.actions, 'run.actions');
+  if (!actionsToml) return undefined;
+  const actions = Object.entries(actionsToml).reduce<Record<string, BotRunActionReference>>(
+    (acc, [rawActionId, rawValue]) => {
+      const actionId = normalizeRunActionId(rawActionId);
+      const actionToml = getTomlTable(rawValue, `run.actions.${rawActionId}`);
+      if (!actionToml) {
+        throw new Error(`Invalid run.actions.${rawActionId} in TOML. Expected a table.`);
+      }
+      const label = getTomlString(actionToml.label, `run.actions.${rawActionId}.label`)?.trim();
+      if (!label) {
+        throw new Error(
+          `Invalid run.actions.${rawActionId}.label in TOML. Expected a non-empty string.`,
+        );
+      }
+      const description =
+        getTomlString(actionToml.description, `run.actions.${rawActionId}.description`)?.trim() ||
+        undefined;
+      acc[actionId] = {
+        label,
+        ...(description ? { description } : {}),
+      };
+      return acc;
+    },
+    {},
+  );
+  return Object.keys(actions).length ? actions : undefined;
+}
+
+function parseWorkerRunActions(
+  runToml: TomlTable | undefined,
+): Record<string, WorkerRunActionConfig> | undefined {
+  if (!runToml) return undefined;
+  const actionsToml = getTomlTable(runToml.actions, 'run.actions');
+  if (!actionsToml) return undefined;
+  const actions = Object.entries(actionsToml).reduce<Record<string, WorkerRunActionConfig>>(
+    (acc, [rawActionId, rawValue]) => {
+      const actionId = normalizeRunActionId(rawActionId);
+      const actionToml = getTomlTable(rawValue, `run.actions.${rawActionId}`);
+      if (!actionToml) {
+        throw new Error(`Invalid run.actions.${rawActionId} in TOML. Expected a table.`);
+      }
+
+      const fallbackCommand = getTomlStringArray(
+        actionToml.fallback_command,
+        `run.actions.${rawActionId}.fallback_command`,
+      )
+        ?.map((part) => part.trim())
+        .filter(Boolean);
+      if (fallbackCommand && fallbackCommand.length === 0) {
+        throw new Error(
+          `Invalid run.actions.${rawActionId}.fallback_command in TOML. Expected non-empty values.`,
+        );
+      }
+
+      const timeoutMs = parsePositiveTomlInteger(
+        actionToml.timeout_ms,
+        `run.actions.${rawActionId}.timeout_ms`,
+        600_000,
+      );
+      const allowFailure = parseTomlOptionalBoolean(
+        actionToml.allow_failure,
+        `run.actions.${rawActionId}.allow_failure`,
+      );
+      const gitModeRaw = getTomlString(actionToml.git_mode, `run.actions.${rawActionId}.git_mode`);
+      const gitModeValue = gitModeRaw?.trim();
+      if (gitModeValue && gitModeValue !== 'execution-only' && gitModeValue !== 'implement') {
+        throw new Error(
+          `Invalid run.actions.${rawActionId}.git_mode in TOML. Expected execution-only or implement.`,
+        );
+      }
+      const gitMode: WorkerRunActionConfig['gitMode'] =
+        gitModeValue === 'implement' ? 'implement' : 'execution-only';
+      const checks = getTomlStringArray(actionToml.checks, `run.actions.${rawActionId}.checks`)
+        ?.map((value) => value.trim())
+        .filter(Boolean);
+
+      acc[actionId] = {
+        ...(fallbackCommand?.length ? { fallbackCommand } : {}),
+        timeoutMs,
+        allowFailure: allowFailure ?? false,
+        gitMode,
+        ...(checks?.length ? { checks } : {}),
+      };
+      return acc;
+    },
+    {},
+  );
+  return Object.keys(actions).length ? actions : undefined;
 }
 
 function parsePermissionSubjectToken(raw: string, label: string): PermissionSubject {
@@ -425,6 +547,7 @@ export function loadBotConfig(): BotConfig {
   const botToml = getTomlTable(toml.bot, 'bot');
   const channelsToml = getTomlTable(toml.channels, 'channels');
   const permissionsToml = getTomlTable(toml.permissions, 'permissions');
+  const runToml = getTomlTable(toml.run, 'run');
   const channelsSlackToml = getTomlTable(channelsToml?.slack, 'channels.slack');
   const channelsDiscordToml = getTomlTable(channelsToml?.discord, 'channels.discord');
 
@@ -474,6 +597,7 @@ export function loadBotConfig(): BotConfig {
     required: false,
   });
   const permissions = parsePermissionsConfig(permissionsToml);
+  const runActions = parseBotRunActions(runToml);
   const redisUrl = resolveStringValue('REDIS_URL', botToml?.redis_url, {
     required: core.queueDriver === 'redis',
   });
@@ -514,6 +638,7 @@ export function loadBotConfig(): BotConfig {
       },
     }),
     permissions,
+    ...(runActions ? { run: { actions: runActions } } : {}),
     ...(redisUrl ? { redisUrl } : {}),
   };
   return botConfigCache;
@@ -528,6 +653,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const codexToml = getTomlTable(toml.codex, 'codex');
   const githubToml = getTomlTable(toml.github, 'github');
   const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
+  const runToml = getTomlTable(toml.run, 'run');
 
   const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
@@ -570,6 +696,7 @@ export function loadWorkerConfig(): WorkerConfig {
     getTomlTable(codexToml?.models, 'codex.models'),
     'codex.models',
   );
+  const runActions = parseWorkerRunActions(runToml);
 
   const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
   const worktreeSetupCommand = resolveStringValue(
@@ -657,6 +784,7 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(cleanupMaxAge && { cleanupMaxAge }),
     ...(cleanupMaxEntries !== undefined && { cleanupMaxEntries }),
     includeRawRequestInMr,
+    ...(runActions ? { run: { actions: runActions } } : {}),
     codex: {
       executionMode: executionMode,
       ...(dockerfilePath && { dockerfilePath }),

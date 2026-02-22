@@ -7,6 +7,7 @@ export type SlackIds = {
     explore: string;
     plan: string;
     implement: string;
+    run: string;
     bootstrap: string;
     clearBefore: string;
     usage: string;
@@ -16,6 +17,7 @@ export type SlackIds = {
     exploreFromJob: string;
     planFromJob: string;
     implementFromJob: string;
+    runFromJob: string;
     reviewFromJob: string;
     worktreeCommands: string;
     clearJob: string;
@@ -23,7 +25,9 @@ export type SlackIds = {
     exploreSubmit: string;
     planSubmit: string;
     implementSubmit: string;
+    runSubmit: string;
     bootstrapSubmit: string;
+    runActionSelect: string;
     answerQuestions: string;
     answerQuestionsSubmit: string;
     approvalApprove: string;
@@ -42,6 +46,7 @@ export function buildSlackIds(botName: string): SlackIds {
       explore: `/${commandPrefix}-explore`,
       plan: `/${commandPrefix}-plan`,
       implement: `/${commandPrefix}-implement`,
+      run: `/${commandPrefix}-run`,
       bootstrap: `/${commandPrefix}-bootstrap`,
       clearBefore: `/${commandPrefix}-clear-before`,
       usage: `/${commandPrefix}-usage`,
@@ -51,6 +56,7 @@ export function buildSlackIds(botName: string): SlackIds {
       exploreFromJob: `${commandPrefix}-explore-from-job`,
       planFromJob: `${commandPrefix}-plan-from-job`,
       implementFromJob: `${commandPrefix}-implement-from-job`,
+      runFromJob: `${commandPrefix}-run-from-job`,
       reviewFromJob: `${commandPrefix}-review-from-job`,
       worktreeCommands: `${commandPrefix}-worktree-commands`,
       clearJob: `${commandPrefix}-clear-job`,
@@ -58,7 +64,9 @@ export function buildSlackIds(botName: string): SlackIds {
       exploreSubmit: `${commandPrefix}-explore-submit`,
       planSubmit: `${commandPrefix}-plan-submit`,
       implementSubmit: `${commandPrefix}-implement-submit`,
+      runSubmit: `${commandPrefix}-run-submit`,
       bootstrapSubmit: `${commandPrefix}-bootstrap-submit`,
+      runActionSelect: `${commandPrefix}-run-action-select`,
       answerQuestions: `${commandPrefix}-answer-questions`,
       answerQuestionsSubmit: `${commandPrefix}-answer-questions-submit`,
       approvalApprove: `${commandPrefix}-approval-approve`,

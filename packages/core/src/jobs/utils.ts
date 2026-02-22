@@ -1,9 +1,17 @@
 import { join } from 'node:path';
 import type { JobSpec, RepoConfig } from '../types/job.js';
+import { normalizeRunActionId } from '../repos/runActions.js';
 
 const gitRefPattern = /^[A-Za-z0-9._/-]+$/;
 
 export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConfig> = {}) {
+  if (job.type === 'RUN') {
+    const actionId = job.run?.actionId?.trim();
+    if (!actionId) {
+      throw new Error('RUN jobs must include run.actionId.');
+    }
+    normalizeRunActionId(actionId);
+  }
   if (job.type !== 'MENTION' && job.repoKeys.length === 0) {
     throw new Error('Job must include at least one repo.');
   }

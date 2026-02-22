@@ -51,7 +51,8 @@ export async function prepareRepoWorktrees(
       job.type === 'IMPLEMENT' ||
       job.type === 'ASK' ||
       job.type === 'EXPLORE' ||
-      job.type === 'PLAN'
+      job.type === 'PLAN' ||
+      job.type === 'RUN'
         ? `${branchPrefix}/${job.jobId}`
         : undefined;
 

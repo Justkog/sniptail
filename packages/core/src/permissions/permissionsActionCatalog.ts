@@ -4,6 +4,7 @@ export const PERMISSION_ACTIONS = [
   'jobs.plan',
   'jobs.implement',
   'jobs.review',
+  'jobs.run',
   'jobs.bootstrap',
   'jobs.answerQuestions',
   'jobs.clear',

@@ -17,6 +17,7 @@ import { handleAskStart } from './features/commands/ask.js';
 import { handleDiscordExploreStart } from './features/commands/discordExploreCommand.js';
 import { handlePlanStart } from './features/commands/plan.js';
 import { handleImplementStart } from './features/commands/implement.js';
+import { handleRunStart } from './features/commands/discordRunCommand.js';
 import { handleBootstrapStart } from './features/commands/bootstrap.js';
 import { handleClearBefore } from './features/commands/clearBefore.js';
 import { handleUsage } from './features/commands/usage.js';
@@ -24,6 +25,8 @@ import { handleAskSelection } from './features/actions/askSelection.js';
 import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
 import { handleImplementSelection } from './features/actions/implementSelection.js';
+import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
+import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
 import {
   handleBootstrapExtrasContinue,
@@ -47,6 +50,7 @@ import {
   handleClearJobConfirmButton,
 } from './features/actions/clearJob.js';
 import { handleImplementFromJobButton } from './features/actions/implementFromJob.js';
+import { handleRunFromJobButton } from './features/actions/runFromJobAction.js';
 import { handleReviewFromJobButton } from './features/actions/reviewFromJob.js';
 import { handleWorktreeCommandsButton } from './features/actions/worktreeCommands.js';
 import {
@@ -58,9 +62,13 @@ import {
   planRepoSelectCustomId,
   bootstrapModalCustomId,
   implementModalCustomId,
+  runModalCustomId,
   planModalCustomId,
   implementRepoSelectCustomId,
+  runRepoSelectCustomId,
+  runActionSelectCustomId,
 } from './modals.js';
+import { handleRunModalSubmit } from './features/views/discordRunSubmitView.js';
 import type { DiscordHandlerContext } from './context.js';
 import {
   authorizeDiscordPrecheckAndRespond,
@@ -136,6 +144,36 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           return;
         }
         await handleImplementStart(interaction, config);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
+    if (interaction.commandName === commandNames.run) {
+      try {
+        const authorized = await authorizeDiscordPrecheckAndRespond({
+          permissions,
+          action: 'jobs.run',
+          actor: {
+            userId: interaction.user.id,
+            channelId: interaction.channelId,
+            ...(interaction.channel?.isThread() ? { threadId: interaction.channelId } : {}),
+            ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+            member: interaction.member,
+          },
+          onDeny: async () => {
+            await interaction.reply({
+              content: 'You are not authorized to run custom actions.',
+              ephemeral: true,
+            });
+          },
+        });
+        if (!authorized) {
+          return;
+        }
+        await handleRunStart(interaction, config);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -448,6 +486,30 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             }
             await handleImplementFromJobButton(interaction, parsed.jobId, config);
             return;
+          case 'runFromJob':
+            if (
+              !(await authorizeDiscordPrecheckAndRespond({
+                permissions,
+                action: 'jobs.run',
+                actor: {
+                  userId: interaction.user.id,
+                  channelId: interaction.channelId,
+                  ...(interaction.channel?.isThread() ? { threadId: interaction.channelId } : {}),
+                  ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+                  member: interaction.member,
+                },
+                onDeny: async () => {
+                  await interaction.reply({
+                    content: 'You are not authorized to run custom actions.',
+                    ephemeral: true,
+                  });
+                },
+              }))
+            ) {
+              return;
+            }
+            await handleRunFromJobButton(interaction, parsed.jobId, config);
+            return;
           case 'reviewFromJob':
             await handleReviewFromJobButton(interaction, parsed.jobId, config, queue, permissions);
             return;
@@ -541,6 +603,24 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.isStringSelectMenu() && interaction.customId === runRepoSelectCustomId) {
+      try {
+        await handleRunRepoSelection(interaction, config);
+      } catch (err) {
+        logger.error({ err }, 'Discord run repo selection failed');
+      }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === runActionSelectCustomId) {
+      try {
+        await handleRunActionSelection(interaction, config);
+      } catch (err) {
+        logger.error({ err }, 'Discord run action selection failed');
+      }
+      return;
+    }
+
     if (interaction.isStringSelectMenu() && isBootstrapExtrasCustomId(interaction.customId)) {
       try {
         await handleBootstrapExtrasSelection(interaction, config);
@@ -557,6 +637,16 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         logger.error({ err }, 'Discord implement modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
       }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === runModalCustomId) {
+      try {
+        await handleRunModalSubmit(interaction, config, queue, permissions);
+      } catch (err) {
+        logger.error({ err }, 'Discord run modal submit failed');
+        await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+      }
+      return;
     }
 
     if (interaction.isModalSubmit() && interaction.customId === exploreModalCustomId) {

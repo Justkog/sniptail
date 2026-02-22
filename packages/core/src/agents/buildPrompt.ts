@@ -27,6 +27,6 @@ export function buildPromptForJob(job: JobSpec, botName: string): string {
     case 'MENTION':
       return buildMentionPrompt(job, botName);
     default:
-      return assertNeverJobType(job.type);
+      return assertNeverJobType(job.type as never);
   }
 }
