@@ -91,6 +91,21 @@ redis_url = "redis://localhost:6379"
 [channels.discord]
 # enabled = false
 
+# Optional run action catalog for /<bot>-run.
+# Keys are action ids and should match worker config and repo contracts.
+#
+# [run.actions.\"refresh-docs\"]
+# label = "Refresh docs"
+# description = "Rebuild documentation and publish artifacts"
+
+[run.actions."db-migration-sanity"]
+label = "DB migration sanity"
+description = "Validate migration metadata and apply sqlite migrations against an isolated temporary DB path."
+
+[run.actions."ci-check"]
+label = "CI check"
+description = "Run repository CI checks from worker fallback command."
+
 # Discord app ID.
 # Required when channels.discord.enabled = true.
 # Optional otherwise. Example: "123456789012345678"

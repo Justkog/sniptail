@@ -14,6 +14,7 @@ import { BullMqBotEventSink } from './channels/botEventSink.js';
 import { createJobRegistry } from './job/createJobRegistry.js';
 import { assertDockerPreflight } from './docker/dockerPreflight.js';
 import { assertGitCommitIdentityPreflight } from './git/gitPreflight.js';
+import { syncRunActionMetadata } from './repos/syncRunActionMetadata.js';
 
 export type WorkerRuntimeHandle = {
   close(): Promise<void>;
@@ -40,6 +41,20 @@ export async function startWorkerRuntime(
     mode: 'if-empty',
     ...(config.repoAllowlistPath ? { filePath: config.repoAllowlistPath } : {}),
   });
+  const runActionSync = await syncRunActionMetadata().catch((err) => {
+    logger.warn({ err }, 'Failed to sync run action metadata on worker startup');
+    return undefined;
+  });
+  if (runActionSync) {
+    logger.info(
+      {
+        scanned: runActionSync.scanned,
+        updated: runActionSync.updated,
+        failures: runActionSync.failures.length,
+      },
+      'Completed run action metadata sync',
+    );
+  }
 
   const queueRuntime =
     options.queueRuntime ??

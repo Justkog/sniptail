@@ -3,6 +3,7 @@ export type DiscordCompletionAction =
   | 'exploreFromJob'
   | 'planFromJob'
   | 'implementFromJob'
+  | 'runFromJob'
   | 'reviewFromJob'
   | 'worktreeCommands'
   | 'answerQuestions'
@@ -30,6 +31,7 @@ const actionTokens = {
   exploreFromJob: 'explore',
   planFromJob: 'plan',
   implementFromJob: 'implement',
+  runFromJob: 'run',
   reviewFromJob: 'review',
   worktreeCommands: 'worktree',
   answerQuestions: 'answer-questions',
@@ -46,6 +48,7 @@ const tokenToAction: Record<
   [actionTokens.exploreFromJob]: 'exploreFromJob',
   [actionTokens.planFromJob]: 'planFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
+  [actionTokens.runFromJob]: 'runFromJob',
   [actionTokens.reviewFromJob]: 'reviewFromJob',
   [actionTokens.worktreeCommands]: 'worktreeCommands',
   [actionTokens.answerQuestions]: 'answerQuestions',
@@ -113,6 +116,7 @@ export function buildDiscordCompletionComponents(
     includeExploreFromJob?: boolean;
     includePlanFromJob?: boolean;
     includeImplementFromJob?: boolean;
+    includeRunFromJob?: boolean;
     includeReviewFromJob?: boolean;
     answerQuestionsFirst?: boolean;
   },
@@ -122,6 +126,7 @@ export function buildDiscordCompletionComponents(
   const includeExploreFromJob = options?.includeExploreFromJob ?? true;
   const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const includeRunFromJob = options?.includeRunFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const components: DiscordActionRow['components'] = [];
@@ -163,6 +168,14 @@ export function buildDiscordCompletionComponents(
       style: 1,
       label: 'Implement',
       custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
+    });
+  }
+  if (includeRunFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Run',
+      custom_id: buildDiscordCompletionCustomId('runFromJob', jobId),
     });
   }
   if (includeReviewFromJob) {

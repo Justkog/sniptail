@@ -89,6 +89,7 @@ export class DiscordWorkerChannelAdapter implements WorkerChannelAdapter {
       includeExploreFromJob: !hasOpenQuestions,
       includePlanFromJob: !hasOpenQuestions,
       includeImplementFromJob: !hasOpenQuestions,
+      includeRunFromJob: !hasOpenQuestions,
       includeReviewFromJob: hasOpenQuestions ? false : (input.includeReviewFromJob ?? false),
       answerQuestionsFirst: hasOpenQuestions,
     });

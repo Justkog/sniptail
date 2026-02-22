@@ -114,7 +114,7 @@ idle_retries = 2
 
 [copilot.models]
 # Optional per-command model overrides.
-# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
 # - model_reasoning_effort (optional): minimal | low | medium | high | xhigh
@@ -145,7 +145,7 @@ execution_mode = "local"
 
 [codex.models]
 # Optional per-command model overrides.
-# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
 # - model_reasoning_effort (optional): minimal | low | medium | high | xhigh
@@ -156,6 +156,32 @@ execution_mode = "local"
 #
 # [codex.models.IMPLEMENT]
 # model = "gpt-5"
+
+[run.actions]
+# Optional run action execution map.
+# Key is the action id (must match .sniptail/run/<action-id> and bot config run.actions key).
+# fallback_command (optional) runs when repo contract is missing.
+# timeout_ms (optional) defaults to 600000.
+# allow_failure (optional) defaults to false.
+# git_mode (optional) is "execution-only" (default) or "implement".
+# checks (optional) reuse check aliases when git_mode = "implement".
+#
+# [run.actions.\"refresh-docs\"]
+# fallback_command = ["pnpm", "docs:refresh"]
+# timeout_ms = 600000
+# allow_failure = false
+# git_mode = "execution-only"
+
+[run.actions."db-migration-sanity"]
+timeout_ms = 300000
+allow_failure = false
+git_mode = "execution-only"
+
+[run.actions."ci-check"]
+fallback_command = ["pnpm", "run", "ci:check"]
+timeout_ms = 1800000
+allow_failure = false
+git_mode = "execution-only"
 
 [github]
 # GitHub API base URL.

@@ -21,6 +21,9 @@ export const planModalCustomId = 'plan_modal';
 export const answerQuestionsModalCustomId = 'answer_questions_modal';
 export const implementRepoSelectCustomId = 'implement_repo_select';
 export const implementModalCustomId = 'implement_modal';
+export const runRepoSelectCustomId = 'run_repo_select';
+export const runActionSelectCustomId = 'run_action_select';
+export const runModalCustomId = 'run_modal';
 export const bootstrapModalCustomId = 'bootstrap_modal';
 export const bootstrapVisibilitySelectCustomId = 'bootstrap_visibility_select';
 export const bootstrapQuickstartSelectCustomId = 'bootstrap_quickstart_select';
@@ -46,6 +49,39 @@ export function buildImplementRepoSelect(repoKeys: string[]) {
     .setPlaceholder('Select repositories')
     .setMinValues(1)
     .setMaxValues(Math.min(repoKeys.length, 25))
+    .addOptions(options);
+
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+}
+
+export function buildRunRepoSelect(repoKeys: string[]) {
+  const options = repoKeys.map((key) =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(key)
+      .setValue(key)
+      .setDefault(repoKeys.length === 1),
+  );
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(runRepoSelectCustomId)
+    .setPlaceholder('Select repositories')
+    .setMinValues(1)
+    .setMaxValues(Math.min(repoKeys.length, 25))
+    .addOptions(options);
+
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+}
+
+export function buildRunActionSelect(actions: Array<{ id: string; label: string }>) {
+  const options = actions.map((action) =>
+    new StringSelectMenuOptionBuilder().setLabel(action.label).setValue(action.id),
+  );
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(runActionSelectCustomId)
+    .setPlaceholder('Select run action')
+    .setMinValues(1)
+    .setMaxValues(1)
     .addOptions(options);
 
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
@@ -403,6 +439,25 @@ export function buildImplementModal(
 
   if (repoKeys.length > 1) {
     modal.setTitle(`${botName} Implement (${repoKeys.length} repos)`);
+  }
+
+  return modal;
+}
+
+export function buildRunModal(botName: string, repoKeys: string[], baseBranch: string) {
+  const modal = new ModalBuilder().setCustomId(runModalCustomId).setTitle(`${botName} Run`);
+
+  const branchInput = new TextInputBuilder()
+    .setCustomId('git_ref')
+    .setStyle(TextInputStyle.Short)
+    .setValue(baseBranch);
+
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput),
+  );
+
+  if (repoKeys.length > 1) {
+    modal.setTitle(`${botName} Run (${repoKeys.length} repos)`);
   }
 
   return modal;

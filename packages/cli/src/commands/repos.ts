@@ -35,6 +35,11 @@ type ReposSyncFileOptions = RuntimeOptions & {
   json?: boolean;
 };
 
+type ReposSyncRunActionsOptions = RuntimeOptions & {
+  repo?: string;
+  json?: boolean;
+};
+
 function appendRuntimeOptions(command: Command): Command {
   return command
     .option('--config <path>', 'Path to sniptail.worker.toml')
@@ -128,6 +133,21 @@ export function registerReposCommand(program: Command) {
       .action(async (options: ReposSyncFileOptions) => {
         const args = ['sync-file'];
         if (options.path) args.push('--path', options.path);
+        if (options.json) args.push('--json');
+
+        await runReposRuntime(options, args);
+      }),
+  );
+
+  appendRuntimeOptions(
+    repos
+      .command('sync-run-actions')
+      .description('Sync per-repo run action metadata from .sniptail/run contracts')
+      .option('--repo <repoKey>', 'Sync only one repository key')
+      .option('--json', 'Print JSON output')
+      .action(async (options: ReposSyncRunActionsOptions) => {
+        const args = ['sync-run-actions'];
+        if (options.repo) args.push('--repo', options.repo);
         if (options.json) args.push('--json');
 
         await runReposRuntime(options, args);

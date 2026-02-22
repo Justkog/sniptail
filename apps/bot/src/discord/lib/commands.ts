@@ -7,6 +7,7 @@ export function buildCommandNames(prefix: string) {
     explore: `${prefix}-explore`,
     plan: `${prefix}-plan`,
     implement: `${prefix}-implement`,
+    run: `${prefix}-run`,
     bootstrap: `${prefix}-bootstrap`,
     clearBefore: `${prefix}-clear-before`,
     usage: `${prefix}-usage`,
@@ -47,6 +48,11 @@ export async function registerDiscordCommands(
     {
       name: names.implement,
       description: 'Request a change for one or more repositories',
+      type: 1,
+    },
+    {
+      name: names.run,
+      description: 'Run a configured repo action on one or more repositories',
       type: 1,
     },
     {

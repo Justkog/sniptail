@@ -28,4 +28,18 @@ describe('discord completion components', () => {
     const customIds = rows.flatMap((row) => row.components.map((component) => component.custom_id));
     expect(customIds.some((customId) => customId.includes(':explore:'))).toBe(true);
   });
+
+  it('round-trips run completion custom ids', () => {
+    const customId = buildDiscordCompletionCustomId('runFromJob', 'job-run-123');
+    expect(parseDiscordCompletionCustomId(customId)).toEqual({
+      action: 'runFromJob',
+      jobId: 'job-run-123',
+    });
+  });
+
+  it('includes run action in default completion buttons', () => {
+    const rows = buildDiscordCompletionComponents('job-run-default');
+    const customIds = rows.flatMap((row) => row.components.map((component) => component.custom_id));
+    expect(customIds.some((customId) => customId.includes(':run:'))).toBe(true);
+  });
 });

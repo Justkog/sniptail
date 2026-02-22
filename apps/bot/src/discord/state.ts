@@ -12,6 +12,10 @@ export const implementSelectionByUser = new Map<
   string,
   { repoKeys: string[]; requestedAt: number }
 >();
+export const runSelectionByUser = new Map<
+  string,
+  { repoKeys: string[]; actionId?: string; requestedAt: number }
+>();
 export const bootstrapExtrasByUser = new Map<
   string,
   {

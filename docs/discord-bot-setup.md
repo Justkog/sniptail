@@ -3,7 +3,7 @@
 This guide walks through creating a Discord application/bot, inviting it to your server, and configuring Sniptail to use it.
 
 Sniptail’s Discord bot:
-- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`).
+- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
 - Supports `@mention` in a channel to kick off a job.
 - Posts job results and uploads Markdown reports as file attachments.
 - Tries to create a thread per job (and falls back to replying in the channel if it can’t).

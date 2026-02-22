@@ -19,7 +19,7 @@ vi.mock('../runner/commandRunner.js', () => ({
 }));
 
 import { runCommand } from '../runner/commandRunner.js';
-import { runChecks, runSetupContract } from './jobOps.js';
+import { runChecks, runNamedRunContract, runSetupContract } from './jobOps.js';
 
 function makeMissingPathError(): Error & { code: string } {
   return Object.assign(new Error('missing path'), { code: 'ENOENT' });
@@ -127,5 +127,41 @@ describe('git job operations contracts', () => {
     await expect(runChecks('/tmp/repo', undefined, {}, '/tmp/runner.log', [])).rejects.toThrow(
       'is not executable',
     );
+  });
+
+  it('runs named run contract when present and executable', async () => {
+    const accessMock = vi.mocked(access);
+    const runCommandMock = vi.mocked(runCommand);
+
+    accessMock.mockResolvedValueOnce(undefined);
+    accessMock.mockResolvedValueOnce(undefined);
+
+    await expect(
+      runNamedRunContract('/tmp/repo', 'refresh-docs', {}, '/tmp/runner.log', []),
+    ).resolves.toBe(true);
+    expect(accessMock).toHaveBeenNthCalledWith(
+      1,
+      '/tmp/repo/.sniptail/run/refresh-docs',
+      fsConstants.F_OK,
+    );
+    expect(accessMock).toHaveBeenNthCalledWith(
+      2,
+      '/tmp/repo/.sniptail/run/refresh-docs',
+      fsConstants.X_OK,
+    );
+    expect(runCommandMock).toHaveBeenCalledWith(
+      '/tmp/repo/.sniptail/run/refresh-docs',
+      [],
+      expect.objectContaining({
+        cwd: '/tmp/repo',
+        logFilePath: '/tmp/runner.log',
+      }),
+    );
+  });
+
+  it('rejects traversal-like run contract ids', async () => {
+    await expect(
+      runNamedRunContract('/tmp/repo', '../refresh', {}, '/tmp/runner.log', []),
+    ).rejects.toThrow('Invalid run action id');
   });
 });

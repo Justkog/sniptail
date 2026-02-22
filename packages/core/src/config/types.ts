@@ -10,6 +10,21 @@ export type JobModelConfig = {
   modelReasoningEffort?: ModelReasoningEffort;
 };
 
+export type BotRunActionReference = {
+  label: string;
+  description?: string;
+};
+
+export type WorkerRunActionGitMode = 'execution-only' | 'implement';
+
+export type WorkerRunActionConfig = {
+  fallbackCommand?: string[];
+  timeoutMs: number;
+  allowFailure: boolean;
+  gitMode: WorkerRunActionGitMode;
+  checks?: string[];
+};
+
 export type QueueDriver = 'redis' | 'inproc';
 export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
 
@@ -45,6 +60,9 @@ export type BotConfig = CoreConfig & {
     channelIds?: string[];
   };
   permissions: PermissionsConfig;
+  run?: {
+    actions: Record<string, BotRunActionReference>;
+  };
   redisUrl?: string;
 };
 
@@ -74,6 +92,9 @@ export type WorkerConfig = CoreConfig & {
   cleanupMaxAge?: string;
   cleanupMaxEntries?: number;
   includeRawRequestInMr: boolean;
+  run?: {
+    actions: Record<string, WorkerRunActionConfig>;
+  };
   codex: {
     executionMode: 'local' | 'docker';
     dockerfilePath?: string;

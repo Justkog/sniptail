@@ -14,6 +14,7 @@
     "test": "vitest",
     "test:run": "vitest run --config vitest.workspace.ts",
     "build": "pnpm -r build",
+    "ci:check": "pnpm -r build && pnpm -r check",
     "smoke:bot": "SNIPTAIL_DRY_RUN=1 node --import ./scripts/register-loaders.mjs apps/bot/dist/index.js",
     "start": "pnpm -r --parallel --filter \"./apps/*\" --filter \"!./apps/local\" start",
     "clean": "pnpm -r clean",

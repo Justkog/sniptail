@@ -18,6 +18,7 @@ import {
   type RepoProvider,
 } from '@sniptail/core/repos/catalog.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
+import { syncRunActionMetadata } from '../repos/syncRunActionMetadata.js';
 
 type AddResult = 'created' | 'updated' | 'skipped';
 
@@ -31,6 +32,7 @@ function printUsage(): void {
       '  list               List active repository catalog entries',
       '  remove <repoKey>   Deactivate a repository catalog entry',
       '  sync-file          Write DB catalog entries to an allowlist JSON file',
+      '  sync-run-actions   Sync per-repo run action metadata from .sniptail/run',
       '',
       'Examples:',
       '  repos add my-api --ssh-url git@github.com:org/my-api.git',
@@ -39,6 +41,7 @@ function printUsage(): void {
       '  repos list --json',
       '  repos remove my-api --yes',
       '  repos sync-file',
+      '  repos sync-run-actions',
       '',
     ].join('\n'),
   );
@@ -418,6 +421,47 @@ async function handleSyncFile(args: string[]): Promise<void> {
   process.stdout.write(`Synchronized allowlist file at ${targetPath} (${count} entries).\n`);
 }
 
+async function handleSyncRunActions(args: string[]): Promise<void> {
+  const parsed = parseArgs({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: {
+      repo: { type: 'string' },
+      json: { type: 'boolean', default: false },
+    },
+  });
+  if (parsed.positionals.length > 0) {
+    throw new Error('Usage: repos sync-run-actions [--repo <repoKey>] [--json]');
+  }
+
+  loadWorkerConfig();
+  const repoInput = parsed.values.repo?.trim();
+  const repoKey = repoInput ? normalizeRepoKey(repoInput).repoKey : undefined;
+  const asJson = Boolean(parsed.values.json);
+
+  const result = await syncRunActionMetadata({ ...(repoKey ? { repoKey } : {}) });
+
+  if (asJson) {
+    writeJson({
+      command: 'sync-run-actions',
+      ...(repoKey ? { repoKey } : {}),
+      ...result,
+    });
+    return;
+  }
+
+  process.stdout.write(
+    `Synchronized run action metadata for ${result.updated}/${result.scanned} repositories.\n`,
+  );
+  if (result.failures.length) {
+    process.stdout.write('Failures:\n');
+    for (const failure of result.failures) {
+      process.stdout.write(`- ${failure.repoKey}: ${failure.message}\n`);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === '--help' || command === '-h') {
@@ -438,6 +482,9 @@ async function main(): Promise<void> {
       return;
     case 'sync-file':
       await handleSyncFile(args);
+      return;
+    case 'sync-run-actions':
+      await handleSyncRunActions(args);
       return;
     default:
       throw new Error(`Unknown repos command: ${command}`);

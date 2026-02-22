@@ -352,6 +352,78 @@ export function buildImplementModal(
   };
 }
 
+export function buildRunModal(
+  repoAllowlist: Record<string, RepoConfig>,
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  actionSelectActionId: string,
+  initialRepoKeys?: string[],
+) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const initialOptionsFromInput =
+    initialRepoKeys
+      ?.map((repoKey) => repoOptions.find((option) => option.value === repoKey))
+      .filter((value): value is (typeof repoOptions)[number] => Boolean(value)) ?? [];
+  const defaultRepoOptions =
+    initialOptionsFromInput.length > 0
+      ? initialOptionsFromInput
+      : repoOptions.length === 1
+        ? [repoOptions[0]]
+        : undefined;
+  const defaultGitRef =
+    defaultRepoOptions && defaultRepoOptions.length > 0
+      ? resolveDefaultBaseBranch(repoAllowlist, defaultRepoOptions[0]?.value)
+      : resolveDefaultBaseBranch(repoAllowlist);
+
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Run` },
+    submit: { type: 'plain_text' as const, text: 'Run' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'repos',
+        label: { type: 'plain_text' as const, text: 'Repositories' },
+        element: {
+          type: 'multi_static_select' as const,
+          action_id: 'repo_keys',
+          placeholder: { type: 'plain_text' as const, text: 'Select repos' },
+          options: repoOptions,
+          ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'branch',
+        label: { type: 'plain_text' as const, text: 'Base branch' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'git_ref',
+          initial_value: defaultGitRef,
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'run_action',
+        label: { type: 'plain_text' as const, text: 'Run action' },
+        element: {
+          type: 'external_select' as const,
+          action_id: actionSelectActionId,
+          min_query_length: 0,
+          placeholder: { type: 'plain_text' as const, text: 'Select run action' },
+        },
+      },
+    ],
+  };
+}
+
 export function buildRepoBootstrapModal(
   services: RepoBootstrapService[],
   botName: string,

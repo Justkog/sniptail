@@ -25,6 +25,10 @@ features:
       description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
       should_escape: false
+    - command: /sniptail-run
+      description: Run a configured action across selected repositories.
+      usage_hint: "[repos] [branch] [action]"
+      should_escape: false
     - command: /sniptail-bootstrap
       description: Create a new repository and add it to the allowlist.
       should_escape: false
