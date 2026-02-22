@@ -3,12 +3,40 @@ import { dedupe } from '../../lib/dedupe.js';
 import { resolveBootstrapServices } from '../../lib/bootstrap.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildRepoBootstrapModal } from '../../modals.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerBootstrapCommand({ app, slackIds, config }: SlackHandlerContext) {
+export function registerBootstrapCommand({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
   app.command(slackIds.commands.bootstrap, async ({ ack, body, client }) => {
     await ack();
     const dedupeKey = `${body.team_id}:${body.trigger_id}:bootstrap`;
     if (dedupe(dedupeKey)) {
+      return;
+    }
+
+    const authorized = await authorizeSlackPrecheckAndRespond({
+      permissions,
+      client,
+      action: 'jobs.bootstrap',
+      actor: {
+        userId: body.user_id,
+        channelId: body.channel_id,
+        ...(body.thread_ts ? { threadId: body.thread_ts as string } : {}),
+        workspaceId: body.team_id,
+      },
+      onDeny: async () => {
+        await client.chat.postEphemeral({
+          channel: body.channel_id,
+          user: body.user_id,
+          text: 'You are not authorized to bootstrap repositories.',
+        });
+      },
+    });
+    if (!authorized) {
       return;
     }
 

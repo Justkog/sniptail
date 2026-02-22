@@ -1,19 +1,38 @@
 import type { RepoConfig, AgentId, JobType } from '../types/job.js';
 import type { GitHubConfig } from '../github/client.js';
 import type { GitLabConfig } from '../gitlab/client.js';
+import type { ChannelProvider } from '../types/channel.js';
 import type { ModelReasoningEffort } from '@openai/codex-sdk';
+import type { PermissionsConfig } from '../permissions/permissionsPolicyTypes.js';
 
 export type JobModelConfig = {
   model: string;
   modelReasoningEffort?: ModelReasoningEffort;
 };
 
+export type BotRunActionReference = {
+  label: string;
+  description?: string;
+};
+
+export type WorkerRunActionGitMode = 'execution-only' | 'implement';
+
+export type WorkerRunActionConfig = {
+  fallbackCommand?: string[];
+  timeoutMs: number;
+  allowFailure: boolean;
+  gitMode: WorkerRunActionGitMode;
+  checks?: string[];
+};
+
+export type QueueDriver = 'redis' | 'inproc';
 export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
 
 export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot: string;
+  queueDriver: QueueDriver;
   jobRegistryPath?: string;
   jobRegistryDriver: JobRegistryDriver;
   jobRegistryPgUrl?: string;
@@ -25,6 +44,8 @@ export type BotConfig = CoreConfig & {
   debugJobSpecMessages: boolean;
   primaryAgent: AgentId;
   bootstrapServices: string[];
+  enabledChannels: ChannelProvider[];
+  channels: Record<ChannelProvider, { enabled: boolean }>;
   slackEnabled: boolean;
   discordEnabled: boolean;
   slack?: {
@@ -38,15 +59,21 @@ export type BotConfig = CoreConfig & {
     guildId?: string;
     channelIds?: string[];
   };
-  adminUserIds: string[];
-  redisUrl: string;
+  permissions: PermissionsConfig;
+  run?: {
+    actions: Record<string, BotRunActionReference>;
+  };
+  redisUrl?: string;
 };
 
 export type WorkerConfig = CoreConfig & {
   botName: string;
-  redisUrl: string;
+  redisUrl?: string;
   openAiKey?: string;
   primaryAgent: AgentId;
+  jobConcurrency: number;
+  bootstrapConcurrency: number;
+  workerEventConcurrency: number;
   localRepoRoot?: string;
   copilot: {
     executionMode: 'local' | 'docker';
@@ -65,6 +92,9 @@ export type WorkerConfig = CoreConfig & {
   cleanupMaxAge?: string;
   cleanupMaxEntries?: number;
   includeRawRequestInMr: boolean;
+  run?: {
+    actions: Record<string, WorkerRunActionConfig>;
+  };
   codex: {
     executionMode: 'local' | 'docker';
     dockerfilePath?: string;

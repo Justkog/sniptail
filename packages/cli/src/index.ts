@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerBotCommand } from './commands/bot.js';
 import { registerDbCommand } from './commands/db.js';
+import { registerLocalUnifiedCommand } from './commands/localUnified.js';
 import { registerRunJobCommand } from './commands/run-job.js';
 import { registerReposCommand } from './commands/repos.js';
 import { registerSlackManifestCommand } from './commands/slack-manifest.js';
@@ -31,5 +32,6 @@ registerRunJobCommand(program);
 registerReposCommand(program);
 registerDbCommand(program);
 registerSlackManifestCommand(program);
+registerLocalUnifiedCommand(program);
 
 await program.parseAsync(process.argv);

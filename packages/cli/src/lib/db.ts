@@ -8,6 +8,7 @@ type RuntimeOptions = {
   env?: string;
   cwd?: string;
   root?: string;
+  envOverrides?: NodeJS.ProcessEnv;
 };
 
 export async function assertDbMigrationsUpToDate(
@@ -22,6 +23,7 @@ export async function assertDbMigrationsUpToDate(
     ...(options.env ? { envPath: options.env } : {}),
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.root ? { root: options.root } : {}),
+    ...(options.envOverrides ? { envOverrides: options.envOverrides } : {}),
     args: ['status', '--scope', scope, '--require-up-to-date'],
   });
 }

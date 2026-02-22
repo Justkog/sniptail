@@ -4,20 +4,21 @@ import { logger } from '@sniptail/core/logger.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { DiscordHandlerContext } from './context.js';
 import { registerDiscordCommands } from './lib/commands.js';
 import { registerDiscordHandlers } from './handlers.js';
+import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
 export async function startDiscordBot(
-  jobQueue: Queue<JobSpec>,
-  bootstrapQueue: Queue<BootstrapRequest>,
-  workerEventQueue: Queue<WorkerEvent>,
+  jobQueue: QueuePublisher<JobSpec>,
+  bootstrapQueue: QueuePublisher<BootstrapRequest>,
+  workerEventQueue: QueuePublisher<WorkerEvent>,
 ) {
   const config = loadBotConfig();
   if (!config.discord) {
     throw new Error(
-      'Discord is not configured. Enable discord in sniptail.bot.toml and set DISCORD_BOT_TOKEN.',
+      'Discord is not configured. Enable channels.discord in sniptail.bot.toml and set DISCORD_BOT_TOKEN.',
     );
   }
 
@@ -44,6 +45,12 @@ export async function startDiscordBot(
     queue: jobQueue,
     bootstrapQueue,
     workerEventQueue,
+    permissions: new PermissionsRuntimeService({
+      config,
+      queue: jobQueue,
+      bootstrapQueue,
+      workerEventQueue,
+    }),
   };
 
   registerDiscordHandlers(context);

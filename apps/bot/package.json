@@ -9,6 +9,10 @@
     "./handlers": {
       "types": "./dist/handlers.d.ts",
       "default": "./dist/handlers.js"
+    },
+    "./runtime": {
+      "types": "./dist/botRuntimeLauncher.d.ts",
+      "default": "./dist/botRuntimeLauncher.js"
     }
   },
   "scripts": {

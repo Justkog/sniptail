@@ -1,5 +1,5 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
 import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
@@ -10,11 +10,14 @@ import { createJobId } from '../../../lib/jobs.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { parseBootstrapExtras } from '../../lib/bootstrap.js';
 import { bootstrapExtrasByUser } from '../../state.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleBootstrapModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: Queue<BootstrapRequest>,
+  queue: QueuePublisher<BootstrapRequest>,
+  permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
 
@@ -75,6 +78,33 @@ export async function handleBootstrapModalSubmit(
     ...(service === 'local' && extras.localPath ? { localPath: extras.localPath } : {}),
     channel: buildInteractionChannelContext(interaction),
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.bootstrap',
+    summary: `Queue bootstrap request ${request.requestId} for ${repoName}`,
+    operation: {
+      kind: 'enqueueBootstrap',
+      request,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId: request.channel.channelId,
+      ...(request.channel.threadId ? { threadId: request.channel.threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.editReply('You are not authorized to bootstrap repositories.');
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.editReply(message);
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   bootstrapExtrasByUser.delete(interaction.user.id);
   await enqueueBootstrap(queue, request);

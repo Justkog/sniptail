@@ -12,7 +12,7 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 ## Dependencies
 
 - Node.js (tested with Node 22)
-- Redis (required; used for job queue and recommended job registry)
+- Redis (required only when `[core].queue_driver = "redis"`)
 - PNPM (workspace tooling; only needed when running from source)
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `sniptail.worker.toml` sets `[codex].execution_mode = "local"`, e.g. `npm install -g @openai/codex`)
@@ -28,7 +28,7 @@ This path is intended for people who want to run Sniptail, not hack on it locall
 #### 0) Install prerequisites
 
 - Node.js
-- Redis (**mandatory**)
+- Redis (required only when using `queue_driver = "redis"`)
 - Git + SSH access to your repos (worker needs this)
 - One of:
   - Codex/Copilot CLI in `PATH` (when using `execution_mode = "local"`), or
@@ -62,7 +62,7 @@ cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
   - `GITLAB_TOKEN` (for GitLab merge requests)
   - `GITHUB_API_TOKEN` (for GitHub PR creation)
 
-#### 3) Configure Redis (URL + optional overrides)
+#### 3) Choose queue transport (inproc or redis)
 
 Sniptail uses two TOML config files so the bot and worker can be run on different machines.
 By default, the installer runs Sniptail with the config files located in the install root:
@@ -72,9 +72,17 @@ By default, the installer runs Sniptail with the config files located in the ins
 
 If you installed via `install.sh`, these live at `~/.sniptail/current/sniptail.bot.toml` and `~/.sniptail/current/sniptail.worker.toml`.
 
-Redis is mandatory, and the defaults are set up so the **job queue** and the **job registry** use Redis.
+Queue transport defaults to Redis (`[core].queue_driver = "redis"`).
 
-To point Sniptail at your Redis instance, either:
+For single-machine mode without Redis queueing, use:
+
+- `sniptail local` command
+- `QUEUE_DRIVER=inproc`
+- `JOB_REGISTRY_DB=sqlite` (durable local job registry)
+
+For distributed mode, keep Redis queue transport:
+
+- set `QUEUE_DRIVER=redis` (or `[core].queue_driver = "redis"`), then configure `REDIS_URL`:
 
 - set `REDIS_URL` in your `.env` (recommended), or
 - edit `redis_url` in both `sniptail.bot.toml` (`[bot].redis_url`) and `sniptail.worker.toml` (`[worker].redis_url`).
@@ -97,6 +105,19 @@ When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it'
 #### 5) Slack / Discord setup
 
 See `docs/slack-bot-setup.md` and `docs/discord-bot-setup.md`.
+
+Enable channels in `sniptail.bot.toml` using the channel section:
+
+```toml
+[channels.slack]
+enabled = true
+
+[channels.discord]
+enabled = true
+app_id = "123456789012345678"
+```
+
+For single-channel bot processes, set `SNIPTAIL_CHANNELS` at runtime (for example `SNIPTAIL_CHANNELS=slack` or `SNIPTAIL_CHANNELS=discord`).
 
 To generate a Slack manifest from the template:
 
@@ -153,7 +174,27 @@ To reconcile the registry catalog back into the allowlist file:
 sniptail repos sync-file
 ```
 
-#### 7) Run bot + worker
+To sync run action metadata (`providerData.sniptail.run`) from repo contracts:
+
+```bash
+sniptail repos sync-run-actions
+```
+
+To sync a single repo key:
+
+```bash
+sniptail repos sync-run-actions --repo my-api
+```
+
+#### 7) Run runtimes
+
+Single-machine local mode:
+
+```bash
+sniptail local
+```
+
+Distributed/separate processes:
 
 ```bash
 sniptail bot
@@ -173,9 +214,14 @@ pnpm install
 cp .env.example .env
 ```
 
-#### 2) Configure Redis + job registry backend
+#### 2) Configure queue transport + job registry backend
 
-Redis is still mandatory (queue). For the job registry, you can:
+For queue transport:
+
+- use Redis (`[core].queue_driver = "redis"`) for multi-process/multi-machine setups, or
+- use in-process (`[core].queue_driver = "inproc"`) for single-machine `sniptail local` runs.
+
+For the job registry, you can:
 
 - use the same Redis instance (recommended, set `[core].job_registry_db = "redis"`), or
 - use sqlite for single-machine/local experiments (`[core].job_registry_db = "sqlite"`), or
@@ -228,7 +274,13 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
 ## Repo execution notes
 
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
+- Worker parallelism is configurable per queue via `[worker].job_concurrency`, `[worker].bootstrap_concurrency`, and `[worker].worker_event_concurrency` (or env overrides `JOB_CONCURRENCY`, `BOOTSTRAP_CONCURRENCY`, `WORKER_EVENT_CONCURRENCY`), each defaulting to `2`.
 - Worktree bootstrap is optional and configurable. Set `[worker].worktree_setup_command` (or `WORKTREE_SETUP_COMMAND`) to run a custom command in each worktree (for example `pnpm install`, `npm ci`, `poetry install`, etc.).
+- Repos can define a local setup contract script at `.sniptail/setup` (no extension). If present, it runs in the repo worktree after `worktree_setup_command`.
+- Repos can define a local check contract script at `.sniptail/check` (no extension). If present, it runs during validation before configured check aliases.
+- Repos can define run contracts at `.sniptail/run/<action-id>` (no extension). These are used by `/...-run` and take precedence over worker fallback commands.
+- Contract scripts must be executable (`chmod +x .sniptail/setup .sniptail/check .sniptail/run/<action-id>`), and non-zero exits fail the job unless an action is configured with `allow_failure = true`.
 - To continue a job even when the setup command fails, set `[worker].worktree_setup_allow_failure = true` (or `WORKTREE_SETUP_ALLOW_FAILURE=true`).
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
+- Run action availability in bot UIs is sourced from catalog metadata (`providerData.sniptail.run.actionIds`) synced on worker startup or via `sniptail repos sync-run-actions`.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.

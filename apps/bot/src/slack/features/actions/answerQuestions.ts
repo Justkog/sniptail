@@ -3,8 +3,14 @@ import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { buildAnswerQuestionsModal } from '../../modals.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackHandlerContext) {
+export function registerAnswerQuestionsAction({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
   app.action(slackIds.actions.answerQuestions, async ({ ack, body, action, client }) => {
     await ack();
 
@@ -32,6 +38,27 @@ export function registerAnswerQuestionsAction({ app, slackIds, config }: SlackHa
       (body as { message?: { ts?: string } }).message?.ts;
 
     if (!triggerId) {
+      return;
+    }
+
+    const authorized = await authorizeSlackPrecheckAndRespond({
+      permissions,
+      client,
+      action: 'jobs.answerQuestions',
+      actor: {
+        userId: body.user.id,
+        channelId: channelId ?? body.user.id,
+        ...(threadId ? { threadId } : {}),
+      },
+      onDeny: async () => {
+        await postMessage(app, {
+          channel: channelId ?? body.user.id,
+          text: 'You are not authorized to answer questions for this job.',
+          ...(threadId ? { threadTs: threadId } : {}),
+        });
+      },
+    });
+    if (!authorized) {
       return;
     }
 

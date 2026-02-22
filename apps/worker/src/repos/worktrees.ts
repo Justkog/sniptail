@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
+import { runSetupContract } from '@sniptail/core/git/jobOps.js';
 import { addWorktree } from '@sniptail/core/git/worktree.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
@@ -47,7 +48,11 @@ export async function prepareRepoWorktrees(
       ? (resumeBranch ?? `${branchPrefix}/${job.resumeFromJobId}`)
       : job.gitRef;
     const branch =
-      job.type === 'IMPLEMENT' || job.type === 'ASK' || job.type === 'PLAN'
+      job.type === 'IMPLEMENT' ||
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN' ||
+      job.type === 'RUN'
         ? `${branchPrefix}/${job.jobId}`
         : undefined;
 
@@ -76,6 +81,7 @@ export async function prepareRepoWorktrees(
       env,
       redact: redactionPatterns,
     });
+    await runSetupContract(worktreePath, env, paths.logFile, redactionPatterns);
     repoWorktrees.set(repoKey, { clonePath, worktreePath, ...(branch ? { branch } : {}) });
     if (branch) {
       branchByRepo[repoKey] = branch;

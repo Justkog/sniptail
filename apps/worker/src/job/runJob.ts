@@ -2,16 +2,14 @@ import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
-import { buildSlackIds } from '@sniptail/core/slack/ids.js';
-import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
+import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
 import { createNotifier } from '../channels/createNotifier.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
-import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
 import {
   copyArtifactsFromResumedJob,
   copyJobRootSeed,
@@ -28,6 +26,7 @@ import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
 import { commitRepoChanges } from '../repos/commit.js';
 import { runAgentJob } from '../agents/runAgent.js';
 import { enforceJobCleanup } from './cleanup.js';
+import { buildRunJobFailureSnippet, runRunJob } from './runActionJob.js';
 
 const config = loadWorkerConfig();
 const branchPrefix = 'sniptail';
@@ -70,6 +69,101 @@ async function recordAgentThreadId(
     });
 }
 
+async function publishRepoChanges(options: {
+  job: JobSpec;
+  summary: string;
+  requestText: string;
+  repoWorktrees: Awaited<ReturnType<typeof prepareRepoWorktrees>>['repoWorktrees'];
+  checks?: string[];
+  labels?: string[];
+  reviewers?: string[];
+  env: NodeJS.ProcessEnv;
+  logFile: string;
+  redactionPatterns: Array<string | RegExp>;
+}): Promise<{ mergeRequests: MergeRequestResult[]; localBranchMessages: string[] }> {
+  const {
+    job,
+    summary,
+    requestText,
+    repoWorktrees,
+    checks,
+    labels,
+    reviewers,
+    env,
+    logFile,
+    redactionPatterns,
+  } = options;
+  const mergeRequests: MergeRequestResult[] = [];
+  const localBranchMessages: string[] = [];
+
+  for (const [repoKey, repo] of repoWorktrees.entries()) {
+    const repoConfig = config.repoAllowlist[repoKey];
+    if (!repoConfig) {
+      throw new Error(`Repo ${repoKey} is not in allowlist.`);
+    }
+
+    await runRepoChecks(repo.worktreePath, checks, env, logFile, redactionPatterns);
+
+    if (!repo.branch) {
+      continue;
+    }
+
+    const committed = await commitRepoChanges(
+      repo.worktreePath,
+      repo.branch,
+      job.jobId,
+      config.botName,
+      env,
+      logFile,
+      redactionPatterns,
+    );
+    if (!committed) {
+      continue;
+    }
+
+    const title = `${config.botName}: ${requestText.slice(0, 60)}`;
+    const description = config.includeRawRequestInMr
+      ? buildMergeRequestDescription(summary, requestText, config.botName, job.jobId)
+      : summary || `${config.botName} job ${job.jobId}`;
+    const normalizedReviewers = reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
+
+    if (repoConfig.localPath) {
+      localBranchMessages.push(
+        `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
+      );
+      continue;
+    }
+
+    if (!repoConfig.sshUrl) {
+      throw new Error(`Missing sshUrl for repo ${repoKey}.`);
+    }
+
+    const providerId = inferRepoProvider(repoConfig);
+    const reviewRequest = await createRepoReviewRequest({
+      providerId,
+      repo: repoConfig,
+      context: {
+        ...(config.github ? { github: config.github } : {}),
+        ...(config.gitlab ? { gitlab: config.gitlab } : {}),
+      },
+      input: {
+        head: repo.branch,
+        base: job.gitRef,
+        title,
+        description,
+        ...(labels?.length ? { labels } : {}),
+        ...(normalizedReviewers?.length ? { reviewers: normalizedReviewers } : {}),
+      },
+    });
+    mergeRequests.push({ repoKey, url: reviewRequest.url, iid: reviewRequest.iid });
+  }
+
+  return {
+    mergeRequests,
+    localBranchMessages,
+  };
+}
+
 export async function runJob(
   events: BotEventSink,
   job: JobSpec,
@@ -79,12 +173,13 @@ export async function runJob(
   config.repoAllowlist = repoAllowlist;
   validateJob(job, repoAllowlist);
   const notifier = createNotifier(events);
+  const channelAdapter = resolveWorkerChannelAdapter(job.channel.provider);
 
   await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
   });
 
-  const paths = buildJobPaths(job.jobId);
+  const paths = buildJobPaths(config.jobWorkRoot, job.jobId);
   await ensureJobDirectories(paths);
   await writeJobSpecArtifact(paths, job);
 
@@ -116,12 +211,14 @@ export async function runJob(
       redactionPatterns,
     );
     if (job.resumeFromJobId) {
-      await copyArtifactsFromResumedJob(job.resumeFromJobId, paths).catch((err) => {
-        logger.warn(
-          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
-          'Failed to copy artifacts from resumed job',
-        );
-      });
+      await copyArtifactsFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
+        (err) => {
+          logger.warn(
+            { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+            'Failed to copy artifacts from resumed job',
+          );
+        },
+      );
     }
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
@@ -137,6 +234,38 @@ export async function runJob(
     if (Object.keys(branchByRepo).length) {
       await registry.updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job branches');
+      });
+    }
+
+    if (job.type === 'RUN') {
+      const threadId = await resolveThreadId(job, registry);
+      const channelRef = buildChannelRef(job, threadId);
+      return await runRunJob({
+        registry,
+        job,
+        config,
+        paths: {
+          artifactsRoot: paths.artifactsRoot,
+          logFile: paths.logFile,
+        },
+        env,
+        redactionPatterns,
+        repoWorktrees,
+        branchByRepo,
+        notifier,
+        channelAdapter,
+        channelRef,
+        publishRepoChanges: async (actionId, checks) =>
+          publishRepoChanges({
+            job,
+            summary: `Run action ${actionId} completed`,
+            requestText: `Run action ${actionId}`,
+            repoWorktrees,
+            ...(checks ? { checks } : {}),
+            env,
+            logFile: paths.logFile,
+            redactionPatterns,
+          }),
       });
     }
 
@@ -166,7 +295,12 @@ export async function runJob(
       };
     }
 
-    if (job.type === 'ASK' || job.type === 'PLAN' || job.type === 'REVIEW') {
+    if (
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN' ||
+      job.type === 'REVIEW'
+    ) {
       const reportFileName = job.type === 'PLAN' ? 'plan.md' : 'report.md';
       const reportPath = join(paths.artifactsRoot, reportFileName);
       const agentResponse = agentRun.result.finalResponse?.trim() ?? '';
@@ -209,51 +343,24 @@ export async function runJob(
           title: `sniptail-${job.jobId}-${reportFileName}`,
         });
       }
-      const askText = report
+      const completionText = report
         ? `All set! I finished job ${job.jobId}.`
         : planMissing
           ? `I need a few clarifications before I can produce the plan for job ${job.jobId}.`
-          : job.type === 'REVIEW'
-            ? `All set! I finished job ${job.jobId}, but no review report was produced.`
-            : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
-      if (job.channel.provider === 'slack') {
-        const slackIds = buildSlackIds(config.botName);
-        const blocks = buildCompletionBlocks(
-          askText,
-          job.jobId,
-          {
-            askFromJob: slackIds.actions.askFromJob,
-            planFromJob: slackIds.actions.planFromJob,
-            implementFromJob: slackIds.actions.implementFromJob,
-            reviewFromJob: slackIds.actions.reviewFromJob,
-            worktreeCommands: slackIds.actions.worktreeCommands,
-            clearJob: slackIds.actions.clearJob,
-            ...(openQuestions.length ? { answerQuestions: slackIds.actions.answerQuestions } : {}),
-          },
-          openQuestions.length
-            ? {
-                includeAskFromJob: false,
-                includePlanFromJob: false,
-                includeImplementFromJob: false,
-                includeReviewFromJob: false,
-                answerQuestionsFirst: true,
-              }
-            : undefined,
-        );
-        await notifier.postMessage(channelRef, askText, { blocks });
-      } else if (job.channel.provider === 'discord') {
-        const components = buildDiscordCompletionComponents(job.jobId, {
-          includeAnswerQuestions: openQuestions.length > 0,
-          includeAskFromJob: !openQuestions.length,
-          includePlanFromJob: !openQuestions.length,
-          includeImplementFromJob: !openQuestions.length,
-          includeReviewFromJob: false,
-          answerQuestionsFirst: openQuestions.length > 0,
-        });
-        await notifier.postMessage(channelRef, askText, { components });
-      } else {
-        await notifier.postMessage(channelRef, askText);
-      }
+          : job.type === 'ASK'
+            ? `All set! I finished job ${job.jobId}, but no ask report was produced.`
+            : job.type === 'EXPLORE'
+              ? `All set! I finished job ${job.jobId}, but no explore report was produced.`
+              : job.type === 'REVIEW'
+                ? `All set! I finished job ${job.jobId}, but no review report was produced.`
+                : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
+      const rendered = channelAdapter.renderCompletionMessage({
+        botName: config.botName,
+        text: completionText,
+        jobId: job.jobId,
+        ...(openQuestions.length ? { openQuestions } : {}),
+      });
+      await notifier.postMessage(channelRef, rendered.text, rendered.options);
       const summary = report ? report.slice(0, 500) : `${job.type} complete`;
       await registry
         .updateJobRecord(job.jobId, {
@@ -273,75 +380,18 @@ export async function runJob(
 
     const summary = await readJobSummary(paths);
 
-    const mergeRequests: MergeRequestResult[] = [];
-    const localBranchMessages: string[] = [];
-
-    for (const [repoKey, repo] of repoWorktrees.entries()) {
-      const repoConfig = config.repoAllowlist[repoKey];
-      if (!repoConfig) {
-        throw new Error(`Repo ${repoKey} is not in allowlist.`);
-      }
-      await runRepoChecks(
-        repo.worktreePath,
-        job.settings?.checks,
-        env,
-        paths.logFile,
-        redactionPatterns,
-      );
-
-      if (!repo.branch) {
-        continue;
-      }
-
-      const committed = await commitRepoChanges(
-        repo.worktreePath,
-        repo.branch,
-        job.jobId,
-        config.botName,
-        env,
-        paths.logFile,
-        redactionPatterns,
-      );
-      if (!committed) {
-        continue;
-      }
-
-      const title = `${config.botName}: ${job.requestText.slice(0, 60)}`;
-      const description = config.includeRawRequestInMr
-        ? buildMergeRequestDescription(summary, job.requestText, config.botName, job.jobId)
-        : summary || `${config.botName} job ${job.jobId}`;
-      const reviewers = job.settings?.reviewers?.map((reviewer) => reviewer.trim()).filter(Boolean);
-
-      if (repoConfig.localPath) {
-        localBranchMessages.push(
-          `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
-        );
-        continue;
-      }
-
-      if (!repoConfig.sshUrl) {
-        throw new Error(`Missing sshUrl for repo ${repoKey}.`);
-      }
-
-      const providerId = inferRepoProvider(repoConfig);
-      const reviewRequest = await createRepoReviewRequest({
-        providerId,
-        repo: repoConfig,
-        context: {
-          ...(config.github ? { github: config.github } : {}),
-          ...(config.gitlab ? { gitlab: config.gitlab } : {}),
-        },
-        input: {
-          head: repo.branch,
-          base: job.gitRef,
-          title,
-          description,
-          ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
-          ...(reviewers && reviewers.length ? { reviewers } : {}),
-        },
-      });
-      mergeRequests.push({ repoKey, url: reviewRequest.url, iid: reviewRequest.iid });
-    }
+    const { mergeRequests, localBranchMessages } = await publishRepoChanges({
+      job,
+      summary,
+      requestText: job.requestText,
+      repoWorktrees,
+      ...(job.settings?.checks ? { checks: job.settings.checks } : {}),
+      ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
+      ...(job.settings?.reviewers ? { reviewers: job.settings.reviewers } : {}),
+      env,
+      logFile: paths.logFile,
+      redactionPatterns,
+    });
 
     const mrTextParts: string[] = [];
     if (mergeRequests.length) {
@@ -361,32 +411,13 @@ export async function runJob(
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
     const includeReviewFromJob = Object.keys(branchByRepo).length > 0;
-    if (job.channel.provider === 'slack') {
-      const slackIds = buildSlackIds(config.botName);
-      const blocks = buildCompletionBlocks(
-        implText,
-        job.jobId,
-        {
-          askFromJob: slackIds.actions.askFromJob,
-          planFromJob: slackIds.actions.planFromJob,
-          implementFromJob: slackIds.actions.implementFromJob,
-          reviewFromJob: slackIds.actions.reviewFromJob,
-          worktreeCommands: slackIds.actions.worktreeCommands,
-          clearJob: slackIds.actions.clearJob,
-        },
-        {
-          includeReviewFromJob,
-        },
-      );
-      await notifier.postMessage(channelRef, implText, { blocks });
-    } else if (job.channel.provider === 'discord') {
-      const components = buildDiscordCompletionComponents(job.jobId, {
-        includeReviewFromJob,
-      });
-      await notifier.postMessage(channelRef, implText, { components });
-    } else {
-      await notifier.postMessage(channelRef, implText);
-    }
+    const rendered = channelAdapter.renderCompletionMessage({
+      botName: config.botName,
+      text: implText,
+      jobId: job.jobId,
+      includeReviewFromJob,
+    });
+    await notifier.postMessage(channelRef, rendered.text, rendered.options);
 
     await registry
       .updateJobRecord(job.jobId, {
@@ -407,10 +438,14 @@ export async function runJob(
     logger.error({ err, jobId: job.jobId }, 'Job failed');
     const threadId = await resolveThreadId(job, registry);
     const channelRef = buildChannelRef(job, threadId);
-    await notifier.postMessage(
-      channelRef,
-      `I hit an issue with job ${job.jobId}: ${(err as Error).message}`,
-    );
+    const failureTextParts = [`I hit an issue with job ${job.jobId}: ${(err as Error).message}`];
+    if (job.type === 'RUN') {
+      const snippet = buildRunJobFailureSnippet(err);
+      if (snippet) {
+        failureTextParts.push('', snippet);
+      }
+    }
+    await notifier.postMessage(channelRef, failureTextParts.join('\n'));
     await registry
       .updateJobRecord(job.jobId, {
         status: 'failed',

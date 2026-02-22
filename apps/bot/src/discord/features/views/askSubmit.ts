@@ -1,5 +1,5 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -12,11 +12,14 @@ import { askSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleAskModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
+  permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
 
@@ -64,6 +67,33 @@ export async function handleAskModalSubmit(
     ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.ask',
+    summary: `Queue ask job ${job.jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId: job.channel.channelId,
+      ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.editReply('You are not authorized to run ask jobs.');
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.editReply(message);
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   try {
     await saveJobQueued(job);

@@ -25,7 +25,7 @@ async function removeJobRecords(
   if (!recordsToDelete.length) return;
   for (const record of recordsToDelete) {
     const jobId = record.job.jobId;
-    const paths = buildJobPaths(jobId);
+    const paths = buildJobPaths(config.jobWorkRoot, jobId);
     for (const repoKey of record.job.repoKeys ?? []) {
       const clonePath = join(config.repoCacheRoot, `${repoKey}.git`);
       const worktreePath = join(paths.reposRoot, repoKey);
@@ -62,6 +62,7 @@ export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
     (record) =>
       record.job.type === 'MENTION' ||
       record.job.type === 'ASK' ||
+      record.job.type === 'EXPLORE' ||
       record.job.type === 'PLAN' ||
       record.job.type === 'REVIEW' ||
       record.job.type === 'IMPLEMENT',

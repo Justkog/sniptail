@@ -1,5 +1,6 @@
 import {
   buildAskPrompt,
+  buildExplorePrompt,
   buildImplementPrompt,
   buildMentionPrompt,
   buildPlanPrompt,
@@ -17,6 +18,8 @@ export function buildPromptForJob(job: JobSpec, botName: string): string {
       return buildAskPrompt(job, botName);
     case 'IMPLEMENT':
       return buildImplementPrompt(job, botName);
+    case 'EXPLORE':
+      return buildExplorePrompt(job, botName);
     case 'PLAN':
       return buildPlanPrompt(job, botName);
     case 'REVIEW':
@@ -24,6 +27,6 @@ export function buildPromptForJob(job: JobSpec, botName: string): string {
     case 'MENTION':
       return buildMentionPrompt(job, botName);
     default:
-      return assertNeverJobType(job.type);
+      return assertNeverJobType(job.type as never);
   }
 }

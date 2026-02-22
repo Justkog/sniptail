@@ -2,13 +2,12 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadCoreConfig } from '../config/config.js';
 import { logger } from '../logger.js';
+import type { ChannelProvider } from '../types/channel.js';
 import type { AgentId, JobSpec, JobType } from '../types/job.js';
 import { getJobRegistryStore } from './registryStore.js';
 import type { JobRecord } from './registryTypes.js';
 
 export type { JobRecord, JobStatus } from './registryTypes.js';
-
-const config = loadCoreConfig();
 
 const JOB_KEY_PREFIX = 'job:';
 
@@ -21,7 +20,8 @@ function jobIdFromKey(key: string) {
 }
 
 function removeJobRoot(jobId: string) {
-  const jobRoot = join(config.jobWorkRoot, jobId);
+  const { jobWorkRoot } = loadCoreConfig();
+  const jobRoot = join(jobWorkRoot, jobId);
   return rm(jobRoot, { recursive: true, force: true })
     .then(() => {
       logger.info({ jobId, jobRoot }, 'Cleared expired job data');
@@ -113,7 +113,7 @@ export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<
 }
 
 export async function findLatestJobByChannelThread(
-  provider: 'slack' | 'discord',
+  provider: ChannelProvider,
   channelId: string,
   threadId: string,
   agentId: AgentId,
@@ -140,7 +140,7 @@ export async function findLatestJobByChannelThread(
 }
 
 export async function findLatestJobByChannelThreadAndTypes(
-  provider: 'slack' | 'discord',
+  provider: ChannelProvider,
   channelId: string,
   threadId: string,
   types: JobType[],

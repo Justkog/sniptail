@@ -8,6 +8,7 @@ import {
   markJobForDeletion as markJobForDeletionDb,
   updateJobRecord as updateJobRecordDb,
 } from '@sniptail/core/jobs/registry.js';
+import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import type { JobRegistry } from './jobRegistry.js';
@@ -38,7 +39,7 @@ export class DbJobRegistry implements JobRegistry {
   }
 
   async findLatestJobByChannelThread(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     agentId: AgentId,
@@ -47,7 +48,7 @@ export class DbJobRegistry implements JobRegistry {
   }
 
   async findLatestJobByChannelThreadAndTypes(
-    provider: 'slack' | 'discord',
+    provider: ChannelProvider,
     channelId: string,
     threadId: string,
     types: JobType[],

@@ -1,4 +1,8 @@
 export const askSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
+export const exploreSelectionByUser = new Map<
+  string,
+  { repoKeys: string[]; requestedAt: number }
+>();
 export const planSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
 export const answerQuestionsByUser = new Map<
   string,
@@ -7,6 +11,10 @@ export const answerQuestionsByUser = new Map<
 export const implementSelectionByUser = new Map<
   string,
   { repoKeys: string[]; requestedAt: number }
+>();
+export const runSelectionByUser = new Map<
+  string,
+  { repoKeys: string[]; actionId?: string; requestedAt: number }
 >();
 export const bootstrapExtrasByUser = new Map<
   string,

@@ -1,13 +1,17 @@
 export type DiscordCompletionAction =
   | 'askFromJob'
+  | 'exploreFromJob'
   | 'planFromJob'
   | 'implementFromJob'
+  | 'runFromJob'
   | 'reviewFromJob'
   | 'worktreeCommands'
   | 'answerQuestions'
   | 'clearJob'
   | 'clearJobConfirm'
   | 'clearJobCancel';
+
+export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
 
 type DiscordActionRow = {
   type: 1;
@@ -20,11 +24,14 @@ type DiscordActionRow = {
 };
 
 const completionPrefix = 'sniptail:completion';
+const approvalPrefix = 'sniptail:approval';
 
 const actionTokens = {
   askFromJob: 'ask',
+  exploreFromJob: 'explore',
   planFromJob: 'plan',
   implementFromJob: 'implement',
+  runFromJob: 'run',
   reviewFromJob: 'review',
   worktreeCommands: 'worktree',
   answerQuestions: 'answer-questions',
@@ -38,14 +45,31 @@ const tokenToAction: Record<
   DiscordCompletionAction
 > = {
   [actionTokens.askFromJob]: 'askFromJob',
+  [actionTokens.exploreFromJob]: 'exploreFromJob',
   [actionTokens.planFromJob]: 'planFromJob',
   [actionTokens.implementFromJob]: 'implementFromJob',
+  [actionTokens.runFromJob]: 'runFromJob',
   [actionTokens.reviewFromJob]: 'reviewFromJob',
   [actionTokens.worktreeCommands]: 'worktreeCommands',
   [actionTokens.answerQuestions]: 'answerQuestions',
   [actionTokens.clearJob]: 'clearJob',
   [actionTokens.clearJobConfirm]: 'clearJobConfirm',
   [actionTokens.clearJobCancel]: 'clearJobCancel',
+};
+
+const approvalActionTokens = {
+  approvalApprove: 'approve',
+  approvalDeny: 'deny',
+  approvalCancel: 'cancel',
+} as const;
+
+const approvalTokenToAction: Record<
+  (typeof approvalActionTokens)[DiscordApprovalAction],
+  DiscordApprovalAction
+> = {
+  [approvalActionTokens.approvalApprove]: 'approvalApprove',
+  [approvalActionTokens.approvalDeny]: 'approvalDeny',
+  [approvalActionTokens.approvalCancel]: 'approvalCancel',
 };
 
 export function buildDiscordCompletionCustomId(action: DiscordCompletionAction, jobId: string) {
@@ -66,21 +90,43 @@ export function parseDiscordCompletionCustomId(
   return { action, jobId };
 }
 
+export function buildDiscordApprovalCustomId(action: DiscordApprovalAction, approvalId: string) {
+  return `${approvalPrefix}:${approvalActionTokens[action]}:${approvalId}`;
+}
+
+export function parseDiscordApprovalCustomId(
+  customId: string,
+): { action: DiscordApprovalAction; approvalId: string } | undefined {
+  if (!customId.startsWith(`${approvalPrefix}:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 4) return undefined;
+  const actionToken = parts[2] as (typeof approvalActionTokens)[DiscordApprovalAction];
+  const approvalId = parts.slice(3).join(':').trim();
+  if (!approvalId) return undefined;
+  const action = approvalTokenToAction[actionToken];
+  if (!action) return undefined;
+  return { action, approvalId };
+}
+
 export function buildDiscordCompletionComponents(
   jobId: string,
   options?: {
     includeAnswerQuestions?: boolean;
     includeAskFromJob?: boolean;
+    includeExploreFromJob?: boolean;
     includePlanFromJob?: boolean;
     includeImplementFromJob?: boolean;
+    includeRunFromJob?: boolean;
     includeReviewFromJob?: boolean;
     answerQuestionsFirst?: boolean;
   },
 ): DiscordActionRow[] {
   const includeAnswerQuestions = options?.includeAnswerQuestions ?? false;
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includeExploreFromJob = options?.includeExploreFromJob ?? true;
   const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const includeRunFromJob = options?.includeRunFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const components: DiscordActionRow['components'] = [];
@@ -100,6 +146,14 @@ export function buildDiscordCompletionComponents(
       custom_id: buildDiscordCompletionCustomId('askFromJob', jobId),
     });
   }
+  if (includeExploreFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Explore',
+      custom_id: buildDiscordCompletionCustomId('exploreFromJob', jobId),
+    });
+  }
   if (includePlanFromJob) {
     components.push({
       type: 2,
@@ -114,6 +168,14 @@ export function buildDiscordCompletionComponents(
       style: 1,
       label: 'Implement',
       custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
+    });
+  }
+  if (includeRunFromJob) {
+    components.push({
+      type: 2,
+      style: 1,
+      label: 'Run',
+      custom_id: buildDiscordCompletionCustomId('runFromJob', jobId),
     });
   }
   if (includeReviewFromJob) {
@@ -144,12 +206,24 @@ export function buildDiscordCompletionComponents(
     label: 'Clear job data',
     custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
   });
-  return [
-    {
+  return chunkComponents(components);
+}
+
+function chunkComponents(
+  components: DiscordActionRow['components'],
+  maxPerRow = 5,
+): DiscordActionRow[] {
+  if (maxPerRow < 1) {
+    return [{ type: 1, components }];
+  }
+  const rows: DiscordActionRow[] = [];
+  for (let offset = 0; offset < components.length; offset += maxPerRow) {
+    rows.push({
       type: 1,
-      components,
-    },
-  ];
+      components: components.slice(offset, offset + maxPerRow),
+    });
+  }
+  return rows;
 }
 
 export function buildDiscordClearJobConfirmComponents(jobId: string): DiscordActionRow[] {
@@ -168,6 +242,34 @@ export function buildDiscordClearJobConfirmComponents(jobId: string): DiscordAct
           style: 2,
           label: 'Cancel',
           custom_id: buildDiscordCompletionCustomId('clearJobCancel', jobId),
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDiscordApprovalComponents(approvalId: string): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 1,
+          label: 'Approve',
+          custom_id: buildDiscordApprovalCustomId('approvalApprove', approvalId),
+        },
+        {
+          type: 2,
+          style: 4,
+          label: 'Deny',
+          custom_id: buildDiscordApprovalCustomId('approvalDeny', approvalId),
+        },
+        {
+          type: 2,
+          style: 2,
+          label: 'Cancel',
+          custom_id: buildDiscordApprovalCustomId('approvalCancel', approvalId),
         },
       ],
     },

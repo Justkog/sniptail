@@ -1,24 +1,36 @@
-export type ChannelProvider = 'slack' | 'discord';
+export type KnownChannelProvider = 'slack' | 'discord';
+export const KNOWN_CHANNEL_PROVIDERS: KnownChannelProvider[] = ['slack', 'discord'];
+export type ChannelProvider = KnownChannelProvider | (string & {});
 
-export type SlackChannelContext = {
-  provider: 'slack';
-  channelId: string;
-  threadId?: string;
-  userId: string;
-};
+export function isKnownChannelProvider(
+  provider: ChannelProvider,
+): provider is KnownChannelProvider {
+  return (KNOWN_CHANNEL_PROVIDERS as string[]).includes(provider);
+}
 
-export type DiscordChannelContext = {
-  provider: 'discord';
-  channelId: string;
-  threadId?: string;
-  userId: string;
-  guildId?: string;
-};
-
-export type ChannelContext = SlackChannelContext | DiscordChannelContext;
-
-export type ChannelRef = {
+export type ChannelContextBase = {
   provider: ChannelProvider;
   channelId: string;
   threadId?: string;
+  userId?: string;
+  requestId?: string;
+  metadata?: Record<string, unknown>;
 };
+
+export type SlackChannelContext = ChannelContextBase & {
+  provider: 'slack';
+  userId: string;
+};
+
+export type DiscordChannelContext = ChannelContextBase & {
+  provider: 'discord';
+  guildId?: string;
+  interactionToken?: string;
+  interactionApplicationId?: string;
+};
+
+export type GenericChannelContext = ChannelContextBase;
+
+export type ChannelContext = SlackChannelContext | DiscordChannelContext | GenericChannelContext;
+
+export type ChannelRef = Pick<ChannelContextBase, 'provider' | 'channelId' | 'threadId'>;

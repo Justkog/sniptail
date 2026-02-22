@@ -12,6 +12,10 @@ repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
 # Required. No default. Example: "$HOME/.sniptail/jobs"
 job_work_root = "$HOME/.sniptail/jobs"
 
+# Queue transport driver: "redis" or "inproc".
+# Optional. Default: "redis". Use "inproc" with `sniptail local` only.
+queue_driver = "redis"
+
 # Path to the job registry file/directory (used for sqlite).
 # Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
 job_registry_path = "$HOME/.sniptail/job-registry"
@@ -46,27 +50,64 @@ primary_agent = "codex"
 # bootstrap_services = ["local", "github"]
 
 # Redis connection URL.
-# Required. No default. Example: "redis://localhost:6379"
+# Required when queue_driver="redis". No default. Example: "redis://localhost:6379"
 redis_url = "redis://localhost:6379"
 
-# Admin Slack/Discord user IDs.
-# Optional. Default: [] (empty). Example: ["U123", "U456"]
-# admin_user_ids = ["U12345678"]
+# Permission system defaults and rules.
+# Optional. Default:
+# [permissions]
+# default_effect = "allow"
+# approval_ttl_seconds = 86400
+# group_cache_ttl_seconds = 60
+#
+# Subject token format:
+# - "user:<platform_user_id>" or "user:*"
+# - "group:slack:<usergroup_id>"
+# - "group:discord:<role_id>"
+#
+# Example:
+# [permissions]
+# default_effect = "allow"
+# approval_ttl_seconds = 86400
+# group_cache_ttl_seconds = 60
+#
+# [[permissions.rules]]
+# id = "clear-before-requires-approval"
+# effect = "require_approval"
+# actions = ["jobs.clearBefore"]
+# subjects = ["user:*"]
+# approver_subjects = ["group:slack:S12345", "group:discord:987654321"]
+# notify_subjects = ["group:slack:S12345", "group:discord:987654321"]
+# providers = ["slack", "discord"]
+# channel_ids = ["C123ABC", "123456789012345678"]
 
-# Slack configuration toggle.
-# Optional. Default: false. Example: true
-# Set SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET in env when enabled.
-[slack]
+# Slack channel settings.
+# Optional. Default: false.
+[channels.slack]
 # enabled = false
 
-# Discord configuration toggle.
-# Optional. Default: false. Example: true
-# Set DISCORD_BOT_TOKEN in env when enabled.
-[discord]
+# Discord channel settings.
+# Optional. Default: false.
+[channels.discord]
 # enabled = false
+
+# Optional run action catalog for /<bot>-run.
+# Keys are action ids and should match worker config and repo contracts.
+#
+# [run.actions.\"refresh-docs\"]
+# label = "Refresh docs"
+# description = "Rebuild documentation and publish artifacts"
+
+[run.actions."db-migration-sanity"]
+label = "DB migration sanity"
+description = "Validate migration metadata and apply sqlite migrations against an isolated temporary DB path."
+
+[run.actions."ci-check"]
+label = "CI check"
+description = "Run repository CI checks from worker fallback command."
 
 # Discord app ID.
-# Required when discord.enabled = true.
+# Required when channels.discord.enabled = true.
 # Optional otherwise. Example: "123456789012345678"
 # app_id = "123456789012345678"
 

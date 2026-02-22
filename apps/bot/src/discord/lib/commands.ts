@@ -4,9 +4,12 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 export function buildCommandNames(prefix: string) {
   return {
     ask: `${prefix}-ask`,
+    explore: `${prefix}-explore`,
     plan: `${prefix}-plan`,
     implement: `${prefix}-implement`,
+    run: `${prefix}-run`,
     bootstrap: `${prefix}-bootstrap`,
+    clearBefore: `${prefix}-clear-before`,
     usage: `${prefix}-usage`,
   };
 }
@@ -33,6 +36,11 @@ export async function registerDiscordCommands(
       type: 1,
     },
     {
+      name: names.explore,
+      description: 'Explore solution options for one or more repositories',
+      type: 1,
+    },
+    {
       name: names.plan,
       description: 'Plan a change for one or more repositories',
       type: 1,
@@ -43,9 +51,27 @@ export async function registerDiscordCommands(
       type: 1,
     },
     {
+      name: names.run,
+      description: 'Run a configured repo action on one or more repositories',
+      type: 1,
+    },
+    {
       name: names.bootstrap,
       description: 'Bootstrap a new repository and allowlist entry',
       type: 1,
+    },
+    {
+      name: names.clearBefore,
+      description: 'Clear job data created before a cutoff date',
+      type: 1,
+      options: [
+        {
+          name: 'cutoff',
+          description: 'YYYY-MM-DD or ISO timestamp',
+          type: 3,
+          required: true,
+        },
+      ],
     },
   ];
   const route = guildId

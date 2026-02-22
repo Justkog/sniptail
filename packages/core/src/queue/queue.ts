@@ -1,8 +1,9 @@
-import { Queue, type ConnectionOptions } from 'bullmq';
+import type { ConnectionOptions } from 'bullmq';
 import type { BotEvent } from '../types/bot-event.js';
 import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 import type { WorkerEvent } from '../types/worker-event.js';
+import type { QueuePublisher } from './queueTransportTypes.js';
 
 export const jobQueueName = 'sniptail-jobs';
 export const botEventQueueName = 'sniptail-bot-events';
@@ -13,12 +14,7 @@ export function createConnectionOptions(redisUrl: string): ConnectionOptions {
   return { url: redisUrl };
 }
 
-export function createJobQueue(redisUrl: string): Queue<JobSpec> {
-  const connection = createConnectionOptions(redisUrl);
-  return new Queue<JobSpec>(jobQueueName, { connection });
-}
-
-export async function enqueueJob(queue: Queue<JobSpec>, job: JobSpec) {
+export async function enqueueJob(queue: QueuePublisher<JobSpec>, job: JobSpec) {
   return queue.add(job.type, job, {
     jobId: job.jobId,
     removeOnComplete: 100,
@@ -26,12 +22,10 @@ export async function enqueueJob(queue: Queue<JobSpec>, job: JobSpec) {
   });
 }
 
-export function createBootstrapQueue(redisUrl: string): Queue<BootstrapRequest> {
-  const connection = createConnectionOptions(redisUrl);
-  return new Queue<BootstrapRequest>(bootstrapQueueName, { connection });
-}
-
-export async function enqueueBootstrap(queue: Queue<BootstrapRequest>, request: BootstrapRequest) {
+export async function enqueueBootstrap(
+  queue: QueuePublisher<BootstrapRequest>,
+  request: BootstrapRequest,
+) {
   return queue.add(bootstrapQueueName, request, {
     jobId: request.requestId,
     removeOnComplete: 100,
@@ -39,24 +33,14 @@ export async function enqueueBootstrap(queue: Queue<BootstrapRequest>, request: 
   });
 }
 
-export function createBotQueue(redisUrl: string): Queue<BotEvent> {
-  const connection = createConnectionOptions(redisUrl);
-  return new Queue<BotEvent>(botEventQueueName, { connection });
-}
-
-export async function enqueueBotEvent(queue: Queue<BotEvent>, event: BotEvent) {
+export async function enqueueBotEvent(queue: QueuePublisher<BotEvent>, event: BotEvent) {
   return queue.add(event.type, event, {
     removeOnComplete: 200,
     removeOnFail: 200,
   });
 }
 
-export function createWorkerEventQueue(redisUrl: string): Queue<WorkerEvent> {
-  const connection = createConnectionOptions(redisUrl);
-  return new Queue<WorkerEvent>(workerEventQueueName, { connection });
-}
-
-export async function enqueueWorkerEvent(queue: Queue<WorkerEvent>, event: WorkerEvent) {
+export async function enqueueWorkerEvent(queue: QueuePublisher<WorkerEvent>, event: WorkerEvent) {
   return queue.add(event.type, event, {
     removeOnComplete: 200,
     removeOnFail: 200,

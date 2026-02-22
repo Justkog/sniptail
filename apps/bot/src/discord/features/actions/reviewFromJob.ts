@@ -1,17 +1,20 @@
 import type { ButtonInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleReviewFromJobButton(
   interaction: ButtonInteraction,
   jobId: string,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
+  permissions: PermissionsRuntimeService,
 ) {
   const record = await loadJobRecord(jobId).catch((err) => {
     logger.warn({ err, jobId }, 'Failed to load job record for review from job');
@@ -51,6 +54,39 @@ export async function handleReviewFromJobButton(
     resumeFromJobId: jobId,
     ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.review',
+    summary: `Queue review job from ${jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId,
+      ...(threadId ? { threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.reply({
+        content: 'You are not authorized to start review jobs.',
+        ephemeral: true,
+      });
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.reply({
+        content: message,
+        ephemeral: true,
+      });
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   try {
     await saveJobQueued(job);

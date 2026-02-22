@@ -295,4 +295,188 @@ describe('git mirror ensureClone', () => {
       expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
     );
   });
+
+  it('retries once when fetch fails with non-fast-forward for the same remote ref', async () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    let fetchAttempts = 0;
+    // eslint-disable-next-line @typescript-eslint/require-await
+    vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ');
+      if (joined === 'fetch --prune origin staging:refs/remotes/origin/staging') {
+        fetchAttempts += 1;
+        if (fetchAttempts === 1) {
+          return {
+            cmd: 'git',
+            args,
+            durationMs: 1,
+            exitCode: 1,
+            signal: null,
+            stdout: '',
+            stderr:
+              'From github.com:org/repo\n' +
+              ' ! [rejected]        staging    -> origin/staging  (non-fast-forward)',
+            timedOut: false,
+            aborted: false,
+            cwd: '/tmp/cache/repo.git',
+          };
+        }
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'update-ref -d refs/remotes/origin/staging') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/remotes/origin/staging') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/remotes/origin/staging\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'rev-parse --abbrev-ref HEAD') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'main\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/heads/staging') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/heads/staging\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      return {
+        cmd: 'git',
+        args,
+        durationMs: 1,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+        cwd: '/tmp/cache/repo.git',
+      };
+    });
+
+    await ensureClone(
+      'repo',
+      { sshUrl: 'git@github.com:org/repo.git' },
+      '/tmp/cache/repo.git',
+      '/tmp/log.txt',
+      {},
+      'staging',
+    );
+
+    expect(fetchAttempts).toBe(2);
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['update-ref', '-d', 'refs/remotes/origin/staging'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+  });
+
+  it('retries once when fetch fails with non-fast-forward using full remote ref path', async () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    let fetchAttempts = 0;
+    // eslint-disable-next-line @typescript-eslint/require-await
+    vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
+      const resultBase = {
+        cmd: 'git',
+        args,
+        durationMs: 1,
+        signal: null as NodeJS.Signals | null,
+        stdout: '',
+        cwd: '/tmp/cache/repo.git',
+        timedOut: false,
+        aborted: false,
+      };
+
+      if (args[0] === 'fetch') {
+        fetchAttempts += 1;
+        if (fetchAttempts === 1) {
+          return {
+            ...resultBase,
+            exitCode: 1,
+            stderr:
+              'remote: error: failed to update refs\n' +
+              "remote: error: cannot lock ref 'refs/remotes/origin/staging': is at abcdef1 but expected 1234567\n" +
+              'remote: error: update rejected for refs/remotes/origin/staging (non-fast-forward)\n',
+          };
+        }
+
+        return {
+          ...resultBase,
+          exitCode: 0,
+          stderr: '',
+        };
+      }
+
+      return {
+        ...resultBase,
+        exitCode: 0,
+        stderr: '',
+      };
+    });
+
+    await ensureClone(
+      'repo',
+      { sshUrl: 'git@github.com:org/repo.git' },
+      '/tmp/cache/repo.git',
+      '/tmp/log.txt',
+      {},
+      'staging',
+    );
+
+    expect(fetchAttempts).toBe(2);
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['update-ref', '-d', 'refs/remotes/origin/staging'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+  });
 });

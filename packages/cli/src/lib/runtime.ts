@@ -3,7 +3,7 @@ import { runNode } from './exec.js';
 import { pathExists, pathIsDirectory, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
 
 type RuntimeOptions = {
-  app: 'bot' | 'worker';
+  app: 'bot' | 'worker' | 'local';
   entry: string;
   configEnvVar: 'SNIPTAIL_BOT_CONFIG_PATH' | 'SNIPTAIL_WORKER_CONFIG_PATH';
   configPath?: string;
@@ -12,6 +12,7 @@ type RuntimeOptions = {
   root?: string;
   dryRun?: boolean;
   args?: string[];
+  envOverrides?: NodeJS.ProcessEnv;
 };
 
 type ResolvedRuntime = {
@@ -59,6 +60,7 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
     SNIPTAIL_ROOT: root,
     ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
     ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
+    ...(options.envOverrides ? options.envOverrides : {}),
   };
 
   if (envPath && pathExists(envPath)) {

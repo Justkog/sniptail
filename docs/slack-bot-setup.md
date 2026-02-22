@@ -4,7 +4,7 @@ This guide walks through creating a Slack app for Sniptail, enabling Socket Mode
 
 Sniptail’s Slack bot:
 - Runs in **Socket Mode** (no public HTTP endpoint required).
-- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-implement`).
+- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
 - Supports `@Sniptail …` mentions in channels (`app_mention` events).
 - Uses interactive components + modals (interactivity enabled).
 - Uploads Markdown reports as files.
@@ -19,8 +19,8 @@ Sniptail’s Slack bot:
 Sniptail derives Slack command names from the configured bot name.
 
 Examples:
-- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-implement`, etc.
-- Bot name `My Bot` → `/my-bot-ask`, `/my-bot-implement`, etc.
+- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`, etc.
+- Bot name `My Bot` → `/my-bot-ask`, `/my-bot-explore`, `/my-bot-implement`, etc.
 
 Make sure these match:
 - Your Slack app manifest’s command names
@@ -58,8 +58,9 @@ Sniptail uses Socket Mode, which requires an **app-level token**.
 
 1. Go to **OAuth & Permissions**.
 2. Confirm the bot scopes from the manifest are present (Sniptail needs things like `commands`, `chat:write`, `files:write`, `app_mentions:read`, history scopes, etc.).
-3. Click **Install to Workspace** (or **Reinstall to Workspace** after changes).
-4. Copy the **Bot User OAuth Token** — you’ll use it as `SLACK_BOT_TOKEN` (typically starts with `xoxb-`).
+3. If you use group-based permissions (`group:slack:<usergroup_id>`), add `usergroups:read` so Sniptail can resolve approver/requester group membership.
+4. Click **Install to Workspace** (or **Reinstall to Workspace** after changes).
+5. Copy the **Bot User OAuth Token** — you’ll use it as `SLACK_BOT_TOKEN` (typically starts with `xoxb-`).
 
 ## 6) Get the signing secret
 
@@ -73,7 +74,7 @@ Sniptail uses Socket Mode, which requires an **app-level token**.
 Edit `sniptail.bot.toml`:
 
 ```toml
-[slack]
+[channels.slack]
 enabled = true
 ```
 
@@ -96,7 +97,7 @@ export SLACK_SIGNING_SECRET="..."
 
 You can enable Slack and supply credentials via env vars:
 
-- `SLACK_ENABLED=1`
+- `SNIPTAIL_CHANNELS=slack`
 - `SLACK_BOT_TOKEN=...`
 - `SLACK_APP_TOKEN=...`
 - `SLACK_SIGNING_SECRET=...`
@@ -113,12 +114,13 @@ pnpm run dev
 3. In Slack:
    - Try `/sniptail-usage` (or your custom prefix)
    - Mention the bot in a channel it’s in: `@Sniptail hello`
+   - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
 
 ## Troubleshooting
 
 ### “No bot providers enabled”
 
-- Enable Slack in `sniptail.bot.toml` (`[slack].enabled = true`) or set `SLACK_ENABLED=1`.
+- Enable Slack in `sniptail.bot.toml` (`[channels.slack] enabled = true`) or set `SNIPTAIL_CHANNELS=slack`.
 
 ### Bot connects but slash commands don’t work
 
@@ -133,4 +135,3 @@ pnpm run dev
 ### “Slack is not configured…” at startup
 
 - Ensure `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_SIGNING_SECRET` are set in the environment where you run `apps/bot`.
-

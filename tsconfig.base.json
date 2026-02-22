@@ -23,9 +23,11 @@
       "@sniptail/core/*.js": ["packages/core/src/*.ts"],
       "@sniptail/core/*": ["packages/core/src/*"],
       "@sniptail/bot": ["apps/bot/src/index.ts"],
+      "@sniptail/bot/runtime": ["apps/bot/src/botRuntimeLauncher.ts"],
       "@sniptail/bot/*.js": ["apps/bot/src/*.ts"],
       "@sniptail/bot/*": ["apps/bot/src/*"],
       "@sniptail/worker": ["apps/worker/src/index.ts"],
+      "@sniptail/worker/runtime": ["apps/worker/src/workerRuntimeLauncher.ts"],
       "@sniptail/worker/*.js": ["apps/worker/src/*.ts"],
       "@sniptail/worker/*": ["apps/worker/src/*"]
     }

@@ -1,8 +1,27 @@
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from './channels/botEventSink.js';
+import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
 import type { JobRegistry } from './job/jobRegistry.js';
+
+async function publishCodexUsageStatus(
+  event: CoreWorkerEvent<'status.codexUsage'>,
+  message: string,
+  botEvents: BotEventSink,
+) {
+  const adapter = resolveWorkerChannelAdapter(event.payload.provider);
+  const replyEvent = adapter.buildCodexUsageReplyEvent({
+    ...(event.requestId ? { requestId: event.requestId } : {}),
+    payload: event.payload,
+    text: message,
+  });
+  if (!replyEvent) {
+    logger.warn({ event }, 'Channel adapter cannot render Codex usage response');
+    return;
+  }
+  await botEvents.publish(replyEvent);
+}
 
 export async function handleWorkerEvent(
   event: WorkerEvent,
@@ -10,14 +29,14 @@ export async function handleWorkerEvent(
   botEvents: BotEventSink,
 ): Promise<void> {
   switch (event.type) {
-    case 'clearJob': {
+    case 'jobs.clear': {
       const { jobId, ttlMs } = event.payload;
       await registry.markJobForDeletion(jobId, ttlMs).catch((err) => {
         logger.error({ err, jobId }, 'Failed to schedule job deletion');
       });
       return;
     }
-    case 'clearJobsBefore': {
+    case 'jobs.clearBefore': {
       const cutoff = new Date(event.payload.cutoffIso);
       if (Number.isNaN(cutoff.getTime())) {
         logger.warn({ cutoffIso: event.payload.cutoffIso }, 'Invalid cutoff date');
@@ -28,55 +47,17 @@ export async function handleWorkerEvent(
       });
       return;
     }
-    case 'codexUsage': {
+    case 'status.codexUsage': {
       try {
         const { message } = await fetchCodexUsageMessage();
-        if (event.payload.provider === 'slack') {
-          await botEvents.publish({
-            provider: 'slack',
-            type: 'postEphemeral',
-            payload: {
-              channelId: event.payload.channelId,
-              userId: event.payload.userId,
-              text: message,
-              ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
-            },
-          });
-        } else {
-          await botEvents.publish({
-            provider: 'discord',
-            type: 'editInteractionReply',
-            payload: {
-              interactionApplicationId: event.payload.interactionApplicationId,
-              interactionToken: event.payload.interactionToken,
-              text: message,
-            },
-          });
-        }
+        await publishCodexUsageStatus(event, message, botEvents);
       } catch (err) {
         logger.error({ err }, 'Failed to fetch Codex usage status');
-        if (event.payload.provider === 'slack') {
-          await botEvents.publish({
-            provider: 'slack',
-            type: 'postEphemeral',
-            payload: {
-              channelId: event.payload.channelId,
-              userId: event.payload.userId,
-              text: 'Failed to fetch Codex usage status. Please try again shortly.',
-              ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
-            },
-          });
-        } else {
-          await botEvents.publish({
-            provider: 'discord',
-            type: 'editInteractionReply',
-            payload: {
-              interactionApplicationId: event.payload.interactionApplicationId,
-              interactionToken: event.payload.interactionToken,
-              text: 'Failed to fetch Codex usage status. Please try again shortly.',
-            },
-          });
-        }
+        await publishCodexUsageStatus(
+          event,
+          'Failed to fetch Codex usage status. Please try again shortly.',
+          botEvents,
+        );
       }
       return;
     }

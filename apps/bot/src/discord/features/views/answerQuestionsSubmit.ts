@@ -1,5 +1,5 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { Queue } from 'bullmq';
+import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -9,11 +9,14 @@ import { createJobId } from '../../../lib/jobs.js';
 import { answerQuestionsByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
+import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleAnswerQuestionsSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: Queue<JobSpec>,
+  queue: QueuePublisher<JobSpec>,
+  permissions: PermissionsRuntimeService,
 ) {
   const selection = answerQuestionsByUser.get(interaction.user.id);
   if (!selection) {
@@ -53,6 +56,33 @@ export async function handleAnswerQuestionsSubmit(
     channel: buildInteractionChannelContext(interaction),
     resumeFromJobId: record.job.jobId,
   };
+
+  const authorized = await authorizeDiscordOperationAndRespond({
+    permissions,
+    action: 'jobs.answerQuestions',
+    summary: `Queue answer-questions job ${job.jobId}`,
+    operation: {
+      kind: 'enqueueJob',
+      job,
+    },
+    actor: {
+      userId: interaction.user.id,
+      channelId: job.channel.channelId,
+      ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      member: interaction.member,
+    },
+    client: interaction.client,
+    onDeny: async () => {
+      await interaction.editReply('You are not authorized to submit answers for this job.');
+    },
+    onRequireApprovalNotice: async (message) => {
+      await interaction.editReply(message);
+    },
+  });
+  if (!authorized) {
+    return;
+  }
 
   try {
     await saveJobQueued(job);

@@ -13,6 +13,10 @@ features:
       description: Ask Sniptail to analyze one or more repos and return a Markdown report.
       usage_hint: "[repo keys] [branch] [request text]"
       should_escape: false
+    - command: /sniptail-explore
+      description: Ask Sniptail to explore solution options grounded in one or more repos.
+      usage_hint: "[repo keys] [branch] [request text]"
+      should_escape: false
     - command: /sniptail-plan
       description: Ask Sniptail to plan a feature implementation across one or more repos.
       usage_hint: "[repo keys] [branch] [request text]"
@@ -20,6 +24,10 @@ features:
     - command: /sniptail-implement
       description: Ask Sniptail to implement changes, run checks, and open GitLab MRs.
       usage_hint: "[repos] [branch]"
+      should_escape: false
+    - command: /sniptail-run
+      description: Run a configured action across selected repositories.
+      usage_hint: "[repos] [branch] [action]"
       should_escape: false
     - command: /sniptail-bootstrap
       description: Create a new repository and add it to the allowlist.
@@ -44,6 +52,7 @@ oauth_config:
       - im:write
       - reactions:write
       - mpim:history
+      - usergroups:read
 settings:
   event_subscriptions:
     bot_events:

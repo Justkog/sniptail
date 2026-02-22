@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "paths": {
+      "@sniptail/core": ["packages/core/dist/index.d.ts"],
+      "@sniptail/core/*.js": ["packages/core/dist/*.d.ts"],
+      "@sniptail/core/*": ["packages/core/dist/*.d.ts"],
+      "@sniptail/bot/runtime": ["apps/bot/dist/botRuntimeLauncher.d.ts"],
+      "@sniptail/worker/runtime": ["apps/worker/dist/workerRuntimeLauncher.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["tests/**", "dist/**", "node_modules/**", "src/**/*.test.ts"]
+}

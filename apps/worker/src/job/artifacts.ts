@@ -50,9 +50,10 @@ function isDestinationFilePresent(err: unknown): boolean {
 
 export async function copyArtifactsFromResumedJob(
   resumeFromJobId: string,
+  jobWorkRoot: string,
   paths: JobPaths,
 ): Promise<void> {
-  const sourceArtifactsRoot = buildJobPaths(resumeFromJobId).artifactsRoot;
+  const sourceArtifactsRoot = buildJobPaths(jobWorkRoot, resumeFromJobId).artifactsRoot;
   const sourceEntries = await readdir(sourceArtifactsRoot, { withFileTypes: true }).catch((err) => {
     if (isMissingPath(err)) {
       return [];

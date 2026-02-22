@@ -1,7 +1,9 @@
 export type CompletionActionIds = {
   askFromJob: string;
+  exploreFromJob: string;
   planFromJob: string;
   implementFromJob: string;
+  runFromJob: string;
   reviewFromJob: string;
   worktreeCommands: string;
   clearJob: string;
@@ -10,8 +12,10 @@ export type CompletionActionIds = {
 
 export type CompletionBlockOptions = {
   includeAskFromJob?: boolean;
+  includeExploreFromJob?: boolean;
   includePlanFromJob?: boolean;
   includeImplementFromJob?: boolean;
+  includeRunFromJob?: boolean;
   includeReviewFromJob?: boolean;
   answerQuestionsFirst?: boolean;
 };
@@ -23,8 +27,10 @@ export function buildCompletionBlocks(
   options?: CompletionBlockOptions,
 ) {
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includeExploreFromJob = options?.includeExploreFromJob ?? true;
   const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
+  const includeRunFromJob = options?.includeRunFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const elements: Array<Record<string, unknown>> = [];
@@ -45,6 +51,14 @@ export function buildCompletionBlocks(
       value: jobId,
     });
   }
+  if (includeExploreFromJob) {
+    elements.push({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: 'Explore' },
+      action_id: actionIds.exploreFromJob,
+      value: jobId,
+    });
+  }
   if (includePlanFromJob) {
     elements.push({
       type: 'button' as const,
@@ -58,6 +72,14 @@ export function buildCompletionBlocks(
       type: 'button' as const,
       text: { type: 'plain_text' as const, text: 'Implement' },
       action_id: actionIds.implementFromJob,
+      value: jobId,
+    });
+  }
+  if (includeRunFromJob) {
+    elements.push({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: 'Run' },
+      action_id: actionIds.runFromJob,
       value: jobId,
     });
   }

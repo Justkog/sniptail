@@ -1,8 +1,14 @@
 import type { SlackHandlerContext } from '../context.js';
 import { buildPlanModal } from '../../modals.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
+import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 
-export function registerPlanFromJobAction({ app, slackIds, config }: SlackHandlerContext) {
+export function registerPlanFromJobAction({
+  app,
+  slackIds,
+  config,
+  permissions,
+}: SlackHandlerContext) {
   app.action(slackIds.actions.planFromJob, async ({ ack, body, client, action }) => {
     await ack();
     const jobId = (action as { value?: string }).value?.trim();
@@ -14,6 +20,27 @@ export function registerPlanFromJobAction({ app, slackIds, config }: SlackHandle
     const userId = (body as { user?: { id?: string } }).user?.id;
 
     if (!jobId || !triggerId || !channelId || !userId) {
+      return;
+    }
+
+    const authorized = await authorizeSlackPrecheckAndRespond({
+      permissions,
+      client,
+      action: 'jobs.plan',
+      actor: {
+        userId,
+        channelId,
+        ...(threadId ? { threadId } : {}),
+      },
+      onDeny: async () => {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: 'You are not authorized to run plan jobs.',
+        });
+      },
+    });
+    if (!authorized) {
       return;
     }
 

@@ -14,6 +14,9 @@
 ## TypeScript guideline
 - Prefer optional properties/parameters when something may be absent; avoid explicit nullable types like `foo: string | null` unless null has a distinct meaning.
 
+## File naming guideline
+- Do not create or rename files so that two files share the same basename in this repository.
+
 ## Key paths
 - `apps/bot/src/index.ts`: Slack app bootstrap
 - `apps/bot/src/slack/features/`: Slack feature modules (grouped by capability)

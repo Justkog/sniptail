@@ -3,7 +3,7 @@
 This guide walks through creating a Discord application/bot, inviting it to your server, and configuring Sniptail to use it.
 
 Sniptail’s Discord bot:
-- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-implement`).
+- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
 - Supports `@mention` in a channel to kick off a job.
 - Posts job results and uploads Markdown reports as file attachments.
 - Tries to create a thread per job (and falls back to replying in the channel if it can’t).
@@ -62,6 +62,7 @@ Sniptail can optionally restrict where the bot responds via an allowlist.
 2. Copy IDs as needed:
    - **Guild ID** (server): right-click the server icon → **Copy Server ID**
    - **Channel IDs**: right-click the channel → **Copy Channel ID**
+   - **Role IDs** (for group-based permissions): Server Settings → Roles → right-click role → **Copy Role ID**
 
 ## 6) Configure Sniptail
 
@@ -70,7 +71,7 @@ Sniptail can optionally restrict where the bot responds via an allowlist.
 Edit `sniptail.bot.toml`:
 
 ```toml
-[discord]
+[channels.discord]
 enabled = true
 app_id = "123456789012345678"
 
@@ -88,7 +89,7 @@ Then ensure `DISCORD_BOT_TOKEN` is set in the environment where you run the bot.
 
 You can override TOML values with env vars:
 
-- `DISCORD_ENABLED=1`
+- `SNIPTAIL_CHANNELS=discord`
 - `DISCORD_APP_ID=...`
 - `DISCORD_GUILD_ID=...` (optional)
 - `DISCORD_CHANNEL_IDS=...` (optional, comma-separated)
@@ -97,7 +98,7 @@ You can override TOML values with env vars:
 Example:
 
 ```bash
-export DISCORD_ENABLED=1
+export SNIPTAIL_CHANNELS=discord
 export DISCORD_APP_ID="123456789012345678"
 export DISCORD_GUILD_ID="123456789012345678"
 export DISCORD_CHANNEL_IDS="123456789012345678,234567890123456789"
@@ -116,6 +117,7 @@ pnpm run dev
 3. In a Discord channel the bot can read/write:
    - Try a slash command, e.g. `/sniptail-usage`
    - Mention the bot: `@Sniptail hello`
+   - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
 
 ## Troubleshooting
 

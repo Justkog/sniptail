@@ -1,11 +1,17 @@
 import { join } from 'node:path';
-import { loadCoreConfig } from '../config/config.js';
 import type { JobSpec, RepoConfig } from '../types/job.js';
+import { normalizeRunActionId } from '../repos/runActions.js';
 
 const gitRefPattern = /^[A-Za-z0-9._/-]+$/;
-const config = loadCoreConfig();
 
 export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConfig> = {}) {
+  if (job.type === 'RUN') {
+    const actionId = job.run?.actionId?.trim();
+    if (!actionId) {
+      throw new Error('RUN jobs must include run.actionId.');
+    }
+    normalizeRunActionId(actionId);
+  }
   if (job.type !== 'MENTION' && job.repoKeys.length === 0) {
     throw new Error('Job must include at least one repo.');
   }
@@ -21,8 +27,8 @@ export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConf
   }
 }
 
-export function buildJobPaths(jobId: string) {
-  const root = join(config.jobWorkRoot, jobId);
+export function buildJobPaths(jobWorkRoot: string, jobId: string) {
+  const root = join(jobWorkRoot, jobId);
   return {
     root,
     reposRoot: join(root, 'repos'),

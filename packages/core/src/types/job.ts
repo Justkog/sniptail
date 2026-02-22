@@ -1,6 +1,6 @@
 import type { ChannelContext } from './channel.js';
 
-export type JobType = 'ASK' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'MENTION';
+export type JobType = 'ASK' | 'EXPLORE' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'RUN' | 'MENTION';
 export const AGENT_IDS = ['codex', 'copilot'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
@@ -19,6 +19,10 @@ export type JobSettings = {
   reviewers?: string[];
 };
 
+export type RunJobInput = {
+  actionId: string;
+};
+
 export type JobSpec = {
   jobId: string;
   type: JobType;
@@ -32,6 +36,7 @@ export type JobSpec = {
   threadContext?: string;
   resumeFromJobId?: string;
   settings?: JobSettings;
+  run?: RunJobInput;
 };
 
 export type MergeRequestResult = {
