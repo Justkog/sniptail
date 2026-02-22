@@ -249,6 +249,19 @@ function getLatestSlackMessagePostText(): string {
   throw new Error('Expected a slack message.post event with text payload.');
 }
 
+function getWriteFileContentForPath(targetPath: string): string {
+  const calls = vi.mocked(writeFile).mock.calls;
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const call = calls[index];
+    const filePath = call?.[0];
+    const content = call?.[1];
+    if (filePath === targetPath && typeof content === 'string') {
+      return content;
+    }
+  }
+  throw new Error(`Expected writeFile call for ${targetPath}`);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -798,6 +811,10 @@ describe('worker/pipeline runJob', () => {
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
     expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).not.toContain('Git output:');
+    expect(
+      getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-contract/artifacts/report.md'),
+    ).not.toContain('## Git Output');
     expect(runChecksMock).not.toHaveBeenCalled();
     expect(commitAndPushMock).not.toHaveBeenCalled();
   });
@@ -904,6 +921,10 @@ describe('worker/pipeline runJob', () => {
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
     expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).toContain('Git output:');
+    expect(
+      getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-implement/artifacts/report.md'),
+    ).toContain('## Git Output');
     expect(runChecksMock).toHaveBeenCalledWith(
       '/tmp/sniptail/job-root/job-run-implement/repos/repo-1',
       ['npm-lint'],
