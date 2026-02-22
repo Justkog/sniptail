@@ -64,7 +64,7 @@ sniptail repos list
 Run:
 
 ```bash
-sniptail local
+sniptail local --migrate-if-needed
 ```
 
 This quickstart uses the single-process local runtime. For split bot/worker deployments, see `docs/setup-and-operations.md`.

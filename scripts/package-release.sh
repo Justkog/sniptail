@@ -37,6 +37,8 @@ detect_arch() {
 
 main() {
   local project_root version os_name arch output_dir release_dir name stage_root tarball_path sha_path
+  local sea_config_path sea_blob_path node_bin local_runtime_entry
+  local -a postject_args
 
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   version=""
@@ -89,10 +91,14 @@ main() {
     echo "pnpm is required to package a release." >&2
     exit 1
   fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node is required to package a release." >&2
+    exit 1
+  fi
 
   cd "${project_root}"
 
-  for required_dir in apps/bot/dist apps/worker/dist packages/core/dist packages/cli/dist; do
+  for required_dir in apps/bot/dist apps/worker/dist apps/local/dist packages/core/dist packages/cli/dist; do
     if [[ ! -d "${required_dir}" ]]; then
       echo "Missing ${required_dir}. Run \"pnpm run build\" first." >&2
       exit 1
@@ -146,18 +152,26 @@ main() {
   fi
 
   # Package manifests + builds.
-  mkdir -p "${stage_root}/apps/bot" "${stage_root}/apps/worker"
+  mkdir -p "${stage_root}/apps/bot" "${stage_root}/apps/worker" "${stage_root}/apps/local"
   mkdir -p "${stage_root}/packages/core" "${stage_root}/packages/cli"
   cp apps/bot/package.json "${stage_root}/apps/bot/"
   cp apps/worker/package.json "${stage_root}/apps/worker/"
+  cp apps/local/package.json "${stage_root}/apps/local/"
   cp packages/core/package.json "${stage_root}/packages/core/"
   cp packages/cli/package.json "${stage_root}/packages/cli/"
   cp -R apps/bot/dist "${stage_root}/apps/bot/"
   cp -R apps/worker/dist "${stage_root}/apps/worker/"
+  cp -R apps/local/dist "${stage_root}/apps/local/"
   cp -R apps/worker/scripts "${stage_root}/apps/worker/"
   cp -R packages/core/dist "${stage_root}/packages/core/"
   cp -R packages/core/drizzle "${stage_root}/packages/core/"
   cp -R packages/cli/dist "${stage_root}/packages/cli/"
+
+  local_runtime_entry="${stage_root}/apps/local/dist/localProcessRuntime.js"
+  if [[ ! -f "${local_runtime_entry}" ]]; then
+    echo "Missing local runtime entry at ${local_runtime_entry} after staging." >&2
+    exit 1
+  fi
 
   log "Installing production dependencies in staged release root"
   (
@@ -169,6 +183,7 @@ main() {
   mkdir -p "${stage_root}/scripts"
   cp scripts/register-loaders.mjs "${stage_root}/scripts/"
   cp scripts/md-raw-loader.mjs "${stage_root}/scripts/"
+  cp scripts/sea-bootstrap.cjs "${stage_root}/scripts/"
   cp scripts/generate-slack-manifest.mjs "${stage_root}/scripts/"
   cp scripts/slack-app-manifest.template.yaml "${stage_root}/scripts/"
 
@@ -190,25 +205,46 @@ main() {
 }
 JSON
 
-  # CLI wrapper.
+  # SEA launcher.
   mkdir -p "${stage_root}/bin"
-cat >"${stage_root}/bin/sniptail" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
+  sea_config_path="${stage_root}/sea-config.json"
+  sea_blob_path="${stage_root}/sea-prep.blob"
+  node_bin="$(command -v node)"
 
-# Resolve symlinks so this still works when invoked through ~/.local/bin/sniptail.
-SOURCE="${BASH_SOURCE[0]}"
-while [[ -L "${SOURCE}" ]]; do
-  SOURCE_DIR="$(cd -P "$(dirname "${SOURCE}")" && pwd)"
-  SOURCE="$(readlink "${SOURCE}")"
-  [[ "${SOURCE}" != /* ]] && SOURCE="${SOURCE_DIR}/${SOURCE}"
-done
+cat >"${sea_config_path}" <<JSON
+{
+  "main": "${stage_root}/scripts/sea-bootstrap.cjs",
+  "output": "${sea_blob_path}",
+  "disableExperimentalSEAWarning": true
+}
+JSON
 
-ROOT_DIR="$(cd -P "$(dirname "${SOURCE}")/.." && pwd)"
-export SNIPTAIL_ROOT="${ROOT_DIR}"
-export NODE_ENV="${NODE_ENV:-production}"
-exec node "${ROOT_DIR}/packages/cli/dist/index.js" "$@"
-SH
+  log "Generating SEA blob"
+  node --experimental-sea-config "${sea_config_path}"
+
+  log "Copying Node runtime to ${stage_root}/bin/sniptail"
+  cp "${node_bin}" "${stage_root}/bin/sniptail"
+
+  postject_args=(
+    "${stage_root}/bin/sniptail"
+    NODE_SEA_BLOB
+    "${sea_blob_path}"
+    --sentinel-fuse
+    NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+  )
+  if [[ "${os_name}" == "darwin" ]]; then
+    postject_args+=(--macho-segment-name NODE_SEA)
+  fi
+
+  log "Injecting SEA blob into sniptail binary"
+  PNPM_PREFER_OFFLINE=true pnpm dlx postject@1.0.0-alpha.6 "${postject_args[@]}"
+
+  if [[ "${os_name}" == "darwin" ]] && command -v codesign >/dev/null 2>&1; then
+    log "Applying ad-hoc code signature to sniptail binary"
+    codesign --sign - --force "${stage_root}/bin/sniptail"
+  fi
+
+  rm -f "${sea_config_path}" "${sea_blob_path}"
   chmod +x "${stage_root}/bin/sniptail"
 
   tarball_path="${output_dir}/${name}.tar.gz"

@@ -9,7 +9,7 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 - `packages/core`: shared queue wiring, coding agent execution, Git/GitLab/GitHub integrations, config
 - `packages/cli`: `sniptail` command entrypoint and runtime command launcher
 
-## Dependencies
+## Source Development Dependencies
 
 - Node.js (tested with Node 22)
 - Redis (required only when `[core].queue_driver = "redis"`)
@@ -27,7 +27,7 @@ This path is intended for people who want to run Sniptail, not hack on it locall
 
 #### 0) Install prerequisites
 
-- Node.js
+- No host Node.js runtime is required for prebuilt release artifacts.
 - Redis (required only when using `queue_driver = "redis"`)
 - Git + SSH access to your repos (worker needs this)
 - One of:
