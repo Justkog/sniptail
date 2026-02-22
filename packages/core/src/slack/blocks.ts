@@ -1,5 +1,6 @@
 export type CompletionActionIds = {
   askFromJob: string;
+  exploreFromJob: string;
   planFromJob: string;
   implementFromJob: string;
   reviewFromJob: string;
@@ -10,6 +11,7 @@ export type CompletionActionIds = {
 
 export type CompletionBlockOptions = {
   includeAskFromJob?: boolean;
+  includeExploreFromJob?: boolean;
   includePlanFromJob?: boolean;
   includeImplementFromJob?: boolean;
   includeReviewFromJob?: boolean;
@@ -23,6 +25,7 @@ export function buildCompletionBlocks(
   options?: CompletionBlockOptions,
 ) {
   const includeAskFromJob = options?.includeAskFromJob ?? true;
+  const includeExploreFromJob = options?.includeExploreFromJob ?? true;
   const includePlanFromJob = options?.includePlanFromJob ?? true;
   const includeImplementFromJob = options?.includeImplementFromJob ?? true;
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
@@ -42,6 +45,14 @@ export function buildCompletionBlocks(
       type: 'button' as const,
       text: { type: 'plain_text' as const, text: 'Ask' },
       action_id: actionIds.askFromJob,
+      value: jobId,
+    });
+  }
+  if (includeExploreFromJob) {
+    elements.push({
+      type: 'button' as const,
+      text: { type: 'plain_text' as const, text: 'Explore' },
+      action_id: actionIds.exploreFromJob,
       value: jobId,
     });
   }

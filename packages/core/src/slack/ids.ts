@@ -4,6 +4,7 @@ export type SlackIds = {
   commandPrefix: string;
   commands: {
     ask: string;
+    explore: string;
     plan: string;
     implement: string;
     bootstrap: string;
@@ -12,12 +13,14 @@ export type SlackIds = {
   };
   actions: {
     askFromJob: string;
+    exploreFromJob: string;
     planFromJob: string;
     implementFromJob: string;
     reviewFromJob: string;
     worktreeCommands: string;
     clearJob: string;
     askSubmit: string;
+    exploreSubmit: string;
     planSubmit: string;
     implementSubmit: string;
     bootstrapSubmit: string;
@@ -36,6 +39,7 @@ export function buildSlackIds(botName: string): SlackIds {
     commandPrefix,
     commands: {
       ask: `/${commandPrefix}-ask`,
+      explore: `/${commandPrefix}-explore`,
       plan: `/${commandPrefix}-plan`,
       implement: `/${commandPrefix}-implement`,
       bootstrap: `/${commandPrefix}-bootstrap`,
@@ -44,12 +48,14 @@ export function buildSlackIds(botName: string): SlackIds {
     },
     actions: {
       askFromJob: `${commandPrefix}-ask-from-job`,
+      exploreFromJob: `${commandPrefix}-explore-from-job`,
       planFromJob: `${commandPrefix}-plan-from-job`,
       implementFromJob: `${commandPrefix}-implement-from-job`,
       reviewFromJob: `${commandPrefix}-review-from-job`,
       worktreeCommands: `${commandPrefix}-worktree-commands`,
       clearJob: `${commandPrefix}-clear-job`,
       askSubmit: `${commandPrefix}-ask-submit`,
+      exploreSubmit: `${commandPrefix}-explore-submit`,
       planSubmit: `${commandPrefix}-plan-submit`,
       implementSubmit: `${commandPrefix}-implement-submit`,
       bootstrapSubmit: `${commandPrefix}-bootstrap-submit`,

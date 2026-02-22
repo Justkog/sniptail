@@ -48,7 +48,10 @@ export async function prepareRepoWorktrees(
       ? (resumeBranch ?? `${branchPrefix}/${job.resumeFromJobId}`)
       : job.gitRef;
     const branch =
-      job.type === 'IMPLEMENT' || job.type === 'ASK' || job.type === 'PLAN'
+      job.type === 'IMPLEMENT' ||
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN'
         ? `${branchPrefix}/${job.jobId}`
         : undefined;
 

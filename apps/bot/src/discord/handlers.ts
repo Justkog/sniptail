@@ -14,12 +14,14 @@ import {
 import { buildCommandNames } from './lib/commands.js';
 import { isChannelAllowed } from './lib/channel.js';
 import { handleAskStart } from './features/commands/ask.js';
+import { handleDiscordExploreStart } from './features/commands/discordExploreCommand.js';
 import { handlePlanStart } from './features/commands/plan.js';
 import { handleImplementStart } from './features/commands/implement.js';
 import { handleBootstrapStart } from './features/commands/bootstrap.js';
 import { handleClearBefore } from './features/commands/clearBefore.js';
 import { handleUsage } from './features/commands/usage.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
+import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
 import { handleImplementSelection } from './features/actions/implementSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
@@ -30,12 +32,14 @@ import {
   isBootstrapExtrasCustomId,
 } from './features/actions/bootstrapExtras.js';
 import { handleAskModalSubmit } from './features/views/askSubmit.js';
+import { handleDiscordExploreModalSubmit } from './features/views/discordExploreSubmitView.js';
 import { handleAnswerQuestionsSubmit } from './features/views/answerQuestionsSubmit.js';
 import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
 import { handleAskFromJobButton } from './features/actions/askFromJob.js';
+import { handleDiscordExploreFromJobButton } from './features/actions/discordExploreFromJobAction.js';
 import { handlePlanFromJobButton } from './features/actions/planFromJob.js';
 import {
   handleClearJobButton,
@@ -49,6 +53,8 @@ import {
   askModalCustomId,
   askRepoSelectCustomId,
   answerQuestionsModalCustomId,
+  exploreModalCustomId,
+  exploreRepoSelectCustomId,
   planRepoSelectCustomId,
   bootstrapModalCustomId,
   implementModalCustomId,
@@ -160,6 +166,36 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           return;
         }
         await handleAskStart(interaction, config);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
+    if (interaction.commandName === commandNames.explore) {
+      try {
+        const authorized = await authorizeDiscordPrecheckAndRespond({
+          permissions,
+          action: 'jobs.explore',
+          actor: {
+            userId: interaction.user.id,
+            channelId: interaction.channelId,
+            ...(interaction.channel?.isThread() ? { threadId: interaction.channelId } : {}),
+            ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+            member: interaction.member,
+          },
+          onDeny: async () => {
+            await interaction.reply({
+              content: 'You are not authorized to run explore jobs.',
+              ephemeral: true,
+            });
+          },
+        });
+        if (!authorized) {
+          return;
+        }
+        await handleDiscordExploreStart(interaction, config);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -311,6 +347,30 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             }
             await handleAskFromJobButton(interaction, parsed.jobId, config);
             return;
+          case 'exploreFromJob':
+            if (
+              !(await authorizeDiscordPrecheckAndRespond({
+                permissions,
+                action: 'jobs.explore',
+                actor: {
+                  userId: interaction.user.id,
+                  channelId: interaction.channelId,
+                  ...(interaction.channel?.isThread() ? { threadId: interaction.channelId } : {}),
+                  ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+                  member: interaction.member,
+                },
+                onDeny: async () => {
+                  await interaction.reply({
+                    content: 'You are not authorized to run explore jobs.',
+                    ephemeral: true,
+                  });
+                },
+              }))
+            ) {
+              return;
+            }
+            await handleDiscordExploreFromJobButton(interaction, parsed.jobId, config);
+            return;
           case 'planFromJob':
             if (
               !(await authorizeDiscordPrecheckAndRespond({
@@ -454,6 +514,15 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.isStringSelectMenu() && interaction.customId === exploreRepoSelectCustomId) {
+      try {
+        await handleDiscordExploreSelection(interaction, config);
+      } catch (err) {
+        logger.error({ err }, 'Discord explore selection failed');
+      }
+      return;
+    }
+
     if (interaction.isStringSelectMenu() && interaction.customId === planRepoSelectCustomId) {
       try {
         await handlePlanSelection(interaction, config);
@@ -486,6 +555,15 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         await handleImplementModalSubmit(interaction, config, queue, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord implement modal submit failed');
+        await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+      }
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === exploreModalCustomId) {
+      try {
+        await handleDiscordExploreModalSubmit(interaction, config, queue, permissions);
+      } catch (err) {
+        logger.error({ err }, 'Discord explore modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
       }
     }

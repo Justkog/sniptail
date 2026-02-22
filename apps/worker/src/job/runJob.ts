@@ -167,7 +167,12 @@ export async function runJob(
       };
     }
 
-    if (job.type === 'ASK' || job.type === 'PLAN' || job.type === 'REVIEW') {
+    if (
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN' ||
+      job.type === 'REVIEW'
+    ) {
       const reportFileName = job.type === 'PLAN' ? 'plan.md' : 'report.md';
       const reportPath = join(paths.artifactsRoot, reportFileName);
       const agentResponse = agentRun.result.finalResponse?.trim() ?? '';
@@ -210,16 +215,20 @@ export async function runJob(
           title: `sniptail-${job.jobId}-${reportFileName}`,
         });
       }
-      const askText = report
+      const completionText = report
         ? `All set! I finished job ${job.jobId}.`
         : planMissing
           ? `I need a few clarifications before I can produce the plan for job ${job.jobId}.`
-          : job.type === 'REVIEW'
-            ? `All set! I finished job ${job.jobId}, but no review report was produced.`
-            : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
+          : job.type === 'ASK'
+            ? `All set! I finished job ${job.jobId}, but no ask report was produced.`
+            : job.type === 'EXPLORE'
+              ? `All set! I finished job ${job.jobId}, but no explore report was produced.`
+              : job.type === 'REVIEW'
+                ? `All set! I finished job ${job.jobId}, but no review report was produced.`
+                : `All set! I finished job ${job.jobId}, but no plan artifact was produced.`;
       const rendered = channelAdapter.renderCompletionMessage({
         botName: config.botName,
-        text: askText,
+        text: completionText,
         jobId: job.jobId,
         ...(openQuestions.length ? { openQuestions } : {}),
       });

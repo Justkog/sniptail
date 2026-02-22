@@ -1,5 +1,6 @@
 export const PERMISSION_ACTIONS = [
   'jobs.ask',
+  'jobs.explore',
   'jobs.plan',
   'jobs.implement',
   'jobs.review',

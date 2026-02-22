@@ -62,6 +62,7 @@ export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
     (record) =>
       record.job.type === 'MENTION' ||
       record.job.type === 'ASK' ||
+      record.job.type === 'EXPLORE' ||
       record.job.type === 'PLAN' ||
       record.job.type === 'REVIEW' ||
       record.job.type === 'IMPLEMENT',

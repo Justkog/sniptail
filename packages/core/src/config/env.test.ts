@@ -525,4 +525,81 @@ describe('config loaders', () => {
       'Invalid JOB_CONCURRENCY. Expected a positive integer.',
     );
   });
+
+  it('accepts EXPLORE model overrides from worker TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[codex.models.EXPLORE]',
+      'model = "gpt-5-mini"',
+      'model_reasoning_effort = "medium"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.codex.models?.EXPLORE).toEqual({
+      model: 'gpt-5-mini',
+      modelReasoningEffort: 'medium',
+    });
+  });
+
+  it('rejects unknown model keys and lists EXPLORE in expected keys', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[codex.models.INVALID_KEY]',
+      'model = "gpt-5-mini"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.',
+    );
+  });
 });

@@ -114,7 +114,7 @@ idle_retries = 2
 
 [copilot.models]
 # Optional per-command model overrides.
-# Keys: ASK, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
 # - model_reasoning_effort (optional): minimal | low | medium | high | xhigh
@@ -145,7 +145,7 @@ execution_mode = "local"
 
 [codex.models]
 # Optional per-command model overrides.
-# Keys: ASK, IMPLEMENT, PLAN, REVIEW, MENTION.
+# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
 # - model_reasoning_effort (optional): minimal | low | medium | high | xhigh

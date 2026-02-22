@@ -8,12 +8,17 @@ describe('worker channel adapters', () => {
       botName: 'Sniptail',
       text: 'done',
       jobId: 'job-1',
-      openQuestions: ['question'],
     });
 
     expect(adapter.capabilities.richTextBlocks).toBe(true);
     expect(rendered.options?.blocks).toBeDefined();
     expect(rendered.options?.components).toBeUndefined();
+    const blocks = rendered.options?.blocks as Array<{ type?: string; elements?: unknown[] }>;
+    const actionsBlock = blocks.find((block) => block.type === 'actions');
+    const hasExplore = (actionsBlock?.elements ?? []).some((element) =>
+      String((element as { action_id?: string }).action_id).includes('explore-from-job'),
+    );
+    expect(hasExplore).toBe(true);
   });
 
   it('renders Discord completion messages with components', () => {
@@ -28,6 +33,15 @@ describe('worker channel adapters', () => {
     expect(adapter.capabilities.richComponents).toBe(true);
     expect(rendered.options?.components).toBeDefined();
     expect(rendered.options?.blocks).toBeUndefined();
+    const rows = rendered.options?.components as Array<{ components?: unknown[] }>;
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.every((row) => (row.components?.length ?? 0) <= 5)).toBe(true);
+    const hasExplore = rows
+      .flatMap((row) => row.components ?? [])
+      .some((component) =>
+        String((component as { custom_id?: string }).custom_id).includes(':explore:'),
+      );
+    expect(hasExplore).toBe(true);
   });
 
   it('falls back to generic adapter for unknown providers', () => {
