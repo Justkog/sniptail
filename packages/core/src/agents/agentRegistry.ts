@@ -50,9 +50,9 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
       jobType !== 'MENTION' && config.copilot.executionMode === 'docker',
     buildRunOptions: (config: WorkerConfig) => ({
       copilotIdleRetries: config.copilot.idleRetries,
-      ...(config.copilot.executionMode === 'docker'
-        ? {
-            copilot: {
+      copilot:
+        config.copilot.executionMode === 'docker'
+          ? {
               cliPath: resolveWorkerAgentScriptPath('copilot-docker.sh'),
               docker: {
                 enabled: true,
@@ -64,9 +64,10 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
                   buildContext: config.copilot.dockerBuildContext,
                 }),
               },
+            }
+          : {
+              cliPath: 'copilot',
             },
-          }
-        : {}),
     }),
   },
 };

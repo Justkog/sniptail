@@ -76,11 +76,11 @@ export async function runCodex(
     }
     codexEnv.CODEX_DOCKER_HOST_HOME = codexEnv.CODEX_DOCKER_HOST_HOME || os.homedir();
   }
-  const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : undefined;
+  const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : 'codex';
 
   const codex = new Codex({
     env: codexEnv,
-    ...(codexPathOverride ? { codexPathOverride } : {}),
+    codexPathOverride,
   });
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,

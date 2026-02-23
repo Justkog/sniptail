@@ -112,5 +112,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            sniptail-v*.tar.gz
+            sniptail-v*.tar.xz
             sniptail-v*.sha256

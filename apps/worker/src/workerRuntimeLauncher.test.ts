@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const hoisted = vi.hoisted(() => ({
   seedRepoCatalogFromAllowlistFile: vi.fn(),
   syncRunActionMetadata: vi.fn(),
+  assertLocalCopilotPreflight: vi.fn(() => Promise.resolve(undefined)),
+  assertLocalCodexPreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@sniptail/core/config/config.js', () => ({
@@ -41,6 +43,14 @@ vi.mock('./docker/dockerPreflight.js', () => ({
   assertDockerPreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
 
+vi.mock('./copilot/copilotPreflight.js', () => ({
+  assertLocalCopilotPreflight: hoisted.assertLocalCopilotPreflight,
+}));
+
+vi.mock('./codex/codexPreflight.js', () => ({
+  assertLocalCodexPreflight: hoisted.assertLocalCodexPreflight,
+}));
+
 vi.mock('./git/gitPreflight.js', () => ({
   assertGitCommitIdentityPreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
@@ -69,10 +79,14 @@ describe('workerRuntimeLauncher', () => {
       updated: 0,
       failures: [],
     });
+    hoisted.assertLocalCopilotPreflight.mockResolvedValue(undefined);
+    hoisted.assertLocalCodexPreflight.mockResolvedValue(undefined);
   });
 
   it('fails fast when queue_driver=inproc without a shared runtime', async () => {
     await expect(startWorkerRuntime()).rejects.toThrow('sniptail local');
+    expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
   });
 
   it('syncs run action metadata after repository seed on startup', async () => {
@@ -92,6 +106,8 @@ describe('workerRuntimeLauncher', () => {
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
+    expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.seedRepoCatalogFromAllowlistFile).toHaveBeenCalledTimes(1);
     expect(hoisted.syncRunActionMetadata).toHaveBeenCalledTimes(1);
   });
