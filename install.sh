@@ -79,7 +79,8 @@ if [[ -z "${LOCAL_TARBALL}" ]]; then
   fi
 
   NAME="sniptail-${TAG}-${OS}-${ARCH}"
-  TARBALL="${NAME}.tar.gz"
+  TARBALL="${NAME}.tar.xz"
+  TARBALL_LEGACY="${NAME}.tar.gz"
   SHA_FILE="${NAME}.sha256"
   URL_BASE="https://github.com/${REPO}/releases/download/${TAG}"
   log "Selected ${TAG} for ${OS}/${ARCH}"
@@ -125,14 +126,24 @@ else
 
     tar_id="$(find_asset_id "${TARBALL}")" || true
     if [[ -z "${tar_id}" ]]; then
+      TARBALL="${TARBALL_LEGACY}"
+      tar_id="$(find_asset_id "${TARBALL}")" || true
+      if [[ -n "${tar_id}" ]]; then
+        log "Falling back to legacy release asset ${TARBALL}"
+      fi
+    fi
+    if [[ -z "${tar_id}" ]]; then
       warn "Assets in release ${TAG}:"
       node -e '
         const fs = require("fs");
         const j = JSON.parse(fs.readFileSync(0, "utf8"));
         for (const a of (j.assets || [])) console.log(" - " + a.name);
       ' <<<"${release_json}" >&2
-      fail "Could not find asset '${TARBALL}' in release ${TAG}."
+      fail "Could not find asset '${NAME}.tar.xz' or '${NAME}.tar.gz' in release ${TAG}."
     fi
+
+    TARBALL_PATH="${TMP_DIR}/${TARBALL}"
+    log "Downloading ${TARBALL}"
 
     curl -fL "${curl_auth_args[@]}" \
       -H "Accept: application/octet-stream" \
@@ -160,7 +171,12 @@ else
 
   else
     log "Downloading ${TARBALL}"
-    curl -fsSL "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
+    if ! curl -fsSL "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"; then
+      TARBALL="${TARBALL_LEGACY}"
+      TARBALL_PATH="${TMP_DIR}/${TARBALL}"
+      log "Falling back to legacy release asset ${TARBALL}"
+      curl -fsSL "${URL_BASE}/${TARBALL}" -o "${TARBALL_PATH}"
+    fi
 
     log "Checking checksum (if available)"
     if curl -fsSL "${URL_BASE}/${SHA_FILE}" -o "${TMP_DIR}/${SHA_FILE}"; then
@@ -177,7 +193,7 @@ else
   fi
 fi
 
-ROOT_ENTRY="$(tar -tzf "${TARBALL_PATH}" | sed -n '1p')"
+ROOT_ENTRY="$(tar -tf "${TARBALL_PATH}" | sed -n '1p')"
 if [[ -z "${ROOT_ENTRY}" ]]; then
   fail "Tarball is empty or unreadable: ${TARBALL_PATH}"
 fi
@@ -190,7 +206,7 @@ if [[ -z "${RELEASE_DIR}" ]]; then
 fi
 
 log "Extracting ${RELEASE_DIR}"
-tar -xzf "${TARBALL_PATH}" -C "${INSTALL_ROOT}"
+tar -xf "${TARBALL_PATH}" -C "${INSTALL_ROOT}"
 
 log "Updating current -> ${RELEASE_DIR}"
 ln -sfn "${INSTALL_ROOT}/${RELEASE_DIR}" "${INSTALL_ROOT}/current"

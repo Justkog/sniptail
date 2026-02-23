@@ -36,9 +36,12 @@ detect_arch() {
 }
 
 main() {
-  local project_root version os_name arch output_dir release_dir name stage_root tarball_path sha_path
-  local sea_config_path sea_blob_path node_bin local_runtime_entry
-  local -a postject_args
+  local project_root version os_name arch output_dir release_dir name stage_root tarball_path sha_path pnpm_virtual_store
+  local sea_config_path sea_blob_path node_bin local_runtime_entry size_before_kb size_after_kb reclaimed_kb
+  local non_runtime_file_count non_runtime_dir_count native_dir_count
+  local bufferutil_keep_prebuild
+  local -a postject_args codex_vendor_dirs remaining_codex_vendor_dirs copilot_package_dirs remaining_copilot_package_dirs
+  local -a non_runtime_file_targets non_runtime_dir_targets better_sqlite_deps_dirs bufferutil_prebuild_dirs
 
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   version=""
@@ -178,6 +181,211 @@ main() {
     cd "${stage_root}"
     pnpm install --prod --frozen-lockfile --prefer-offline
   )
+  pnpm_virtual_store="${stage_root}/node_modules/.pnpm"
+
+  log "Pruning bundled Codex SDK vendor binaries from staged release"
+  mapfile -t codex_vendor_dirs < <(
+    find "${stage_root}/node_modules/.pnpm" \
+      -type d \
+      -path '*/node_modules/@openai/codex-sdk/vendor' 2>/dev/null || true
+  )
+  if [[ ${#codex_vendor_dirs[@]} -eq 0 ]]; then
+    log "No bundled Codex SDK vendor directories found."
+  else
+    size_before_kb=0
+    size_after_kb=0
+    if command -v du >/dev/null 2>&1; then
+      size_before_kb="$(
+        du -sk "${codex_vendor_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    rm -rf "${codex_vendor_dirs[@]}"
+
+    mapfile -t remaining_codex_vendor_dirs < <(
+      find "${stage_root}/node_modules/.pnpm" \
+        -type d \
+        -path '*/node_modules/@openai/codex-sdk/vendor' 2>/dev/null || true
+    )
+    if [[ ${#remaining_codex_vendor_dirs[@]} -gt 0 ]] && command -v du >/dev/null 2>&1; then
+      size_after_kb="$(
+        du -sk "${remaining_codex_vendor_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    reclaimed_kb=$((size_before_kb - size_after_kb))
+    if [[ ${reclaimed_kb} -lt 0 ]]; then
+      reclaimed_kb=0
+    fi
+    log "Pruned ${#codex_vendor_dirs[@]} Codex SDK vendor director$( [[ ${#codex_vendor_dirs[@]} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
+  fi
+
+  log "Pruning bundled Copilot CLI packages from staged release"
+  copilot_package_dirs=()
+  for package_name in \
+    '@github/copilot' \
+    '@github/copilot-linux-x64' \
+    '@github/copilot-linux-arm64' \
+    '@github/copilot-darwin-x64' \
+    '@github/copilot-darwin-arm64' \
+    '@github/copilot-win32-x64' \
+    '@github/copilot-win32-arm64'
+  do
+    while IFS= read -r package_dir; do
+      if [[ -n "${package_dir}" ]]; then
+        copilot_package_dirs+=("${package_dir}")
+      fi
+    done < <(
+      find "${stage_root}/node_modules/.pnpm" \
+        -type d \
+        -path "*/node_modules/${package_name}" 2>/dev/null || true
+    )
+  done
+
+  if [[ ${#copilot_package_dirs[@]} -eq 0 ]]; then
+    log "No bundled Copilot CLI package directories found."
+  else
+    size_before_kb=0
+    size_after_kb=0
+    if command -v du >/dev/null 2>&1; then
+      size_before_kb="$(
+        du -sk "${copilot_package_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    rm -rf "${copilot_package_dirs[@]}"
+
+    remaining_copilot_package_dirs=()
+    for package_name in \
+      '@github/copilot' \
+      '@github/copilot-linux-x64' \
+      '@github/copilot-linux-arm64' \
+      '@github/copilot-darwin-x64' \
+      '@github/copilot-darwin-arm64' \
+      '@github/copilot-win32-x64' \
+      '@github/copilot-win32-arm64'
+    do
+      while IFS= read -r package_dir; do
+        if [[ -n "${package_dir}" ]]; then
+          remaining_copilot_package_dirs+=("${package_dir}")
+        fi
+      done < <(
+        find "${stage_root}/node_modules/.pnpm" \
+          -type d \
+          -path "*/node_modules/${package_name}" 2>/dev/null || true
+      )
+    done
+
+    if [[ ${#remaining_copilot_package_dirs[@]} -gt 0 ]] && command -v du >/dev/null 2>&1; then
+      size_after_kb="$(
+        du -sk "${remaining_copilot_package_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    reclaimed_kb=$((size_before_kb - size_after_kb))
+    if [[ ${reclaimed_kb} -lt 0 ]]; then
+      reclaimed_kb=0
+    fi
+    log "Pruned ${#copilot_package_dirs[@]} Copilot CLI package director$( [[ ${#copilot_package_dirs[@]} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
+  fi
+
+  log "Pruning non-runtime files from staged node_modules"
+  size_before_kb=0
+  size_after_kb=0
+  reclaimed_kb=0
+  if command -v du >/dev/null 2>&1; then
+    size_before_kb="$(
+      du -sk "${pnpm_virtual_store}" 2>/dev/null | awk '{print $1 + 0}'
+    )"
+  fi
+
+  mapfile -t non_runtime_file_targets < <(
+    find "${pnpm_virtual_store}" \
+      -type f \
+      \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) \
+      2>/dev/null || true
+  )
+  mapfile -t non_runtime_dir_targets < <(
+    find "${pnpm_virtual_store}" \
+      -type d \
+      \( -name '__tests__' -o -name 'test' -o -name 'tests' -o -name 'doc' -o -name 'docs' -o -name 'example' -o -name 'examples' \) \
+      2>/dev/null || true
+  )
+
+  non_runtime_file_count="${#non_runtime_file_targets[@]}"
+  non_runtime_dir_count="${#non_runtime_dir_targets[@]}"
+  if [[ ${non_runtime_file_count} -gt 0 ]]; then
+    rm -f "${non_runtime_file_targets[@]}"
+  fi
+  if [[ ${non_runtime_dir_count} -gt 0 ]]; then
+    rm -rf "${non_runtime_dir_targets[@]}"
+  fi
+
+  if command -v du >/dev/null 2>&1; then
+    size_after_kb="$(
+      du -sk "${pnpm_virtual_store}" 2>/dev/null | awk '{print $1 + 0}'
+    )"
+    reclaimed_kb=$((size_before_kb - size_after_kb))
+    if [[ ${reclaimed_kb} -lt 0 ]]; then
+      reclaimed_kb=0
+    fi
+  fi
+  log "Pruned ${non_runtime_file_count} non-runtime file(s) and ${non_runtime_dir_count} non-runtime director$( [[ ${non_runtime_dir_count} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
+
+  log "Pruning native package extras from staged node_modules"
+  size_before_kb=0
+  size_after_kb=0
+  reclaimed_kb=0
+  native_dir_count=0
+  if command -v du >/dev/null 2>&1; then
+    size_before_kb="$(
+      du -sk "${pnpm_virtual_store}" 2>/dev/null | awk '{print $1 + 0}'
+    )"
+  fi
+
+  mapfile -t better_sqlite_deps_dirs < <(
+    find "${pnpm_virtual_store}" \
+      -type d \
+      -path '*/node_modules/better-sqlite3/deps' 2>/dev/null || true
+  )
+  if [[ ${#better_sqlite_deps_dirs[@]} -gt 0 ]]; then
+    native_dir_count=$((native_dir_count + ${#better_sqlite_deps_dirs[@]}))
+    rm -rf "${better_sqlite_deps_dirs[@]}"
+  fi
+
+  case "${os_name}-${arch}" in
+    linux-x64) bufferutil_keep_prebuild='linux-x64' ;;
+    linux-arm64) bufferutil_keep_prebuild='linux-arm64' ;;
+    darwin-x64) bufferutil_keep_prebuild='darwin-x64' ;;
+    darwin-arm64) bufferutil_keep_prebuild='darwin-arm64' ;;
+    *)
+      echo "Unsupported bufferutil target: ${os_name}-${arch}" >&2
+      exit 1
+      ;;
+  esac
+
+  mapfile -t bufferutil_prebuild_dirs < <(
+    find "${pnpm_virtual_store}" \
+      -type d \
+      -path '*/node_modules/bufferutil/prebuilds/*' 2>/dev/null || true
+  )
+  for prebuild_dir in "${bufferutil_prebuild_dirs[@]}"; do
+    if [[ "$(basename "${prebuild_dir}")" != "${bufferutil_keep_prebuild}" ]]; then
+      native_dir_count=$((native_dir_count + 1))
+      rm -rf "${prebuild_dir}"
+    fi
+  done
+
+  if command -v du >/dev/null 2>&1; then
+    size_after_kb="$(
+      du -sk "${pnpm_virtual_store}" 2>/dev/null | awk '{print $1 + 0}'
+    )"
+    reclaimed_kb=$((size_before_kb - size_after_kb))
+    if [[ ${reclaimed_kb} -lt 0 ]]; then
+      reclaimed_kb=0
+    fi
+  fi
+  log "Pruned ${native_dir_count} native extras director$( [[ ${native_dir_count} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
 
   # Runtime scripts + templates.
   mkdir -p "${stage_root}/scripts"
@@ -247,16 +455,16 @@ JSON
   rm -f "${sea_config_path}" "${sea_blob_path}"
   chmod +x "${stage_root}/bin/sniptail"
 
-  tarball_path="${output_dir}/${name}.tar.gz"
+  tarball_path="${output_dir}/${name}.tar.xz"
   sha_path="${output_dir}/${name}.sha256"
 
   log "Creating tarball ${tarball_path}"
-  tar -czf "${tarball_path}" -C "${release_dir}" "${name}"
+  tar -cJf "${tarball_path}" -C "${release_dir}" "${name}"
 
   if command -v shasum >/dev/null 2>&1; then
-    (cd "${output_dir}" && shasum -a 256 "${name}.tar.gz" >"${name}.sha256")
+    (cd "${output_dir}" && shasum -a 256 "${name}.tar.xz" >"${name}.sha256")
   else
-    (cd "${output_dir}" && sha256sum "${name}.tar.gz" >"${name}.sha256")
+    (cd "${output_dir}" && sha256sum "${name}.tar.xz" >"${name}.sha256")
   fi
 
   log "Created ${tarball_path}"

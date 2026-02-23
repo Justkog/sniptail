@@ -19,7 +19,10 @@ This quickstart assumes:
 - bot and worker run on the same machine
 - one shared `.env` file is used for both
 - Codex CLI is installed, configured, and authenticated on your machine (`codex` works in your shell)
+- if you plan to use Copilot in local mode, Copilot CLI is installed, configured, and authenticated (`copilot` works in your shell)
 - you want to test with this repository: `git@github.com:Justkog/sniptail.git`
+
+Sniptail local Codex and Copilot runs always execute system `codex` / `copilot` binaries from `PATH` (no bundled fallback).
 
 ### 1) Install and prepare config
 
