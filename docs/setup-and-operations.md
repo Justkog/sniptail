@@ -19,6 +19,9 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 - Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"`, e.g. `npm install -g @github/copilot`)
 - Docker (required when `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`)
 
+When Codex runs in local mode, Sniptail always resolves `codex` from the worker process `PATH`. There is no fallback to the bundled `@openai/codex-sdk` vendor binary.
+When Copilot runs in local mode, Sniptail always resolves `copilot` from the worker process `PATH`. There is no fallback to bundled `@github/copilot*` package binaries.
+
 ## Installation
 
 ### Operators (prebuilt release + `sniptail` CLI)
@@ -101,6 +104,8 @@ In `sniptail.worker.toml`, configure:
 - `[copilot].execution_mode = "local"` or `"docker"`
 
 When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it's available in `PATH`. When using `"docker"`, ensure Docker is available and configure the relevant docker settings in the TOML.
+
+Prebuilt release artifacts prune `@openai/codex-sdk/vendor` and bundled `@github/copilot*` packages during packaging, so local Codex and Copilot execution require system-installed `codex` and `copilot` CLIs.
 
 #### 5) Slack / Discord setup
 
@@ -268,7 +273,7 @@ SNIPTAIL_REPO=your-org/sniptail curl -fsSL https://raw.githubusercontent.com/Jus
 SNIPTAIL_VERSION=vX.Y.Z curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh -o install.sh
 chmod +x ./install.sh
-SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.gz ./install.sh
+SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 ```
 
 ## Repo execution notes

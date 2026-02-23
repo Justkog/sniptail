@@ -8,6 +8,8 @@ import { StdoutBotEventSink } from '../channels/botEventSink.js';
 import { CollectingJobRegistry } from '../job/collectingJobRegistry.js';
 import { runJob } from '../pipeline.js';
 import { assertDockerPreflight } from '../docker/dockerPreflight.js';
+import { assertLocalCopilotPreflight } from '../copilot/copilotPreflight.js';
+import { assertLocalCodexPreflight } from '../codex/codexPreflight.js';
 import { assertGitCommitIdentityPreflight } from '../git/gitPreflight.js';
 
 function printUsage() {
@@ -25,6 +27,8 @@ async function main() {
   const config = loadWorkerConfig();
   await mkdir(config.repoCacheRoot, { recursive: true });
   await assertDockerPreflight(config);
+  await assertLocalCopilotPreflight(config);
+  await assertLocalCodexPreflight(config);
   await assertGitCommitIdentityPreflight();
 
   const resolvedPath = resolve(process.cwd(), jobPath);

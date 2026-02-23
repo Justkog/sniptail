@@ -3,7 +3,6 @@ packages:
   - packages/*
 
 ignoredBuiltDependencies:
-  - classic-level
   - esbuild
   - msgpackr-extract
 
