@@ -121,9 +121,10 @@ async function runMigrate(scope: Scope, asJson: boolean): Promise<void> {
   }
 }
 
+const jsonModeRequested = isJsonModeRequested(process.argv.slice(2));
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const jsonModeRequested = isJsonModeRequested(args);
   const parsed = parseArgs({
     args,
     allowPositionals: true,
@@ -175,8 +176,6 @@ async function main(): Promise<void> {
     }
   }
 }
-
-const jsonModeRequested = isJsonModeRequested(process.argv.slice(2));
 
 void main().catch((err) => {
   if (!jsonModeRequested) {

@@ -103,7 +103,11 @@ else
   TARBALL_PATH="${TMP_DIR}/${TARBALL}"
 
   if [[ -n "${GH_TOKEN}" ]]; then
-    log "Resolving release asset via GitHub API (authenticated)"
+    if ! command -v node >/dev/null 2>&1; then
+      fail "node is required for authenticated GitHub API downloads. Install Node.js or unset GH_TOKEN/GITHUB_TOKEN to use direct (unauthenticated) downloads."
+    fi
+
+    log "Downloading ${TARBALL} via GitHub API (authenticated)"
 
     release_json="$(api_get "https://api.github.com/repos/${REPO}/releases/tags/${TAG}")"
 
