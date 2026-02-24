@@ -17,38 +17,7 @@ require_cmd() {
 extract_json_field() {
   local json_input="$1"
   local jq_expr="$2"
-
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$json_input" | jq -r "$jq_expr"
-    return 0
-  fi
-
-  if command -v python3 >/dev/null 2>&1; then
-    JSON_INPUT="$json_input" PYTHON_EXPR="$jq_expr" python3 <<'PY'
-import json
-import os
-
-payload = json.loads(os.environ["JSON_INPUT"])
-expr = os.environ["PYTHON_EXPR"]
-
-if expr == '.[0].html_url // ""':
-  if isinstance(payload, list) and payload:
-    print((payload[0] or {}).get("html_url", ""))
-  else:
-    print("")
-elif expr == '.html_url // ""':
-  if isinstance(payload, dict):
-    print(payload.get("html_url", ""))
-  else:
-    print("")
-else:
-  raise SystemExit(f"Unsupported expression: {expr}")
-PY
-    return 0
-  fi
-
-  echo "jq or python3 is required to parse GitHub API responses." >&2
-  exit 1
+  printf '%s' "$json_input" | jq -r "$jq_expr"
 }
 
 parse_github_repo() {
@@ -80,6 +49,7 @@ parse_github_repo() {
 
 require_cmd git
 require_cmd curl
+require_cmd jq
 
 origin_url="$(git remote get-url origin)"
 repo_path="$(parse_github_repo "$origin_url" || true)"
