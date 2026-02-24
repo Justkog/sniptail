@@ -102,14 +102,11 @@ if [[ -n "$existing_pr_url" ]]; then
   exit 0
 fi
 
-read -r -d '' pr_payload <<JSON || true
-{
-  "title": "$PR_TITLE",
-  "head": "$SOURCE_BRANCH",
-  "base": "$TARGET_BRANCH",
-  "body": "Automated promotion PR from \`$SOURCE_BRANCH\` to \`$TARGET_BRANCH\` created by Sniptail run action \`promote-staging-to-main\`."
-}
-JSON
+pr_payload="$(printf '{"title":"%s","head":"%s","base":"%s","body":"%s"}' \
+  "$PR_TITLE" \
+  "$SOURCE_BRANCH" \
+  "$TARGET_BRANCH" \
+  "Automated promotion PR from \`$SOURCE_BRANCH\` to \`$TARGET_BRANCH\` created by Sniptail run action \`promote-staging-to-main\`.")"
 
 echo "Creating promotion PR..."
 created_pr_response="$(
