@@ -41,7 +41,7 @@ main() {
   local non_runtime_file_count non_runtime_dir_count native_dir_count
   local bufferutil_keep_prebuild
   local -a postject_args codex_vendor_dirs remaining_codex_vendor_dirs copilot_package_dirs remaining_copilot_package_dirs
-  local -a non_runtime_file_targets non_runtime_dir_targets better_sqlite_deps_dirs bufferutil_prebuild_dirs
+  local -a better_sqlite_deps_dirs bufferutil_prebuild_dirs
 
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   version=""
@@ -309,36 +309,31 @@ main() {
     )"
   fi
 
-  non_runtime_file_targets=()
-  while IFS= read -r file_target; do
-    if [[ -n "${file_target}" ]]; then
-      non_runtime_file_targets+=("${file_target}")
-    fi
-  done < <(
+  non_runtime_file_count="$(
     find "${pnpm_virtual_store}" \
       -type f \
       \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) \
-      2>/dev/null || true
-  )
-  non_runtime_dir_targets=()
-  while IFS= read -r dir_target; do
-    if [[ -n "${dir_target}" ]]; then
-      non_runtime_dir_targets+=("${dir_target}")
-    fi
-  done < <(
+      -print 2>/dev/null | awk 'END {print NR + 0}'
+  )"
+  non_runtime_dir_count="$(
     find "${pnpm_virtual_store}" \
       -type d \
       \( -name '__tests__' -o -name 'test' -o -name 'tests' -o -name 'doc' -o -name 'docs' -o -name 'example' -o -name 'examples' \) \
-      2>/dev/null || true
-  )
+      -print 2>/dev/null | awk 'END {print NR + 0}'
+  )"
 
-  non_runtime_file_count="${#non_runtime_file_targets[@]}"
-  non_runtime_dir_count="${#non_runtime_dir_targets[@]}"
   if [[ ${non_runtime_file_count} -gt 0 ]]; then
-    rm -f "${non_runtime_file_targets[@]}"
+    find "${pnpm_virtual_store}" \
+      -type f \
+      \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) \
+      -exec rm -f {} + 2>/dev/null || true
   fi
   if [[ ${non_runtime_dir_count} -gt 0 ]]; then
-    rm -rf "${non_runtime_dir_targets[@]}"
+    find "${pnpm_virtual_store}" \
+      -depth \
+      -type d \
+      \( -name '__tests__' -o -name 'test' -o -name 'tests' -o -name 'doc' -o -name 'docs' -o -name 'example' -o -name 'examples' \) \
+      -exec rm -rf {} + 2>/dev/null || true
   fi
 
   if command -v du >/dev/null 2>&1; then
