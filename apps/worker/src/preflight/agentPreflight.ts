@@ -14,5 +14,7 @@ export async function assertLocalAgentPreflight(
     case 'copilot':
       await assertLocalCopilotPreflight(config);
       return;
+    default:
+      throw new Error(`Unsupported agentId '${String(agentId)}' in assertLocalAgentPreflight`);
   }
 }
