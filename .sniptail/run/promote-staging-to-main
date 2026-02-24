@@ -66,9 +66,9 @@ if [[ -z "$owner" || -z "$repo" ]]; then
   exit 1
 fi
 
-github_token="${GITHUB_API_TOKEN:-${GH_TOKEN:-${GITHUB_TOKEN:-}}}"
+github_token="${GITHUB_API_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
 if [[ -z "$github_token" ]]; then
-  echo "Missing GitHub token. Set GITHUB_API_TOKEN (or GH_TOKEN/GITHUB_TOKEN)." >&2
+  echo "Missing GitHub token. Set GITHUB_API_TOKEN (or GITHUB_TOKEN/GH_TOKEN)." >&2
   exit 1
 fi
 
