@@ -8,9 +8,8 @@ import { StdoutBotEventSink } from '../channels/botEventSink.js';
 import { CollectingJobRegistry } from '../job/collectingJobRegistry.js';
 import { runJob } from '../pipeline.js';
 import { assertDockerPreflight } from '../docker/dockerPreflight.js';
-import { assertLocalCopilotPreflight } from '../copilot/copilotPreflight.js';
-import { assertLocalCodexPreflight } from '../codex/codexPreflight.js';
 import { assertGitCommitIdentityPreflight } from '../git/gitPreflight.js';
+import { assertLocalAgentPreflight } from '../preflight/agentPreflight.js';
 
 function printUsage() {
   process.stderr.write('Usage: run-job <path-to-job.json>\\n');
@@ -27,9 +26,6 @@ async function main() {
   const config = loadWorkerConfig();
   await mkdir(config.repoCacheRoot, { recursive: true });
   await assertDockerPreflight(config);
-  await assertLocalCopilotPreflight(config);
-  await assertLocalCodexPreflight(config);
-  await assertGitCommitIdentityPreflight();
 
   const resolvedPath = resolve(process.cwd(), jobPath);
   let job: JobSpec;
@@ -41,6 +37,10 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+
+  const selectedAgent = job.agent ?? config.primaryAgent;
+  await assertLocalAgentPreflight(config, selectedAgent);
+  await assertGitCommitIdentityPreflight();
 
   const events = new StdoutBotEventSink();
   const registry = new CollectingJobRegistry({ seedJob: job });

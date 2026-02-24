@@ -13,9 +13,8 @@ import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
 import { createJobRegistry } from './job/createJobRegistry.js';
 import { assertDockerPreflight } from './docker/dockerPreflight.js';
-import { assertLocalCopilotPreflight } from './copilot/copilotPreflight.js';
-import { assertLocalCodexPreflight } from './codex/codexPreflight.js';
 import { assertGitCommitIdentityPreflight } from './git/gitPreflight.js';
+import { assertLocalAgentPreflight } from './preflight/agentPreflight.js';
 import { syncRunActionMetadata } from './repos/syncRunActionMetadata.js';
 
 export type WorkerRuntimeHandle = {
@@ -38,8 +37,7 @@ export async function startWorkerRuntime(
 
   await mkdir(config.repoCacheRoot, { recursive: true });
   await assertDockerPreflight(config);
-  await assertLocalCopilotPreflight(config);
-  await assertLocalCodexPreflight(config);
+  await assertLocalAgentPreflight(config, config.primaryAgent);
   await assertGitCommitIdentityPreflight();
   await seedRepoCatalogFromAllowlistFile({
     mode: 'if-empty',
