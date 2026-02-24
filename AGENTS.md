@@ -17,6 +17,12 @@
 ## File naming guideline
 - Do not create or rename files so that two files share the same basename in this repository.
 
+## Shell scripting guideline
+- Prefer portable Bash that works on Linux and macOS CI environments.
+- Treat Bash 3.2 compatibility as the baseline for repository scripts unless a script explicitly enforces a newer shell.
+- Do not use Bash 4+ only features in shared scripts (for example `mapfile`/`readarray`, associative arrays, or `coproc`) unless the script also guarantees a compatible runtime.
+- When collecting command output into arrays, prefer `while IFS= read -r ...; do ...; done` patterns that work across older Bash versions.
+
 ## Key paths
 - `apps/bot/src/index.ts`: Slack app bootstrap
 - `apps/bot/src/slack/features/`: Slack feature modules (grouped by capability)
