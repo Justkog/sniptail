@@ -170,6 +170,16 @@ main() {
   cp -R packages/core/drizzle "${stage_root}/packages/core/"
   cp -R packages/cli/dist "${stage_root}/packages/cli/"
 
+  log "Stamping staged CLI version to ${version}"
+  node -e '
+    const fs = require("node:fs");
+    const packageJsonPath = process.argv[1];
+    const releaseVersion = process.argv[2];
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    pkg.version = releaseVersion;
+    fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  ' "${stage_root}/packages/cli/package.json" "${version}"
+
   local_runtime_entry="${stage_root}/apps/local/dist/localProcessRuntime.js"
   if [[ ! -f "${local_runtime_entry}" ]]; then
     echo "Missing local runtime entry at ${local_runtime_entry} after staging." >&2
