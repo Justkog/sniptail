@@ -73,7 +73,10 @@ if [[ -z "$github_token" ]]; then
 fi
 
 echo "Fetching latest refs for $SOURCE_BRANCH and $TARGET_BRANCH..."
-git fetch origin "$SOURCE_BRANCH" "$TARGET_BRANCH"
+if ! git fetch --prune origin "$SOURCE_BRANCH" "$TARGET_BRANCH"; then
+  echo "Failed to fetch branches '$SOURCE_BRANCH' and/or '$TARGET_BRANCH' from remote 'origin'. Please verify that both branches exist on the remote and that 'origin' is correctly configured." >&2
+  exit 1
+fi
 
 commits_to_promote="$(git rev-list --count "origin/$TARGET_BRANCH..origin/$SOURCE_BRANCH")"
 if [[ "$commits_to_promote" -eq 0 ]]; then
