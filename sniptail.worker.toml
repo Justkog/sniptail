@@ -183,6 +183,11 @@ timeout_ms = 1800000
 allow_failure = false
 git_mode = "execution-only"
 
+[run.actions."promote-staging-to-main"]
+timeout_ms = 300000
+allow_failure = false
+git_mode = "execution-only"
+
 [github]
 # GitHub API base URL.
 # Optional. Default: "https://api.github.com". Example: "https://api.github.com"
