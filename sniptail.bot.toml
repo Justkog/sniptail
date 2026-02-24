@@ -106,6 +106,10 @@ description = "Validate migration metadata and apply sqlite migrations against a
 label = "CI check"
 description = "Run repository CI checks from worker fallback command."
 
+[run.actions."promote-staging-to-main"]
+label = "Promote staging to main"
+description = "Create or reuse the GitHub PR that promotes staging into main."
+
 # Discord app ID.
 # Required when channels.discord.enabled = true.
 # Optional otherwise. Example: "123456789012345678"
