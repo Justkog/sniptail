@@ -1,14 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
-  seedRepoCatalogFromAllowlistFile: vi.fn(),
-  syncRunActionMetadata: vi.fn(),
-  assertLocalCopilotPreflight: vi.fn(() => Promise.resolve(undefined)),
-  assertLocalCodexPreflight: vi.fn(() => Promise.resolve(undefined)),
-}));
-
-vi.mock('@sniptail/core/config/config.js', () => ({
-  loadWorkerConfig: () => ({
+  config: {
     repoAllowlist: {},
     jobWorkRoot: '/tmp/jobs',
     queueDriver: 'inproc',
@@ -28,7 +21,14 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     codex: {
       executionMode: 'local',
     },
-  }),
+  },
+  seedRepoCatalogFromAllowlistFile: vi.fn(),
+  syncRunActionMetadata: vi.fn(),
+  assertLocalAgentPreflight: vi.fn(() => Promise.resolve(undefined)),
+}));
+
+vi.mock('@sniptail/core/config/config.js', () => ({
+  loadWorkerConfig: () => hoisted.config,
 }));
 
 vi.mock('@sniptail/core/repos/catalog.js', () => ({
@@ -43,12 +43,8 @@ vi.mock('./docker/dockerPreflight.js', () => ({
   assertDockerPreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
 
-vi.mock('./copilot/copilotPreflight.js', () => ({
-  assertLocalCopilotPreflight: hoisted.assertLocalCopilotPreflight,
-}));
-
-vi.mock('./codex/codexPreflight.js', () => ({
-  assertLocalCodexPreflight: hoisted.assertLocalCodexPreflight,
+vi.mock('./preflight/agentPreflight.js', () => ({
+  assertLocalAgentPreflight: hoisted.assertLocalAgentPreflight,
 }));
 
 vi.mock('./git/gitPreflight.js', () => ({
@@ -79,14 +75,13 @@ describe('workerRuntimeLauncher', () => {
       updated: 0,
       failures: [],
     });
-    hoisted.assertLocalCopilotPreflight.mockResolvedValue(undefined);
-    hoisted.assertLocalCodexPreflight.mockResolvedValue(undefined);
+    hoisted.assertLocalAgentPreflight.mockResolvedValue(undefined);
+    hoisted.config.primaryAgent = 'codex';
   });
 
   it('fails fast when queue_driver=inproc without a shared runtime', async () => {
     await expect(startWorkerRuntime()).rejects.toThrow('sniptail local');
-    expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
-    expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalAgentPreflight).not.toHaveBeenCalled();
   });
 
   it('syncs run action metadata after repository seed on startup', async () => {
@@ -106,9 +101,31 @@ describe('workerRuntimeLauncher', () => {
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledTimes(1);
-    expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledWith(hoisted.config, 'codex');
     expect(hoisted.seedRepoCatalogFromAllowlistFile).toHaveBeenCalledTimes(1);
     expect(hoisted.syncRunActionMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it('preflights only the configured primary agent', async () => {
+    hoisted.config.primaryAgent = 'copilot';
+    const consumerClose = vi.fn(() => Promise.resolve(undefined));
+    const queueRuntime = {
+      consumeJobs: vi.fn(() => ({ close: consumerClose })),
+      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add: vi.fn(() => Promise.resolve(undefined)),
+        },
+      },
+    } as const;
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledWith(hoisted.config, 'copilot');
   });
 });
