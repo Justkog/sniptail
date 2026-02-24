@@ -184,7 +184,12 @@ main() {
   pnpm_virtual_store="${stage_root}/node_modules/.pnpm"
 
   log "Pruning bundled Codex SDK vendor binaries from staged release"
-  mapfile -t codex_vendor_dirs < <(
+  codex_vendor_dirs=()
+  while IFS= read -r vendor_dir; do
+    if [[ -n "${vendor_dir}" ]]; then
+      codex_vendor_dirs+=("${vendor_dir}")
+    fi
+  done < <(
     find "${stage_root}/node_modules/.pnpm" \
       -type d \
       -path '*/node_modules/@openai/codex-sdk/vendor' 2>/dev/null || true
@@ -202,7 +207,12 @@ main() {
 
     rm -rf "${codex_vendor_dirs[@]}"
 
-    mapfile -t remaining_codex_vendor_dirs < <(
+    remaining_codex_vendor_dirs=()
+    while IFS= read -r vendor_dir; do
+      if [[ -n "${vendor_dir}" ]]; then
+        remaining_codex_vendor_dirs+=("${vendor_dir}")
+      fi
+    done < <(
       find "${stage_root}/node_modules/.pnpm" \
         -type d \
         -path '*/node_modules/@openai/codex-sdk/vendor' 2>/dev/null || true
@@ -299,13 +309,23 @@ main() {
     )"
   fi
 
-  mapfile -t non_runtime_file_targets < <(
+  non_runtime_file_targets=()
+  while IFS= read -r file_target; do
+    if [[ -n "${file_target}" ]]; then
+      non_runtime_file_targets+=("${file_target}")
+    fi
+  done < <(
     find "${pnpm_virtual_store}" \
       -type f \
       \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) \
       2>/dev/null || true
   )
-  mapfile -t non_runtime_dir_targets < <(
+  non_runtime_dir_targets=()
+  while IFS= read -r dir_target; do
+    if [[ -n "${dir_target}" ]]; then
+      non_runtime_dir_targets+=("${dir_target}")
+    fi
+  done < <(
     find "${pnpm_virtual_store}" \
       -type d \
       \( -name '__tests__' -o -name 'test' -o -name 'tests' -o -name 'doc' -o -name 'docs' -o -name 'example' -o -name 'examples' \) \
@@ -343,7 +363,12 @@ main() {
     )"
   fi
 
-  mapfile -t better_sqlite_deps_dirs < <(
+  better_sqlite_deps_dirs=()
+  while IFS= read -r deps_dir; do
+    if [[ -n "${deps_dir}" ]]; then
+      better_sqlite_deps_dirs+=("${deps_dir}")
+    fi
+  done < <(
     find "${pnpm_virtual_store}" \
       -type d \
       -path '*/node_modules/better-sqlite3/deps' 2>/dev/null || true
@@ -364,7 +389,12 @@ main() {
       ;;
   esac
 
-  mapfile -t bufferutil_prebuild_dirs < <(
+  bufferutil_prebuild_dirs=()
+  while IFS= read -r prebuild_dir; do
+    if [[ -n "${prebuild_dir}" ]]; then
+      bufferutil_prebuild_dirs+=("${prebuild_dir}")
+    fi
+  done < <(
     find "${pnpm_virtual_store}" \
       -type d \
       -path '*/node_modules/bufferutil/prebuilds/*' 2>/dev/null || true
