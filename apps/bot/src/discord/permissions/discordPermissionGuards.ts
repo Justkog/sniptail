@@ -4,7 +4,8 @@ import {
 } from '@sniptail/core/discord/components.js';
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
-import { postDiscordMessage } from '../helpers.js';
+import { logger } from '@sniptail/core/logger.js';
+import { isSendableTextChannel, postDiscordMessage } from '../helpers.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import type { DiscordPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
 import { resolvePermissionsProviderCapabilities } from '../../permissions/permissionsProviderCapabilities.js';
@@ -23,6 +24,24 @@ type PermissionGuardResult<TApproval = never> =
       status: 'require_approval';
       approval: TApproval;
     };
+
+function resolveRequestSummaryFromOperation(
+  operation: DeferredPermissionOperation,
+  summary: string,
+): string {
+  if (operation.kind === 'enqueueJob') {
+    const requestSummary = operation.job.requestText?.trim();
+    if (requestSummary) {
+      return requestSummary;
+    }
+  }
+  const fallbackSummary = summary.trim();
+  return fallbackSummary || 'No request text provided.';
+}
+
+function buildDiscordJobRequestText(requestSummary: string): string {
+  return `**Job request**\n\`\`\`\n${requestSummary}\n\`\`\``;
+}
 
 export function extractDiscordRoleIds(member: unknown): string[] {
   if (!member || typeof member !== 'object' || !('roles' in member)) {
@@ -154,18 +173,67 @@ export async function authorizeDiscordOperation(input: {
 
 async function postDiscordApprovalMessage(input: {
   client: Parameters<typeof postDiscordMessage>[0];
-  actor: DiscordPermissionActorContext;
+  channelId: string;
+  threadId?: string;
   approval: {
     text: string;
     components: ReturnType<typeof buildDiscordApprovalComponents>;
   };
 }) {
   await postDiscordMessage(input.client, {
-    channelId: input.actor.channelId,
-    ...(input.actor.threadId ? { threadId: input.actor.threadId } : {}),
+    channelId: input.channelId,
+    ...(input.threadId ? { threadId: input.threadId } : {}),
     text: input.approval.text,
     components: input.approval.components,
   });
+}
+
+async function postDiscordJobRequestAndResolveThread(input: {
+  client: Parameters<typeof postDiscordMessage>[0];
+  channelId: string;
+  existingThreadId?: string;
+  requestSummary: string;
+  approvalId: string;
+}): Promise<string | undefined> {
+  const text = buildDiscordJobRequestText(input.requestSummary);
+  if (input.existingThreadId) {
+    try {
+      await postDiscordMessage(input.client, {
+        channelId: input.channelId,
+        threadId: input.existingThreadId,
+        text,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, channelId: input.channelId, threadId: input.existingThreadId },
+        'Failed to post Discord job request in existing thread',
+      );
+    }
+    return input.existingThreadId;
+  }
+
+  try {
+    const channel = await input.client.channels.fetch(input.channelId);
+    if (!channel?.isTextBased() || !isSendableTextChannel(channel)) {
+      logger.warn({ channelId: input.channelId }, 'Discord channel is not sendable for approvals');
+      return undefined;
+    }
+    const requestMessage = await channel.send({ content: text });
+    const threadName = `sniptail approval ${input.approvalId}`.slice(0, 100);
+    try {
+      const thread = await requestMessage.startThread({
+        name: threadName,
+        autoArchiveDuration: 1440,
+      });
+      return thread.id;
+    } catch (err) {
+      logger.warn({ err, channelId: input.channelId }, 'Failed to create Discord approval thread');
+      return undefined;
+    }
+  } catch (err) {
+    logger.warn({ err, channelId: input.channelId }, 'Failed to post Discord job request');
+    return undefined;
+  }
 }
 
 export async function authorizeDiscordOperationAndRespond(input: {
@@ -198,9 +266,37 @@ export async function authorizeDiscordOperationAndRespond(input: {
     if (input.onRequireApprovalNotice) {
       await input.onRequireApprovalNotice(input.pendingApprovalText ?? defaultPendingApprovalText);
     }
+    const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
+    const requestThreadId = await postDiscordJobRequestAndResolveThread({
+      client: input.client,
+      channelId: input.actor.channelId,
+      ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
+      requestSummary,
+      approvalId: authorization.approval.id,
+    });
+    let approvalThreadId = requestThreadId;
+    if (!input.actor.threadId && requestThreadId) {
+      const reassigned = await input.permissions.assignApprovalContextIfPending({
+        approvalId: authorization.approval.id,
+        channelId: requestThreadId,
+        threadId: requestThreadId,
+      });
+      if (!reassigned) {
+        logger.warn(
+          {
+            approvalId: authorization.approval.id,
+            channelId: input.actor.channelId,
+            threadId: requestThreadId,
+          },
+          'Failed to reassign Discord approval thread context; posting approval without thread',
+        );
+        approvalThreadId = undefined;
+      }
+    }
     await postDiscordApprovalMessage({
       client: input.client,
-      actor: input.actor,
+      channelId: input.actor.channelId,
+      ...(approvalThreadId ? { threadId: approvalThreadId } : {}),
       approval: authorization.approval,
     });
     return false;
