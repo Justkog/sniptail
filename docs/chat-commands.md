@@ -15,4 +15,4 @@ Permissions are controlled by `[permissions]` and `[[permissions.rules]]` in `sn
 - `require_approval`: create an approval request with Approve/Deny/Cancel actions in-channel
 - In `[[permissions.rules]]`, omitting `actions` applies the rule broadly:
   - for `allow`/`deny`: all actions
-  - for `require_approval`: all non-approval actions (`approval.grant|deny|cancel` are excluded)
+  - for `require_approval`: all non-approval actions (`approval.grant|approval.deny|approval.cancel` are excluded)
