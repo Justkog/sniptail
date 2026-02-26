@@ -404,11 +404,20 @@ export class PermissionsRuntimeService {
     approvalId: string;
     channelId?: string;
     threadId?: string;
+    updateOperationRouting?: boolean;
   }): Promise<boolean> {
-    const reassigned = await assignApprovalContextIfPending(input.approvalId, {
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadId ? { threadId: input.threadId } : {}),
-    });
+    const reassigned = await assignApprovalContextIfPending(
+      input.approvalId,
+      {
+        ...(input.channelId ? { channelId: input.channelId } : {}),
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+      },
+      {
+        ...(typeof input.updateOperationRouting === 'boolean'
+          ? { updateOperationRouting: input.updateOperationRouting }
+          : {}),
+      },
+    );
     return reassigned.reason === 'updated' || reassigned.reason === 'unchanged';
   }
 

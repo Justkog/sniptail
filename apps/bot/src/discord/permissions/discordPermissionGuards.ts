@@ -25,6 +25,8 @@ type PermissionGuardResult<TApproval = never> =
       approval: TApproval;
     };
 
+type ApprovalPresentationMode = 'default' | 'approval_only';
+
 function resolveRequestSummaryFromOperation(
   operation: DeferredPermissionOperation,
   summary: string,
@@ -246,6 +248,8 @@ export async function authorizeDiscordOperationAndRespond(input: {
   onDeny: () => Promise<void>;
   onRequireApprovalNotice?: (message: string) => Promise<void>;
   pendingApprovalText?: string;
+  approvalPresentation?: ApprovalPresentationMode;
+  resolveApprovalThreadId?: (approvalId: string) => Promise<string | undefined>;
 }): Promise<boolean> {
   const authorization = await authorizeDiscordOperation({
     permissions: input.permissions,
@@ -263,6 +267,41 @@ export async function authorizeDiscordOperationAndRespond(input: {
     return false;
   }
   if (authorization.status === 'require_approval') {
+    const approvalPresentation = input.approvalPresentation ?? 'default';
+    if (approvalPresentation === 'approval_only') {
+      const resolvedThreadId = input.actor.threadId
+        ? input.actor.threadId
+        : input.resolveApprovalThreadId
+          ? await input.resolveApprovalThreadId(authorization.approval.id)
+          : undefined;
+      let approvalThreadId = resolvedThreadId;
+      if (!input.actor.threadId && resolvedThreadId) {
+        const reassigned = await input.permissions.assignApprovalContextIfPending({
+          approvalId: authorization.approval.id,
+          channelId: resolvedThreadId,
+          threadId: resolvedThreadId,
+          updateOperationRouting: false,
+        });
+        if (!reassigned) {
+          logger.warn(
+            {
+              approvalId: authorization.approval.id,
+              channelId: input.actor.channelId,
+              threadId: resolvedThreadId,
+            },
+            'Failed to reassign Discord approval thread context; posting approval without thread',
+          );
+          approvalThreadId = undefined;
+        }
+      }
+      await postDiscordApprovalMessage({
+        client: input.client,
+        channelId: input.actor.channelId,
+        ...(approvalThreadId ? { threadId: approvalThreadId } : {}),
+        approval: authorization.approval,
+      });
+      return false;
+    }
     if (input.onRequireApprovalNotice) {
       await input.onRequireApprovalNotice(input.pendingApprovalText ?? defaultPendingApprovalText);
     }

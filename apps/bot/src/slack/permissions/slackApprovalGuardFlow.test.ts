@@ -210,4 +210,64 @@ describe('Slack approval guard flow', () => {
       }),
     );
   });
+
+  it('approval_only posts only the approval message and skips pending/job request messages', async () => {
+    const permissions = createPermissionsMock();
+    permissions.authorizeOrCreateApproval.mockResolvedValue({
+      status: 'require_approval',
+      request: { id: 'approval-mention-1' },
+    });
+    permissions.buildApprovalMessage.mockReturnValue('Approval required for `jobs.mention`.');
+    const postMessage = vi.fn().mockResolvedValue({});
+    const onRequireApprovalNotice = vi.fn();
+    const client: SlackClient = {
+      chat: {
+        postMessage,
+      },
+    };
+
+    const authorized = await authorizeSlackOperationAndRespond({
+      permissions: permissions as never,
+      client: client as never,
+      slackIds: slackIds as never,
+      action: 'jobs.mention',
+      summary: 'Queue mention job mention-1',
+      operation: {
+        kind: 'enqueueJob',
+        job: {
+          jobId: 'mention-1',
+          type: 'MENTION',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Please summarize this thread.',
+          channel: {
+            provider: 'slack',
+            channelId: 'C1',
+            userId: 'U1',
+            threadId: 'thread-mention-1',
+          },
+        },
+      },
+      actor: {
+        userId: 'U1',
+        channelId: 'C1',
+        threadId: 'thread-mention-1',
+      },
+      onDeny: vi.fn(),
+      onRequireApprovalNotice,
+      approvalPresentation: 'approval_only',
+    });
+
+    expect(authorized).toBe(false);
+    expect(onRequireApprovalNotice).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'C1',
+        thread_ts: 'thread-mention-1',
+        text: 'Approval required for `jobs.mention`.',
+      }),
+    );
+    expect(permissions.assignApprovalThreadIfPending).not.toHaveBeenCalled();
+  });
 });
