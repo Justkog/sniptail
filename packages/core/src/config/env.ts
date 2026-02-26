@@ -447,7 +447,7 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
     const effect = parsePermissionEffect(ruleToml.effect, `${ruleLabel}.effect`);
     const rawActions = getTomlStringArray(ruleToml.actions, `${ruleLabel}.actions`);
     let actions: PermissionRule['actions'];
-    if (rawActions) {
+    if (rawActions && rawActions.length > 0) {
       actions = rawActions.map((action) => {
         const normalized = action.trim();
         if (!isPermissionAction(normalized)) {
