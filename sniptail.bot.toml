@@ -64,6 +64,8 @@ redis_url = "redis://localhost:6379"
 # - "user:<platform_user_id>" or "user:*"
 # - "group:slack:<usergroup_id>"
 # - "group:discord:<role_id>"
+# - omit `actions` to apply a rule to all actions
+#   (for effect="require_approval", omitted `actions` applies to all non-approval actions)
 #
 # Example:
 # [permissions]

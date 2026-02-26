@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadBotConfig, loadCoreConfig, loadWorkerConfig, resetConfigCaches } from './env.js';
 import { logger } from '../logger.js';
 import { applyRequiredEnv } from '../../tests/helpers/env.js';
+import { PERMISSION_ACTIONS } from '../permissions/permissionsActionCatalog.js';
 
 describe('config loaders', () => {
   afterEach(() => {
@@ -95,6 +96,144 @@ describe('config loaders', () => {
     expect(config.permissions.approvalTtlSeconds).toBe(7200);
     expect(config.permissions.groupCacheTtlSeconds).toBe(45);
     expect(config.permissions.rules[0]?.id).toBe('clear-before-rule');
+  });
+
+  it('treats omitted rule actions as all actions for allow/deny effects', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "deny-all-with-omitted-actions"',
+      'effect = "deny"',
+      'subjects = ["user:*"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    const config = loadBotConfig();
+    expect(config.permissions.rules[0]?.actions).toEqual(PERMISSION_ACTIONS);
+  });
+
+  it('treats omitted rule actions as all non-approval actions for require_approval', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "approve-all-non-approval-with-omitted-actions"',
+      'effect = "require_approval"',
+      'subjects = ["user:*"]',
+      'approver_subjects = ["group:slack:S123"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    const config = loadBotConfig();
+    const actions = config.permissions.rules[0]?.actions ?? [];
+    expect(actions).not.toContain('approval.grant');
+    expect(actions).not.toContain('approval.deny');
+    expect(actions).not.toContain('approval.cancel');
+    expect(actions).toEqual(
+      PERMISSION_ACTIONS.filter(
+        (action) =>
+          action !== 'approval.grant' && action !== 'approval.deny' && action !== 'approval.cancel',
+      ),
+    );
+  });
+
+  it('fails when permission rule actions is an empty array', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const allowlistPath = join(configDir, 'allowlist.json');
+    writeFileSync(allowlistPath, JSON.stringify({}), 'utf8');
+    const botToml = [
+      '[core]',
+      `repo_allowlist_path = "${allowlistPath}"`,
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "empty-actions-rule"',
+      'effect = "deny"',
+      'actions = []',
+      'subjects = ["user:*"]',
+      '',
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[channels.discord]',
+      'enabled = false',
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
+
+    expect(() => loadBotConfig()).toThrow(
+      'Invalid permissions.rules[0].actions in TOML. Expected at least one action when provided.',
+    );
   });
 
   it('fails on invalid permission subject token', () => {
