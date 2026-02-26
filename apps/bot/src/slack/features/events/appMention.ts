@@ -99,6 +99,7 @@ export function registerAppMentionEvent({
           threadTs: threadId,
         });
       },
+      approvalPresentation: 'approval_only',
     });
     if (!authorized) {
       return;

@@ -26,6 +26,8 @@ type PermissionGuardResult<TApproval = never> =
       approval: TApproval;
     };
 
+type ApprovalPresentationMode = 'default' | 'approval_only';
+
 function resolveRequestSummaryFromOperation(
   operation: DeferredPermissionOperation,
   summary: string,
@@ -270,6 +272,7 @@ export async function authorizeSlackOperationAndRespond(input: {
   onDeny: () => Promise<void>;
   onRequireApprovalNotice?: (message: string) => Promise<void>;
   pendingApprovalText?: string;
+  approvalPresentation?: ApprovalPresentationMode;
 }): Promise<boolean> {
   const authorization = await authorizeSlackOperation({
     permissions: input.permissions,
@@ -288,6 +291,16 @@ export async function authorizeSlackOperationAndRespond(input: {
     return false;
   }
   if (authorization.status === 'require_approval') {
+    const approvalPresentation = input.approvalPresentation ?? 'default';
+    if (approvalPresentation === 'approval_only') {
+      await postSlackApprovalMessage({
+        client: input.client,
+        channelId: input.actor.channelId,
+        ...(input.actor.threadId ? { threadId: input.actor.threadId } : {}),
+        approval: authorization.approval,
+      });
+      return false;
+    }
     if (input.onRequireApprovalNotice) {
       await input.onRequireApprovalNotice(input.pendingApprovalText ?? defaultPendingApprovalText);
     }

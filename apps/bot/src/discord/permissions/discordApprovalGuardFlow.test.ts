@@ -145,4 +145,123 @@ describe('Discord approval guard flow', () => {
       }),
     );
   });
+
+  it('approval_only posts only approval in resolved thread and skips pending/job request messages', async () => {
+    const permissions = createPermissionsMock();
+    permissions.authorizeOrCreateApproval.mockResolvedValue({
+      status: 'require_approval',
+      request: { id: 'approval-mention-1' },
+    });
+    permissions.buildApprovalMessage.mockReturnValue('Approval required for `jobs.mention`.');
+    permissions.assignApprovalContextIfPending.mockResolvedValue(true);
+    const onRequireApprovalNotice = vi.fn();
+    const resolveApprovalThreadId = vi.fn().mockResolvedValue('thread-from-mention');
+    const client = {} as never;
+
+    const authorized = await authorizeDiscordOperationAndRespond({
+      permissions: permissions as never,
+      action: 'jobs.mention',
+      summary: 'Queue mention job mention-1',
+      operation: {
+        kind: 'enqueueJob',
+        job: {
+          jobId: 'mention-1',
+          type: 'MENTION',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Please summarize this thread.',
+          channel: {
+            provider: 'discord',
+            channelId: 'D1',
+            userId: 'U1',
+          },
+        },
+      },
+      actor: {
+        userId: 'U1',
+        channelId: 'D1',
+      },
+      client,
+      onDeny: vi.fn(),
+      onRequireApprovalNotice,
+      approvalPresentation: 'approval_only',
+      resolveApprovalThreadId,
+    });
+
+    expect(authorized).toBe(false);
+    expect(onRequireApprovalNotice).not.toHaveBeenCalled();
+    expect(resolveApprovalThreadId).toHaveBeenCalledWith('approval-mention-1');
+    expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
+      approvalId: 'approval-mention-1',
+      channelId: 'thread-from-mention',
+      threadId: 'thread-from-mention',
+      updateOperationRouting: false,
+    });
+    expect(postDiscordMessage).toHaveBeenCalledTimes(1);
+    expect(postDiscordMessage).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({
+        channelId: 'D1',
+        threadId: 'thread-from-mention',
+        text: 'Approval required for `jobs.mention`.',
+      }),
+    );
+    expect(isSendableTextChannel).not.toHaveBeenCalled();
+  });
+
+  it('approval_only falls back to channel when thread resolver fails', async () => {
+    const permissions = createPermissionsMock();
+    permissions.authorizeOrCreateApproval.mockResolvedValue({
+      status: 'require_approval',
+      request: { id: 'approval-mention-2' },
+    });
+    permissions.buildApprovalMessage.mockReturnValue('Approval required for `jobs.mention`.');
+    const resolveApprovalThreadId = vi.fn().mockResolvedValue(undefined);
+    const onRequireApprovalNotice = vi.fn();
+    const client = {} as never;
+
+    const authorized = await authorizeDiscordOperationAndRespond({
+      permissions: permissions as never,
+      action: 'jobs.mention',
+      summary: 'Queue mention job mention-2',
+      operation: {
+        kind: 'enqueueJob',
+        job: {
+          jobId: 'mention-2',
+          type: 'MENTION',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Please summarize this thread.',
+          channel: {
+            provider: 'discord',
+            channelId: 'D1',
+            userId: 'U1',
+          },
+        },
+      },
+      actor: {
+        userId: 'U1',
+        channelId: 'D1',
+      },
+      client,
+      onDeny: vi.fn(),
+      onRequireApprovalNotice,
+      approvalPresentation: 'approval_only',
+      resolveApprovalThreadId,
+    });
+
+    expect(authorized).toBe(false);
+    expect(onRequireApprovalNotice).not.toHaveBeenCalled();
+    expect(resolveApprovalThreadId).toHaveBeenCalledWith('approval-mention-2');
+    expect(permissions.assignApprovalContextIfPending).not.toHaveBeenCalled();
+    expect(postDiscordMessage).toHaveBeenCalledTimes(1);
+    expect(postDiscordMessage).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({
+        channelId: 'D1',
+        text: 'Approval required for `jobs.mention`.',
+      }),
+    );
+    expect(isSendableTextChannel).not.toHaveBeenCalled();
+  });
 });

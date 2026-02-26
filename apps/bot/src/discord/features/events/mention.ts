@@ -112,8 +112,25 @@ export async function handleMention(
     onDeny: async () => {
       await message.reply('You are not authorized to trigger mention jobs.');
     },
-    onRequireApprovalNotice: async (text) => {
-      await message.reply(text);
+    approvalPresentation: 'approval_only',
+    resolveApprovalThreadId: async (approvalId) => {
+      if (message.channel.isThread()) {
+        return message.channelId;
+      }
+      const threadName = `sniptail approval ${approvalId}`.slice(0, 100);
+      try {
+        const thread = await message.startThread({
+          name: threadName,
+          autoArchiveDuration: 1440,
+        });
+        return thread.id;
+      } catch (err) {
+        logger.warn(
+          { err, approvalId, messageId: message.id, channelId: message.channelId },
+          'Failed to create Discord approval thread from mention message',
+        );
+        return undefined;
+      }
     },
   });
   if (!authorized) {

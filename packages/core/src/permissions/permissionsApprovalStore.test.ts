@@ -282,4 +282,59 @@ describe('permissionsApprovalStore', () => {
     expect(afterApproval.changed).toBe(false);
     expect(afterApproval.reason).toBe('not_pending');
   });
+
+  it('can reassign approval resolution context without changing deferred operation routing', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.mention',
+        provider: 'discord',
+        context: {
+          provider: 'discord',
+          channelId: 'D1',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'group', provider: 'discord', groupId: 'R1' }],
+        notifySubjects: [{ kind: 'group', provider: 'discord', groupId: 'R1' }],
+        operation: {
+          kind: 'enqueueJob',
+          job: {
+            jobId: 'mention-1',
+            type: 'MENTION',
+            repoKeys: ['repo-1'],
+            gitRef: 'main',
+            requestText: 'Need approval',
+            channel: {
+              provider: 'discord',
+              channelId: 'D1',
+              userId: 'U_REQ',
+            },
+          },
+        },
+        summary: 'Queue mention job mention-1',
+      },
+      ttlSeconds: 60,
+    });
+
+    const reassigned = await assignApprovalContextIfPending(
+      request.id,
+      {
+        channelId: 'thread-123',
+        threadId: 'thread-123',
+      },
+      {
+        updateOperationRouting: false,
+      },
+    );
+    expect(reassigned.changed).toBe(true);
+    expect(reassigned.reason).toBe('updated');
+    expect(reassigned.request?.context.channelId).toBe('thread-123');
+    expect(reassigned.request?.context.threadId).toBe('thread-123');
+    expect(reassigned.request?.operation.kind).toBe('enqueueJob');
+    if (reassigned.request?.operation.kind === 'enqueueJob') {
+      expect(reassigned.request.operation.job.channel.channelId).toBe('D1');
+      expect(reassigned.request.operation.job.channel.threadId).toBeUndefined();
+    }
+  });
 });

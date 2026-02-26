@@ -181,6 +181,9 @@ export async function assignApprovalContextIfPending(
     channelId?: ApprovalRequestContext['channelId'];
     threadId?: ApprovalRequestContext['threadId'];
   },
+  options?: {
+    updateOperationRouting?: boolean;
+  },
 ): Promise<ApprovalTransitionResult> {
   const request = await loadById(id);
   if (!request) {
@@ -195,8 +198,9 @@ export async function assignApprovalContextIfPending(
     ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
     ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
   };
-  const nextOperation =
-    request.operation.kind === 'enqueueJob'
+  const updateOperationRouting = options?.updateOperationRouting ?? true;
+  const nextOperation = updateOperationRouting
+    ? request.operation.kind === 'enqueueJob'
       ? {
           ...request.operation,
           job: {
@@ -220,13 +224,14 @@ export async function assignApprovalContextIfPending(
               },
             },
           }
-        : request.operation;
+        : request.operation
+    : request.operation;
 
   const contextUnchanged =
     nextContext.channelId === request.context.channelId &&
     nextContext.threadId === request.context.threadId;
-  const operationRoutingUnchanged =
-    request.operation.kind === 'enqueueJob'
+  const operationRoutingUnchanged = updateOperationRouting
+    ? request.operation.kind === 'enqueueJob'
       ? (!contextPatch.channelId ||
           request.operation.job.channel.channelId === contextPatch.channelId) &&
         (!contextPatch.threadId || request.operation.job.channel.threadId === contextPatch.threadId)
@@ -235,7 +240,8 @@ export async function assignApprovalContextIfPending(
             request.operation.request.channel.channelId === contextPatch.channelId) &&
           (!contextPatch.threadId ||
             request.operation.request.channel.threadId === contextPatch.threadId)
-        : true;
+        : true
+    : true;
   if (contextUnchanged && operationRoutingUnchanged) {
     return makeTransitionResult(request, false, 'unchanged');
   }
