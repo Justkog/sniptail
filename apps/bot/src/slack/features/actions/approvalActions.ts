@@ -60,10 +60,16 @@ async function handleApprovalAction(
     input.messageTs &&
     (result.status === 'approved' || result.status === 'denied' || result.status === 'cancelled')
   ) {
+    const resolutionText = permissions.buildApprovalResolutionMessage({
+      provider: 'slack',
+      request: result.request,
+      status: result.status,
+      message: result.message,
+    });
     await app.client.chat.update({
       channel: channelId,
       ts: input.messageTs,
-      text: result.message,
+      text: resolutionText,
       blocks: [],
     });
   }
@@ -86,9 +92,7 @@ export function registerApprovalActions(context: SlackHandlerContext) {
       approvalId: (action as { value?: string }).value,
       userId: (body as { user?: { id?: string } }).user?.id,
       channelId: (body as { channel?: { id?: string } }).channel?.id,
-      threadId:
-        (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
-        (body as { message?: { ts?: string } }).message?.ts,
+      threadId: (body as { message?: { thread_ts?: string } }).message?.thread_ts,
       messageTs: (body as { message?: { ts?: string } }).message?.ts,
       workspaceId: (body as { team?: { id?: string } }).team?.id,
     });
@@ -101,9 +105,7 @@ export function registerApprovalActions(context: SlackHandlerContext) {
       approvalId: (action as { value?: string }).value,
       userId: (body as { user?: { id?: string } }).user?.id,
       channelId: (body as { channel?: { id?: string } }).channel?.id,
-      threadId:
-        (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
-        (body as { message?: { ts?: string } }).message?.ts,
+      threadId: (body as { message?: { thread_ts?: string } }).message?.thread_ts,
       messageTs: (body as { message?: { ts?: string } }).message?.ts,
       workspaceId: (body as { team?: { id?: string } }).team?.id,
     });
@@ -116,9 +118,7 @@ export function registerApprovalActions(context: SlackHandlerContext) {
       approvalId: (action as { value?: string }).value,
       userId: (body as { user?: { id?: string } }).user?.id,
       channelId: (body as { channel?: { id?: string } }).channel?.id,
-      threadId:
-        (body as { message?: { thread_ts?: string; ts?: string } }).message?.thread_ts ??
-        (body as { message?: { ts?: string } }).message?.ts,
+      threadId: (body as { message?: { thread_ts?: string } }).message?.thread_ts,
       messageTs: (body as { message?: { ts?: string } }).message?.ts,
       workspaceId: (body as { team?: { id?: string } }).team?.id,
     });

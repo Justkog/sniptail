@@ -56,5 +56,5 @@ export type ApprovalRequest = {
 export type ApprovalTransitionResult = {
   request?: ApprovalRequest;
   changed: boolean;
-  reason: 'not_found' | 'not_pending' | 'expired' | 'updated';
+  reason: 'not_found' | 'not_pending' | 'expired' | 'updated' | 'unchanged';
 };

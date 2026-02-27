@@ -345,8 +345,14 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           result.status === 'denied' ||
           result.status === 'cancelled'
         ) {
+          const resolutionText = permissions.buildApprovalResolutionMessage({
+            provider: 'discord',
+            request: result.request,
+            status: result.status,
+            message: result.message,
+          });
           await interaction.update({
-            content: result.message,
+            content: resolutionText,
             components: [],
           });
           return;

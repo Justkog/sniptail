@@ -64,6 +64,8 @@ redis_url = "redis://localhost:6379"
 # - "user:<platform_user_id>" or "user:*"
 # - "group:slack:<usergroup_id>"
 # - "group:discord:<role_id>"
+# - omit `actions` to apply a rule to all actions
+#   (for effect="require_approval", omitted `actions` applies to all non-approval actions)
 #
 # Example:
 # [permissions]
@@ -105,6 +107,10 @@ description = "Validate migration metadata and apply sqlite migrations against a
 [run.actions."ci-check"]
 label = "CI check"
 description = "Run repository CI checks from worker fallback command."
+
+[run.actions."promote-staging-to-main"]
+label = "Promote staging to main"
+description = "Create or reuse the GitHub PR that promotes staging into main."
 
 # Discord app ID.
 # Required when channels.discord.enabled = true.

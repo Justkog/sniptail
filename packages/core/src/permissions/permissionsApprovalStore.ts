@@ -3,6 +3,7 @@ import type { JobRecord } from '../jobs/registryTypes.js';
 import { getJobRegistryStore } from '../jobs/registryStore.js';
 import type {
   ApprovalRequest,
+  ApprovalRequestContext,
   ApprovalResolution,
   ApprovalTransitionResult,
 } from './permissionsApprovalTypes.js';
@@ -165,4 +166,94 @@ export async function expireIfPending(
   now = new Date(),
 ): Promise<ApprovalTransitionResult> {
   return resolveIfPending({ id, resolution: 'expired', now });
+}
+
+export async function assignThreadIdIfPending(
+  id: string,
+  threadId: string,
+): Promise<ApprovalTransitionResult> {
+  return assignApprovalContextIfPending(id, { threadId });
+}
+
+export async function assignApprovalContextIfPending(
+  id: string,
+  contextPatch: {
+    channelId?: ApprovalRequestContext['channelId'];
+    threadId?: ApprovalRequestContext['threadId'];
+  },
+  options?: {
+    updateOperationRouting?: boolean;
+  },
+): Promise<ApprovalTransitionResult> {
+  const request = await loadById(id);
+  if (!request) {
+    return makeTransitionResult(undefined, false, 'not_found');
+  }
+  if (request.status !== 'pending') {
+    return makeTransitionResult(request, false, 'not_pending');
+  }
+
+  const nextContext: ApprovalRequestContext = {
+    ...request.context,
+    ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
+    ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+  };
+  const updateOperationRouting = options?.updateOperationRouting ?? true;
+  const nextOperation = updateOperationRouting
+    ? request.operation.kind === 'enqueueJob'
+      ? {
+          ...request.operation,
+          job: {
+            ...request.operation.job,
+            channel: {
+              ...request.operation.job.channel,
+              ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
+              ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+            },
+          },
+        }
+      : request.operation.kind === 'enqueueBootstrap'
+        ? {
+            ...request.operation,
+            request: {
+              ...request.operation.request,
+              channel: {
+                ...request.operation.request.channel,
+                ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
+                ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+              },
+            },
+          }
+        : request.operation
+    : request.operation;
+
+  const contextUnchanged =
+    nextContext.channelId === request.context.channelId &&
+    nextContext.threadId === request.context.threadId;
+  const operationRoutingUnchanged = updateOperationRouting
+    ? request.operation.kind === 'enqueueJob'
+      ? (!contextPatch.channelId ||
+          request.operation.job.channel.channelId === contextPatch.channelId) &&
+        (!contextPatch.threadId || request.operation.job.channel.threadId === contextPatch.threadId)
+      : request.operation.kind === 'enqueueBootstrap'
+        ? (!contextPatch.channelId ||
+            request.operation.request.channel.channelId === contextPatch.channelId) &&
+          (!contextPatch.threadId ||
+            request.operation.request.channel.threadId === contextPatch.threadId)
+        : true
+    : true;
+  if (contextUnchanged && operationRoutingUnchanged) {
+    return makeTransitionResult(request, false, 'unchanged');
+  }
+
+  const updated: ApprovalRequest = {
+    ...request,
+    context: nextContext,
+    operation: nextOperation,
+  };
+  const changed = await conditionalUpsert(request.id, updated, 'pending');
+  if (!changed) {
+    return makeTransitionResult(request, false, 'not_pending');
+  }
+  return makeTransitionResult(updated, true, 'updated');
 }
