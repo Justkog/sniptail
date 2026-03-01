@@ -55,13 +55,14 @@ function toParamDefinition(value: z.infer<typeof runActionParamSchema>): RunActi
   const options = value.options;
   const description = value.description?.trim();
 
+  const uiMode = value.ui_mode ?? 'auto';
   const parsed: RunActionParamDefinition = {
     id: value.id,
     label: value.label,
     type: value.type,
-    uiMode: value.ui_mode ?? 'auto',
+    uiMode,
     required: value.required ?? false,
-    ...(value.sensitive !== undefined ? { sensitive: value.sensitive } : {}),
+    sensitive: value.sensitive ?? uiMode === 'secret',
     ...(description ? { description } : {}),
     ...(options ? { options } : {}),
     ...(typeof value.min === 'number' ? { min: value.min } : {}),
@@ -94,12 +95,14 @@ export function parseRunActionSidecarTable(
     throw new Error(`Invalid run action sidecar ${filePath}: ${issues}`);
   }
 
-  const steps = parsed.data.steps !== undefined
-    ? parsed.data.steps.map(toStepDefinition)
-    : undefined;
+  const parameters = parsed.data.parameters.map(toParamDefinition);
+  const steps =
+    parsed.data.steps !== undefined
+      ? parsed.data.steps.map(toStepDefinition)
+      : [{ id: 'main', fields: parameters.map((p) => p.id) }];
 
   return {
-    parameters: parsed.data.parameters.map(toParamDefinition),
-    ...(steps !== undefined ? { steps } : {}),
+    parameters,
+    steps,
   };
 }
