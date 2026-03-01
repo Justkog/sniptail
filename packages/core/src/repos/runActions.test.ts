@@ -424,7 +424,101 @@ describe('resolveRunActionMetadataForRepos', () => {
 
     const targetEnv = resolved.parameters.find((param) => param.id === 'target_env');
     expect(targetEnv?.options).toEqual(['prod', 'staging']);
-    expect(resolved.steps).toEqual([{ id: 'main', fields: ['dry_run', 'target_env'] }]);
+    expect(resolved.steps).toEqual([{ id: 'main', fields: ['target_env', 'dry_run'] }]);
+  });
+
+  it('preserves configured multi-step layout from canonical metadata', () => {
+    const providerDataA = withRepoRunActionsMetadata(undefined, {
+      actions: {
+        deploy: {
+          parameters: [
+            {
+              id: 'target_env',
+              label: 'Target environment',
+              type: 'string',
+              uiMode: 'select',
+              required: true,
+              options: ['staging', 'prod'],
+              sensitive: false,
+            },
+            {
+              id: 'dry_run',
+              label: 'Dry run',
+              type: 'boolean',
+              uiMode: 'boolean',
+              required: false,
+              default: true,
+              sensitive: false,
+            },
+            {
+              id: 'rollout_percent',
+              label: 'Rollout percent',
+              type: 'number',
+              uiMode: 'number',
+              required: false,
+              min: 1,
+              max: 100,
+              sensitive: false,
+            },
+          ],
+          steps: [
+            { id: 'basic', fields: ['target_env', 'dry_run'] },
+            { id: 'advanced', fields: ['rollout_percent'] },
+          ],
+        },
+      },
+      syncedAt: '2024-01-01T00:00:00Z',
+      sourceRef: 'main',
+    });
+    const providerDataB = withRepoRunActionsMetadata(undefined, {
+      actions: {
+        deploy: {
+          parameters: [
+            {
+              id: 'target_env',
+              label: 'Target env',
+              type: 'string',
+              uiMode: 'select',
+              required: true,
+              options: ['prod', 'staging', 'canary'],
+              sensitive: false,
+            },
+            {
+              id: 'dry_run',
+              label: 'Dry run',
+              type: 'boolean',
+              uiMode: 'boolean',
+              required: false,
+              default: true,
+              sensitive: false,
+            },
+            {
+              id: 'rollout_percent',
+              label: 'Rollout percentage',
+              type: 'number',
+              uiMode: 'number',
+              required: false,
+              min: 10,
+              max: 90,
+              sensitive: false,
+            },
+          ],
+          steps: [
+            { id: 'first', fields: ['target_env'] },
+            { id: 'second', fields: ['dry_run', 'rollout_percent'] },
+          ],
+        },
+      },
+      syncedAt: '2024-01-01T00:00:00Z',
+      sourceRef: 'main',
+    });
+
+    const resolved = resolveRunActionMetadataForRepos('deploy', [providerDataA, providerDataB]);
+
+    expect(resolved.steps).toEqual([
+      { id: 'basic', fields: ['target_env', 'dry_run'] },
+      { id: 'advanced', fields: ['rollout_percent'] },
+    ]);
   });
 
   it('fails when required params are not shared across repos', () => {

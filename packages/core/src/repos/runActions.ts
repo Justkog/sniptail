@@ -610,9 +610,25 @@ export function resolveRunActionMetadataForRepos(
     } satisfies RunActionParamDefinition;
   });
 
-  const steps: RunActionStepDefinition[] = mergedParameters.length
-    ? [{ id: 'main', fields: mergedParameters.map((param) => param.id) }]
-    : [];
+  const canonicalSteps = actionMetadataByRepo[0]?.steps ?? [];
+  const filteredSteps = canonicalSteps
+    .map((step) => ({
+      ...step,
+      fields: step.fields.filter((field) => commonParamIds.has(field)),
+    }))
+    .filter((step) => step.fields.length > 0);
+
+  const coveredByStep = new Set(filteredSteps.flatMap((step) => step.fields));
+  const uncoveredFields = commonIds.filter((field) => !coveredByStep.has(field));
+  const steps: RunActionStepDefinition[] = [
+    ...filteredSteps,
+    ...(uncoveredFields.length ? [{ id: 'main', fields: uncoveredFields }] : []),
+  ];
+
+  if (!steps.length && mergedParameters.length) {
+    steps.push({ id: 'main', fields: mergedParameters.map((param) => param.id) });
+  }
+
   return {
     parameters: mergedParameters,
     steps,
