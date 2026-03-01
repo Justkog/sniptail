@@ -9,7 +9,10 @@ function makeConfig(): BotConfig {
     repoAllowlist: {
       repoA: {
         providerData: withRepoRunActionsMetadata(undefined, {
-          actionIds: ['refresh-docs', 'lint-all'],
+          actions: {
+            'refresh-docs': { parameters: [], steps: [] },
+            'lint-all': { parameters: [], steps: [] },
+          },
           syncedAt: '2026-01-01T00:00:00.000Z',
           sourceRef: 'main',
         }),
@@ -17,7 +20,10 @@ function makeConfig(): BotConfig {
       },
       repoB: {
         providerData: withRepoRunActionsMetadata(undefined, {
-          actionIds: ['refresh-docs', 'test-all'],
+          actions: {
+            'refresh-docs': { parameters: [], steps: [] },
+            'test-all': { parameters: [], steps: [] },
+          },
           syncedAt: '2026-01-01T00:00:00.000Z',
           sourceRef: 'main',
         }),

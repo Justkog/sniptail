@@ -19,8 +19,11 @@ export type JobSettings = {
   reviewers?: string[];
 };
 
+export type RunParamValue = string | number | boolean | string[];
+
 export type RunJobInput = {
   actionId: string;
+  params?: Record<string, RunParamValue>;
 };
 
 export type JobSpec = {

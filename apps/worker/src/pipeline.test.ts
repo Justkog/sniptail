@@ -63,8 +63,42 @@ vi.mock('@sniptail/core/config/config.js', () => ({
 vi.mock('@sniptail/core/repos/catalog.js', () => ({
   loadRepoAllowlistFromCatalog: vi.fn(() =>
     Promise.resolve({
-      'repo-1': { sshUrl: 'git@example.com:org/repo-1.git', projectId: 1, baseBranch: 'main' },
-      'repo-2': { sshUrl: 'git@example.com:org/repo-2.git', projectId: 2, baseBranch: 'main' },
+      'repo-1': {
+        sshUrl: 'git@example.com:org/repo-1.git',
+        projectId: 1,
+        baseBranch: 'main',
+        providerData: {
+          sniptail: {
+            run: {
+              actions: {
+                'refresh-docs': { parameters: [], steps: [] },
+                'refresh-with-mr': { parameters: [], steps: [] },
+                'refresh-allow-failure': { parameters: [], steps: [] },
+              },
+              syncedAt: '2026-03-01T00:00:00.000Z',
+              sourceRef: 'main',
+            },
+          },
+        },
+      },
+      'repo-2': {
+        sshUrl: 'git@example.com:org/repo-2.git',
+        projectId: 2,
+        baseBranch: 'main',
+        providerData: {
+          sniptail: {
+            run: {
+              actions: {
+                'refresh-docs': { parameters: [], steps: [] },
+                'refresh-with-mr': { parameters: [], steps: [] },
+                'refresh-allow-failure': { parameters: [], steps: [] },
+              },
+              syncedAt: '2026-03-01T00:00:00.000Z',
+              sourceRef: 'main',
+            },
+          },
+        },
+      },
     }),
   ),
 }));
@@ -796,7 +830,9 @@ describe('worker/pipeline runJob', () => {
     expect(runNamedRunContractDetailedMock).toHaveBeenCalledWith(
       '/tmp/sniptail/job-root/job-run-contract/repos/repo-1',
       'refresh-docs',
-      expect.any(Object),
+      expect.objectContaining({
+        SNIPTAIL_RUN_PARAMS_JSON: '{}',
+      }),
       '/tmp/sniptail/job-root/job-run-contract/logs/runner.log',
       [],
       expect.objectContaining({

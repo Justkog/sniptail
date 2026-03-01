@@ -16,6 +16,13 @@ import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
+import { buildRunParamsContinueButton } from '../../modals.js';
+import {
+  collectRunStepParams,
+  normalizeCollectedRunParams,
+  resolveRunSelectionSchema,
+  toRunParamPayload,
+} from '../../lib/runStepper.js';
 
 export async function handleRunModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -55,9 +62,53 @@ export async function handleRunModalSubmit(
     return;
   }
 
+  const stepIndex = selection?.runStepIndex ?? 0;
+  const collectedParams = {
+    ...(selection?.collectedParams ?? {}),
+  };
+
   await interaction.deferReply({ ephemeral: true });
 
-  const gitRef = interaction.fields.getTextInputValue('git_ref').trim();
+  const metadata = resolveRunSelectionSchema(config, {
+    repoKeys,
+    actionId,
+  });
+  const stepCount = metadata.steps.length;
+  const step = stepCount > 0 ? metadata.steps[stepIndex] : undefined;
+  const stepDefinitions = step
+    ? metadata.parameters.filter((parameter) => step.fields.includes(parameter.id))
+    : [];
+
+  const gitRefInput =
+    stepIndex === 0
+      ? interaction.fields.getTextInputValue('git_ref').trim()
+      : (selection?.gitRef ?? '').trim();
+  const gitRef = gitRefInput || resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+
+  const stepValues = collectRunStepParams(interaction.fields, stepDefinitions);
+  Object.assign(collectedParams, stepValues);
+
+  if (step && stepIndex + 1 < stepCount) {
+    const nextSelection = {
+      repoKeys,
+      actionId,
+      requestedAt: Date.now(),
+      runStepIndex: stepIndex + 1,
+      collectedParams,
+      gitRef,
+    };
+    runSelectionByUser.set(interaction.user.id, nextSelection);
+
+    const continueUi = buildRunParamsContinueButton(config.botName, actionId);
+    await interaction.editReply({
+      content: continueUi.content,
+      components: continueUi.components,
+    });
+    return;
+  }
+
+  const normalized = normalizeCollectedRunParams(metadata, collectedParams);
+
   const requestText = `Run action ${actionId}`;
   const threadContext = await fetchDiscordThreadContext(
     interaction.client,
@@ -71,9 +122,12 @@ export async function handleRunModalSubmit(
     type: 'RUN',
     repoKeys,
     ...(repoKeys[0] ? { primaryRepoKey: repoKeys[0] } : {}),
-    gitRef: gitRef || resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]),
+    gitRef,
     requestText,
-    run: { actionId },
+    run: {
+      actionId,
+      params: toRunParamPayload(normalized.normalized),
+    },
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
     ...(threadContext ? { threadContext } : {}),

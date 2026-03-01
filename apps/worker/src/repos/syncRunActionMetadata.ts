@@ -1,12 +1,15 @@
 import { join } from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
+import { parseTomlTable } from '@sniptail/core/config/toml.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import { logger } from '@sniptail/core/logger.js';
 import { listRepoCatalogEntries, upsertRepoCatalogEntry } from '@sniptail/core/repos/catalog.js';
+import { parseRunActionSidecarTable } from '@sniptail/core/repos/runActionSidecarSchema.js';
 import type { RepoRow } from '@sniptail/core/repos/catalogTypes.js';
 import {
   normalizeRunActionId,
+  type RepoRunActionMetadata,
   withRepoRunActionsMetadata,
 } from '@sniptail/core/repos/runActions.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
@@ -35,31 +38,69 @@ function toRepoConfig(row: RepoRow): RepoConfig {
   };
 }
 
-async function listRunActionIdsFromRepoPath(repoPath: string): Promise<string[]> {
+async function parseRunActionSidecar(filePath: string): Promise<RepoRunActionMetadata> {
+  const raw = await readFile(filePath, 'utf8');
+  const table = parseTomlTable(raw, `run params sidecar ${filePath}`);
+  return parseRunActionSidecarTable(table, filePath);
+}
+
+async function listRunActionsFromRepoPath(
+  repoPath: string,
+): Promise<Record<string, RepoRunActionMetadata>> {
   const directoryPath = join(repoPath, RUN_CONTRACTS_DIR);
   const entries = await readdir(directoryPath, { withFileTypes: true }).catch((err) => {
     if ((err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
-      return [];
+      return [] as Awaited<ReturnType<typeof readdir>>;
     }
     throw err;
   });
 
-  const ids = new Set<string>();
+  const sidecars = new Map<string, string>();
   for (const entry of entries) {
+    const entryName = Buffer.isBuffer(entry.name) ? entry.name.toString('utf8') : entry.name;
     if (!entry.isFile() && !entry.isSymbolicLink()) {
       continue;
     }
+    if (!entryName.endsWith('.params.toml')) {
+      continue;
+    }
+    const baseName = entryName.slice(0, -'.params.toml'.length);
     try {
-      ids.add(normalizeRunActionId(entry.name));
+      sidecars.set(normalizeRunActionId(baseName), join(directoryPath, entryName));
     } catch {
-      logger.warn(
-        { entryName: entry.name, directoryPath },
-        'Skipping invalid run action id discovered from repository contracts',
-      );
+      logger.warn({ entryName, directoryPath }, 'Skipping invalid run action sidecar file name');
     }
   }
 
-  return Array.from(ids).sort((a, b) => a.localeCompare(b));
+  const actions = new Map<string, RepoRunActionMetadata>();
+  for (const entry of entries) {
+    const entryName = Buffer.isBuffer(entry.name) ? entry.name.toString('utf8') : entry.name;
+    if (!entry.isFile() && !entry.isSymbolicLink()) {
+      continue;
+    }
+    if (entryName.endsWith('.params.toml')) {
+      continue;
+    }
+    let actionId: string;
+    try {
+      actionId = normalizeRunActionId(entryName);
+    } catch {
+      logger.warn(
+        { entryName, directoryPath },
+        'Skipping invalid run action id discovered from repository contracts',
+      );
+      continue;
+    }
+
+    const sidecarPath = sidecars.get(actionId);
+    const sidecar = sidecarPath ? await parseRunActionSidecar(sidecarPath) : undefined;
+    actions.set(actionId, {
+      parameters: sidecar?.parameters ?? [],
+      steps: sidecar?.steps ?? [],
+    });
+  }
+
+  return Object.fromEntries(Array.from(actions.entries()).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 async function resolveRepoInspectionPath(
@@ -78,10 +119,10 @@ async function resolveRepoInspectionPath(
   return clonePath;
 }
 
-function listFallbackActionIds(): string[] {
+function listFallbackActions(): Record<string, RepoRunActionMetadata> {
   const config = loadWorkerConfig();
   const runActions = config.run?.actions ?? {};
-  const actionIds = new Set<string>();
+  const actions = new Map<string, RepoRunActionMetadata>();
 
   for (const [rawActionId, actionConfig] of Object.entries(runActions)) {
     const fallbackCommand =
@@ -90,7 +131,10 @@ function listFallbackActionIds(): string[] {
       continue;
     }
     try {
-      actionIds.add(normalizeRunActionId(rawActionId));
+      actions.set(normalizeRunActionId(rawActionId), {
+        parameters: [],
+        steps: [],
+      });
     } catch {
       logger.warn(
         { actionId: rawActionId },
@@ -99,7 +143,7 @@ function listFallbackActionIds(): string[] {
     }
   }
 
-  return Array.from(actionIds).sort((a, b) => a.localeCompare(b));
+  return Object.fromEntries(Array.from(actions.entries()).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 async function syncRepoRunActionsRow(
@@ -107,7 +151,7 @@ async function syncRepoRunActionsRow(
   logFilePath: string,
   options: {
     repoCacheRoot: string;
-    fallbackActionIds: string[];
+    fallbackActions: Record<string, RepoRunActionMetadata>;
   },
 ): Promise<{ updated: boolean }> {
   const repoConfig = toRepoConfig(row);
@@ -117,14 +161,15 @@ async function syncRepoRunActionsRow(
     logFilePath,
     options.repoCacheRoot,
   );
-  const contractActionIds = await listRunActionIdsFromRepoPath(inspectionPath);
-  const actionIds = Array.from(
-    new Set<string>([...contractActionIds, ...options.fallbackActionIds]),
-  ).sort((a, b) => a.localeCompare(b));
+  const contractActions = await listRunActionsFromRepoPath(inspectionPath);
+  const actions = {
+    ...options.fallbackActions,
+    ...contractActions,
+  };
   const syncedAt = new Date().toISOString();
 
   const providerData = withRepoRunActionsMetadata(repoConfig.providerData, {
-    actionIds,
+    actions,
     syncedAt,
     sourceRef: row.baseBranch,
   });
@@ -151,7 +196,7 @@ export async function syncRunActionMetadata(
   } = {},
 ): Promise<RunActionMetadataSyncResult> {
   const config = loadWorkerConfig();
-  const fallbackActionIds = listFallbackActionIds();
+  const fallbackActions = listFallbackActions();
   const logFilePath =
     options.logFilePath ?? join(config.jobWorkRoot, 'logs', 'run-action-metadata-sync.log');
 
@@ -169,7 +214,7 @@ export async function syncRunActionMetadata(
     try {
       await syncRepoRunActionsRow(row, logFilePath, {
         repoCacheRoot: config.repoCacheRoot,
-        fallbackActionIds,
+        fallbackActions,
       });
       updated += 1;
     } catch (err) {

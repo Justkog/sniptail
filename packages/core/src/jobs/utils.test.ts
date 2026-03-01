@@ -53,4 +53,27 @@ describe('jobs/utils', () => {
       }),
     ).not.toThrow();
   });
+
+  it('validates RUN job params object shape', () => {
+    const runJob = {
+      jobId: 'job-run',
+      type: 'RUN' as const,
+      repoKeys: ['repo-one'],
+      gitRef: 'main',
+      requestText: 'Run deploy',
+      run: {
+        actionId: 'deploy',
+        params: { target_env: 'staging' },
+      },
+      channel: { provider: 'slack' as const, channelId: 'C1', userId: 'U1' },
+    };
+    const repoAllowlist = {
+      'repo-one': { sshUrl: 'git@example.com:org/repo.git', projectId: 123 },
+    };
+
+    expect(() => validateJob(runJob, repoAllowlist)).not.toThrow();
+    expect(() =>
+      validateJob({ ...runJob, run: { actionId: 'deploy', params: [] } }, repoAllowlist),
+    ).toThrow('run.params as an object');
+  });
 });

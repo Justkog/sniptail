@@ -3,7 +3,12 @@ import { writeFile } from 'node:fs/promises';
 import type { WorkerConfig } from '@sniptail/core/config/config.js';
 import { runNamedRunContractDetailed } from '@sniptail/core/git/jobOps.js';
 import { logger } from '@sniptail/core/logger.js';
-import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
+import {
+  normalizeRunActionId,
+  normalizeRunActionParams,
+  resolveRunActionMetadataForRepos,
+  type RunActionParamValue,
+} from '@sniptail/core/repos/runActions.js';
 import { CommandError, runCommand, type RunResult } from '@sniptail/core/runner/commandRunner.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
@@ -60,6 +65,26 @@ type RunJobInput = {
   channelRef: ChannelRef;
   publishRepoChanges: RunPublishRepoChanges;
 };
+
+function toRunParamEnvKey(paramId: string): string {
+  return `SNIPTAIL_RUN_PARAM_${paramId.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`;
+}
+
+function serializeRunParamValue(value: RunActionParamValue): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function buildRunParamEnv(params: Record<string, RunActionParamValue>): Record<string, string> {
+  const entries: Array<[string, string]> = [];
+  for (const [paramId, value] of Object.entries(params)) {
+    entries.push([toRunParamEnvKey(paramId), serializeRunParamValue(value)]);
+  }
+  entries.push(['SNIPTAIL_RUN_PARAMS_JSON', JSON.stringify(params)]);
+  return Object.fromEntries(entries);
+}
 
 function formatExitCode(exitCode: number | null): string {
   return exitCode === null ? 'null' : String(exitCode);
@@ -235,14 +260,33 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     throw new Error(`Run action "${actionId}" is not configured in worker config.`);
   }
 
+  const repoProviderData = job.repoKeys.map((repoKey) => {
+    const repoConfig = config.repoAllowlist[repoKey];
+    if (!repoConfig) {
+      throw new Error(`Repo ${repoKey} is not in allowlist.`);
+    }
+    return repoConfig.providerData;
+  });
+  const resolvedActionMetadata = resolveRunActionMetadataForRepos(actionId, repoProviderData);
+  const normalizedParamsResult = normalizeRunActionParams(job.run?.params, resolvedActionMetadata);
+  const runParamEnv = buildRunParamEnv(normalizedParamsResult.normalized);
+  const runEnv = {
+    ...env,
+    ...runParamEnv,
+  };
+  const runRedactionPatterns = [
+    ...redactionPatterns,
+    ...normalizedParamsResult.sensitiveValues.filter(Boolean),
+  ];
+
   const executionRecords: RunExecutionRecord[] = [];
   for (const [repoKey, repo] of repoWorktrees.entries()) {
     const contractExecution = await runNamedRunContractDetailed(
       repo.worktreePath,
       actionId,
-      env,
+      runEnv,
       paths.logFile,
-      redactionPatterns,
+      runRedactionPatterns,
       {
         timeoutMs: actionConfig.timeoutMs,
         allowFailure: actionConfig.allowFailure,
@@ -270,10 +314,10 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     }
     const result = await runCommand(command, args, {
       cwd: repo.worktreePath,
-      env,
+      env: runEnv,
       logFilePath: paths.logFile,
       timeoutMs: actionConfig.timeoutMs,
-      redact: redactionPatterns,
+      redact: runRedactionPatterns,
       allowFailure: actionConfig.allowFailure,
     });
     executionRecords.push(

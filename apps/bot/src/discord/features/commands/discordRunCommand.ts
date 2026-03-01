@@ -4,8 +4,9 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
-import { buildRunActionSelect, buildRunModal, buildRunRepoSelect } from '../../modals.js';
+import { buildRunActionSelect, buildRunRepoSelect } from '../../modals.js';
 import { runSelectionByUser } from '../../state.js';
+import { buildRunStepModal } from '../../lib/runStepper.js';
 
 export async function handleRunStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -47,8 +48,19 @@ export async function handleRunStart(interaction: ChatInputCommandInteraction, c
     });
 
     if (actions.length === 1) {
-      const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, selectedRepoKeys[0]);
-      const modal = buildRunModal(config.botName, selectedRepoKeys, baseBranch);
+      const actionId = normalizeRunActionId(actions[0]!.id);
+      const selection = {
+        repoKeys: selectedRepoKeys,
+        actionId,
+        runStepIndex: 0,
+        collectedParams: {},
+        gitRef: resolveDefaultBaseBranch(config.repoAllowlist, selectedRepoKeys[0]),
+      };
+      const modal = buildRunStepModal({ config, selection }).modal;
+      runSelectionByUser.set(interaction.user.id, {
+        ...selection,
+        requestedAt: Date.now(),
+      });
       await interaction.showModal(modal);
       return;
     }
