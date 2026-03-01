@@ -1,4 +1,7 @@
 import type { ChannelContext } from './channel.js';
+import type { RunActionParamValue } from '../repos/runActions.js';
+
+export type { RunActionParamValue as RunParamValue };
 
 export type JobType = 'ASK' | 'EXPLORE' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'RUN' | 'MENTION';
 export const AGENT_IDS = ['codex', 'copilot'] as const;
@@ -19,11 +22,9 @@ export type JobSettings = {
   reviewers?: string[];
 };
 
-export type RunParamValue = string | number | boolean | string[];
-
 export type RunJobInput = {
   actionId: string;
-  params?: Record<string, RunParamValue>;
+  params?: Record<string, RunActionParamValue>;
 };
 
 export type JobSpec = {
