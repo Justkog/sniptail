@@ -846,7 +846,10 @@ describe('worker/pipeline runJob', () => {
       'utf8',
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
-    expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).toContain('All set! Run job job-run-contract completed.');
+    expect(getLatestSlackMessagePostText()).toContain('Action: refresh-docs');
+    expect(getLatestSlackMessagePostText()).toContain('Inputs: none');
+    expect(getLatestSlackMessagePostText()).toContain('Execution:');
     expect(getLatestSlackMessagePostText()).not.toContain('Git output:');
     expect(
       getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-contract/artifacts/report.md'),
@@ -956,7 +959,12 @@ describe('worker/pipeline runJob', () => {
       'utf8',
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
-    expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).toContain(
+      'All set! Run job job-run-implement completed.',
+    );
+    expect(getLatestSlackMessagePostText()).toContain('Action: refresh-with-mr');
+    expect(getLatestSlackMessagePostText()).toContain('Inputs: none');
+    expect(getLatestSlackMessagePostText()).toContain('Execution:');
     expect(getLatestSlackMessagePostText()).toContain('Git output:');
     expect(
       getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-implement/artifacts/report.md'),
