@@ -397,7 +397,10 @@ describe('git mirror ensureClone', () => {
     // eslint-disable-next-line @typescript-eslint/require-await
     vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
       const joined = args.join(' ');
-      if (joined === 'fetch --prune origin runCommandParameters:refs/remotes/origin/runCommandParameters') {
+      if (
+        joined ===
+        'fetch --prune origin runCommandParameters:refs/remotes/origin/runCommandParameters'
+      ) {
         return {
           cmd: 'git',
           args,

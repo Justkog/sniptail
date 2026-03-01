@@ -846,7 +846,9 @@ describe('worker/pipeline runJob', () => {
       'utf8',
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
-    expect(getLatestSlackMessagePostText()).toContain('All set! Run job job-run-contract completed.');
+    expect(getLatestSlackMessagePostText()).toContain(
+      'All set! Run job job-run-contract completed.',
+    );
     expect(getLatestSlackMessagePostText()).toContain('Action: refresh-docs');
     expect(getLatestSlackMessagePostText()).toContain('Inputs: none');
     expect(getLatestSlackMessagePostText()).toContain('Execution:');
