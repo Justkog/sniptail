@@ -9,6 +9,7 @@
     "sniptail": "./dist/index.js"
   },
   "scripts": {
+    "dev": "node --import ../../scripts/register-loaders.mjs src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest",
     "test:run": "vitest run",
