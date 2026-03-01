@@ -61,7 +61,7 @@ function toParamDefinition(value: z.infer<typeof runActionParamSchema>): RunActi
     type: value.type,
     uiMode: value.ui_mode ?? 'auto',
     required: value.required ?? false,
-    sensitive: value.sensitive ?? false,
+    ...(value.sensitive !== undefined ? { sensitive: value.sensitive } : {}),
     ...(description ? { description } : {}),
     ...(options ? { options } : {}),
     ...(typeof value.min === 'number' ? { min: value.min } : {}),
