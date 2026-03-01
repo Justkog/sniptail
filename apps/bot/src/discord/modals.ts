@@ -454,8 +454,7 @@ function buildRunParamInput(
   const input = new TextInputBuilder()
     .setCustomId(`run_param_${parameter.id}`)
     .setStyle(style)
-    .setRequired(parameter.required)
-    .setLabel(parameter.label.slice(0, 45));
+    .setRequired(parameter.required);
 
   const initialValue = initialValues[parameter.id] ?? parameter.default;
   if (initialValue !== undefined) {
