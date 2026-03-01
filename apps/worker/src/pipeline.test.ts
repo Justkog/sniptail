@@ -63,8 +63,42 @@ vi.mock('@sniptail/core/config/config.js', () => ({
 vi.mock('@sniptail/core/repos/catalog.js', () => ({
   loadRepoAllowlistFromCatalog: vi.fn(() =>
     Promise.resolve({
-      'repo-1': { sshUrl: 'git@example.com:org/repo-1.git', projectId: 1, baseBranch: 'main' },
-      'repo-2': { sshUrl: 'git@example.com:org/repo-2.git', projectId: 2, baseBranch: 'main' },
+      'repo-1': {
+        sshUrl: 'git@example.com:org/repo-1.git',
+        projectId: 1,
+        baseBranch: 'main',
+        providerData: {
+          sniptail: {
+            run: {
+              actions: {
+                'refresh-docs': { parameters: [], steps: [] },
+                'refresh-with-mr': { parameters: [], steps: [] },
+                'refresh-allow-failure': { parameters: [], steps: [] },
+              },
+              syncedAt: '2026-03-01T00:00:00.000Z',
+              sourceRef: 'main',
+            },
+          },
+        },
+      },
+      'repo-2': {
+        sshUrl: 'git@example.com:org/repo-2.git',
+        projectId: 2,
+        baseBranch: 'main',
+        providerData: {
+          sniptail: {
+            run: {
+              actions: {
+                'refresh-docs': { parameters: [], steps: [] },
+                'refresh-with-mr': { parameters: [], steps: [] },
+                'refresh-allow-failure': { parameters: [], steps: [] },
+              },
+              syncedAt: '2026-03-01T00:00:00.000Z',
+              sourceRef: 'main',
+            },
+          },
+        },
+      },
     }),
   ),
 }));
@@ -796,7 +830,9 @@ describe('worker/pipeline runJob', () => {
     expect(runNamedRunContractDetailedMock).toHaveBeenCalledWith(
       '/tmp/sniptail/job-root/job-run-contract/repos/repo-1',
       'refresh-docs',
-      expect.any(Object),
+      expect.objectContaining({
+        SNIPTAIL_RUN_PARAMS_JSON: '{}',
+      }),
       '/tmp/sniptail/job-root/job-run-contract/logs/runner.log',
       [],
       expect.objectContaining({
@@ -810,7 +846,12 @@ describe('worker/pipeline runJob', () => {
       'utf8',
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
-    expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).toContain(
+      'All set! Run job job-run-contract completed.',
+    );
+    expect(getLatestSlackMessagePostText()).toContain('Action: refresh-docs');
+    expect(getLatestSlackMessagePostText()).toContain('Inputs: none');
+    expect(getLatestSlackMessagePostText()).toContain('Execution:');
     expect(getLatestSlackMessagePostText()).not.toContain('Git output:');
     expect(
       getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-contract/artifacts/report.md'),
@@ -920,7 +961,12 @@ describe('worker/pipeline runJob', () => {
       'utf8',
     );
     expect(enqueueBotEventMock).toHaveBeenCalled();
-    expect(getLatestSlackMessagePostText()).toContain('Run output preview:');
+    expect(getLatestSlackMessagePostText()).toContain(
+      'All set! Run job job-run-implement completed.',
+    );
+    expect(getLatestSlackMessagePostText()).toContain('Action: refresh-with-mr');
+    expect(getLatestSlackMessagePostText()).toContain('Inputs: none');
+    expect(getLatestSlackMessagePostText()).toContain('Execution:');
     expect(getLatestSlackMessagePostText()).toContain('Git output:');
     expect(
       getWriteFileContentForPath('/tmp/sniptail/job-root/job-run-implement/artifacts/report.md'),

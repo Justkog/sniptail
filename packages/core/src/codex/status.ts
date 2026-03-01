@@ -39,7 +39,11 @@ function formatTwoDigits(value: number): string {
 }
 
 function resolveResetAtMs(window: QuotaWindow): number | undefined {
-  if (typeof window.reset_at === 'number' && Number.isFinite(window.reset_at) && window.reset_at > 0) {
+  if (
+    typeof window.reset_at === 'number' &&
+    Number.isFinite(window.reset_at) &&
+    window.reset_at > 0
+  ) {
     return window.reset_at * 1000;
   }
   if (
@@ -163,11 +167,10 @@ function buildUsageMessage(summary: UsageSummary): string | null {
 }
 
 export async function fetchCodexUsageMessage(): Promise<{ message: string; raw: string }> {
-  const result = await runCommand(
-    'npx',
-    ['codex-quota', 'codex', 'quota', '--json'],
-    { timeoutMs: 10_000, allowFailure: true },
-  );
+  const result = await runCommand('npx', ['codex-quota', 'codex', 'quota', '--json'], {
+    timeoutMs: 10_000,
+    allowFailure: true,
+  });
   const raw = `${result.stdout}${result.stderr}`.trim();
   const summary = parseUsageOutput(raw);
   const message = buildUsageMessage(summary);

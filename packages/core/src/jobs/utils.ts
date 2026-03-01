@@ -10,6 +10,10 @@ export function validateJob(job: JobSpec, repoAllowlist: Record<string, RepoConf
     if (!actionId) {
       throw new Error('RUN jobs must include run.actionId.');
     }
+    const params = job.run?.params;
+    if (params !== undefined && (!params || typeof params !== 'object' || Array.isArray(params))) {
+      throw new Error('RUN jobs must include run.params as an object when provided.');
+    }
     normalizeRunActionId(actionId);
   }
   if (job.type !== 'MENTION' && job.repoKeys.length === 0) {

@@ -26,6 +26,14 @@ export function loadTomlConfig(envName: string, defaultPath: string, label: stri
   }
 }
 
+export function parseTomlTable(raw: string, label: string): TomlTable {
+  const parsed = parseToml(raw) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} TOML must be a table at the root.`);
+  }
+  return parsed as TomlTable;
+}
+
 export function getTomlTable(value: unknown, name: string): TomlTable | undefined {
   if (value === undefined) return undefined;
   if (value && typeof value === 'object' && !Array.isArray(value)) {

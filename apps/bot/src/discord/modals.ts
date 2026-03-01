@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
+import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.js';
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
@@ -24,6 +25,7 @@ export const implementModalCustomId = 'implement_modal';
 export const runRepoSelectCustomId = 'run_repo_select';
 export const runActionSelectCustomId = 'run_action_select';
 export const runModalCustomId = 'run_modal';
+export const runParamsContinueButtonCustomId = 'run_params_continue';
 export const bootstrapModalCustomId = 'bootstrap_modal';
 export const bootstrapVisibilitySelectCustomId = 'bootstrap_visibility_select';
 export const bootstrapQuickstartSelectCustomId = 'bootstrap_quickstart_select';
@@ -444,21 +446,102 @@ export function buildImplementModal(
   return modal;
 }
 
-export function buildRunModal(botName: string, repoKeys: string[], baseBranch: string) {
+function buildRunParamInput(
+  parameter: RunActionParamDefinition,
+  initialValues: Record<string, unknown>,
+) {
+  const style = parameter.uiMode === 'textarea' ? TextInputStyle.Paragraph : TextInputStyle.Short;
+  const input = new TextInputBuilder()
+    .setCustomId(`run_param_${parameter.id}`)
+    .setStyle(style)
+    .setRequired(parameter.required);
+
+  const initialValue = initialValues[parameter.id] ?? parameter.default;
+  if (initialValue !== undefined) {
+    const textValue = Array.isArray(initialValue)
+      ? initialValue.join(', ')
+      : typeof initialValue === 'string'
+        ? initialValue
+        : typeof initialValue === 'number' || typeof initialValue === 'boolean'
+          ? `${initialValue}`
+          : undefined;
+    if (textValue?.trim()) {
+      input.setValue(textValue.slice(0, 4000));
+    }
+  }
+
+  const placeholder =
+    parameter.uiMode === 'multiselect' || parameter.type === 'string[]'
+      ? 'Comma-separated values'
+      : parameter.uiMode === 'boolean' || parameter.type === 'boolean'
+        ? 'true or false'
+        : parameter.type === 'number'
+          ? 'Numeric value'
+          : parameter.description;
+  if (placeholder?.trim()) {
+    input.setPlaceholder(placeholder.trim().slice(0, 100));
+  }
+  return input;
+}
+
+export function buildRunModal(
+  botName: string,
+  repoKeys: string[],
+  baseBranch: string,
+  options?: {
+    parameters?: RunActionParamDefinition[];
+    initialValues?: Record<string, unknown>;
+    stepTitle?: string;
+    includeGitRef?: boolean;
+  },
+) {
   const modal = new ModalBuilder().setCustomId(runModalCustomId).setTitle(`${botName} Run`);
 
-  const branchInput = new TextInputBuilder()
-    .setCustomId('git_ref')
-    .setStyle(TextInputStyle.Short)
-    .setValue(baseBranch);
+  const includeGitRef = options?.includeGitRef ?? true;
+  const parameters = options?.parameters ?? [];
+  const initialValues = options?.initialValues ?? {};
 
-  modal.addLabelComponents(
-    new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput),
-  );
+  const components: Array<LabelBuilder> = [];
+
+  if (includeGitRef) {
+    const branchInput = new TextInputBuilder()
+      .setCustomId('git_ref')
+      .setStyle(TextInputStyle.Short)
+      .setValue(baseBranch);
+    components.push(new LabelBuilder().setLabel('Base branch').setTextInputComponent(branchInput));
+  }
+
+  for (const parameter of parameters) {
+    components.push(
+      new LabelBuilder()
+        .setLabel(parameter.label.slice(0, 45))
+        .setTextInputComponent(buildRunParamInput(parameter, initialValues)),
+    );
+  }
+
+  modal.addLabelComponents(...components);
+
+  const stepSuffix = options?.stepTitle?.trim();
+  if (stepSuffix) {
+    modal.setTitle(`${botName} Run - ${stepSuffix}`);
+  }
 
   if (repoKeys.length > 1) {
-    modal.setTitle(`${botName} Run (${repoKeys.length} repos)`);
+    const baseTitle = stepSuffix ? `${botName} Run - ${stepSuffix}` : `${botName} Run`;
+    modal.setTitle(`${baseTitle} (${repoKeys.length} repos)`);
   }
 
   return modal;
+}
+
+export function buildRunParamsContinueButton(botName: string, actionId: string) {
+  const button = new ButtonBuilder()
+    .setCustomId(runParamsContinueButtonCustomId)
+    .setStyle(ButtonStyle.Primary)
+    .setLabel('Continue');
+
+  return {
+    content: `${botName} run action ${actionId}: continue to the next parameter step.`,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+  };
 }

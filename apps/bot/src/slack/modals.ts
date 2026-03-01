@@ -1,6 +1,8 @@
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
+import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.js';
+import type { ModalView } from '@slack/web-api';
 
 export function resolveDefaultBaseBranch(
   repoAllowlist: Record<string, RepoConfig>,
@@ -359,7 +361,17 @@ export function buildRunModal(
   privateMetadata: string,
   actionSelectActionId: string,
   initialRepoKeys?: string[],
-) {
+  options?: {
+    includeRepoSelection?: boolean;
+    includeActionSelection?: boolean;
+    includeGitRef?: boolean;
+    parameters?: RunActionParamDefinition[];
+    initialParams?: Record<string, unknown>;
+    submitLabel?: string;
+    stepTitle?: string;
+    selectedActionId?: string;
+  },
+): ModalView {
   const repoOptions = Object.keys(repoAllowlist).map((key) => ({
     text: { type: 'plain_text' as const, text: key },
     value: key,
@@ -368,59 +380,140 @@ export function buildRunModal(
     initialRepoKeys
       ?.map((repoKey) => repoOptions.find((option) => option.value === repoKey))
       .filter((value): value is (typeof repoOptions)[number] => Boolean(value)) ?? [];
+  const singleRepoDefault = repoOptions.length === 1 ? repoOptions[0] : undefined;
   const defaultRepoOptions =
     initialOptionsFromInput.length > 0
       ? initialOptionsFromInput
-      : repoOptions.length === 1
-        ? [repoOptions[0]]
+      : singleRepoDefault
+        ? [singleRepoDefault]
         : undefined;
   const defaultGitRef =
     defaultRepoOptions && defaultRepoOptions.length > 0
       ? resolveDefaultBaseBranch(repoAllowlist, defaultRepoOptions[0]?.value)
       : resolveDefaultBaseBranch(repoAllowlist);
 
+  const includeRepoSelection = options?.includeRepoSelection ?? true;
+  const includeActionSelection = options?.includeActionSelection ?? true;
+  const includeGitRef = options?.includeGitRef ?? true;
+  const parameters = options?.parameters ?? [];
+  const initialParams = options?.initialParams ?? {};
+  const submitLabel = options?.submitLabel?.trim() || 'Run';
+  const stepSuffix = options?.stepTitle?.trim();
+
+  const blocks: ModalView['blocks'] = [];
+
+  if (includeRepoSelection) {
+    blocks.push({
+      type: 'input' as const,
+      block_id: 'repos',
+      label: { type: 'plain_text' as const, text: 'Repositories' },
+      element: {
+        type: 'multi_static_select' as const,
+        action_id: 'repo_keys',
+        placeholder: { type: 'plain_text' as const, text: 'Select repos' },
+        options: repoOptions,
+        ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
+      },
+    });
+  }
+
+  if (includeGitRef) {
+    blocks.push({
+      type: 'input' as const,
+      block_id: 'branch',
+      label: { type: 'plain_text' as const, text: 'Base branch' },
+      element: {
+        type: 'plain_text_input' as const,
+        action_id: 'git_ref',
+        initial_value: defaultGitRef,
+      },
+    });
+  }
+
+  if (includeActionSelection) {
+    blocks.push({
+      type: 'input' as const,
+      block_id: 'run_action',
+      label: { type: 'plain_text' as const, text: 'Run action' },
+      element: {
+        type: 'external_select' as const,
+        action_id: actionSelectActionId,
+        min_query_length: 0,
+        placeholder: { type: 'plain_text' as const, text: 'Select run action' },
+        ...(options?.selectedActionId
+          ? {
+              initial_option: {
+                text: { type: 'plain_text' as const, text: options.selectedActionId },
+                value: options.selectedActionId,
+              },
+            }
+          : {}),
+      },
+    });
+  }
+
+  for (const parameter of parameters) {
+    const value = initialParams[parameter.id] ?? parameter.default;
+    const initialValue =
+      value === undefined
+        ? undefined
+        : Array.isArray(value)
+          ? value.join(', ')
+          : typeof value === 'string'
+            ? value
+            : typeof value === 'number' || typeof value === 'boolean'
+              ? `${value}`
+              : undefined;
+    const multiline = parameter.uiMode === 'textarea';
+    const placeholder =
+      parameter.uiMode === 'multiselect' || parameter.type === 'string[]'
+        ? 'Comma-separated values'
+        : parameter.uiMode === 'boolean' || parameter.type === 'boolean'
+          ? 'true or false'
+          : parameter.type === 'number'
+            ? 'Numeric value'
+            : parameter.description;
+    blocks.push({
+      type: 'input' as const,
+      block_id: `run_param_${parameter.id}`,
+      optional: !parameter.required,
+      label: { type: 'plain_text' as const, text: parameter.label.slice(0, 24) },
+      ...(parameter.description
+        ? {
+            hint: {
+              type: 'plain_text' as const,
+              text: parameter.description.slice(0, 120),
+            },
+          }
+        : {}),
+      element: {
+        type: 'plain_text_input' as const,
+        action_id: `run_param_${parameter.id}`,
+        ...(multiline ? { multiline: true } : {}),
+        ...(initialValue?.trim() ? { initial_value: initialValue.slice(0, 3000) } : {}),
+        ...(placeholder?.trim()
+          ? {
+              placeholder: {
+                type: 'plain_text' as const,
+                text: placeholder.slice(0, 120),
+              },
+            }
+          : {}),
+      },
+    });
+  }
+
   return {
     type: 'modal' as const,
     callback_id: callbackId,
     private_metadata: privateMetadata,
-    title: { type: 'plain_text' as const, text: `${botName} Run` },
-    submit: { type: 'plain_text' as const, text: 'Run' },
+    title: {
+      type: 'plain_text' as const,
+      text: stepSuffix ? `${botName} ${stepSuffix}` : `${botName} Run`,
+    },
+    submit: { type: 'plain_text' as const, text: submitLabel.slice(0, 24) },
     close: { type: 'plain_text' as const, text: 'Cancel' },
-    blocks: [
-      {
-        type: 'input' as const,
-        block_id: 'repos',
-        label: { type: 'plain_text' as const, text: 'Repositories' },
-        element: {
-          type: 'multi_static_select' as const,
-          action_id: 'repo_keys',
-          placeholder: { type: 'plain_text' as const, text: 'Select repos' },
-          options: repoOptions,
-          ...(defaultRepoOptions ? { initial_options: defaultRepoOptions } : {}),
-        },
-      },
-      {
-        type: 'input' as const,
-        block_id: 'branch',
-        label: { type: 'plain_text' as const, text: 'Base branch' },
-        element: {
-          type: 'plain_text_input' as const,
-          action_id: 'git_ref',
-          initial_value: defaultGitRef,
-        },
-      },
-      {
-        type: 'input' as const,
-        block_id: 'run_action',
-        label: { type: 'plain_text' as const, text: 'Run action' },
-        element: {
-          type: 'external_select' as const,
-          action_id: actionSelectActionId,
-          min_query_length: 0,
-          placeholder: { type: 'plain_text' as const, text: 'Select run action' },
-        },
-      },
-    ],
+    blocks,
   };
 }
 

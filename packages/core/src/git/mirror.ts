@@ -111,6 +111,20 @@ export async function ensureClone(
         cwd: clonePath,
       });
     }
+
+    // Keep the mirror working tree aligned to the requested ref.
+    if (currentBranch !== gitRef) {
+      await runCommand('git', ['checkout', '-f', gitRef], {
+        ...common,
+        cwd: clonePath,
+      });
+      if (forceLocalBranchUpdate) {
+        await runCommand('git', ['reset', '--hard', remoteRef], {
+          ...common,
+          cwd: clonePath,
+        });
+      }
+    }
     return;
   }
 

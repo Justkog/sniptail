@@ -43,10 +43,11 @@ vi.mock('@sniptail/core/repos/runActions.js', () => ({
 
 vi.mock('node:fs/promises', () => ({
   readdir: vi.fn(),
+  readFile: vi.fn(),
 }));
 
 import type { Dirent } from 'node:fs';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import { logger } from '@sniptail/core/logger.js';
 import { listRepoCatalogEntries, upsertRepoCatalogEntry } from '@sniptail/core/repos/catalog.js';
@@ -109,11 +110,24 @@ function getUpsertedActionIds(callIndex = 0): string[] {
   const providerData = asRecord(repoArg.providerData);
   const sniptail = asRecord(providerData?.sniptail);
   const run = asRecord(sniptail?.run);
-  const actionIds = run?.actionIds;
-  if (!Array.isArray(actionIds)) {
+  const actions = asRecord(run?.actions);
+  if (!actions) {
     return [];
   }
-  return actionIds.filter((value): value is string => typeof value === 'string');
+  return Object.keys(actions).sort((a, b) => a.localeCompare(b));
+}
+
+function getUpsertedAction(callIndex: number, actionId: string): Record<string, unknown> {
+  const repoArg = getUpsertedRepoArg(callIndex);
+  const providerData = asRecord(repoArg.providerData);
+  const sniptail = asRecord(providerData?.sniptail);
+  const run = asRecord(sniptail?.run);
+  const actions = asRecord(run?.actions);
+  const action = asRecord(actions?.[actionId]);
+  if (!action) {
+    throw new Error(`Expected action ${actionId} in upsert call ${callIndex}.`);
+  }
+  return action;
 }
 
 beforeEach(() => {
@@ -123,6 +137,7 @@ beforeEach(() => {
     repoCacheRoot: '/tmp/sniptail/repo-cache',
     run: { actions: {} },
   });
+  vi.mocked(readFile).mockResolvedValue('');
 });
 
 describe('syncRunActionMetadata', () => {
@@ -156,6 +171,57 @@ describe('syncRunActionMetadata', () => {
         expect.any(Object),
       );
       expect(getUpsertedActionIds()).toEqual(['ci-check', 'deploy']);
+    });
+
+    it('loads parameter schema sidecars from .params.toml files', async () => {
+      const row = makeLocalRow();
+      vi.mocked(listRepoCatalogEntries).mockResolvedValueOnce([row]);
+      vi.mocked(upsertRepoCatalogEntry).mockResolvedValueOnce(undefined);
+      vi.mocked(readdir).mockResolvedValueOnce([
+        makeDirent('deploy'),
+        makeDirent('deploy.params.toml'),
+      ]);
+      vi.mocked(readFile).mockResolvedValueOnce(
+        [
+          'schema_version = 1',
+          '',
+          '[[parameters]]',
+          'id = "target_env"',
+          'label = "Target env"',
+          'type = "string"',
+          'ui_mode = "select"',
+          'required = true',
+          'options = ["staging", "prod"]',
+          '',
+          '[[steps]]',
+          'id = "main"',
+          'fields = ["target_env"]',
+        ].join('\n'),
+      );
+
+      await syncRunActionMetadata();
+
+      const deploy = getUpsertedAction(0, 'deploy');
+      expect(deploy.parameters).toEqual([
+        expect.objectContaining({ id: 'target_env', type: 'string', uiMode: 'select' }),
+      ]);
+      expect(deploy.steps).toEqual([{ id: 'main', fields: ['target_env'] }]);
+    });
+
+    it('fails repo sync when params sidecar is invalid', async () => {
+      const row = makeLocalRow();
+      vi.mocked(listRepoCatalogEntries).mockResolvedValueOnce([row]);
+      vi.mocked(readdir).mockResolvedValueOnce([
+        makeDirent('deploy'),
+        makeDirent('deploy.params.toml'),
+      ]);
+      vi.mocked(readFile).mockResolvedValueOnce('schema_version = 99');
+
+      const result = await syncRunActionMetadata();
+
+      expect(result.updated).toBe(0);
+      expect(result.failures).toHaveLength(1);
+      expect(result.failures[0]?.repoKey).toBe('my-local-repo');
     });
 
     it('returns sorted, deduplicated action ids from valid contract files', async () => {
