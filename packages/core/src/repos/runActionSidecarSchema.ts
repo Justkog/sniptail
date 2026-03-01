@@ -94,8 +94,12 @@ export function parseRunActionSidecarTable(
     throw new Error(`Invalid run action sidecar ${filePath}: ${issues}`);
   }
 
+  const steps = parsed.data.steps !== undefined
+    ? parsed.data.steps.map(toStepDefinition)
+    : undefined;
+
   return {
     parameters: parsed.data.parameters.map(toParamDefinition),
-    steps: (parsed.data.steps ?? []).map(toStepDefinition),
+    ...(steps !== undefined ? { steps } : {}),
   };
 }
