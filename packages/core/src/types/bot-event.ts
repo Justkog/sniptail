@@ -26,6 +26,7 @@ export type BotEventPayloadMap = {
   };
   'message.ephemeral': {
     channelId: string;
+    workspaceId?: string;
     userId: string;
     text: string;
     threadId?: string;
