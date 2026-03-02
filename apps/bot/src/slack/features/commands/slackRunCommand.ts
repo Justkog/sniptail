@@ -55,6 +55,11 @@ export function registerRunCommand({ app, slackIds, config, permissions }: Slack
           threadId: (body.thread_ts as string) ?? undefined,
         }),
         slackIds.actions.runActionSelect,
+        undefined,
+        {
+          includeActionSelection: false,
+          submitLabel: 'Continue',
+        },
       ),
     });
   });

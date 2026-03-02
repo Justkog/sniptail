@@ -110,6 +110,7 @@ export function registerRunSubmitView({
       state.run_action?.[slackIds.actions.runActionSelect]?.selected_option?.value?.trim() ??
       '';
     const runStepIndex = metadata?.runStepIndex;
+    const hasRunActionInput = Boolean(state.run_action?.[slackIds.actions.runActionSelect]);
     const collectedParams = {
       ...(metadata?.collectedParams ?? {}),
     };
@@ -119,6 +120,36 @@ export function registerRunSubmitView({
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
         text: `Please select at least one repo for ${slackIds.commands.run}.`,
+      });
+      return;
+    }
+
+    if (!hasRunActionInput && runStepIndex === undefined && !metadata?.actionId) {
+      const actionSelectMetadata: SlackRunViewMetadata = {
+        channelId: metadata?.channelId ?? body.user.id,
+        userId: metadata?.userId ?? body.user.id,
+        ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        repoKeys,
+        gitRef,
+        collectedParams,
+      };
+
+      await ack({
+        response_action: 'update',
+        view: buildRunModal(
+          config.repoAllowlist,
+          config.botName,
+          slackIds.actions.runSubmit,
+          JSON.stringify(actionSelectMetadata),
+          slackIds.actions.runActionSelect,
+          repoKeys,
+          {
+            includeRepoSelection: false,
+            includeActionSelection: true,
+            includeGitRef: false,
+            submitLabel: 'Continue',
+          },
+        ),
       });
       return;
     }
@@ -147,7 +178,7 @@ export function registerRunSubmitView({
 
     const actionMetadata = resolveRunActionMetadata(config, repoKeys, actionId);
 
-    // The first modal collects repo/action/git ref. Parameter entry starts on pushed step modals.
+    // Parameter entry starts on an updated step modal after action selection (replacing the action selection view).
     if (runStepIndex === undefined && actionMetadata.steps.length > 0) {
       const firstStep = resolveRunStep(actionMetadata, 0);
       if (!firstStep) {
@@ -171,7 +202,7 @@ export function registerRunSubmitView({
       };
 
       await ack({
-        response_action: 'push',
+        response_action: 'update',
         view: buildRunModal(
           config.repoAllowlist,
           config.botName,
@@ -265,7 +296,7 @@ export function registerRunSubmitView({
 
     const normalizedParams = normalizeCollectedRunParams(actionMetadata, collectedParams);
 
-    await ack();
+    await ack({ response_action: 'clear' });
 
     const threadContext =
       metadata?.threadId && metadata?.channelId
