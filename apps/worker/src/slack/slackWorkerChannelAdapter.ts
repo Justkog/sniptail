@@ -74,6 +74,7 @@ export class SlackWorkerChannelAdapter implements WorkerChannelAdapter {
       type: 'message.ephemeral',
       payload: {
         channelId: payload.channelId,
+        ...(payload.workspaceId ? { workspaceId: payload.workspaceId } : {}),
         userId: payload.userId,
         text,
         ...(payload.threadId ? { threadId: payload.threadId } : {}),

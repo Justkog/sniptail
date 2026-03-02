@@ -1,4 +1,4 @@
-import { logger } from '@sniptail/core/logger.js';
+import { debugFor, logger } from '@sniptail/core/logger.js';
 import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './helpers.js';
 import type {
@@ -30,6 +30,16 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
       logger.warn({ event }, 'Slack bot event received without Slack app');
       return false;
     }
+
+    debugSlack(
+      {
+        eventType: event.type,
+        workspaceId: 'workspaceId' in event.payload ? event.payload.workspaceId : undefined,
+        channelId: 'channelId' in event.payload ? event.payload.channelId : undefined,
+        threadId: 'threadId' in event.payload ? event.payload.threadId : undefined,
+      },
+      'Handling Slack bot event',
+    );
 
     switch (event.type) {
       case 'message.post':
@@ -74,3 +84,5 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     }
   }
 }
+
+const debugSlack = debugFor('slack');

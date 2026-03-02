@@ -22,6 +22,7 @@ export function registerUsageCommand({
       payload: {
         provider: 'slack' as const,
         channelId: body.channel_id,
+        workspaceId: body.team_id,
         userId,
         ...((body.thread_ts as string | undefined) ? { threadId: body.thread_ts as string } : {}),
       },
