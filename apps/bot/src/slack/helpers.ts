@@ -92,41 +92,47 @@ export async function postMessage(
     ...(options.blocks && { blocks: options.blocks }),
   };
 
-  debugSlack(
-    {
-      api: 'chat.postMessage',
-      channel: options.channel,
-      threadTs: options.threadTs,
-      hasBlocks: Boolean(options.blocks?.length),
-      textLength: options.text.length,
-    },
-    'Slack API request',
-  );
+  if (isDebugNamespaceEnabled('slack')) {
+    debugSlack(
+      {
+        api: 'chat.postMessage',
+        channel: options.channel,
+        threadTs: options.threadTs,
+        hasBlocks: Boolean(options.blocks?.length),
+        textLength: options.text.length,
+      },
+      'Slack API request',
+    );
+  }
 
   try {
     const response = await app.client.chat.postMessage(payload);
-    debugSlack(
-      {
-        api: 'chat.postMessage',
-        channel: options.channel,
-        threadTs: options.threadTs,
-        ok: response.ok,
-        ts: response.ts,
-      },
-      'Slack API response',
-    );
+    if (isDebugNamespaceEnabled('slack')) {
+      debugSlack(
+        {
+          api: 'chat.postMessage',
+          channel: options.channel,
+          threadTs: options.threadTs,
+          ok: response.ok,
+          ts: response.ts,
+        },
+        'Slack API response',
+      );
+    }
     return response;
   } catch (err) {
-    debugSlack(
-      {
-        api: 'chat.postMessage',
-        channel: options.channel,
-        threadTs: options.threadTs,
-        ...getSlackErrorDetails(err),
-        err,
-      },
-      'Slack API request failed',
-    );
+    if (isDebugNamespaceEnabled('slack')) {
+      debugSlack(
+        {
+          api: 'chat.postMessage',
+          channel: options.channel,
+          threadTs: options.threadTs,
+          ...getSlackErrorDetails(err),
+          err,
+        },
+        'Slack API request failed',
+      );
+    }
     throw err;
   }
 }
