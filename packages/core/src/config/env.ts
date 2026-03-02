@@ -153,13 +153,9 @@ function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown)
   const jobRegistryPath = resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
     required: jobRegistryDriver === 'sqlite',
   });
-
   return {
     ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
     repoAllowlist: {},
-    jobWorkRoot: resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
-      required: true,
-    }) as string,
     queueDriver,
     ...(jobRegistryPath ? { jobRegistryPath } : {}),
     jobRegistryDriver,
@@ -546,7 +542,14 @@ export function loadCoreConfig(): CoreConfig {
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
   const coreToml = getTomlTable(toml.core, 'core');
   const workerToml = getTomlTable(toml.worker, 'worker');
-  coreConfigCache = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
+  const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
+  const jobWorkRoot = resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
+    required: true,
+  }) as string;
+  coreConfigCache = {
+    ...core,
+    jobWorkRoot,
+  };
   return coreConfigCache;
 }
 
@@ -666,7 +669,15 @@ export function loadWorkerConfig(): WorkerConfig {
   const runToml = getTomlTable(toml.run, 'run');
 
   const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
-  if (!coreConfigCache) coreConfigCache = core;
+  const jobWorkRoot = resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
+    required: true,
+  }) as string;
+  if (!coreConfigCache) {
+    coreConfigCache = {
+      ...core,
+      jobWorkRoot,
+    };
+  }
 
   const botName = resolveBotName(workerToml?.bot_name);
   const primaryAgent = resolvePrimaryAgent(workerToml?.primary_agent);
@@ -767,6 +778,7 @@ export function loadWorkerConfig(): WorkerConfig {
 
   workerConfigCache = {
     ...core,
+    jobWorkRoot,
     botName,
     ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,

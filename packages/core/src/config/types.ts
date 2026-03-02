@@ -31,7 +31,7 @@ export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
 export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
-  jobWorkRoot: string;
+  jobWorkRoot?: string;
   queueDriver: QueueDriver;
   jobRegistryPath?: string;
   jobRegistryDriver: JobRegistryDriver;
@@ -67,6 +67,7 @@ export type BotConfig = CoreConfig & {
 };
 
 export type WorkerConfig = CoreConfig & {
+  jobWorkRoot: string;
   botName: string;
   redisUrl?: string;
   openAiKey?: string;
