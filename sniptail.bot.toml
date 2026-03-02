@@ -3,26 +3,17 @@
 # Comments note: default value, whether optional, and an example.
 
 [core]
-# Path to the repo allowlist JSON file.
-# Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
-# The bot reads repositories from the configured registry catalog; this file is only used if you run manual sync tooling.
-repo_allowlist_path = "$HOME/.sniptail/allowlist.json"
-
-# Path to the job working root.
-# Required. No default. Example: "$HOME/.sniptail/jobs"
-job_work_root = "$HOME/.sniptail/jobs"
-
 # Queue transport driver: "redis" or "inproc".
 # Optional. Default: "redis". Use "inproc" with `sniptail local` only.
 queue_driver = "redis"
 
-# Path to the job registry file/directory (used for sqlite).
-# Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
-job_registry_path = "$HOME/.sniptail/job-registry"
-
 # Registry backend: "sqlite", "pg", or "redis".
 # Optional. Default: "redis". Example: "redis"
 job_registry_db = "redis"
+
+# Path to the job registry file/directory (used for sqlite).
+# Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
+# job_registry_path = "$HOME/.sniptail/job-registry"
 
 # When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
 # Optional. No default. Example: "postgres://user:pass@host:5432/db"

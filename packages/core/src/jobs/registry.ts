@@ -21,6 +21,9 @@ function jobIdFromKey(key: string) {
 
 function removeJobRoot(jobId: string) {
   const { jobWorkRoot } = loadCoreConfig();
+  if (!jobWorkRoot) {
+    return Promise.resolve();
+  }
   const jobRoot = join(jobWorkRoot, jobId);
   return rm(jobRoot, { recursive: true, force: true })
     .then(() => {
