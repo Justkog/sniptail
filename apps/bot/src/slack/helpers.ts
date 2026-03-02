@@ -240,7 +240,7 @@ export async function uploadFile(
 
     const fileInput = options.filePath
       ? createReadStream(options.filePath)
-      : Readable.from(options.fileContent ?? '');
+      : Readable.from([Buffer.from(options.fileContent ?? '', 'utf8')]);
 
     const payload = {
       channel_id: options.channel,
