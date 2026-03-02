@@ -178,7 +178,7 @@ export function registerRunSubmitView({
 
     const actionMetadata = resolveRunActionMetadata(config, repoKeys, actionId);
 
-    // Parameter entry starts on pushed step modals after action selection.
+    // Parameter entry starts on an updated step modal after action selection (replacing the action selection view).
     if (runStepIndex === undefined && actionMetadata.steps.length > 0) {
       const firstStep = resolveRunStep(actionMetadata, 0);
       if (!firstStep) {
