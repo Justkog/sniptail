@@ -289,3 +289,25 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
 - Run action availability in bot UIs is sourced from catalog metadata (`providerData.sniptail.run.actionIds`) synced on worker startup or via `sniptail repos sync-run-actions`.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
+
+## Debug logging
+
+Sniptail ships namespace-based debug logging via the `SNIPTAIL_DEBUG` environment variable. Debug messages are emitted at the `debug` log level and are suppressed unless the relevant namespace is enabled.
+
+Set `SNIPTAIL_DEBUG` to a comma-separated list of namespace names, or `*` to enable all namespaces:
+
+```bash
+# Enable Slack-specific debug logs only
+SNIPTAIL_DEBUG=slack
+
+# Enable all debug namespaces
+SNIPTAIL_DEBUG=*
+```
+
+Currently supported namespaces:
+
+| Namespace | Description |
+|-----------|-------------|
+| `slack`   | Detailed Slack API call logs (request payloads, responses, runtime identity) |
+
+Add `SNIPTAIL_DEBUG=` (empty or unset) to suppress all debug output (default).
