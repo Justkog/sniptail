@@ -1,10 +1,11 @@
 import { loadBotConfig } from '@sniptail/core/config/config.js';
-import { logger } from '@sniptail/core/logger.js';
+import { debugFor, isDebugNamespaceEnabled, logger } from '@sniptail/core/logger.js';
 import { createQueueTransportRuntime } from '@sniptail/core/queue/queueTransportFactory.js';
 import type {
   QueueConsumerHandle,
   QueueTransportRuntime,
 } from '@sniptail/core/queue/queueTransportTypes.js';
+import { hostname } from 'node:os';
 import { createSlackApp } from './slack/app.js';
 import { startDiscordBot } from './discord/app.js';
 import { startBotEventWorker } from './botEventWorker.js';
@@ -34,6 +35,16 @@ export async function startBotRuntime(
       ...(config.redisUrl ? { redisUrl: config.redisUrl } : {}),
     });
   const closeQueueRuntimeOnShutdown = !options.queueRuntime;
+  debugSlack(
+    {
+      queueDriver: queueRuntime.driver,
+      pid: process.pid,
+      host: hostname(),
+      nodeEnv: process.env.NODE_ENV,
+      botName: config.botName,
+    },
+    'Starting bot runtime',
+  );
 
   const unknownChannels = config.enabledChannels.filter(
     (provider) => provider !== 'slack' && provider !== 'discord',
@@ -57,6 +68,7 @@ export async function startBotRuntime(
         queueRuntime.queues.workerEvents,
       );
       await slackApp.start();
+      await debugLogSlackRuntimeIdentity(slackApp);
       logger.info(`⚡️ ${config.botName} Slack bot is running (Socket Mode)`);
     }
 
@@ -119,3 +131,28 @@ export async function startBotRuntime(
     },
   };
 }
+
+async function debugLogSlackRuntimeIdentity(
+  slackApp: Awaited<ReturnType<typeof createSlackApp>>,
+): Promise<void> {
+  if (!isDebugNamespaceEnabled('slack')) {
+    return;
+  }
+  try {
+    const auth = await slackApp.client.auth.test();
+    debugSlack(
+      {
+        teamId: auth.team_id,
+        team: auth.team,
+        botUserId: auth.user_id,
+        botId: auth.bot_id,
+        url: auth.url,
+      },
+      'Slack runtime identity',
+    );
+  } catch (err) {
+    debugSlack({ err }, 'Failed to resolve Slack runtime identity');
+  }
+}
+
+const debugSlack = debugFor('slack');
