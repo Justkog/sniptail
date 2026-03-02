@@ -4,8 +4,8 @@ import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
-import { buildRunModal } from '../../modals.js';
 import { runSelectionByUser } from '../../state.js';
+import { buildRunStepModal } from '../../lib/runStepper.js';
 
 export async function handleRunActionSelection(
   interaction: StringSelectMenuInteraction,
@@ -44,10 +44,21 @@ export async function handleRunActionSelection(
   runSelectionByUser.set(interaction.user.id, {
     repoKeys,
     actionId,
+    runStepIndex: 0,
+    collectedParams: {},
+    gitRef: resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]),
     requestedAt: Date.now(),
   });
 
-  const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
-  const modal = buildRunModal(config.botName, repoKeys, baseBranch);
+  const modal = buildRunStepModal({
+    config,
+    selection: {
+      repoKeys,
+      actionId,
+      runStepIndex: 0,
+      collectedParams: {},
+      gitRef: resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]),
+    },
+  }).modal;
   await interaction.showModal(modal);
 }

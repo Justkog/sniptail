@@ -93,6 +93,10 @@ export function registerRunFromJobAction({
         }),
         slackIds.actions.runActionSelect,
         repoKeys,
+        {
+          includeActionSelection: false,
+          submitLabel: 'Continue',
+        },
       ),
     });
   });

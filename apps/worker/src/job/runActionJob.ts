@@ -3,7 +3,12 @@ import { writeFile } from 'node:fs/promises';
 import type { WorkerConfig } from '@sniptail/core/config/config.js';
 import { runNamedRunContractDetailed } from '@sniptail/core/git/jobOps.js';
 import { logger } from '@sniptail/core/logger.js';
-import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
+import {
+  normalizeRunActionId,
+  normalizeRunActionParams,
+  resolveRunActionMetadataForRepos,
+  type RunActionParamValue,
+} from '@sniptail/core/repos/runActions.js';
 import { CommandError, runCommand, type RunResult } from '@sniptail/core/runner/commandRunner.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
@@ -12,8 +17,8 @@ import type { WorkerChannelAdapter } from '../channels/runtimeWorkerChannelAdapt
 import type { prepareRepoWorktrees } from '../repos/worktrees.js';
 import type { JobRegistry } from './jobRegistry.js';
 
-const RUN_CHANNEL_SUMMARY_MAX_CHARS = 1200;
-const RUN_CHANNEL_PREVIEW_MAX_CHARS = 180;
+const RUN_CHANNEL_INPUTS_MAX_CHARS = 1200;
+const RUN_CHANNEL_INPUT_VALUE_MAX_CHARS = 120;
 const RUN_REPORT_STREAM_MAX_LINES = 40;
 const RUN_REPORT_STREAM_MAX_CHARS = 6000;
 const RUN_FAILURE_STREAM_MAX_LINES = 12;
@@ -61,6 +66,26 @@ type RunJobInput = {
   publishRepoChanges: RunPublishRepoChanges;
 };
 
+function toRunParamEnvKey(paramId: string): string {
+  return `SNIPTAIL_RUN_PARAM_${paramId.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`;
+}
+
+function serializeRunParamValue(value: RunActionParamValue): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function buildRunParamEnv(params: Record<string, RunActionParamValue>): Record<string, string> {
+  const entries: Array<[string, string]> = [];
+  for (const [paramId, value] of Object.entries(params)) {
+    entries.push([toRunParamEnvKey(paramId), serializeRunParamValue(value)]);
+  }
+  entries.push(['SNIPTAIL_RUN_PARAMS_JSON', JSON.stringify(params)]);
+  return Object.fromEntries(entries);
+}
+
 function formatExitCode(exitCode: number | null): string {
   return exitCode === null ? 'null' : String(exitCode);
 }
@@ -99,25 +124,40 @@ function tailOutput(
   return { text, truncated };
 }
 
-function buildRunPreview(record: RunExecutionRecord): string {
-  const preferred = record.stderr.trim() ? record.stderr : record.stdout;
-  if (!preferred.trim()) {
-    return 'no output';
+function formatRunInputValue(value: RunActionParamValue): string {
+  if (typeof value === 'string') {
+    const compact = value.replace(/\s+/g, ' ').trim();
+    const formatted = /^[a-zA-Z0-9._:/-]+$/.test(compact) ? compact : JSON.stringify(compact);
+    return truncateWithEllipsis(formatted, RUN_CHANNEL_INPUT_VALUE_MAX_CHARS);
   }
-  const stream = record.stderr.trim() ? 'stderr' : 'stdout';
-  const collapsed = preferred.replace(/\s+/g, ' ').trim();
-  return `${stream}: ${truncateWithEllipsis(collapsed, RUN_CHANNEL_PREVIEW_MAX_CHARS)}`;
+  return truncateWithEllipsis(JSON.stringify(value), RUN_CHANNEL_INPUT_VALUE_MAX_CHARS);
 }
 
-function buildRunChannelSummary(records: RunExecutionRecord[]): string {
-  if (!records.length) {
-    return 'No run command output captured.';
-  }
-  const lines = records.map((record) => {
-    const statusSuffix = record.status === 'nonzero-allowed' ? ' [allow_failure]' : '';
-    return `- ${record.repoKey}: ${record.source} exit=${formatExitCode(record.exitCode)} (${record.durationMs}ms)${statusSuffix} | ${buildRunPreview(record)}`;
+function buildRunChannelInputsSummary(
+  params: Record<string, RunActionParamValue>,
+  sensitiveParamIds: Set<string>,
+): string {
+  const entries = Object.entries(params).map(([paramId, value]) => {
+    if (sensitiveParamIds.has(paramId)) {
+      return `${paramId}=[redacted]`;
+    }
+    return `${paramId}=${formatRunInputValue(value)}`;
   });
-  return truncateWithEllipsis(lines.join('\n'), RUN_CHANNEL_SUMMARY_MAX_CHARS);
+  if (!entries.length) {
+    return 'none';
+  }
+  return truncateWithEllipsis(entries.join(', '), RUN_CHANNEL_INPUTS_MAX_CHARS);
+}
+
+function buildRunChannelExecutionRows(records: RunExecutionRecord[]): string[] {
+  if (!records.length) {
+    return ['- No run command output captured.'];
+  }
+  return records.map((record) => {
+    const statusSuffix = record.status === 'nonzero-allowed' ? ' [allow_failure]' : '';
+    const statusIcon = record.status === 'ok' ? '✅' : '⚠️';
+    return `- ${record.repoKey}: ${statusIcon} ${record.source} exit=${formatExitCode(record.exitCode)} (${record.durationMs}ms)${statusSuffix}`;
+  });
 }
 
 function buildRunReportOutputSection(records: RunExecutionRecord[]): string {
@@ -235,14 +275,38 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     throw new Error(`Run action "${actionId}" is not configured in worker config.`);
   }
 
+  const repoProviderData = job.repoKeys.map((repoKey) => {
+    const repoConfig = config.repoAllowlist[repoKey];
+    if (!repoConfig) {
+      throw new Error(`Repo ${repoKey} is not in allowlist.`);
+    }
+    return repoConfig.providerData;
+  });
+  const resolvedActionMetadata = resolveRunActionMetadataForRepos(actionId, repoProviderData);
+  const normalizedParamsResult = normalizeRunActionParams(job.run?.params, resolvedActionMetadata);
+  const sensitiveParamIds = new Set(
+    resolvedActionMetadata.parameters
+      .filter((parameter) => parameter.sensitive)
+      .map((parameter) => parameter.id),
+  );
+  const runParamEnv = buildRunParamEnv(normalizedParamsResult.normalized);
+  const runEnv = {
+    ...env,
+    ...runParamEnv,
+  };
+  const runRedactionPatterns = [
+    ...redactionPatterns,
+    ...normalizedParamsResult.sensitiveValues.filter(Boolean),
+  ];
+
   const executionRecords: RunExecutionRecord[] = [];
   for (const [repoKey, repo] of repoWorktrees.entries()) {
     const contractExecution = await runNamedRunContractDetailed(
       repo.worktreePath,
       actionId,
-      env,
+      runEnv,
       paths.logFile,
-      redactionPatterns,
+      runRedactionPatterns,
       {
         timeoutMs: actionConfig.timeoutMs,
         allowFailure: actionConfig.allowFailure,
@@ -270,10 +334,10 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     }
     const result = await runCommand(command, args, {
       cwd: repo.worktreePath,
-      env,
+      env: runEnv,
       logFilePath: paths.logFile,
       timeoutMs: actionConfig.timeoutMs,
-      redact: redactionPatterns,
+      redact: runRedactionPatterns,
       allowFailure: actionConfig.allowFailure,
     });
     executionRecords.push(
@@ -328,12 +392,18 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     title: `sniptail-${job.jobId}-report.md`,
   });
 
-  const outputSummary = buildRunChannelSummary(executionRecords);
+  const inputsSummary = buildRunChannelInputsSummary(
+    normalizedParamsResult.normalized,
+    sensitiveParamIds,
+  );
+  const executionSummaryRows = buildRunChannelExecutionRows(executionRecords);
   const completionLines = [
-    `All set! I finished run job ${job.jobId} (action: ${actionId}).`,
+    `All set! Run job ${job.jobId} completed.`,
+    `Action: ${actionId}`,
+    `Inputs: ${inputsSummary}`,
     '',
-    'Run output preview:',
-    outputSummary,
+    'Execution:',
+    ...executionSummaryRows,
   ];
   if (actionConfig.gitMode === 'implement') {
     completionLines.push('', 'Git output:', mrText);

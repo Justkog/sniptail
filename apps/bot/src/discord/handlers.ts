@@ -34,6 +34,10 @@ import {
   isBootstrapContinueCustomId,
   isBootstrapExtrasCustomId,
 } from './features/actions/bootstrapExtras.js';
+import {
+  handleRunParamsContinue,
+  isRunParamsContinueCustomId,
+} from './features/actions/runParamsContinue.js';
 import { handleAskModalSubmit } from './features/views/askSubmit.js';
 import { handleDiscordExploreModalSubmit } from './features/views/discordExploreSubmitView.js';
 import { handleAnswerQuestionsSubmit } from './features/views/answerQuestionsSubmit.js';
@@ -345,8 +349,14 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           result.status === 'denied' ||
           result.status === 'cancelled'
         ) {
+          const resolutionText = permissions.buildApprovalResolutionMessage({
+            provider: 'discord',
+            request: result.request,
+            status: result.status,
+            message: result.message,
+          });
           await interaction.update({
-            content: result.message,
+            content: resolutionText,
             components: [],
           });
           return;
@@ -561,6 +571,16 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           await handleBootstrapExtrasContinue(interaction, config);
         } catch (err) {
           logger.error({ err }, 'Discord bootstrap continue failed');
+          await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+        }
+        return;
+      }
+
+      if (isRunParamsContinueCustomId(interaction.customId)) {
+        try {
+          await handleRunParamsContinue(interaction, config);
+        } catch (err) {
+          logger.error({ err }, 'Discord run params continue failed');
           await replyToInteractionError(interaction, 'Something went wrong handling that request.');
         }
         return;

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[deploy-preview] starting"
+echo "target_env=${SNIPTAIL_RUN_PARAM_TARGET_ENV:-}"
+echo "dry_run=${SNIPTAIL_RUN_PARAM_DRY_RUN:-}"
+echo "rollout_percent=${SNIPTAIL_RUN_PARAM_ROLLOUT_PERCENT:-}"
+echo "services=${SNIPTAIL_RUN_PARAM_SERVICES:-}"  # JSON string for string[] values
+echo "notes=${SNIPTAIL_RUN_PARAM_NOTES:-}"
+
+# Full payload for debugging
+echo "params_json=${SNIPTAIL_RUN_PARAMS_JSON:-{}}"
+
+if [[ "${SNIPTAIL_RUN_PARAM_DRY_RUN:-false}" == "true" ]]; then
+  echo "[deploy-preview] dry-run enabled, no changes applied"
+else
+  echo "[deploy-preview] simulated deploy complete"
+fi

@@ -9,6 +9,7 @@ export type WorkerEventBase = {
 export type WorkerCodexUsagePayload = {
   provider: ChannelProvider;
   channelId: string;
+  workspaceId?: string;
   userId?: string;
   threadId?: string;
   interactionToken?: string;

@@ -4,6 +4,7 @@ import { applyRequiredEnv } from '../../tests/helpers/env.js';
 import { resetConfigCaches } from '../config/env.js';
 import {
   approveIfPending,
+  assignApprovalContextIfPending,
   cancelIfPending,
   createApprovalRequest,
   denyIfPending,
@@ -216,5 +217,124 @@ describe('permissionsApprovalStore', () => {
 
     const loaded = await loadApprovalRequest(request.id);
     expect(loaded?.status).toBe('approved');
+  });
+
+  it('reassigns approval context only while pending', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.ask',
+        provider: 'slack',
+        context: {
+          provider: 'slack',
+          channelId: 'C4',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'group', provider: 'slack', groupId: 'S1' }],
+        notifySubjects: [{ kind: 'group', provider: 'slack', groupId: 'S1' }],
+        operation: {
+          kind: 'enqueueJob',
+          job: {
+            jobId: 'ask-1',
+            type: 'ASK',
+            repoKeys: ['repo-1'],
+            gitRef: 'main',
+            requestText: 'Need approval',
+            channel: {
+              provider: 'slack',
+              channelId: 'C4',
+              userId: 'U_REQ',
+            },
+          },
+        },
+        summary: 'Queue ask job ask-1',
+      },
+      ttlSeconds: 60,
+    });
+
+    const reassigned = await assignApprovalContextIfPending(request.id, {
+      channelId: 'thread-123',
+      threadId: 'thread-123',
+    });
+    expect(reassigned.changed).toBe(true);
+    expect(reassigned.reason).toBe('updated');
+    expect(reassigned.request?.context.channelId).toBe('thread-123');
+    expect(reassigned.request?.context.threadId).toBe('thread-123');
+    expect(reassigned.request?.operation.kind).toBe('enqueueJob');
+    if (reassigned.request?.operation.kind === 'enqueueJob') {
+      expect(reassigned.request.operation.job.channel.channelId).toBe('thread-123');
+      expect(reassigned.request.operation.job.channel.threadId).toBe('thread-123');
+    }
+
+    const unchanged = await assignApprovalContextIfPending(request.id, {
+      channelId: 'thread-123',
+      threadId: 'thread-123',
+    });
+    expect(unchanged.changed).toBe(false);
+    expect(unchanged.reason).toBe('unchanged');
+
+    await approveIfPending(request.id, 'U_APPROVER');
+    const afterApproval = await assignApprovalContextIfPending(request.id, {
+      channelId: 'thread-456',
+      threadId: 'thread-456',
+    });
+    expect(afterApproval.changed).toBe(false);
+    expect(afterApproval.reason).toBe('not_pending');
+  });
+
+  it('can reassign approval resolution context without changing deferred operation routing', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.mention',
+        provider: 'discord',
+        context: {
+          provider: 'discord',
+          channelId: 'D1',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'group', provider: 'discord', groupId: 'R1' }],
+        notifySubjects: [{ kind: 'group', provider: 'discord', groupId: 'R1' }],
+        operation: {
+          kind: 'enqueueJob',
+          job: {
+            jobId: 'mention-1',
+            type: 'MENTION',
+            repoKeys: ['repo-1'],
+            gitRef: 'main',
+            requestText: 'Need approval',
+            channel: {
+              provider: 'discord',
+              channelId: 'D1',
+              userId: 'U_REQ',
+            },
+          },
+        },
+        summary: 'Queue mention job mention-1',
+      },
+      ttlSeconds: 60,
+    });
+
+    const reassigned = await assignApprovalContextIfPending(
+      request.id,
+      {
+        channelId: 'thread-123',
+        threadId: 'thread-123',
+      },
+      {
+        updateOperationRouting: false,
+      },
+    );
+    expect(reassigned.changed).toBe(true);
+    expect(reassigned.reason).toBe('updated');
+    expect(reassigned.request?.context.channelId).toBe('thread-123');
+    expect(reassigned.request?.context.threadId).toBe('thread-123');
+    expect(reassigned.request?.operation.kind).toBe('enqueueJob');
+    if (reassigned.request?.operation.kind === 'enqueueJob') {
+      expect(reassigned.request.operation.job.channel.channelId).toBe('D1');
+      expect(reassigned.request.operation.job.channel.threadId).toBeUndefined();
+    }
   });
 });

@@ -1,0 +1,54 @@
+schema_version = 1
+
+[[parameters]]
+id = "target_env"
+label = "Target environment"
+type = "string"
+ui_mode = "select"
+required = true
+options = ["staging", "preprod", "prod"]
+description = "Where to run the deploy simulation"
+
+[[parameters]]
+id = "dry_run"
+label = "Dry run"
+type = "boolean"
+ui_mode = "boolean"
+required = false
+default = true
+
+[[parameters]]
+id = "rollout_percent"
+label = "Rollout percent"
+type = "number"
+ui_mode = "number"
+required = false
+min = 1
+max = 100
+default = 10
+
+[[parameters]]
+id = "services"
+label = "Services"
+type = "string[]"
+ui_mode = "multiselect"
+required = false
+options = ["api", "web", "worker"]
+default = ["api"]
+
+[[parameters]]
+id = "notes"
+label = "Release notes"
+type = "string"
+ui_mode = "textarea"
+required = false
+
+[[steps]]
+id = "basic"
+title = "Basics"
+fields = ["target_env", "dry_run"]
+
+[[steps]]
+id = "advanced"
+title = "Advanced"
+fields = ["rollout_percent", "services", "notes"]

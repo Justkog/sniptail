@@ -294,6 +294,208 @@ describe('git mirror ensureClone', () => {
       ['branch', 'feature', 'refs/remotes/origin/feature'],
       expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
     );
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['checkout', '-f', 'feature'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+  });
+
+  it('checks out requested branch after forcing local branch update', async () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/require-await
+    vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ');
+      if (joined === 'fetch --prune origin main:refs/remotes/origin/main') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/remotes/origin/main') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/remotes/origin/main\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'rev-parse --abbrev-ref HEAD') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'staging\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/heads/main') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/heads/main\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      return {
+        cmd: 'git',
+        args,
+        durationMs: 1,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+        cwd: '/tmp/cache/repo.git',
+      };
+    });
+
+    await ensureClone(
+      'repo',
+      { sshUrl: 'git@github.com:org/repo.git' },
+      '/tmp/cache/repo.git',
+      '/tmp/log.txt',
+      {},
+      'main',
+    );
+
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['checkout', '-f', 'main'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+  });
+
+  it('checks out requested branch in resume-safe mode without force-updating local ref', async () => {
+    vi.mocked(existsSync).mockReturnValue(true);
+    // eslint-disable-next-line @typescript-eslint/require-await
+    vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
+      const joined = args.join(' ');
+      if (
+        joined ===
+        'fetch --prune origin runCommandParameters:refs/remotes/origin/runCommandParameters'
+      ) {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/remotes/origin/runCommandParameters') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/remotes/origin/runCommandParameters\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'rev-parse --abbrev-ref HEAD') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'staging\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      if (joined === 'show-ref --verify refs/heads/runCommandParameters') {
+        return {
+          cmd: 'git',
+          args,
+          durationMs: 1,
+          exitCode: 0,
+          signal: null,
+          stdout: 'hash refs/heads/runCommandParameters\n',
+          stderr: '',
+          timedOut: false,
+          aborted: false,
+          cwd: '/tmp/cache/repo.git',
+        };
+      }
+      return {
+        cmd: 'git',
+        args,
+        durationMs: 1,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+        cwd: '/tmp/cache/repo.git',
+      };
+    });
+
+    await ensureClone(
+      'repo',
+      { sshUrl: 'git@github.com:org/repo.git' },
+      '/tmp/cache/repo.git',
+      '/tmp/log.txt',
+      {},
+      'runCommandParameters',
+      [],
+      { forceLocalBranchUpdate: false },
+    );
+
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalledWith(
+      'git',
+      ['branch', '--force', 'runCommandParameters', 'refs/remotes/origin/runCommandParameters'],
+      expect.anything(),
+    );
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+      'git',
+      ['checkout', '-f', 'runCommandParameters'],
+      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+    );
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalledWith(
+      'git',
+      ['reset', '--hard', 'refs/remotes/origin/runCommandParameters'],
+      expect.anything(),
+    );
   });
 
   it('retries once when fetch fails with non-fast-forward for the same remote ref', async () => {

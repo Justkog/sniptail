@@ -21,7 +21,7 @@ import {
   KNOWN_CHANNEL_PROVIDERS,
   type ChannelProvider,
 } from '../types/channel.js';
-import { isPermissionAction } from '../permissions/permissionsActionCatalog.js';
+import { PERMISSION_ACTIONS, isPermissionAction } from '../permissions/permissionsActionCatalog.js';
 import type {
   PermissionEffect,
   PermissionRule,
@@ -368,6 +368,8 @@ function parsePermissionEffect(value: unknown, label: string): PermissionEffect 
   return raw;
 }
 
+const approvalResolutionActions = new Set(['approval.grant', 'approval.deny', 'approval.cancel']);
+
 function parsePermissionsConfig(permissionsToml: TomlTable | undefined): PermissionsConfig {
   if (!permissionsToml) {
     return {
@@ -443,19 +445,27 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
       throw new Error(`Invalid ${ruleLabel}.id in TOML. Expected a non-empty string.`);
     }
     const effect = parsePermissionEffect(ruleToml.effect, `${ruleLabel}.effect`);
-    const rawActions = getTomlStringArray(ruleToml.actions, `${ruleLabel}.actions`) ?? [];
-    if (!rawActions.length) {
-      throw new Error(`Invalid ${ruleLabel}.actions in TOML. Expected at least one action.`);
+    const rawActions = getTomlStringArray(ruleToml.actions, `${ruleLabel}.actions`);
+    let actions: PermissionRule['actions'];
+    if (rawActions && rawActions.length > 0) {
+      actions = rawActions.map((action) => {
+        const normalized = action.trim();
+        if (!isPermissionAction(normalized)) {
+          throw new Error(
+            `Invalid ${ruleLabel}.actions entry "${action}" in TOML. Unknown permission action.`,
+          );
+        }
+        return normalized;
+      });
+    } else if (rawActions !== undefined) {
+      throw new Error(
+        `Invalid ${ruleLabel}.actions in TOML. Expected at least one action when provided.`,
+      );
+    } else if (effect === 'require_approval') {
+      actions = PERMISSION_ACTIONS.filter((action) => !approvalResolutionActions.has(action));
+    } else {
+      actions = [...PERMISSION_ACTIONS];
     }
-    const actions = rawActions.map((action) => {
-      const normalized = action.trim();
-      if (!isPermissionAction(normalized)) {
-        throw new Error(
-          `Invalid ${ruleLabel}.actions entry "${action}" in TOML. Unknown permission action.`,
-        );
-      }
-      return normalized;
-    });
 
     if (
       effect === 'require_approval' &&

@@ -1,9 +1,12 @@
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueBootstrap, enqueueJob, enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import {
   approveIfPending,
+  assignApprovalContextIfPending,
+  assignThreadIdIfPending,
   cancelIfPending,
   createApprovalRequest,
   denyIfPending,
@@ -311,6 +314,7 @@ export class PermissionsRuntimeService {
   async executeDeferredOperation(operation: DeferredPermissionOperation): Promise<void> {
     switch (operation.kind) {
       case 'enqueueJob':
+        await saveJobQueued(operation.job);
         await enqueueJob(this.#queue, operation.job);
         return;
       case 'enqueueBootstrap':
@@ -353,6 +357,68 @@ export class PermissionsRuntimeService {
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  buildApprovalResolutionMessage(input: {
+    provider: ChannelProvider;
+    request: ApprovalRequest;
+    status: 'approved' | 'denied' | 'cancelled';
+    message: string;
+  }): string {
+    const requesterMention = this.#renderSubjectMention(input.provider, {
+      kind: 'user',
+      userId: input.request.requestedBy.userId,
+    });
+    const resolverUserId = input.request.resolvedBy?.userId;
+    const resolverMention = resolverUserId
+      ? this.#renderSubjectMention(input.provider, {
+          kind: 'user',
+          userId: resolverUserId,
+        })
+      : undefined;
+    const resolverLabel =
+      input.status === 'approved'
+        ? 'Approved by'
+        : input.status === 'denied'
+          ? 'Denied by'
+          : 'Cancelled by';
+
+    return [
+      input.message,
+      `Job type: ${input.request.action}`,
+      `Requester: ${requesterMention ?? input.request.requestedBy.userId}`,
+      `Summary: ${input.request.summary}`,
+      `${resolverLabel}: ${resolverMention ?? resolverUserId ?? 'unknown'}`,
+    ].join('\n');
+  }
+
+  async assignApprovalThreadIfPending(input: {
+    approvalId: string;
+    threadId: string;
+  }): Promise<boolean> {
+    const reassigned = await assignThreadIdIfPending(input.approvalId, input.threadId);
+    return reassigned.reason === 'updated' || reassigned.reason === 'unchanged';
+  }
+
+  async assignApprovalContextIfPending(input: {
+    approvalId: string;
+    channelId?: string;
+    threadId?: string;
+    updateOperationRouting?: boolean;
+  }): Promise<boolean> {
+    const reassigned = await assignApprovalContextIfPending(
+      input.approvalId,
+      {
+        ...(input.channelId ? { channelId: input.channelId } : {}),
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+      },
+      {
+        ...(typeof input.updateOperationRouting === 'boolean'
+          ? { updateOperationRouting: input.updateOperationRouting }
+          : {}),
+      },
+    );
+    return reassigned.reason === 'updated' || reassigned.reason === 'unchanged';
   }
 
   #renderSubjectMention(provider: ChannelProvider, subject: PermissionSubject): string | undefined {
