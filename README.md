@@ -19,7 +19,6 @@ This quickstart assumes:
 - bot and worker run on the same machine
 - one shared `.env` file is used for both
 - Codex CLI is installed, configured, and authenticated on your machine (`codex` works in your shell)
-- if you plan to use Copilot in local mode, Copilot CLI is installed, configured, and authenticated (`copilot` works in your shell)
 - you want to test with this repository: `git@github.com:Justkog/sniptail.git`
 
 Sniptail local Codex and Copilot runs always execute system `codex` / `copilot` binaries from `PATH` (no bundled fallback).
@@ -34,14 +33,6 @@ cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
 Edit `~/.sniptail/current/.env` and set at least:
 
 - `DISCORD_BOT_TOKEN`
-- `GITHUB_API_TOKEN` (recommended for GitHub PR creation)
-
-For single-machine quickstart mode, set:
-
-```bash
-QUEUE_DRIVER=inproc
-JOB_REGISTRY_DB=sqlite
-```
 
 Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
 
