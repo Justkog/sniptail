@@ -6,7 +6,8 @@ type RunActionSelectMetadata = {
 };
 
 function parseRunActionSelectMetadata(payload: unknown): RunActionSelectMetadata | undefined {
-  const privateMetadata = (payload as { view?: { private_metadata?: string } }).view?.private_metadata;
+  const privateMetadata = (payload as { view?: { private_metadata?: string } }).view
+    ?.private_metadata;
   if (!privateMetadata?.trim()) {
     return undefined;
   }

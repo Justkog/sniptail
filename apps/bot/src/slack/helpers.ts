@@ -36,7 +36,9 @@ function getSlackErrorDetails(err: unknown): {
     ...(typeof error.code === 'string' ? { slackErrorCode: error.code } : {}),
     ...(typeof error.data?.error === 'string' ? { slackError: error.data.error } : {}),
     ...(typeof error.data?.needed === 'string' ? { slackNeededScope: error.data.needed } : {}),
-    ...(typeof error.data?.provided === 'string' ? { slackProvidedScope: error.data.provided } : {}),
+    ...(typeof error.data?.provided === 'string'
+      ? { slackProvidedScope: error.data.provided }
+      : {}),
     ...(Array.isArray(acceptedScopes) ? { slackAcceptedScopes: acceptedScopes } : {}),
     ...(Array.isArray(error.data?.response_metadata?.scopes)
       ? { slackTokenScopes: error.data.response_metadata.scopes }

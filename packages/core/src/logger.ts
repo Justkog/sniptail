@@ -1,8 +1,4 @@
-import pino, {
-  type Logger,
-  type LoggerOptions,
-  type TransportSingleOptions,
-} from 'pino';
+import pino, { type Logger, type LoggerOptions, type TransportSingleOptions } from 'pino';
 
 const options: LoggerOptions = {
   redact: {
