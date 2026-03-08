@@ -100,6 +100,15 @@ execution_mode = "local"
 # Optional. Default: 2. Example: 3
 idle_retries = 2
 
+# Default model for Copilot jobs when no per-command override is configured.
+# Optional. No default. Example: "gpt-5"
+# model = "gpt-5"
+
+# Default reasoning effort for Copilot jobs when model is set.
+# Optional. No default. Example: "medium"
+# Allowed: minimal | low | medium | high | xhigh
+# model_reasoning_effort = "medium"
+
 # Dockerfile path for Copilot execution (if execution_mode = "docker").
 # Optional. Default: "../../Dockerfile.copilot". Example: "../../Dockerfile.copilot"
 # dockerfile_path = "../../Dockerfile.copilot"
@@ -114,6 +123,7 @@ idle_retries = 2
 
 [copilot.models]
 # Optional per-command model overrides.
+# Precedence: copilot.models.<JOB_TYPE> overrides [copilot].model defaults.
 # Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
@@ -125,6 +135,9 @@ idle_retries = 2
 #
 # [copilot.models.IMPLEMENT]
 # model = "gpt-5"
+#
+# Note: RUN jobs execute run contracts/fallback commands; model settings do not
+# affect that command execution path.
 
 [codex]
 # Execution mode for OpenAI Codex agent.

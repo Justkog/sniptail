@@ -46,7 +46,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
     },
     isDockerMode: (config: WorkerConfig) => config.copilot.executionMode === 'docker',
     resolveModelConfig: (config: WorkerConfig, jobType: JobType) =>
-      config.copilot.models?.[jobType],
+      config.copilot.models?.[jobType] ?? config.copilot.defaultModel,
     shouldIncludeRepoCache: (config: WorkerConfig, jobType: JobType) =>
       jobType !== 'MENTION' && config.copilot.executionMode === 'docker',
     buildRunOptions: (config: WorkerConfig) => ({

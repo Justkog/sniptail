@@ -724,6 +724,7 @@ export function loadWorkerConfig(): WorkerConfig {
     'GH_COPILOT_DOCKER_BUILD_CONTEXT',
     copilotToml?.docker_build_context,
   );
+  const copilotDefaultModel = parseDefaultModelConfig(copilotToml, 'copilot');
   const copilotModels = parseModelMap(
     getTomlTable(copilotToml?.models, 'copilot.models'),
     'copilot.models',
@@ -820,6 +821,7 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
       ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
+      ...(copilotDefaultModel && { defaultModel: copilotDefaultModel }),
       ...(copilotModels && { models: copilotModels }),
     },
     ...(openAiKey && { openAiKey }),
