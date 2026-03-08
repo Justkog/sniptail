@@ -71,9 +71,34 @@ jobs:
 
             if (existingTag) {
               core.info(`Using existing release tag ${existingTag} for ${headSha}.`);
+
+              // Check if a release already exists for this tag and has assets.
+              let release = null;
+              try {
+                const response = await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag: existingTag,
+                });
+                release = response.data;
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                // If the release is not found (404), treat it as no existing release.
+              }
+
+              const hasAssets =
+                release && Array.isArray(release.assets) && release.assets.length > 0;
+
               core.setOutput('release_tag', existingTag);
-              core.setOutput('should_release', 'true');
-              core.setOutput('release_reason', 'Reusing existing tag on the current main commit.');
+              core.setOutput('should_release', hasAssets ? 'false' : 'true');
+              core.setOutput(
+                'release_reason',
+                hasAssets
+                  ? 'Existing tag and release assets found for the current main commit; skipping rebuild.'
+                  : 'Reusing existing tag on the current main commit.'
+              );
               core.setOutput('previous_tag', previousTag);
               return;
             }
