@@ -126,11 +126,6 @@ export async function ensureClone(
           cwd: clonePath,
         });
       }
-    } else if (checkoutRef && currentBranch === gitRef) {
-      await runCommand('git', ['reset', '--hard', remoteRef], {
-        ...common,
-        cwd: clonePath,
-      });
     }
     return;
   }
