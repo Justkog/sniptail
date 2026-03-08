@@ -14,7 +14,15 @@ export async function handleRepoAddAdmin(
   workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
-  const repoKey = interaction.options.getString('repo_key', true);
+  const rawRepoKey = interaction.options.getString('repo_key', true);
+  const repoKey = rawRepoKey.trim();
+  if (!repoKey) {
+    await interaction.reply({
+      content: 'Repository key cannot be empty or only whitespace.',
+      ephemeral: true,
+    });
+    return;
+  }
   const repoProvider = interaction.options.getString('provider', true);
   const sshUrl = interaction.options.getString('ssh_url') ?? undefined;
   const localPath = interaction.options.getString('local_path') ?? undefined;
