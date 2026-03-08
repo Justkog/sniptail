@@ -131,6 +131,15 @@ idle_retries = 2
 # Optional. Default: "local". Example: "docker"
 execution_mode = "local"
 
+# Default model for Codex jobs when no per-command override is configured.
+# Optional. No default. Example: "gpt-5"
+# model = "gpt-5"
+
+# Default reasoning effort for Codex jobs when model is set.
+# Optional. No default. Example: "medium"
+# Allowed: minimal | low | medium | high | xhigh
+# model_reasoning_effort = "medium"
+
 # Dockerfile path for Codex execution (if execution_mode = "docker").
 # Optional. Default: "../../Dockerfile.codex". Example: "../../Dockerfile.codex"
 # dockerfile_path = "../../Dockerfile.codex"
@@ -145,6 +154,7 @@ execution_mode = "local"
 
 [codex.models]
 # Optional per-command model overrides.
+# Precedence: codex.models.<JOB_TYPE> overrides [codex].model defaults.
 # Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.
 # Each entry is a table with:
 # - model (required): model identifier
@@ -156,6 +166,9 @@ execution_mode = "local"
 #
 # [codex.models.IMPLEMENT]
 # model = "gpt-5"
+#
+# Note: RUN jobs execute run contracts/fallback commands; model settings do not
+# affect that command execution path.
 
 [run.actions]
 # Optional run action execution map.

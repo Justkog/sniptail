@@ -18,7 +18,8 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
       ) => { text: string; isError: boolean } | null,
     },
     isDockerMode: (config: WorkerConfig) => config.codex.executionMode === 'docker',
-    resolveModelConfig: (config: WorkerConfig, jobType: JobType) => config.codex.models?.[jobType],
+    resolveModelConfig: (config: WorkerConfig, jobType: JobType) =>
+      config.codex.models?.[jobType] ?? config.codex.defaultModel,
     shouldIncludeRepoCache: (_config: WorkerConfig, jobType: JobType) => jobType !== 'MENTION',
     buildRunOptions: (config: WorkerConfig) =>
       config.codex.executionMode === 'docker'
