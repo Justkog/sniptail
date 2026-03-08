@@ -1,3 +1,4 @@
+import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import { WORKER_EVENT_SCHEMA_VERSION, type WorkerEvent } from '@sniptail/core/types/worker-event.js';
@@ -31,7 +32,8 @@ export function registerRepoAddModalSubmit({
           threadId?: string;
         })
       : undefined;
-    const repoKey = state.repo_key?.repo_key?.value?.trim() ?? '';
+    const repoKeyInput = state.repo_key?.repo_key?.value?.trim() ?? '';
+    const repoKey = sanitizeRepoKey(repoKeyInput);
     const repoProvider = state.provider?.provider?.selected_option?.value?.trim() ?? '';
     const sshUrl = state.ssh_url?.ssh_url?.value?.trim() ?? '';
     const localPath = state.local_path?.local_path?.value?.trim() ?? '';
@@ -41,7 +43,7 @@ export function registerRepoAddModalSubmit({
 
     const errors: Record<string, string> = {};
     if (!repoKey) {
-      errors.repo_key = 'Repository key is required.';
+      errors.repo_key = 'Repository key is required and must include letters or numbers.';
     }
     if (!repoProvider) {
       errors.provider = 'Repository provider is required.';
