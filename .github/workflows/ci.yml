@@ -30,17 +30,10 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const releaseLabels = new Set([
-              'release:none',
-              'release:patch',
-              'release:minor',
-              'release:major',
-            ]);
-
             const pr = context.payload.pull_request;
             const matchedLabels = (pr.labels ?? [])
               .map((label) => label?.name)
-              .filter((label) => releaseLabels.has(label));
+              .filter((label) => typeof label === 'string' && label.startsWith('release:'));
 
             if (matchedLabels.length !== 1) {
               core.setFailed(
