@@ -1,4 +1,6 @@
 export const PERMISSION_ACTIONS = [
+  'repos.add',
+  'repos.remove',
   'jobs.ask',
   'jobs.explore',
   'jobs.plan',

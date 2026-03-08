@@ -3,6 +3,8 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 
 export function buildCommandNames(prefix: string) {
   return {
+    repoAdd: `${prefix}-repo-add`,
+    repoRemove: `${prefix}-repo-remove`,
     ask: `${prefix}-ask`,
     explore: `${prefix}-explore`,
     plan: `${prefix}-plan`,
@@ -30,6 +32,67 @@ export async function registerDiscordCommands(
 
   const commands = [
     ...slashCommands.map((command) => command.toJSON()),
+    {
+      name: names.repoAdd,
+      description: 'Add an existing repository to the active catalog',
+      type: 1,
+      options: [
+        {
+          name: 'repo_key',
+          description: 'Catalog key to register',
+          type: 3,
+          required: true,
+        },
+        {
+          name: 'provider',
+          description: 'Repository provider',
+          type: 3,
+          required: true,
+          choices: [
+            { name: 'GitHub', value: 'github' },
+            { name: 'GitLab', value: 'gitlab' },
+            { name: 'Local', value: 'local' },
+          ],
+        },
+        {
+          name: 'ssh_url',
+          description: 'SSH URL for GitHub or GitLab repositories',
+          type: 3,
+          required: false,
+        },
+        {
+          name: 'local_path',
+          description: 'Local path for local repositories',
+          type: 3,
+          required: false,
+        },
+        {
+          name: 'project_id',
+          description: 'GitLab project ID',
+          type: 4,
+          required: false,
+        },
+        {
+          name: 'base_branch',
+          description: 'Default base branch',
+          type: 3,
+          required: false,
+        },
+      ],
+    },
+    {
+      name: names.repoRemove,
+      description: 'Remove an existing repository from the active catalog',
+      type: 1,
+      options: [
+        {
+          name: 'repo_key',
+          description: 'Catalog key to deactivate',
+          type: 3,
+          required: true,
+        },
+      ],
+    },
     {
       name: names.ask,
       description: 'Ask a question about one or more repositories',
