@@ -34,7 +34,6 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         with:
           script: |
-            const core = require('@actions/core');
             const { execFileSync } = require('node:child_process');
 
             const owner = context.repo.owner;
