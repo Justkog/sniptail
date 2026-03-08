@@ -68,7 +68,7 @@ export async function registerDiscordCommands(
         },
         {
           name: 'project_id',
-          description: 'GitLab project ID',
+          description: 'GitLab project ID (required when provider is gitlab)',
           type: 4,
           required: false,
         },
