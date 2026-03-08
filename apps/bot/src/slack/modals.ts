@@ -670,10 +670,8 @@ export function buildRepoAddAdminModal(
   localRepoRoot?: string,
 ) {
   const localRepoRootHint = localRepoRoot?.trim() || '';
-  const localPathLabel = localRepoRootHint
-    ? `Local directory path (relative to ${localRepoRootHint})`
-    : 'Local directory path';
-  const localPathPlaceholder = localRepoRootHint ? 'team/my-repo' : '/srv/repos/my-repo';
+  const localPathLabel = 'Local directory path on worker';
+  const localPathPlaceholder = localRepoRootHint || '/srv/repos/my-repo';
   return {
     type: 'modal' as const,
     callback_id: callbackId,
