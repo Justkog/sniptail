@@ -6,6 +6,7 @@ import type { RepoConfig } from '../types/job.js';
 
 export type EnsureCloneOptions = {
   forceLocalBranchUpdate?: boolean;
+  checkoutRef?: boolean;
 };
 
 export async function ensureClone(
@@ -19,6 +20,7 @@ export async function ensureClone(
   options: EnsureCloneOptions = {},
 ): Promise<void> {
   const forceLocalBranchUpdate = options.forceLocalBranchUpdate ?? true;
+  const checkoutRef = options.checkoutRef ?? true;
   await mkdir(dirname(clonePath), { recursive: true });
 
   const common = {
@@ -112,8 +114,8 @@ export async function ensureClone(
       });
     }
 
-    // Keep the mirror working tree aligned to the requested ref.
-    if (currentBranch !== gitRef) {
+    // Keep the mirror working tree aligned to the requested ref when requested.
+    if (checkoutRef && currentBranch !== gitRef) {
       await runCommand('git', ['checkout', '-f', gitRef], {
         ...common,
         cwd: clonePath,
@@ -124,6 +126,11 @@ export async function ensureClone(
           cwd: clonePath,
         });
       }
+    } else if (checkoutRef && currentBranch === gitRef) {
+      await runCommand('git', ['reset', '--hard', remoteRef], {
+        ...common,
+        cwd: clonePath,
+      });
     }
     return;
   }

@@ -392,7 +392,7 @@ describe('git mirror ensureClone', () => {
     );
   });
 
-  it('checks out requested branch in resume-safe mode without force-updating local ref', async () => {
+  it('does not check out requested branch in resume-safe mode', async () => {
     vi.mocked(existsSync).mockReturnValue(true);
     // eslint-disable-next-line @typescript-eslint/require-await
     vi.mocked(runCommand).mockImplementation(async (_cmd, args) => {
@@ -478,7 +478,7 @@ describe('git mirror ensureClone', () => {
       {},
       'runCommandParameters',
       [],
-      { forceLocalBranchUpdate: false },
+      { forceLocalBranchUpdate: false, checkoutRef: false },
     );
 
     expect(vi.mocked(runCommand)).not.toHaveBeenCalledWith(
@@ -486,10 +486,10 @@ describe('git mirror ensureClone', () => {
       ['branch', '--force', 'runCommandParameters', 'refs/remotes/origin/runCommandParameters'],
       expect.anything(),
     );
-    expect(vi.mocked(runCommand)).toHaveBeenCalledWith(
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalledWith(
       'git',
       ['checkout', '-f', 'runCommandParameters'],
-      expect.objectContaining({ cwd: '/tmp/cache/repo.git' }),
+      expect.anything(),
     );
     expect(vi.mocked(runCommand)).not.toHaveBeenCalledWith(
       'git',
