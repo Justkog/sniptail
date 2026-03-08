@@ -126,9 +126,12 @@ jobs:
             const releasePrs = [...prs.values()].filter((pr) => pr.baseRef && pr.baseRef !== 'main');
 
             if (releasePrs.length === 0) {
-              core.setFailed(
-                `Could not resolve any merged non-main pull requests in ${commitRange}. This workflow expects a staging promotion into main.`
-              );
+              const reason = `Could not resolve any merged non-main pull requests in ${commitRange}. This likely indicates a direct commit to main or a PR merged directly into main; skipping release creation.`;
+              core.info(reason);
+              core.setOutput('release_tag', '');
+              core.setOutput('should_release', 'false');
+              core.setOutput('release_reason', reason);
+              core.setOutput('previous_tag', previousTag);
               return;
             }
 
