@@ -147,10 +147,10 @@ jobs:
               }
             }
 
-            const releasePrs = [...prs.values()].filter((pr) => pr.baseRef && pr.baseRef !== 'main');
+            const releasePrs = [...prs.values()].filter((pr) => pr.baseRef === 'staging');
 
             if (releasePrs.length === 0) {
-              const reason = `Could not resolve any merged non-main pull requests in ${commitRange}. This likely indicates a direct commit to main or a PR merged directly into main; skipping release creation.`;
+              const reason = `Could not resolve any merged pull requests into staging in ${commitRange}. This likely indicates a direct commit to main or a main merge that did not include staging-targeted PR commits; skipping release creation.`;
               core.info(reason);
               core.setOutput('release_tag', '');
               core.setOutput('should_release', 'false');
