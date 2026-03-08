@@ -731,11 +731,17 @@ export function buildRepoAddAdminModal(
         type: 'input' as const,
         block_id: 'project_id',
         optional: true,
-        label: { type: 'plain_text' as const, text: 'GitLab project ID (optional)' },
+        label: {
+          type: 'plain_text' as const,
+          text: 'GitLab project ID (required for GitLab repositories)',
+        },
         element: {
           type: 'plain_text_input' as const,
           action_id: 'project_id',
-          placeholder: { type: 'plain_text' as const, text: '12345' },
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Required when provider is GitLab, e.g., 12345',
+          },
         },
       },
       {
