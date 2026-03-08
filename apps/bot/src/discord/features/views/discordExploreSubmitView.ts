@@ -104,9 +104,11 @@ export async function handleDiscordExploreModalSubmit(
   }
 
   await enqueueJob(queue, job);
-  await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   exploreSelectionByUser.delete(interaction.user.id);
-  await interaction.editReply(
-    `Thanks! I've accepted job ${job.jobId}. I've posted a thread in this channel for updates.`,
-  );
+  if (acceptance.acceptancePosted) {
+    await interaction.deleteReply();
+    return;
+  }
+  await interaction.editReply(`Thanks! I've accepted job ${job.jobId}.`);
 }

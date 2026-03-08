@@ -169,9 +169,11 @@ export async function handleRunModalSubmit(
   }
 
   await enqueueJob(queue, job);
-  await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   runSelectionByUser.delete(interaction.user.id);
-  await interaction.editReply(
-    `Thanks! I've accepted run job ${job.jobId} (action: ${actionId}). I've posted a thread in this channel for updates.`,
-  );
+  if (acceptance.acceptancePosted) {
+    await interaction.deleteReply();
+    return;
+  }
+  await interaction.editReply(`Thanks! I've accepted run job ${job.jobId} (action: ${actionId}).`);
 }
