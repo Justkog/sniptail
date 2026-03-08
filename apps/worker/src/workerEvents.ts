@@ -81,7 +81,7 @@ export async function handleWorkerEvent(
               ? `Skipped: repository key "${result.repoKey}" already exists.`
               : `Added repository entry "${result.repoKey}".`;
         const syncText = result.syncedFile
-          ? ` Synchronized allowlist file at ${result.syncedFile.path} (${result.syncedFile.count ?? 0} entries).`
+          ? ` Synchronized allowlist file (${result.syncedFile.count ?? 0} entries).`
           : '';
         await notifier.postMessage(ref, `${summary}${syncText}`);
       } catch (err) {
