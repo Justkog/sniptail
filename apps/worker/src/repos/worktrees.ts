@@ -65,6 +65,7 @@ export async function prepareRepoWorktrees(
       baseRef,
       redactionPatterns,
       {
+        checkoutRef: !resumeRecord,
         forceLocalBranchUpdate: !resumeRecord,
       },
     );
