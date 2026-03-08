@@ -7,8 +7,6 @@ on:
       - reopened
       - synchronize
       - ready_for_review
-      - labeled
-      - unlabeled
   push:
     branches: [main]
 
@@ -20,30 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-label:
-    name: Validate release label
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref != 'main'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Validate exactly one release:* label
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const matchedLabels = (pr.labels ?? [])
-              .map((label) => label?.name)
-              .filter((label) => typeof label === 'string' && label.startsWith('release:'));
-
-            if (matchedLabels.length !== 1) {
-              core.setFailed(
-                `PR #${pr.number} (${pr.title}) must have exactly one release:* label, found ${matchedLabels.length}.`
-              );
-              return;
-            }
-
-            core.info(`Validated release label ${matchedLabels[0]} for PR #${pr.number}.`);
-
   ci:
     name: CI (Node 22)
     runs-on: ubuntu-latest
