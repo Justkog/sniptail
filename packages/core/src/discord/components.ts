@@ -215,6 +215,9 @@ export function buildDiscordCompletionComponents(
     custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
   });
   if (includeReviewFromJob) {
+    if (components.length === 0) {
+      return chunkComponents(secondaryRow);
+    }
     return [{ type: 1, components }, ...chunkComponents(secondaryRow)];
   }
   return chunkComponents([...components, ...secondaryRow]);
