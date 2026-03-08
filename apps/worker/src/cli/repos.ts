@@ -1,26 +1,20 @@
 import 'dotenv/config';
-import { isAbsolute, resolve } from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
-import { expandHomePath } from '@sniptail/core/config/resolve.js';
 import { closeJobRegistryDb } from '@sniptail/core/db/index.js';
-import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
-import { inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { closeRepoCatalogStore } from '@sniptail/core/repos/catalogStore.js';
-import {
-  deactivateRepoCatalogEntry,
-  findRepoCatalogEntry,
-  listRepoCatalogEntries,
-  syncAllowlistFileFromCatalog,
-  upsertRepoCatalogEntry,
-  type RepoProvider,
-} from '@sniptail/core/repos/catalog.js';
-import type { RepoConfig } from '@sniptail/core/types/job.js';
+import { listRepoCatalogEntries, syncAllowlistFileFromCatalog } from '@sniptail/core/repos/catalog.js';
 import { syncRunActionMetadata } from '../repos/syncRunActionMetadata.js';
-
-type AddResult = 'created' | 'updated' | 'skipped';
+import {
+  addRepoCatalogEntryFromInput,
+  normalizeRepoKey,
+  parseRepoProvider,
+  type RepoCatalogRemoveMutationResult,
+  resolveInputPath,
+  removeRepoCatalogEntryFromInput,
+} from '../repos/repoCatalogMutationService.js';
 
 function printUsage(): void {
   process.stderr.write(
@@ -45,50 +39,6 @@ function printUsage(): void {
       '',
     ].join('\n'),
   );
-}
-
-function resolveInputPath(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    throw new Error('Path value cannot be empty.');
-  }
-  const expanded = expandHomePath(trimmed);
-  return isAbsolute(expanded) ? expanded : resolve(process.cwd(), expanded);
-}
-
-function parseRepoProvider(raw?: string): RepoProvider | undefined {
-  if (!raw) return undefined;
-  const normalized = raw.trim().toLowerCase();
-  if (!normalized) {
-    throw new Error('Invalid --provider value: expected a non-empty string.');
-  }
-  return normalized;
-}
-
-function parseProjectId(raw?: string): number | undefined {
-  if (!raw) return undefined;
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(`Invalid --project-id value: ${raw}. Expected a positive integer.`);
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`Invalid --project-id value: ${raw}. Expected a positive integer.`);
-  }
-  return parsed;
-}
-
-function inferProviderFromInput(repo: RepoConfig): RepoProvider {
-  return inferRepoProvider(repo);
-}
-
-function normalizeRepoKey(input: string): { repoKey: string; normalized: boolean } {
-  const repoKey = sanitizeRepoKey(input);
-  if (!repoKey) {
-    throw new Error('Repository key must include letters or numbers.');
-  }
-  return { repoKey, normalized: repoKey !== input };
 }
 
 function writeJson(payload: unknown): void {
@@ -121,14 +71,6 @@ function formatRows(rows: Array<Record<string, string>>): string {
   return [headerLine, divider, ...lines].join('\n');
 }
 
-async function syncConfiguredAllowlistFile(
-  allowlistPath?: string,
-): Promise<{ synced: boolean; count?: number; path?: string }> {
-  if (!allowlistPath) return { synced: false };
-  const count = await syncAllowlistFileFromCatalog(allowlistPath);
-  return { synced: true, count, path: allowlistPath };
-}
-
 async function handleAdd(args: string[]): Promise<void> {
   const parsed = parseArgs({
     args,
@@ -151,95 +93,37 @@ async function handleAdd(args: string[]): Promise<void> {
   }
 
   const config = loadWorkerConfig();
-  const repoKeyInput = parsed.positionals[0] ?? '';
-  const { repoKey, normalized } = normalizeRepoKey(repoKeyInput);
-
-  const sshUrl = parsed.values['ssh-url']?.trim();
-  const localPathRaw = parsed.values['local-path']?.trim();
-  const projectId = parseProjectId(parsed.values['project-id']);
-  const baseBranch = parsed.values['base-branch']?.trim();
-  const providerOption = parseRepoProvider(parsed.values.provider);
-  const ifMissing = Boolean(parsed.values['if-missing']);
-  const upsert = Boolean(parsed.values.upsert);
   const asJson = Boolean(parsed.values.json);
-
-  if (ifMissing && upsert) {
-    throw new Error('Cannot use --if-missing and --upsert together.');
-  }
-  if (!sshUrl && !localPathRaw) {
-    throw new Error('Either --ssh-url or --local-path is required.');
-  }
-  if (sshUrl && localPathRaw) {
-    throw new Error('--ssh-url and --local-path are mutually exclusive.');
-  }
-
-  const repoConfig: RepoConfig = {
-    ...(sshUrl ? { sshUrl } : {}),
-    ...(localPathRaw ? { localPath: resolveInputPath(localPathRaw) } : {}),
-    ...(projectId !== undefined ? { projectId } : {}),
-    ...(projectId !== undefined ? { providerData: { projectId } } : {}),
-    ...(baseBranch ? { baseBranch } : {}),
-  };
-
-  const effectiveProvider = providerOption ?? inferProviderFromInput(repoConfig);
-  if (effectiveProvider === 'local' && repoConfig.projectId !== undefined) {
-    throw new Error('--project-id is only valid for GitLab repositories.');
-  }
-
-  const existing = await findRepoCatalogEntry(repoKey);
-  let result: AddResult = 'created';
-  if (existing) {
-    if (ifMissing) {
-      result = 'skipped';
-    } else if (upsert) {
-      result = 'updated';
-    } else {
-      throw new Error(
-        `Repository key "${repoKey}" already exists. Use --upsert to replace or --if-missing to skip.`,
-      );
-    }
-  }
-
-  let syncResult: { synced: boolean; count?: number; path?: string } = { synced: false };
-  if (result !== 'skipped') {
-    await upsertRepoCatalogEntry(repoKey, repoConfig, { provider: effectiveProvider });
-    syncResult = await syncConfiguredAllowlistFile(config.repoAllowlistPath);
-  }
-
-  const payload = {
-    command: 'add',
-    result,
-    repoKey,
-    provider: effectiveProvider,
-    ...(normalized ? { normalizedFrom: repoKeyInput } : {}),
-    ...(syncResult.synced
-      ? {
-          syncedFile: {
-            path: syncResult.path,
-            count: syncResult.count,
-          },
-        }
-      : {}),
-  };
+  const payload = await addRepoCatalogEntryFromInput({
+    repoKeyInput: parsed.positionals[0] ?? '',
+    sshUrl: parsed.values['ssh-url'],
+    localPath: parsed.values['local-path'],
+    projectId: parsed.values['project-id'],
+    baseBranch: parsed.values['base-branch'],
+    provider: parsed.values.provider,
+    ifMissing: parsed.values['if-missing'],
+    upsert: parsed.values.upsert,
+    allowlistPath: config.repoAllowlistPath,
+  });
 
   if (asJson) {
     writeJson(payload);
     return;
   }
 
-  if (normalized) {
-    process.stdout.write(`Using normalized repo key: ${repoKey}\n`);
+  if (payload.normalizedFrom) {
+    process.stdout.write(`Using normalized repo key: ${payload.repoKey}\n`);
   }
-  if (result === 'skipped') {
-    process.stdout.write(`Skipped: repository key "${repoKey}" already exists.\n`);
-  } else if (result === 'updated') {
-    process.stdout.write(`Updated repository entry "${repoKey}".\n`);
+  if (payload.result === 'skipped') {
+    process.stdout.write(`Skipped: repository key "${payload.repoKey}" already exists.\n`);
+  } else if (payload.result === 'updated') {
+    process.stdout.write(`Updated repository entry "${payload.repoKey}".\n`);
   } else {
-    process.stdout.write(`Added repository entry "${repoKey}".\n`);
+    process.stdout.write(`Added repository entry "${payload.repoKey}".\n`);
   }
-  if (syncResult.synced) {
+  if (payload.syncedFile) {
     process.stdout.write(
-      `Synchronized allowlist file at ${syncResult.path} (${syncResult.count ?? 0} entries).\n`,
+      `Synchronized allowlist file at ${payload.syncedFile.path} (${payload.syncedFile.count ?? 0} entries).\n`,
     );
   }
 }
@@ -323,10 +207,10 @@ async function handleRemove(args: string[]): Promise<void> {
   }
 
   const config = loadWorkerConfig();
-  const repoKeyInput = parsed.positionals[0] ?? '';
-  const { repoKey, normalized } = normalizeRepoKey(repoKeyInput);
   const asJson = Boolean(parsed.values.json);
   const yes = Boolean(parsed.values.yes);
+  const repoKeyInput = parsed.positionals[0] ?? '';
+  const { repoKey } = normalizeRepoKey(repoKeyInput);
 
   if (!yes) {
     const confirmed = await confirmRemoval(repoKey);
@@ -336,7 +220,7 @@ async function handleRemove(args: string[]): Promise<void> {
           command: 'remove',
           result: 'cancelled',
           repoKey,
-          ...(normalized ? { normalizedFrom: repoKeyInput } : {}),
+          ...(repoKey !== repoKeyInput ? { normalizedFrom: repoKeyInput } : {}),
         });
       } else {
         process.stdout.write('Cancelled.\n');
@@ -345,39 +229,23 @@ async function handleRemove(args: string[]): Promise<void> {
     }
   }
 
-  const removed = await deactivateRepoCatalogEntry(repoKey);
-  if (!removed) {
-    throw new Error(`Repository key "${repoKey}" was not found in the active catalog.`);
-  }
-
-  const syncResult = await syncConfiguredAllowlistFile(config.repoAllowlistPath);
-  const payload = {
-    command: 'remove',
-    result: 'removed',
-    repoKey,
-    ...(normalized ? { normalizedFrom: repoKeyInput } : {}),
-    ...(syncResult.synced
-      ? {
-          syncedFile: {
-            path: syncResult.path,
-            count: syncResult.count,
-          },
-        }
-      : {}),
-  };
+  const payload: RepoCatalogRemoveMutationResult = await removeRepoCatalogEntryFromInput({
+    repoKeyInput,
+    allowlistPath: config.repoAllowlistPath,
+  });
 
   if (asJson) {
     writeJson(payload);
     return;
   }
 
-  if (normalized) {
-    process.stdout.write(`Using normalized repo key: ${repoKey}\n`);
+  if (payload.normalizedFrom) {
+    process.stdout.write(`Using normalized repo key: ${payload.repoKey}\n`);
   }
-  process.stdout.write(`Removed repository entry "${repoKey}".\n`);
-  if (syncResult.synced) {
+  process.stdout.write(`Removed repository entry "${payload.repoKey}".\n`);
+  if (payload.syncedFile) {
     process.stdout.write(
-      `Synchronized allowlist file at ${syncResult.path} (${syncResult.count ?? 0} entries).\n`,
+      `Synchronized allowlist file at ${payload.syncedFile.path} (${payload.syncedFile.count ?? 0} entries).\n`,
     );
   }
 }

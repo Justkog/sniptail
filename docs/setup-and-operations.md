@@ -145,6 +145,8 @@ sniptail repos add local-tools --local-path /srv/repos/local-tools
 sniptail repos list
 ```
 
+Slack and Discord can also mutate the catalog directly with `/...-repo-add` and `/...-repo-remove`. Those commands enqueue a worker-side catalog update, so they use the same DB-backed catalog and optional allowlist file sync as the CLI.
+
 You can also seed from a JSON file by setting `repo_allowlist_path` in `sniptail.worker.toml` `[core]` (or `REPO_ALLOWLIST_PATH` in env). On worker startup, Sniptail seeds the registry catalog when it is empty.
 
 Example allowlist JSON:

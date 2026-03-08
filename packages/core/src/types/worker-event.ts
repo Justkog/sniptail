@@ -16,6 +16,32 @@ export type WorkerCodexUsagePayload = {
   interactionApplicationId?: string;
 };
 
+export type WorkerReplyTarget = {
+  provider: ChannelProvider;
+  channelId: string;
+  userId?: string;
+  threadId?: string;
+  workspaceId?: string;
+  guildId?: string;
+};
+
+export type WorkerRepoAddPayload = {
+  response: WorkerReplyTarget;
+  repoKey: string;
+  repoProvider?: string;
+  sshUrl?: string;
+  localPath?: string;
+  projectId?: number;
+  baseBranch?: string;
+  ifMissing?: boolean;
+  upsert?: boolean;
+};
+
+export type WorkerRepoRemovePayload = {
+  response: WorkerReplyTarget;
+  repoKey: string;
+};
+
 export type WorkerEventPayloadMap = {
   'jobs.clear': {
     jobId: string;
@@ -24,6 +50,8 @@ export type WorkerEventPayloadMap = {
   'jobs.clearBefore': {
     cutoffIso: string;
   };
+  'repos.add': WorkerRepoAddPayload;
+  'repos.remove': WorkerRepoRemovePayload;
   'status.codexUsage': WorkerCodexUsagePayload;
 };
 

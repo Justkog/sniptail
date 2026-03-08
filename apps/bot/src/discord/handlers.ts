@@ -20,6 +20,8 @@ import { handleImplementStart } from './features/commands/implement.js';
 import { handleRunStart } from './features/commands/discordRunCommand.js';
 import { handleBootstrapStart } from './features/commands/bootstrap.js';
 import { handleClearBefore } from './features/commands/clearBefore.js';
+import { handleRepoAddAdmin } from './features/commands/repoAddAdmin.js';
+import { handleRepoRemoveAdmin } from './features/commands/repoRemoveAdmin.js';
 import { handleUsage } from './features/commands/usage.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
 import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
@@ -298,6 +300,26 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           return;
         }
         await handleBootstrapStart(interaction, config);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
+    if (interaction.commandName === commandNames.repoAdd) {
+      try {
+        await handleRepoAddAdmin(interaction, workerEventQueue, permissions);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
+    if (interaction.commandName === commandNames.repoRemove) {
+      try {
+        await handleRepoRemoveAdmin(interaction, workerEventQueue, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');

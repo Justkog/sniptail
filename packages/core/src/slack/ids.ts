@@ -3,6 +3,8 @@ import { toSlackCommandPrefix } from '../utils/slack.js';
 export type SlackIds = {
   commandPrefix: string;
   commands: {
+    repoAdd: string;
+    repoRemove: string;
     ask: string;
     explore: string;
     plan: string;
@@ -13,6 +15,8 @@ export type SlackIds = {
     usage: string;
   };
   actions: {
+    repoAddSubmit: string;
+    repoRemoveSubmit: string;
     askFromJob: string;
     exploreFromJob: string;
     planFromJob: string;
@@ -42,6 +46,8 @@ export function buildSlackIds(botName: string): SlackIds {
   return {
     commandPrefix,
     commands: {
+      repoAdd: `/${commandPrefix}-repo-add`,
+      repoRemove: `/${commandPrefix}-repo-remove`,
       ask: `/${commandPrefix}-ask`,
       explore: `/${commandPrefix}-explore`,
       plan: `/${commandPrefix}-plan`,
@@ -52,6 +58,8 @@ export function buildSlackIds(botName: string): SlackIds {
       usage: `/${commandPrefix}-usage`,
     },
     actions: {
+      repoAddSubmit: `${commandPrefix}-repo-add-submit`,
+      repoRemoveSubmit: `${commandPrefix}-repo-remove-submit`,
       askFromJob: `${commandPrefix}-ask-from-job`,
       exploreFromJob: `${commandPrefix}-explore-from-job`,
       planFromJob: `${commandPrefix}-plan-from-job`,

@@ -73,6 +73,46 @@ export function resetConfigCaches() {
   workerConfigCache = null;
 }
 
+const ALLOWED_MODEL_REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+
+function parseModelReasoningEffort(value: unknown, name: string) {
+  const raw = getTomlString(value, name);
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  if (!ALLOWED_MODEL_REASONING_EFFORTS.has(trimmed)) {
+    throw new Error(`Invalid ${name} in TOML. Expected one of: minimal, low, medium, high, xhigh.`);
+  }
+  return trimmed as JobModelConfig['modelReasoningEffort'];
+}
+
+function parseDefaultModelConfig(
+  agentToml: TomlTable | undefined,
+  label: 'codex' | 'copilot',
+): JobModelConfig | undefined {
+  if (!agentToml) return undefined;
+  const rawModel = getTomlString(agentToml.model, `${label}.model`);
+  const model = rawModel?.trim();
+  if (rawModel !== undefined && !model) {
+    throw new Error(`Invalid ${label}.model in TOML. Expected a non-empty string.`);
+  }
+  const modelReasoningEffort = parseModelReasoningEffort(
+    agentToml.model_reasoning_effort,
+    `${label}.model_reasoning_effort`,
+  );
+  if (!model) {
+    if (modelReasoningEffort) {
+      throw new Error(
+        `Invalid ${label}.model_reasoning_effort in TOML. ${label}.model is required when model_reasoning_effort is set.`,
+      );
+    }
+    return undefined;
+  }
+  return {
+    model,
+    ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
+  };
+}
+
 function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
   if (!modelsToml) return undefined;
   const entries = Object.entries(modelsToml);
@@ -86,20 +126,7 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
     'RUN',
     'MENTION',
   ]);
-  const allowedEfforts = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
   const models: Partial<Record<JobType, JobModelConfig>> = {};
-
-  function parseEffort(value: unknown, name: string) {
-    const raw = getTomlString(value, name);
-    const trimmed = raw?.trim();
-    if (!trimmed) return undefined;
-    if (!allowedEfforts.has(trimmed)) {
-      throw new Error(
-        `Invalid ${name} in TOML. Expected one of: minimal, low, medium, high, xhigh.`,
-      );
-    }
-    return trimmed as JobModelConfig['modelReasoningEffort'];
-  }
 
   for (const [key, value] of entries) {
     if (!allowed.has(key as JobType)) {
@@ -126,7 +153,7 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
     if (!model) {
       throw new Error(`Invalid ${label}.${key}.model in TOML. Expected a non-empty string.`);
     }
-    const modelReasoningEffort = parseEffort(
+    const modelReasoningEffort = parseModelReasoningEffort(
       modelToml.model_reasoning_effort,
       `${label}.${key}.model_reasoning_effort`,
     );
@@ -697,12 +724,14 @@ export function loadWorkerConfig(): WorkerConfig {
     'GH_COPILOT_DOCKER_BUILD_CONTEXT',
     copilotToml?.docker_build_context,
   );
+  const copilotDefaultModel = parseDefaultModelConfig(copilotToml, 'copilot');
   const copilotModels = parseModelMap(
     getTomlTable(copilotToml?.models, 'copilot.models'),
     'copilot.models',
   );
 
   const executionMode = resolveCodexExecutionMode(codexToml?.execution_mode);
+  const codexDefaultModel = parseDefaultModelConfig(codexToml, 'codex');
   const dockerfilePath = resolveStringValue('CODEX_DOCKERFILE_PATH', codexToml?.dockerfile_path, {
     defaultValue: '../../Dockerfile.codex',
   });
@@ -792,6 +821,7 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
       ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
+      ...(copilotDefaultModel && { defaultModel: copilotDefaultModel }),
       ...(copilotModels && { models: copilotModels }),
     },
     ...(openAiKey && { openAiKey }),
@@ -812,6 +842,7 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(dockerfilePath && { dockerfilePath }),
       ...(dockerImage && { dockerImage }),
       ...(dockerBuildContext && { dockerBuildContext }),
+      ...(codexDefaultModel && { defaultModel: codexDefaultModel }),
       ...(codexModels && { models: codexModels }),
     },
   };

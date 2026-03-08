@@ -1,17 +1,238 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
 
 permissions:
   contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  resolve:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      should_release: ${{ steps.resolve.outputs.should_release }}
+      release_reason: ${{ steps.resolve.outputs.release_reason }}
+      previous_tag: ${{ steps.resolve.outputs.previous_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag from merged PR labels
+        id: resolve
+        uses: actions/github-script@v7
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const core = require('@actions/core');
+            const { execFileSync } = require('node:child_process');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const headSha = process.env.GITHUB_SHA;
+
+            const execGit = (...args) =>
+              execFileSync('git', args, { encoding: 'utf8' }).trim();
+
+            const releaseLevels = {
+              'release:none': 0,
+              'release:patch': 1,
+              'release:minor': 2,
+              'release:major': 3,
+            };
+            const levelToName = ['none', 'patch', 'minor', 'major'];
+
+            const tags = execGit('tag', '--merged', headSha, '--list', 'v*', '--sort=-version:refname')
+              .split('\n')
+              .map((tag) => tag.trim())
+              .filter(Boolean);
+            const existingTag = execGit('tag', '--points-at', headSha, '--list', 'v*')
+              .split('\n')
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+              .at(-1) ?? '';
+            const previousTag = tags.find((tag) => tag !== existingTag) ?? '';
+
+            if (!previousTag && !existingTag) {
+              core.setFailed('No previous v* tag found. Seed the repository with an initial release tag before using automatic main releases.');
+              return;
+            }
+
+            if (existingTag) {
+              core.info(`Using existing release tag ${existingTag} for ${headSha}.`);
+
+              // Check if a release already exists for this tag and has assets.
+              let release = null;
+              try {
+                const response = await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag: existingTag,
+                });
+                release = response.data;
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                // If the release is not found (404), treat it as no existing release.
+              }
+
+              const hasAssets =
+                release && Array.isArray(release.assets) && release.assets.length > 0;
+
+              core.setOutput('release_tag', existingTag);
+              core.setOutput('should_release', hasAssets ? 'false' : 'true');
+              core.setOutput(
+                'release_reason',
+                hasAssets
+                  ? 'Existing tag and release assets found for the current main commit; skipping rebuild.'
+                  : 'Reusing existing tag on the current main commit.'
+              );
+              core.setOutput('previous_tag', previousTag);
+              return;
+            }
+
+            const commitRange = `${previousTag}..${headSha}`;
+            const commits = execGit('rev-list', '--reverse', commitRange)
+              .split('\n')
+              .map((sha) => sha.trim())
+              .filter(Boolean);
+
+            if (commits.length === 0) {
+              core.setOutput('release_tag', '');
+              core.setOutput('should_release', 'false');
+              core.setOutput('release_reason', `No commits found after ${previousTag}.`);
+              core.setOutput('previous_tag', previousTag);
+              return;
+            }
+
+            const prs = new Map();
+
+            for (const commitSha of commits) {
+              const associatedPulls = await github.paginate(
+                'GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls',
+                {
+                  owner,
+                  repo,
+                  commit_sha: commitSha,
+                }
+              );
+
+              for (const pr of associatedPulls) {
+                if (prs.has(pr.number)) {
+                  continue;
+                }
+
+                const labels = (pr.labels ?? [])
+                  .map((label) => (typeof label === 'string' ? label : label.name))
+                  .filter(Boolean);
+
+                prs.set(pr.number, {
+                  number: pr.number,
+                  title: pr.title,
+                  baseRef: pr.base?.ref ?? '',
+                  headRef: pr.head?.ref ?? '',
+                  labels,
+                });
+              }
+            }
+
+            const releasePrs = [...prs.values()].filter((pr) => pr.baseRef && pr.baseRef !== 'main');
+
+            if (releasePrs.length === 0) {
+              const reason = `Could not resolve any merged non-main pull requests in ${commitRange}. This likely indicates a direct commit to main or a PR merged directly into main; skipping release creation.`;
+              core.info(reason);
+              core.setOutput('release_tag', '');
+              core.setOutput('should_release', 'false');
+              core.setOutput('release_reason', reason);
+              core.setOutput('previous_tag', previousTag);
+              return;
+            }
+
+            let highestLevel = 0;
+
+            for (const pr of releasePrs) {
+              const matchedLabels = pr.labels.filter((label) => Object.hasOwn(releaseLevels, label));
+
+              if (matchedLabels.length !== 1) {
+                core.setFailed(
+                  `PR #${pr.number} (${pr.title}) must have exactly one release:* label, found ${matchedLabels.length}.`
+                );
+                return;
+              }
+
+              highestLevel = Math.max(highestLevel, releaseLevels[matchedLabels[0]]);
+            }
+
+            if (highestLevel === 0) {
+              core.info(`All merged PRs since ${previousTag} were labeled release:none; skipping release creation.`);
+              core.setOutput('release_tag', '');
+              core.setOutput('should_release', 'false');
+              core.setOutput('release_reason', `All merged PRs since ${previousTag} were release:none.`);
+              core.setOutput('previous_tag', previousTag);
+              return;
+            }
+
+            const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(previousTag);
+            if (!match) {
+              core.setFailed(`Previous tag ${previousTag} does not match v<major>.<minor>.<patch>.`);
+              return;
+            }
+
+            let [major, minor, patch] = match.slice(1).map((value) => Number.parseInt(value, 10));
+            const bump = levelToName[highestLevel];
+
+            if (bump === 'major') {
+              major += 1;
+              minor = 0;
+              patch = 0;
+            } else if (bump === 'minor') {
+              minor += 1;
+              patch = 0;
+            } else {
+              patch += 1;
+            }
+
+            const nextTag = `v${major}.${minor}.${patch}`;
+            core.info(`Resolved ${nextTag} from ${releasePrs.length} merged PR(s) since ${previousTag}; highest impact ${bump}.`);
+
+            core.setOutput('release_tag', nextTag);
+            core.setOutput('should_release', 'true');
+            core.setOutput('release_reason', `Resolved ${nextTag} from merged PR labels since ${previousTag}.`);
+            core.setOutput('previous_tag', previousTag);
+
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: needs.resolve.outputs.should_release == 'true'
+
+    steps:
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+
   release:
     name: Build release assets (${{ matrix.os_name }}-${{ matrix.arch }})
+    needs:
+      - resolve
+      - create-release
     runs-on: ${{ matrix.os }}
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: needs.resolve.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -28,12 +249,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Validate tag name
         shell: bash
         run: |
           set -euo pipefail
-          tag="${{ github.event.release.tag_name }}"
+          tag="${{ needs.resolve.outputs.release_tag }}"
           if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
             echo "Invalid release tag: ${tag}"
             echo "Expected v<major>.<minor>.<patch> (optionally with suffix)."
@@ -73,7 +296,7 @@ jobs:
         shell: bash
         run: |
           scripts/package-release.sh \
-            --version "${GITHUB_REF_NAME}" \
+            --version "${{ needs.resolve.outputs.release_tag }}" \
             --os "${{ matrix.os_name }}" \
             --arch "${{ matrix.arch }}"
 
@@ -81,7 +304,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          name="sniptail-${GITHUB_REF_NAME}-${{ matrix.os_name }}-${{ matrix.arch }}"
+          name="sniptail-${{ needs.resolve.outputs.release_tag }}-${{ matrix.os_name }}-${{ matrix.arch }}"
           stage_root="release/${name}"
           if [[ ! -x "${stage_root}/bin/sniptail" ]]; then
             echo "Missing packaged sniptail binary at ${stage_root}/bin/sniptail"
@@ -111,6 +334,7 @@ jobs:
       - name: Upload assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.release_tag }}
           files: |
-            sniptail-v*.tar.xz
-            sniptail-v*.sha256
+            sniptail-${{ needs.resolve.outputs.release_tag }}-${{ matrix.os_name }}-${{ matrix.arch }}.tar.xz
+            sniptail-${{ needs.resolve.outputs.release_tag }}-${{ matrix.os_name }}-${{ matrix.arch }}.sha256
