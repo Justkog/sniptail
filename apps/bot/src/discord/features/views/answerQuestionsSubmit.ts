@@ -93,9 +93,15 @@ export async function handleAnswerQuestionsSubmit(
   }
 
   await enqueueJob(queue, job);
-  await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   answerQuestionsByUser.delete(interaction.user.id);
-  await interaction.editReply(
-    `Thanks! I've accepted job ${job.jobId}. I've posted a thread in this channel for updates.`,
-  );
+  if (acceptance.acceptancePosted) {
+    try {
+      await interaction.deleteReply();
+    } catch (err) {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to delete interaction reply after job acceptance');
+    }
+    return;
+  }
+  await interaction.editReply(`Thanks! I've accepted job ${job.jobId}.`);
 }

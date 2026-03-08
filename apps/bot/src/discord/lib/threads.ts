@@ -4,6 +4,11 @@ import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { isSendableTextChannel, type SendableTextChannel } from '../helpers.js';
 
+export type DiscordJobAcceptanceResult = {
+  acceptancePosted: boolean;
+  threadId?: string;
+};
+
 async function resolveDiscordThreadChannel(
   message: Message,
   botName: string,
@@ -47,10 +52,10 @@ export async function postDiscordJobAcceptance(
   job: JobSpec,
   requestText: string,
   botName: string,
-): Promise<string | undefined> {
+): Promise<DiscordJobAcceptanceResult> {
   const channel = interaction.channel;
   if (!channel || !channel.isTextBased() || !isSendableTextChannel(channel)) {
-    return undefined;
+    return { acceptancePosted: false };
   }
 
   try {
@@ -74,9 +79,12 @@ export async function postDiscordJobAcceptance(
       });
     }
 
-    return threadTarget.threadId;
+    return {
+      acceptancePosted: true,
+      ...(threadTarget.threadId ? { threadId: threadTarget.threadId } : {}),
+    };
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to post Discord job acceptance');
-    return undefined;
+    return { acceptancePosted: false };
   }
 }
