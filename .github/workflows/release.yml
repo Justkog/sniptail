@@ -120,7 +120,7 @@ jobs:
             const prs = new Map();
 
             for (const commitSha of commits) {
-              const { data: associatedPulls } = await github.request(
+              const associatedPulls = await github.paginate(
                 'GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls',
                 {
                   owner,
