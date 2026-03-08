@@ -107,7 +107,11 @@ export async function handleDiscordExploreModalSubmit(
   const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   exploreSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
-    await interaction.deleteReply();
+    try {
+      await interaction.deleteReply();
+    } catch (err) {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to delete interaction reply after posting acceptance');
+    }
     return;
   }
   await interaction.editReply(`Thanks! I've accepted job ${job.jobId}.`);
