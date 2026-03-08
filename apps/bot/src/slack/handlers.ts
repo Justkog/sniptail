@@ -1,6 +1,8 @@
 import type { CodedError } from '@slack/bolt';
 import { logger } from '@sniptail/core/logger.js';
 import { registerClearBeforeCommand } from './features/commands/clearBefore.js';
+import { registerRepoAddModalCommand } from './features/commands/repoAddModalCommand.js';
+import { registerRepoRemoveModalCommand } from './features/commands/repoRemoveModalCommand.js';
 import { registerAskCommand } from './features/commands/ask.js';
 import { registerSlackExploreCommand } from './features/commands/slackExploreCommand.js';
 import { registerPlanCommand } from './features/commands/plan.js';
@@ -26,11 +28,15 @@ import { registerPlanSubmitView } from './features/views/planSubmit.js';
 import { registerAnswerQuestionsSubmitView } from './features/views/answerQuestionsSubmit.js';
 import { registerBootstrapSubmitView } from './features/views/bootstrapSubmit.js';
 import { registerImplementSubmitView } from './features/views/implementSubmit.js';
+import { registerRepoAddModalSubmit } from './features/views/repoAddModalSubmit.js';
+import { registerRepoRemoveModalSubmit } from './features/views/repoRemoveModalSubmit.js';
 import { registerRunSubmitView } from './features/views/slackRunSubmitView.js';
 import type { SlackHandlerContext } from './features/context.js';
 
 export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerAskCommand(context);
+  registerRepoAddModalCommand(context);
+  registerRepoRemoveModalCommand(context);
   registerSlackExploreCommand(context);
   registerPlanCommand(context);
   registerImplementCommand(context);
@@ -51,6 +57,8 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerAnswerQuestionsAction(context);
   registerAppMentionEvent(context);
   registerBootstrapSubmitView(context);
+  registerRepoAddModalSubmit(context);
+  registerRepoRemoveModalSubmit(context);
   registerAskSubmitView(context);
   registerSlackExploreSubmitView(context);
   registerPlanSubmitView(context);

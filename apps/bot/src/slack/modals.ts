@@ -662,3 +662,134 @@ export function buildRepoBootstrapModal(
     ],
   };
 }
+
+export function buildRepoAddAdminModal(
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  localRepoRoot?: string,
+) {
+  const localRepoRootHint = localRepoRoot?.trim() || '';
+  const localPathLabel = 'Local directory path on worker';
+  const localPathPlaceholder = localRepoRootHint || '/srv/repos/my-repo';
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Repo Add` },
+    submit: { type: 'plain_text' as const, text: 'Add' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'repo_key',
+        label: { type: 'plain_text' as const, text: 'Repository key' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'repo_key',
+          placeholder: { type: 'plain_text' as const, text: 'my-repo' },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'provider',
+        label: { type: 'plain_text' as const, text: 'Repository provider' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'provider',
+          placeholder: { type: 'plain_text' as const, text: 'Choose a provider' },
+          options: [
+            { text: { type: 'plain_text' as const, text: 'GitHub' }, value: 'github' },
+            { text: { type: 'plain_text' as const, text: 'GitLab' }, value: 'gitlab' },
+            { text: { type: 'plain_text' as const, text: 'Local' }, value: 'local' },
+          ],
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'ssh_url',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'SSH URL (GitHub/GitLab)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'ssh_url',
+          placeholder: { type: 'plain_text' as const, text: 'git@github.com:org/my-repo.git' },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'local_path',
+        optional: true,
+        label: { type: 'plain_text' as const, text: localPathLabel },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'local_path',
+          placeholder: { type: 'plain_text' as const, text: localPathPlaceholder },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'project_id',
+        optional: true,
+        label: {
+          type: 'plain_text' as const,
+          text: 'GitLab project ID (required for GitLab repositories)',
+        },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'project_id',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Required when provider is GitLab, e.g., 12345',
+          },
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'base_branch',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'Base branch (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'base_branch',
+          placeholder: { type: 'plain_text' as const, text: 'main' },
+        },
+      },
+    ],
+  };
+}
+
+export function buildRepoRemoveAdminModal(
+  repoAllowlist: Record<string, RepoConfig>,
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const defaultRepoOption = repoOptions.length === 1 ? repoOptions[0] : undefined;
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Repo Remove` },
+    submit: { type: 'plain_text' as const, text: 'Remove' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'repo_key',
+        label: { type: 'plain_text' as const, text: 'Repository key' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'repo_key',
+          placeholder: { type: 'plain_text' as const, text: 'Choose a repo key' },
+          options: repoOptions,
+          ...(defaultRepoOption ? { initial_option: defaultRepoOption } : {}),
+        },
+      },
+    ],
+  };
+}
