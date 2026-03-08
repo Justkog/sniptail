@@ -23,6 +23,26 @@ describe('discord completion components', () => {
     expect(rows.every((row) => row.components.length <= 5)).toBe(true);
   });
 
+  it('places review and run with take over and clear job data on the second row', () => {
+    const rows = buildDiscordCompletionComponents('job-layout', {
+      includeReviewFromJob: true,
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.components.map((component) => component.label)).toEqual([
+      'Ask',
+      'Explore',
+      'Plan',
+      'Implement',
+    ]);
+    expect(rows[1]?.components.map((component) => component.label)).toEqual([
+      'Review',
+      'Run',
+      'Take over',
+      'Clear job data',
+    ]);
+  });
+
   it('includes explore action in default completion buttons', () => {
     const rows = buildDiscordCompletionComponents('job-default');
     const customIds = rows.flatMap((row) => row.components.map((component) => component.custom_id));

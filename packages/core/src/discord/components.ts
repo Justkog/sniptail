@@ -130,6 +130,7 @@ export function buildDiscordCompletionComponents(
   const includeReviewFromJob = options?.includeReviewFromJob ?? false;
   const answerQuestionsFirst = options?.answerQuestionsFirst ?? false;
   const components: DiscordActionRow['components'] = [];
+  const secondaryRow: DiscordActionRow['components'] = [];
   if (answerQuestionsFirst && includeAnswerQuestions) {
     components.push({
       type: 2,
@@ -170,7 +171,14 @@ export function buildDiscordCompletionComponents(
       custom_id: buildDiscordCompletionCustomId('implementFromJob', jobId),
     });
   }
-  if (includeRunFromJob) {
+  if (includeReviewFromJob) {
+    secondaryRow.push({
+      type: 2,
+      style: 1,
+      label: 'Review',
+      custom_id: buildDiscordCompletionCustomId('reviewFromJob', jobId),
+    });
+  } else if (includeRunFromJob) {
     components.push({
       type: 2,
       style: 1,
@@ -178,35 +186,38 @@ export function buildDiscordCompletionComponents(
       custom_id: buildDiscordCompletionCustomId('runFromJob', jobId),
     });
   }
-  if (includeReviewFromJob) {
-    components.push({
+  if (includeReviewFromJob && includeRunFromJob) {
+    secondaryRow.push({
       type: 2,
       style: 1,
-      label: 'Review',
-      custom_id: buildDiscordCompletionCustomId('reviewFromJob', jobId),
+      label: 'Run',
+      custom_id: buildDiscordCompletionCustomId('runFromJob', jobId),
     });
   }
-  components.push({
+  secondaryRow.push({
     type: 2,
     style: 2,
     label: 'Take over',
     custom_id: buildDiscordCompletionCustomId('worktreeCommands', jobId),
   });
   if (!answerQuestionsFirst && includeAnswerQuestions) {
-    components.push({
+    secondaryRow.push({
       type: 2,
       style: 1,
       label: 'Answer questions',
       custom_id: buildDiscordCompletionCustomId('answerQuestions', jobId),
     });
   }
-  components.push({
+  secondaryRow.push({
     type: 2,
     style: 4,
     label: 'Clear job data',
     custom_id: buildDiscordCompletionCustomId('clearJob', jobId),
   });
-  return chunkComponents(components);
+  if (includeReviewFromJob) {
+    return [{ type: 1, components }, ...chunkComponents(secondaryRow)];
+  }
+  return chunkComponents([...components, ...secondaryRow]);
 }
 
 function chunkComponents(
