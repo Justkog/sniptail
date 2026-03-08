@@ -172,7 +172,14 @@ export async function handleRunModalSubmit(
   const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
   runSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
-    await interaction.deleteReply();
+    try {
+      await interaction.deleteReply();
+    } catch (err) {
+      logger.warn(
+        { err, jobId: job.jobId, userId: interaction.user.id },
+        'Failed to delete interaction reply after accepting run job',
+      );
+    }
     return;
   }
   await interaction.editReply(`Thanks! I've accepted run job ${job.jobId} (action: ${actionId}).`);
