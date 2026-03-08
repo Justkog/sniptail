@@ -105,7 +105,7 @@ export async function handleWorkerEvent(
           allowlistPath: config.repoAllowlistPath,
         });
         const syncText = result.syncedFile
-          ? ` Synchronized allowlist file at ${result.syncedFile.path} (${result.syncedFile.count ?? 0} entries).`
+          ? ` Synchronized allowlist file (${result.syncedFile.count ?? 0} entries).`
           : '';
         await notifier.postMessage(ref, `Removed repository entry "${result.repoKey}".${syncText}`);
       } catch (err) {
