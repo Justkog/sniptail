@@ -82,6 +82,7 @@ export type WorkerConfig = CoreConfig & {
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;
+    defaultModel?: JobModelConfig;
     models?: Partial<Record<JobType, JobModelConfig>>;
   };
   gitlab?: GitLabConfig;
@@ -101,6 +102,7 @@ export type WorkerConfig = CoreConfig & {
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;
+    defaultModel?: JobModelConfig;
     models?: Partial<Record<JobType, JobModelConfig>>;
   };
 };
