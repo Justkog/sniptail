@@ -127,6 +127,7 @@ This repo uses `staging` as the primary integration branch. Please:
 - Branch from `staging` for most work.
 - Open merge requests / pull requests targeting `staging`.
 - `main` is reserved for releases or promotion from `staging`.
+- Merging a `staging` promotion into `main` automatically creates the next GitHub release based on the merged PR `release:*` labels since the previous tag.
 
 Note: This differs from the common default of branching from `main`. If this
 ever changes, prefer the latest guidance in the issue or PR template.
@@ -168,6 +169,10 @@ Every PR merged into `staging` must have **exactly one** release-impact label:
 Contributors do **not** need to apply labels themselves — maintainers will add or
 adjust the release label during review if needed. If you’re unsure which label
 applies, mention it in the PR description.
+
+These labels determine the next automatic release when `staging` is promoted into
+`main`. If every merged PR since the previous release is labeled `release:none`,
+the promotion will not cut a new release.
 
 ## Review process
 
