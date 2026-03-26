@@ -90,6 +90,37 @@ Expected result:
 
 For deeper setup and operations documentation, see `docs/setup-and-operations.md`, `docs/chat-commands.md`, `docs/project-roadmap.md`, and `docs/sniptail-cloud-faq.md`.
 
+## Agent skill
+
+If you use an external agent that understands `SKILL.md`-style workflows, the canonical operator-install skill for Sniptail lives at `.github/skills/sniptail-operator-install/SKILL.md`.
+
+Fetch the full skill bundle directly from GitHub without cloning the repository:
+
+```bash
+mkdir -p ~/.agent-skills/sniptail-operator-install
+mkdir -p ~/.agent-skills/sniptail-operator-install/references
+SKILL_ROOT_URL="https://raw.githubusercontent.com/Justkog/sniptail/main/.github/skills/sniptail-operator-install"
+DEST="${HOME}/.agent-skills/sniptail-operator-install"
+
+curl -fsSL "${SKILL_ROOT_URL}/SKILL.md" -o "${DEST}/SKILL.md"
+
+for rel in \
+  "references/sniptail-preflight-reference.md" \
+  "references/sniptail-repo-providers-reference.md" \
+  "references/sniptail-repo-catalog-reference.md" \
+  "references/sniptail-install-local-reference.md" \
+  "references/sniptail-slack-operator-reference.md" \
+  "references/sniptail-discord-operator-reference.md" \
+  "references/sniptail-split-deployment-reference.md"
+do
+  curl -fsSL "${SKILL_ROOT_URL}/${rel}" -o "${DEST}/${rel}"
+done
+```
+
+That bundle tells the agent to install Sniptail through the supported standalone installer, prefer `sniptail local --migrate-if-needed` for first-time setups, guide Slack or Discord bot creation, and link repositories with the `sniptail` CLI.
+
+If your agent only supports single-file skills, fetch `SKILL.md` at minimum, but the intended operator workflow depends on the bundled references living alongside it. For reproducible behavior, replace `main` in the raw GitHub URL with a release tag.
+
 ## Project direction
 
 Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack and Discord, alongside Codex/GitHub_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
