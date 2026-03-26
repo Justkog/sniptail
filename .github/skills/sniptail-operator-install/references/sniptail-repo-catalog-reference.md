@@ -10,7 +10,7 @@ Examples:
 
 ```bash
 sniptail repos add my-api --ssh-url git@github.com:org/my-api.git
-sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git
+sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git --project-id 12345
 sniptail repos add local-tools --local-path /srv/repos/local-tools
 sniptail repos list
 ```
