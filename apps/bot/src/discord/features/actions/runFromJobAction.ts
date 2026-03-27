@@ -4,7 +4,7 @@ import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
 import { buildRunActionSelect } from '../../modals.js';
 import { runSelectionByUser } from '../../state.js';

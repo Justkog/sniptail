@@ -6,6 +6,7 @@ import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -53,11 +54,12 @@ export async function queueSlackMentionJob(
 
   await refreshRepoAllowlist(config);
   const repoKeys = Object.keys(config.repoAllowlist);
+  const gitRef = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
   const job: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
     repoKeys,
-    gitRef: 'main',
+    gitRef,
     requestText,
     agent: config.primaryAgent,
     channel: {

@@ -6,14 +6,13 @@ import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadContext.js';
 import { buildChannelContext } from '../../lib/channel.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
-
-const defaultGitRef = 'main';
 
 async function isReplyToBot(message: Message): Promise<boolean> {
   if (message.type !== MessageType.Reply || !message.reference?.messageId) {
@@ -81,12 +80,13 @@ export async function handleMention(
     'Say hello and ask how you can help.';
   await refreshRepoAllowlist(config);
   const repoKeys = Object.keys(config.repoAllowlist);
+  const gitRef = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
 
   const job: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
     repoKeys,
-    gitRef: defaultGitRef,
+    gitRef,
     requestText,
     agent: config.primaryAgent,
     channel: buildChannelContext(message),

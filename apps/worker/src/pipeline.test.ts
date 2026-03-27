@@ -230,6 +230,7 @@ import { ensureClone } from '@sniptail/core/git/mirror.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { CommandError, runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
@@ -621,6 +622,82 @@ describe('worker/pipeline runJob', () => {
       expect.objectContaining({ status: 'ok', summary: 'Hello there!' }),
     );
     expect(ensureCloneMock).not.toHaveBeenCalled();
+  });
+
+  it('uses each repo base branch when preparing mention job repos', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const loadRepoAllowlistFromCatalogMock = vi.mocked(loadRepoAllowlistFromCatalog);
+    const ensureCloneMock = vi.mocked(ensureClone);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+
+    loadRepoAllowlistFromCatalogMock.mockResolvedValueOnce({
+      'repo-1': {
+        sshUrl: 'git@example.com:org/repo-1.git',
+        projectId: 1,
+        baseBranch: 'experimental',
+      },
+      'repo-2': {
+        sshUrl: 'git@example.com:org/repo-2.git',
+        projectId: 2,
+        baseBranch: 'develop',
+      },
+    });
+
+    const job = {
+      jobId: 'job-mention-branches',
+      type: 'MENTION' as const,
+      repoKeys: ['repo-1', 'repo-2'],
+      gitRef: 'main',
+      requestText: 'Hello',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock.mockResolvedValue({
+      threadId: 'thread-mention-branches',
+      finalResponse: 'Hello there!',
+    });
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(ensureCloneMock).toHaveBeenNthCalledWith(
+      1,
+      'repo-1',
+      expect.objectContaining({ baseBranch: 'experimental' }),
+      '/tmp/sniptail/repo-cache/repo-1.git',
+      '/tmp/sniptail/job-root/job-mention-branches/logs/runner.log',
+      expect.any(Object),
+      'experimental',
+      expect.any(Array),
+      expect.objectContaining({
+        checkoutRef: true,
+        forceLocalBranchUpdate: true,
+      }),
+    );
+    expect(ensureCloneMock).toHaveBeenNthCalledWith(
+      2,
+      'repo-2',
+      expect.objectContaining({ baseBranch: 'develop' }),
+      '/tmp/sniptail/repo-cache/repo-2.git',
+      '/tmp/sniptail/job-root/job-mention-branches/logs/runner.log',
+      expect.any(Object),
+      'develop',
+      expect.any(Array),
+      expect.objectContaining({
+        checkoutRef: true,
+        forceLocalBranchUpdate: true,
+      }),
+    );
   });
 
   it('runs an explore job and uploads report.md output', async () => {
