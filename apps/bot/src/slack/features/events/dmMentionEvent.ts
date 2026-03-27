@@ -1,5 +1,6 @@
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
+import { addReaction } from '../../helpers.js';
 import { resolveSlackRuntimeIdentity } from '../../lib/slackRuntimeIdentity.js';
 import { queueSlackMentionJob } from './slackMentionEventRouting.js';
 
@@ -68,6 +69,12 @@ export function registerDmMentionEvent({
     if (!botUserId || !includesExplicitMention(text, botUserId)) {
       return;
     }
+
+    await addReaction(app, {
+      channel: channelId,
+      name: 'eyes',
+      timestamp: eventTs,
+    });
 
     await queueSlackMentionJob(
       {

@@ -49,7 +49,7 @@ describe('Discord mention event flow', () => {
     dedupeMock.mockReturnValue(false);
   });
 
-  it('queues a mention job using the first repo base branch as fallback git ref', async () => {
+  it('queues a mention job without attaching allowlisted repos', async () => {
     const message = {
       id: 'M1',
       content: '<@123> hello there',
@@ -81,8 +81,8 @@ describe('Discord mention event flow', () => {
     expect(saveJobQueuedMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'MENTION',
-        repoKeys: ['repo-1', 'repo-2'],
-        gitRef: 'experimental',
+        repoKeys: [],
+        gitRef: 'staging',
         requestText: 'hello there',
         channel: expect.objectContaining({
           provider: 'discord',
