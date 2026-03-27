@@ -22,6 +22,7 @@ import { registerWorktreeCommandsAction } from './features/actions/worktreeComma
 import { registerApprovalActions } from './features/actions/approvalActions.js';
 import { registerRunActionSelectOptions } from './features/actions/runActionSelect.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
+import { registerDmMentionEvent } from './features/events/dmMentionEvent.js';
 import { registerAskSubmitView } from './features/views/askSubmit.js';
 import { registerSlackExploreSubmitView } from './features/views/slackExploreSubmitView.js';
 import { registerPlanSubmitView } from './features/views/planSubmit.js';
@@ -56,6 +57,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerRunActionSelectOptions(context);
   registerAnswerQuestionsAction(context);
   registerAppMentionEvent(context);
+  registerDmMentionEvent(context);
   registerBootstrapSubmitView(context);
   registerRepoAddModalSubmit(context);
   registerRepoRemoveModalSubmit(context);
