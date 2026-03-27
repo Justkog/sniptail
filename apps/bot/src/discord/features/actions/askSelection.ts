@@ -1,7 +1,7 @@
 import type { StringSelectMenuInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildAskModal } from '../../modals.js';
 import { askSelectionByUser } from '../../state.js';
 

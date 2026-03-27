@@ -6,8 +6,8 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
-import { buildRunModal, resolveDefaultBaseBranch } from '../../modals.js';
 import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
@@ -16,6 +16,7 @@ import {
   resolveRunActionMetadata,
   resolveRunStep,
 } from '../../../lib/runActionParams.js';
+import { buildRunModal } from '../../modals.js';
 
 type SlackRunViewMetadata = {
   channelId: string;
