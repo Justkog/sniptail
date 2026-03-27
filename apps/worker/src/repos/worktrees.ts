@@ -44,9 +44,12 @@ export async function prepareRepoWorktrees(
     const clonePath = join(config.repoCacheRoot, `${repoKey}.git`);
     const worktreePath = join(paths.reposRoot, repoKey);
     const resumeBranch = resumeRecord?.branchByRepo?.[repoKey];
+    const mentionBaseRef = repoConfig.baseBranch?.trim() || job.gitRef;
     const baseRef = resumeRecord
       ? (resumeBranch ?? `${branchPrefix}/${job.resumeFromJobId}`)
-      : job.gitRef;
+      : job.type === 'MENTION'
+        ? mentionBaseRef
+        : job.gitRef;
     const branch =
       job.type === 'IMPLEMENT' ||
       job.type === 'ASK' ||

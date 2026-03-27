@@ -2,7 +2,7 @@ import type { StringSelectMenuInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { resolveDefaultBaseBranch } from '../../../slack/modals.js';
+import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
 import { runSelectionByUser } from '../../state.js';
 import { buildRunStepModal } from '../../lib/runStepper.js';

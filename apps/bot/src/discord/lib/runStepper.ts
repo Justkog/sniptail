@@ -10,7 +10,7 @@ import {
   resolveRunActionMetadata,
   resolveRunStep,
 } from '../../lib/runActionParams.js';
-import { resolveDefaultBaseBranch } from '../../slack/modals.js';
+import { resolveDefaultBaseBranch } from '../../lib/repoBaseBranch.js';
 import { buildRunModal } from '../modals.js';
 
 export type RunSelectionState = {

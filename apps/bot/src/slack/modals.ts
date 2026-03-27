@@ -3,29 +3,7 @@ import type { RepoConfig } from '@sniptail/core/types/job.js';
 import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.js';
 import type { ModalView } from '@slack/web-api';
-
-export function resolveDefaultBaseBranch(
-  repoAllowlist: Record<string, RepoConfig>,
-  repoKey?: string,
-): string {
-  if (repoKey) {
-    const branch = repoAllowlist[repoKey]?.baseBranch?.trim();
-    if (branch) {
-      return branch;
-    }
-  }
-  const branches = new Set<string>();
-  for (const repo of Object.values(repoAllowlist)) {
-    const branch = repo.baseBranch?.trim();
-    if (branch) {
-      branches.add(branch);
-    }
-  }
-  if (branches.size === 1) {
-    return Array.from(branches)[0]!;
-  }
-  return 'staging';
-}
+import { resolveDefaultBaseBranch } from '../lib/repoBaseBranch.js';
 
 export function buildAskModal(
   repoAllowlist: Record<string, RepoConfig>,

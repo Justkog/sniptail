@@ -73,8 +73,8 @@ function createSlackContext() {
       botName: 'JC.exe',
       primaryAgent: 'codex',
       repoAllowlist: {
-        'repo-1': {},
-        'repo-2': {},
+        'repo-1': { baseBranch: 'experimental' },
+        'repo-2': { baseBranch: 'develop' },
       },
     },
     queue: {},
@@ -126,6 +126,7 @@ describe('Slack DM mention event flow', () => {
     expect(saveJobQueuedMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'MENTION',
+        gitRef: 'experimental',
         requestText: 'hello there',
         channel: expect.objectContaining({
           provider: 'slack',
