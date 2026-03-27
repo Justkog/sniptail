@@ -117,6 +117,14 @@ describe('Slack DM mention event flow', () => {
     });
 
     expect(authorizeSlackOperationAndRespondMock).toHaveBeenCalledTimes(1);
+    expect(addReactionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'D1',
+        name: 'eyes',
+        timestamp: '111.222',
+      }),
+    );
     const authInput = authorizeSlackOperationAndRespondMock.mock.calls[0]?.[0];
     expect(authInput.actor).toEqual({
       userId: 'U1',
@@ -126,7 +134,8 @@ describe('Slack DM mention event flow', () => {
     expect(saveJobQueuedMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'MENTION',
-        gitRef: 'experimental',
+        repoKeys: [],
+        gitRef: 'staging',
         requestText: 'hello there',
         channel: expect.objectContaining({
           provider: 'slack',
@@ -187,6 +196,14 @@ describe('Slack DM mention event flow', () => {
           channelId: 'G1',
           threadId: '222.111',
         }),
+      }),
+    );
+    expect(addReactionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'G1',
+        name: 'eyes',
+        timestamp: '222.111',
       }),
     );
   });
