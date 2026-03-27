@@ -6,6 +6,7 @@ Sniptail’s Slack bot:
 - Runs in **Socket Mode** (no public HTTP endpoint required).
 - Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
 - Supports `@Sniptail …` mentions in channels (`app_mention` events).
+- Supports explicit `@Sniptail …` mentions in Slack DMs and MPDMs (`message.im` / `message.mpim` events), both in the main conversation and inside DM threads.
 - Uses interactive components + modals (interactivity enabled).
 - Uploads Markdown reports as files.
 
@@ -114,6 +115,8 @@ pnpm run dev
 3. In Slack:
    - Try `/sniptail-usage` (or your custom prefix)
    - Mention the bot in a channel it’s in: `@Sniptail hello`
+   - Mention the bot in a DM or MPDM: `@Sniptail hello`
+   - In DMs/MPDMs, Sniptail only responds to explicit mentions and will reply in a thread anchored to the triggering message
    - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
 
 ## Troubleshooting
@@ -126,6 +129,11 @@ pnpm run dev
 
 - Reinstall the app after editing the manifest or scopes.
 - Ensure the manifest command prefix matches your configured `[bot].bot_name`.
+
+### DM mentions don’t work
+
+- Reinstall the app after adding `message.im` / `message.mpim` subscriptions to the manifest.
+- In DMs and MPDMs, mention the bot explicitly; plain messages do not trigger jobs.
 
 ### Socket Mode errors / disconnects
 
