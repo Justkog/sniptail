@@ -41,11 +41,6 @@ export function registerDmMentionEvent({
     const subtype = message.subtype;
     const channelType = message.channel_type;
 
-    logger.info(
-      { channelId, threadId, botId, subtype, channelType, text },
-      'Received Slack message event',
-    );
-
     if (
       !channelId ||
       !threadId ||
@@ -75,6 +70,11 @@ export function registerDmMentionEvent({
       name: 'eyes',
       timestamp: eventTs,
     });
+    
+    logger.info(
+      { channelId, threadId, subtype, channelType, text },
+      'Received Slack DM mention event',
+    );
 
     await queueSlackMentionJob(
       {
