@@ -79,13 +79,12 @@ export async function handleMention(
     (threadContext ? 'Please answer based on the thread history.' : '') ||
     'Say hello and ask how you can help.';
   await refreshRepoAllowlist(config);
-  const repoKeys = Object.keys(config.repoAllowlist);
-  const gitRef = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+  const gitRef = resolveDefaultBaseBranch(config.repoAllowlist);
 
   const job: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
-    repoKeys,
+    repoKeys: [],
     gitRef,
     requestText,
     agent: config.primaryAgent,
