@@ -33,6 +33,11 @@ type SlackUploadedFile = {
   id?: string;
 };
 
+type SlackReplyMessage = {
+  ts?: string;
+  files?: SlackUploadedFile[];
+};
+
 type SlackViewStateValue = {
   files?: SlackUploadedFile[];
 };
@@ -89,15 +94,19 @@ function isAllowedSlackContextFile(file: SlackFileInfo): boolean {
   return isAllowedContextFile({ fileName: file.name, mediaType: file.mimetype });
 }
 
-function getSubmittedSlackContextFileIds(state: SlackViewStateValues): string[] {
-  const actionState = state[SLACK_CONTEXT_FILE_INPUT_BLOCK_ID]?.[SLACK_CONTEXT_FILE_INPUT_ACTION_ID];
-  const uploadedFileIds = actionState?.files
+function getUniqueSlackContextFileIds(files?: SlackUploadedFile[]): string[] {
+  const fileIds = files
     ?.map((file) => file.id?.trim())
     .filter((fileId): fileId is string => Boolean(fileId));
-  if (!uploadedFileIds?.length) {
+  if (!fileIds?.length) {
     return [];
   }
-  return Array.from(new Set(uploadedFileIds));
+  return Array.from(new Set(fileIds));
+}
+
+function getSubmittedSlackContextFileIds(state: SlackViewStateValues): string[] {
+  const actionState = state[SLACK_CONTEXT_FILE_INPUT_BLOCK_ID]?.[SLACK_CONTEXT_FILE_INPUT_ACTION_ID];
+  return getUniqueSlackContextFileIds(actionState?.files);
 }
 
 async function fetchSlackFileInfo(client: App['client'], fileId: string): Promise<SlackFileInfo> {
@@ -131,26 +140,25 @@ async function downloadSlackFile(botToken: string, file: SlackFileInfo): Promise
   return content;
 }
 
-export async function loadSlackModalContextFiles(input: {
+async function loadSlackContextFilesByIds(input: {
   client: App['client'];
   botToken?: string | undefined;
-  state: SlackViewStateValues;
+  fileIds: string[];
 }): Promise<JobContextFile[]> {
-  const fileIds = getSubmittedSlackContextFileIds(input.state);
-  if (!fileIds.length) {
+  if (!input.fileIds.length) {
     return [];
   }
   if (!input.botToken) {
     throw new Error('Slack bot token is required to download uploaded files.');
   }
-  if (fileIds.length > MAX_CONTEXT_FILES) {
+  if (input.fileIds.length > MAX_CONTEXT_FILES) {
     throw new Error(`Attach at most ${MAX_CONTEXT_FILES} files.`);
   }
 
   let totalBytes = 0;
   const contextFiles: JobContextFile[] = [];
 
-  for (const fileId of fileIds) {
+  for (const fileId of input.fileIds) {
     const file = await fetchSlackFileInfo(input.client, fileId);
     const fileName = file.name?.trim() || `slack-file-${file.id}`;
 
@@ -191,6 +199,48 @@ export async function loadSlackModalContextFiles(input: {
   }
 
   return contextFiles;
+}
+
+export async function loadSlackModalContextFiles(input: {
+  client: App['client'];
+  botToken?: string | undefined;
+  state: SlackViewStateValues;
+}): Promise<JobContextFile[]> {
+  return loadSlackContextFilesByIds({
+    client: input.client,
+    botToken: input.botToken,
+    fileIds: getSubmittedSlackContextFileIds(input.state),
+  });
+}
+
+export async function loadSlackMentionContextFiles(input: {
+  client: App['client'];
+  botToken?: string | undefined;
+  channelId: string;
+  threadTs: string;
+  messageTs: string;
+}): Promise<JobContextFile[]> {
+  const response = await input.client.conversations.replies({
+    channel: input.channelId,
+    ts: input.threadTs,
+    oldest: input.messageTs,
+    inclusive: true,
+    limit: 1,
+  });
+  const messages = ((response as { messages?: SlackReplyMessage[] }).messages ?? []).filter(
+    (message): message is SlackReplyMessage => Boolean(message.ts),
+  );
+  const triggeringMessage = messages[0];
+
+  if (!triggeringMessage || triggeringMessage.ts !== input.messageTs) {
+    throw new Error('Slack could not resolve the triggering mention message.');
+  }
+
+  return loadSlackContextFilesByIds({
+    client: input.client,
+    botToken: input.botToken,
+    fileIds: getUniqueSlackContextFileIds(triggeringMessage.files),
+  });
 }
 
 async function debugProbeChannelAccess(app: App, channelId: string): Promise<void> {

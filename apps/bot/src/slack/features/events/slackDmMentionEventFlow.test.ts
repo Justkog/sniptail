@@ -7,6 +7,7 @@ const saveJobQueuedMock = vi.hoisted(() => vi.fn());
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
 const authorizeSlackOperationAndRespondMock = vi.hoisted(() => vi.fn());
 const addReactionMock = vi.hoisted(() => vi.fn());
+const loadSlackMentionContextFilesMock = vi.hoisted(() => vi.fn());
 const postMessageMock = vi.hoisted(() => vi.fn());
 const fetchSlackThreadContextMock = vi.hoisted(() => vi.fn());
 
@@ -28,6 +29,7 @@ vi.mock('../../permissions/slackPermissionGuards.js', () => ({
 
 vi.mock('../../helpers.js', () => ({
   addReaction: addReactionMock,
+  loadSlackMentionContextFiles: loadSlackMentionContextFilesMock,
   postMessage: postMessageMock,
 }));
 
@@ -72,6 +74,7 @@ function createSlackContext() {
     config: {
       botName: 'JC.exe',
       primaryAgent: 'codex',
+      slack: { botToken: 'xoxb-test' },
       repoAllowlist: {
         'repo-1': { baseBranch: 'experimental' },
         'repo-2': { baseBranch: 'develop' },
@@ -96,6 +99,7 @@ describe('Slack DM mention event flow', () => {
     refreshRepoAllowlistMock.mockResolvedValue(undefined);
     authorizeSlackOperationAndRespondMock.mockResolvedValue(true);
     addReactionMock.mockResolvedValue(undefined);
+    loadSlackMentionContextFilesMock.mockResolvedValue([]);
     postMessageMock.mockResolvedValue(undefined);
     fetchSlackThreadContextMock.mockResolvedValue(undefined);
   });
@@ -146,6 +150,87 @@ describe('Slack DM mention event flow', () => {
       }),
     );
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches context files from the triggering Slack mention message', async () => {
+    const { handlers } = createSlackContext();
+    const messageHandler = handlers.get('message');
+    if (!messageHandler) throw new Error('Expected message handler registration.');
+
+    loadSlackMentionContextFilesMock.mockResolvedValue([
+      {
+        originalName: 'notes.md',
+        mediaType: 'text/markdown',
+        byteSize: 5,
+        contentBase64: 'bm90ZXM=',
+        source: {
+          provider: 'slack',
+          externalId: 'F123',
+        },
+      },
+    ]);
+
+    await messageHandler({
+      client: { auth: { test: vi.fn() } } as never,
+      event: {
+        channel: 'D1',
+        channel_type: 'im',
+        text: '<@UBOT> use these files',
+        ts: '111.226',
+        user: 'U1',
+        files: [{ id: 'F123' }],
+      },
+    });
+
+    expect(loadSlackMentionContextFilesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'D1',
+        threadTs: '111.226',
+        messageTs: '111.226',
+        botToken: 'xoxb-test',
+      }),
+    );
+    expect(saveJobQueuedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextFiles: [
+          expect.objectContaining({
+            originalName: 'notes.md',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('posts an error when Slack mention attachments cannot be used', async () => {
+    const { handlers } = createSlackContext();
+    const appMentionHandler = handlers.get('app_mention');
+    if (!appMentionHandler) throw new Error('Expected app_mention handler registration.');
+
+    loadSlackMentionContextFilesMock.mockRejectedValue(
+      new Error('Unsupported file type for archive.zip.'),
+    );
+
+    await appMentionHandler({
+      client: { auth: { test: vi.fn() } } as never,
+      event: {
+        channel: 'C1',
+        text: '<@UBOT> hello',
+        ts: '333.112',
+        user: 'U1',
+        files: [{ id: 'F999' }],
+      },
+    });
+
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        channel: 'C1',
+        text: "I couldn't use the attached files: Unsupported file type for archive.zip.",
+        threadTs: '333.112',
+      },
+    );
+    expect(saveJobQueuedMock).not.toHaveBeenCalled();
+    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
   it('queues a mention job for a threaded IM mention using thread_ts', async () => {

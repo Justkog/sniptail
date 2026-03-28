@@ -1,4 +1,4 @@
-import type { Attachment, ChatInputCommandInteraction } from 'discord.js';
+import type { Attachment, ChatInputCommandInteraction, Message } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobContextFile } from '@sniptail/core/types/job.js';
 import {
@@ -21,6 +21,19 @@ export type DiscordContextAttachmentRef = {
   mediaType?: string;
   byteSize: number;
 };
+
+function dedupeDiscordContextAttachments(
+  attachments: DiscordContextAttachmentRef[],
+): DiscordContextAttachmentRef[] {
+  const seenAttachmentIds = new Set<string>();
+  return attachments.filter((attachment) => {
+    if (seenAttachmentIds.has(attachment.id)) {
+      return false;
+    }
+    seenAttachmentIds.add(attachment.id);
+    return true;
+  });
+}
 
 function toContextAttachmentRef(attachment: Attachment): DiscordContextAttachmentRef | undefined {
   const attachmentId = attachment.id?.trim();
@@ -58,18 +71,17 @@ export function getDiscordCommandContextAttachments(
     .map(toContextAttachmentRef)
     .flatMap((attachment) => (attachment ? [attachment] : []));
 
-  if (!attachments.length) {
-    return [];
-  }
+  return dedupeDiscordContextAttachments(attachments);
+}
 
-  const seenAttachmentIds = new Set<string>();
-  return attachments.filter((attachment) => {
-    if (seenAttachmentIds.has(attachment.id)) {
-      return false;
-    }
-    seenAttachmentIds.add(attachment.id);
-    return true;
-  });
+export function getDiscordMessageContextAttachments(
+  message: Pick<Message, 'attachments'>,
+): DiscordContextAttachmentRef[] {
+  const attachments = Array.from(message.attachments.values())
+    .map(toContextAttachmentRef)
+    .flatMap((attachment) => (attachment ? [attachment] : []));
+
+  return dedupeDiscordContextAttachments(attachments);
 }
 
 async function downloadDiscordContextAttachment(attachment: DiscordContextAttachmentRef): Promise<Buffer> {

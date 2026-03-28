@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getDiscordCommandContextAttachments,
+  getDiscordMessageContextAttachments,
   loadDiscordContextFiles,
 } from './discordContextFiles.js';
 
@@ -37,6 +38,50 @@ describe('discordContextFiles', () => {
     } as never;
 
     expect(getDiscordCommandContextAttachments(interaction)).toEqual([
+      {
+        id: 'A1',
+        name: 'diagram.png',
+        url: 'https://example.test/A1',
+        mediaType: 'image/png',
+        byteSize: 7,
+      },
+      {
+        id: 'A2',
+        name: 'notes.md',
+        url: 'https://example.test/A2',
+        mediaType: 'text/markdown',
+        byteSize: 8,
+      },
+    ]);
+  });
+
+  it('extracts attachments from a Discord message collection', () => {
+    const message = {
+      attachments: new Map([
+        [
+          'A1',
+          {
+            id: 'A1',
+            name: 'diagram.png',
+            url: 'https://example.test/A1',
+            contentType: 'image/png',
+            size: 7,
+          },
+        ],
+        [
+          'A2',
+          {
+            id: 'A2',
+            name: 'notes.md',
+            url: 'https://example.test/A2',
+            contentType: 'text/markdown',
+            size: 8,
+          },
+        ],
+      ]),
+    } as never;
+
+    expect(getDiscordMessageContextAttachments(message)).toEqual([
       {
         id: 'A1',
         name: 'diagram.png',

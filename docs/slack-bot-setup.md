@@ -5,8 +5,8 @@ This guide walks through creating a Slack app for Sniptail, enabling Socket Mode
 Sniptail’s Slack bot:
 - Runs in **Socket Mode** (no public HTTP endpoint required).
 - Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
-- Supports `@Sniptail …` mentions in channels (`app_mention` events).
-- Supports explicit `@Sniptail …` mentions in Slack DMs and MPDMs (`message.im` / `message.mpim` events), both in the main conversation and inside DM threads.
+- Supports `@Sniptail …` mentions in channels (`app_mention` events), including supported files attached to the triggering mention message.
+- Supports explicit `@Sniptail …` mentions in Slack DMs and MPDMs (`message.im` / `message.mpim` events), both in the main conversation and inside DM threads, including supported files attached to the triggering mention message.
 - Uses interactive components + modals (interactivity enabled).
 - Uploads Markdown reports as files.
 
@@ -116,8 +116,11 @@ pnpm run dev
    - Try `/sniptail-usage` (or your custom prefix)
    - Mention the bot in a channel it’s in: `@Sniptail hello`
    - Mention the bot in a DM or MPDM: `@Sniptail hello`
+   - Attach files to the same mention message to include them as mention-job context
    - In DMs/MPDMs, Sniptail only responds to explicit mentions and will reply in a thread anchored to the triggering message
    - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
+
+Supported attachment types for modal uploads and mention messages: PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Current limit: 3 files, 2 MiB each, 6 MiB total. For mentions, Sniptail only uses files attached to the triggering message itself.
 
 ## Troubleshooting
 
@@ -129,6 +132,12 @@ pnpm run dev
 
 - Reinstall the app after editing the manifest or scopes. This includes adding `files:read` for modal file uploads.
 - Ensure the manifest command prefix matches your configured `[bot].bot_name`.
+
+### Mention files are ignored
+
+- Reinstall the app after adding or changing file scopes. Mention-message attachments require `files:read`.
+- Attach files to the same mention message. Sniptail does not pull files from earlier thread messages or neighboring replies.
+- Keep mention attachments within the current limit: up to 3 files, 2 MiB each, 6 MiB total.
 
 ### DM mentions don’t work
 

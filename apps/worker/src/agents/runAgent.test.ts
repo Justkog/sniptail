@@ -81,7 +81,6 @@ describe('runAgentJob', () => {
       paths: {
         root: '/tmp/job-root/job-1',
         reposRoot: '/tmp/job-root/job-1/repos',
-        contextRoot: '/tmp/job-root/job-1/context',
         artifactsRoot: '/tmp/job-root/job-1/artifacts',
         logsRoot: '/tmp/job-root/job-1/logs',
         logFile: '/tmp/job-root/job-1/logs/runner.log',
@@ -104,10 +103,60 @@ describe('runAgentJob', () => {
       '/tmp/job-root/job-1',
       {},
       expect.objectContaining({
+        additionalDirectories: ['/tmp/job-root/job-1'],
         currentTurnAttachments: [
           {
-            path: 'context/new-diagram.png',
+            path: '/tmp/job-root/job-1/context/new-diagram.png',
             displayName: 'new diagram.png',
+            mediaType: 'image/png',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('keeps current-turn attachments reachable when mention jobs run from another directory', async () => {
+    await runAgentJob({
+      job: {
+        ...buildJob(),
+        type: 'MENTION',
+      },
+      config: {
+        primaryAgent: 'codex',
+        botName: 'Sniptail',
+        repoCacheRoot: '/tmp/repo-cache',
+        jobWorkRoot: '/tmp/job-root',
+      } as never,
+      paths: {
+        root: '/tmp/job-root/job-mention',
+        reposRoot: '/tmp/job-root/job-mention/repos',
+        artifactsRoot: '/tmp/job-root/job-mention/artifacts',
+        logsRoot: '/tmp/job-root/job-mention/logs',
+        logFile: '/tmp/job-root/job-mention/logs/runner.log',
+      },
+      env: {},
+      registry: {} as never,
+      currentTurnContextFiles: [
+        {
+          path: 'context/raccoon_kayaking.png',
+          storedName: 'raccoon_kayaking.png',
+          originalName: 'raccoon_kayaking.png',
+          mediaType: 'image/png',
+          byteSize: 7,
+        },
+      ],
+    });
+
+    expect(hoisted.run).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'MENTION' }),
+      '/tmp/mention-workdir',
+      {},
+      expect.objectContaining({
+        additionalDirectories: ['/tmp/job-root/job-mention'],
+        currentTurnAttachments: [
+          {
+            path: '/tmp/job-root/job-mention/context/raccoon_kayaking.png',
+            displayName: 'raccoon_kayaking.png',
             mediaType: 'image/png',
           },
         ],

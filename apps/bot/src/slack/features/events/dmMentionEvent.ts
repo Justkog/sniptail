@@ -9,6 +9,7 @@ type SlackMessageEvent = {
   text?: string;
   thread_ts?: string;
   ts?: string;
+  files?: Array<{ id?: string }>;
   bot_id?: string;
   user?: string;
   subtype?: string;
@@ -38,6 +39,7 @@ export function registerDmMentionEvent({
     const eventTs = message.ts;
     const botId = message.bot_id;
     const userId = message.user;
+    const messageFiles = message.files;
     const subtype = message.subtype;
     const channelType = message.channel_type;
 
@@ -89,6 +91,7 @@ export function registerDmMentionEvent({
         channelId,
         text,
         threadId,
+        ...(messageFiles?.length ? { messageFiles } : {}),
         dedupeMode: 'dm-mention',
         onDenyText: 'You are not authorized to mention this bot in DMs for jobs.',
         ...(eventTs ? { eventTs } : {}),

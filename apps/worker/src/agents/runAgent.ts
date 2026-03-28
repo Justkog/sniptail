@@ -3,6 +3,7 @@ import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
+import { resolve } from 'node:path';
 import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
 import type { JobRegistry } from '../job/jobRegistry.js';
 import {
@@ -42,11 +43,14 @@ export async function runAgentJob(options: {
     config.jobWorkRoot,
   );
   const modelOverride = descriptor.resolveModelConfig(config, job.type);
-  const additionalDirectories = descriptor.shouldIncludeRepoCache(config, job.type)
-    ? [config.repoCacheRoot]
-    : undefined;
+  const additionalDirectories = Array.from(
+    new Set([
+      ...(descriptor.shouldIncludeRepoCache(config, job.type) ? [config.repoCacheRoot] : []),
+      ...((currentTurnContextFiles ?? []).length ? [paths.root] : []),
+    ]),
+  );
   const currentTurnAttachments = (currentTurnContextFiles ?? []).map((contextFile) => ({
-    path: contextFile.path,
+    path: resolve(paths.root, contextFile.path),
     displayName: contextFile.originalName,
     mediaType: contextFile.mediaType,
   }));
@@ -63,7 +67,7 @@ export async function runAgentJob(options: {
       ...(modelOverride?.modelReasoningEffort
         ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
         : {}),
-      ...(additionalDirectories ? { additionalDirectories } : {}),
+      ...(additionalDirectories.length ? { additionalDirectories } : {}),
       onEvent: async (event) => {
         if (agent.formatEvent) {
           try {
