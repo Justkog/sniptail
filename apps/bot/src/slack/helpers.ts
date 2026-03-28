@@ -2,37 +2,22 @@ import type { App } from '@slack/bolt';
 import type { ChatPostMessageResponse, FilesUploadV2Arguments } from '@slack/web-api';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { debugFor, isDebugNamespaceEnabled, logger } from '@sniptail/core/logger.js';
 import type { JobContextFile } from '@sniptail/core/types/job.js';
+import {
+  CONTEXT_FILE_EXTENSIONS,
+  isAllowedContextFile,
+  MAX_CONTEXT_FILES,
+  MAX_CONTEXT_FILE_BYTES,
+  MAX_CONTEXT_TOTAL_BYTES,
+} from '../lib/contextFilePolicy.js';
 
 const debugSlack = debugFor('slack');
 
 export const SLACK_CONTEXT_FILE_INPUT_BLOCK_ID = 'context_files';
 export const SLACK_CONTEXT_FILE_INPUT_ACTION_ID = 'context_files';
-export const SLACK_CONTEXT_FILE_INPUT_FILETYPES = [
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'txt',
-  'md',
-  'markdown',
-  'json',
-  'yaml',
-  'yml',
-] as const;
-
-const maxSlackContextFiles = 3;
-const maxSlackContextFileBytes = 2 * 1024 * 1024;
-const maxSlackContextTotalBytes = 6 * 1024 * 1024;
-const allowedSlackContextMimeTypes = new Set([
-  'application/json',
-  'application/x-yaml',
-  'application/yaml',
-]);
+export const SLACK_CONTEXT_FILE_INPUT_FILETYPES = CONTEXT_FILE_EXTENSIONS;
 
 type SlackFileInfo = {
   id: string;
@@ -101,19 +86,7 @@ function isChannelNotFoundError(err: unknown): boolean {
 }
 
 function isAllowedSlackContextFile(file: SlackFileInfo): boolean {
-  const mimeType = file.mimetype?.trim().toLowerCase();
-  if (mimeType?.startsWith('image/') || mimeType?.startsWith('text/')) {
-    return true;
-  }
-  if (mimeType && allowedSlackContextMimeTypes.has(mimeType)) {
-    return true;
-  }
-
-  const fileExtension = extname(file.name ?? '')
-    .replace(/^\./, '')
-    .trim()
-    .toLowerCase();
-  return fileExtension ? SLACK_CONTEXT_FILE_INPUT_FILETYPES.includes(fileExtension as never) : false;
+  return isAllowedContextFile({ fileName: file.name, mediaType: file.mimetype });
 }
 
 function getSubmittedSlackContextFileIds(state: SlackViewStateValues): string[] {
@@ -160,7 +133,7 @@ async function downloadSlackFile(botToken: string, file: SlackFileInfo): Promise
 
 export async function loadSlackModalContextFiles(input: {
   client: App['client'];
-  botToken?: string;
+  botToken?: string | undefined;
   state: SlackViewStateValues;
 }): Promise<JobContextFile[]> {
   const fileIds = getSubmittedSlackContextFileIds(input.state);
@@ -170,8 +143,8 @@ export async function loadSlackModalContextFiles(input: {
   if (!input.botToken) {
     throw new Error('Slack bot token is required to download uploaded files.');
   }
-  if (fileIds.length > maxSlackContextFiles) {
-    throw new Error(`Attach at most ${maxSlackContextFiles} files.`);
+  if (fileIds.length > MAX_CONTEXT_FILES) {
+    throw new Error(`Attach at most ${MAX_CONTEXT_FILES} files.`);
   }
 
   let totalBytes = 0;
@@ -184,18 +157,18 @@ export async function loadSlackModalContextFiles(input: {
     if (!isAllowedSlackContextFile(file)) {
       throw new Error(`Unsupported file type for ${fileName}. Use images or small text files.`);
     }
-    if (typeof file.size === 'number' && file.size > maxSlackContextFileBytes) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(maxSlackContextFileBytes / (1024 * 1024))} MiB limit.`);
+    if (typeof file.size === 'number' && file.size > MAX_CONTEXT_FILE_BYTES) {
+      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
     }
 
     const content = await downloadSlackFile(input.botToken, file);
-    if (content.byteLength > maxSlackContextFileBytes) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(maxSlackContextFileBytes / (1024 * 1024))} MiB limit.`);
+    if (content.byteLength > MAX_CONTEXT_FILE_BYTES) {
+      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
     }
     totalBytes += content.byteLength;
-    if (totalBytes > maxSlackContextTotalBytes) {
+    if (totalBytes > MAX_CONTEXT_TOTAL_BYTES) {
       throw new Error(
-        `Attached files exceed the ${Math.floor(maxSlackContextTotalBytes / (1024 * 1024))} MiB total limit.`,
+        `Attached files exceed the ${Math.floor(MAX_CONTEXT_TOTAL_BYTES / (1024 * 1024))} MiB total limit.`,
       );
     }
 

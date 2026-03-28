@@ -4,6 +4,7 @@ This guide walks through creating a Discord application/bot, inviting it to your
 
 Sniptail’s Discord bot:
 - Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
+- Accepts up to 3 small context-file attachments on `/sniptail-ask`, `/sniptail-explore`, `/sniptail-plan`, and `/sniptail-implement`.
 - Supports `@mention` in a channel to kick off a job.
 - Posts job results and uploads Markdown reports as file attachments.
 - Tries to create a thread per job (and falls back to replying in the channel if it can’t).
@@ -116,8 +117,11 @@ pnpm run dev
 
 3. In a Discord channel the bot can read/write:
    - Try a slash command, e.g. `/sniptail-usage`
+   - Try `/sniptail-ask` with up to 3 attachments. Attach files to the slash command itself, then complete the modal.
    - Mention the bot: `@Sniptail hello`
    - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
+
+Supported command attachment types: PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Current limit: 3 files, 2 MiB each, 6 MiB total.
 
 ## Troubleshooting
 

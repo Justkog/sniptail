@@ -11,6 +11,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { exploreSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
+import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
@@ -44,6 +45,16 @@ export async function handleDiscordExploreModalSubmit(
 
   await interaction.deferReply({ ephemeral: true });
 
+  let contextFiles;
+  try {
+    const uploadedFiles = await loadDiscordContextFiles(selection?.contextAttachments ?? []);
+    contextFiles = uploadedFiles.length ? uploadedFiles : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load Discord command context files for explore job');
+    await interaction.editReply(`I couldn't use the attached files: ${(err as Error).message}`);
+    return;
+  }
+
   const gitRef = interaction.fields.getTextInputValue('git_ref').trim();
   const requestText = interaction.fields.getTextInputValue('question').trim();
   const resumeFromInput = interaction.fields.getTextInputValue('resume_from').trim();
@@ -64,6 +75,7 @@ export async function handleDiscordExploreModalSubmit(
     requestText,
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
+    ...(contextFiles ? { contextFiles } : {}),
     ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
