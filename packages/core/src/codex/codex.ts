@@ -1,6 +1,7 @@
 import {
   Codex,
   type ApprovalMode,
+  type Input,
   type ModelReasoningEffort,
   type SandboxMode,
   type ThreadEvent,
@@ -12,6 +13,7 @@ import os from 'node:os';
 import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScriptPath.js';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
 import type { JobSpec } from '../types/job.js';
+import type { AgentAttachment } from '../agents/types.js';
 
 export type CodexRunResult = {
   finalResponse: string;
@@ -28,6 +30,7 @@ export type CodexRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  currentTurnAttachments?: AgentAttachment[];
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
   docker?: {
@@ -54,6 +57,27 @@ function extractFinalResponse(item: ThreadItem | undefined, current: string): st
     return item.text;
   }
   return current;
+}
+
+function buildCodexInput(
+  prompt: string,
+  workDir: string,
+  attachments: AgentAttachment[] | undefined,
+): Input {
+  const imageAttachments = (attachments ?? []).filter((attachment) =>
+    attachment.mediaType.startsWith('image/'),
+  );
+  if (!imageAttachments.length) {
+    return prompt;
+  }
+
+  return [
+    { type: 'text', text: prompt },
+    ...imageAttachments.map((attachment) => ({
+      type: 'local_image' as const,
+      path: resolve(workDir, attachment.path),
+    })),
+  ];
 }
 
 export async function runCodex(
@@ -108,7 +132,7 @@ export async function runCodex(
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;
-  const { events } = await thread.runStreamed(prompt);
+  const { events } = await thread.runStreamed(buildCodexInput(prompt, workDir, options.currentTurnAttachments));
   let finalResponse = '';
   let threadId = options.resumeThreadId;
 

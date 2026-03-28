@@ -58,7 +58,7 @@ Sniptail uses Socket Mode, which requires an **app-level token**.
 ## 5) Install the app to your workspace (bot token)
 
 1. Go to **OAuth & Permissions**.
-2. Confirm the bot scopes from the manifest are present (Sniptail needs things like `commands`, `chat:write`, `files:write`, `app_mentions:read`, history scopes, etc.).
+2. Confirm the bot scopes from the manifest are present (Sniptail needs things like `commands`, `chat:write`, `files:read`, `files:write`, `app_mentions:read`, history scopes, etc.).
 3. If you use group-based permissions (`group:slack:<usergroup_id>`), add `usergroups:read` so Sniptail can resolve approver/requester group membership.
 4. Click **Install to Workspace** (or **Reinstall to Workspace** after changes).
 5. Copy the **Bot User OAuth Token** — you’ll use it as `SLACK_BOT_TOKEN` (typically starts with `xoxb-`).
@@ -127,7 +127,7 @@ pnpm run dev
 
 ### Bot connects but slash commands don’t work
 
-- Reinstall the app after editing the manifest or scopes.
+- Reinstall the app after editing the manifest or scopes. This includes adding `files:read` for modal file uploads.
 - Ensure the manifest command prefix matches your configured `[bot].bot_name`.
 
 ### DM mentions don’t work

@@ -22,6 +22,20 @@ export type JobSettings = {
   reviewers?: string[];
 };
 
+export type JobContextFileSource = {
+  provider: ChannelContext['provider'];
+  externalId: string;
+  metadata?: Record<string, string>;
+};
+
+export type JobContextFile = {
+  originalName: string;
+  mediaType: string;
+  byteSize: number;
+  contentBase64: string;
+  source?: JobContextFileSource;
+};
+
 export type RunJobInput = {
   actionId: string;
   params?: Record<string, RunActionParamValue>;
@@ -39,6 +53,7 @@ export type JobSpec = {
   agentThreadIds?: Partial<Record<AgentId, string>>;
   threadContext?: string;
   resumeFromJobId?: string;
+  contextFiles?: JobContextFile[];
   settings?: JobSettings;
   run?: RunJobInput;
 };

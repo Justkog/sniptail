@@ -12,8 +12,10 @@ import { createNotifier } from '../channels/createNotifier.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
 import {
   copyArtifactsFromResumedJob,
+  copyContextFromResumedJob,
   copyJobRootSeed,
   ensureJobDirectories,
+  materializeJobContextFiles,
   readJobPlan,
   readJobReport,
   readJobSummary,
@@ -219,7 +221,17 @@ export async function runJob(
           );
         },
       );
+      await copyContextFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
+        (err) => {
+          logger.warn(
+            { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+            'Failed to copy context from resumed job',
+          );
+        },
+      );
     }
+
+    const currentTurnContextFiles = await materializeJobContextFiles(paths, job);
 
     const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
       job,
@@ -269,7 +281,14 @@ export async function runJob(
       });
     }
 
-    const agentRun = await runAgentJob({ job, config, paths, env, registry });
+    const agentRun = await runAgentJob({
+      job,
+      config,
+      paths,
+      env,
+      registry,
+      currentTurnContextFiles,
+    });
 
     if (agentRun.result.threadId) {
       await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);

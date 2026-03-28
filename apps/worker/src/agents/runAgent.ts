@@ -5,7 +5,10 @@ import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
 import type { JobRegistry } from '../job/jobRegistry.js';
-import { appendAgentEventLog } from '../job/artifacts.js';
+import {
+  appendAgentEventLog,
+  type MaterializedJobContextFile,
+} from '../job/artifacts.js';
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
 type JobPaths = ReturnType<typeof buildJobPaths>;
@@ -21,8 +24,9 @@ export async function runAgentJob(options: {
   paths: JobPaths;
   env: NodeJS.ProcessEnv;
   registry: JobRegistry;
+  currentTurnContextFiles?: MaterializedJobContextFile[];
 }): Promise<RunAgentResult> {
-  const { job, config, paths, env, registry } = options;
+  const { job, config, paths, env, registry, currentTurnContextFiles } = options;
 
   const agentId = job.agent ?? config.primaryAgent;
   const descriptor = AGENT_DESCRIPTORS[agentId];
@@ -41,6 +45,11 @@ export async function runAgentJob(options: {
   const additionalDirectories = descriptor.shouldIncludeRepoCache(config, job.type)
     ? [config.repoCacheRoot]
     : undefined;
+  const currentTurnAttachments = (currentTurnContextFiles ?? []).map((contextFile) => ({
+    path: contextFile.path,
+    displayName: contextFile.originalName,
+    mediaType: contextFile.mediaType,
+  }));
 
   const agentResult = await agent.run(
     job,
@@ -49,6 +58,7 @@ export async function runAgentJob(options: {
     {
       botName: config.botName,
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
+      ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
       ...(modelOverride ? { model: modelOverride.model } : {}),
       ...(modelOverride?.modelReasoningEffort
         ? { modelReasoningEffort: modelOverride.modelReasoningEffort }

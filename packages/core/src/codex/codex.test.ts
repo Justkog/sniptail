@@ -98,6 +98,7 @@ describe('runCodex', () => {
         codexPathOverride: 'codex',
       }),
     );
+    expect(hoisted.runStreamed).toHaveBeenCalledWith('mock prompt');
     expect(hoisted.resolveWorkerAgentScriptPath).not.toHaveBeenCalled();
   });
 
@@ -110,5 +111,27 @@ describe('runCodex', () => {
         codexPathOverride: '/tmp/codex-docker.sh',
       }),
     );
+  });
+
+  it('passes only current-turn images as native Codex attachments', async () => {
+    await runCodex(buildJob('ASK'), '/tmp/work', {}, {
+      currentTurnAttachments: [
+        {
+          path: 'context/diagram.png',
+          displayName: 'diagram.png',
+          mediaType: 'image/png',
+        },
+        {
+          path: 'context/notes.md',
+          displayName: 'notes.md',
+          mediaType: 'text/markdown',
+        },
+      ],
+    });
+
+    expect(hoisted.runStreamed).toHaveBeenCalledWith([
+      { type: 'text', text: 'mock prompt' },
+      { type: 'local_image', path: '/tmp/work/context/diagram.png' },
+    ]);
   });
 });
