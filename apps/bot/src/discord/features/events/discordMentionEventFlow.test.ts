@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { fetchDiscordThreadContext } from '../../threadContext.js';
 import { handleMention } from './mention.js';
 
+type DiscordThreadContextModule = Record<string, unknown> & {
+  fetchDiscordThreadContext: typeof fetchDiscordThreadContext;
+};
+
 const enqueueJobMock = vi.hoisted(() => vi.fn());
-const saveJobQueuedMock = vi.hoisted(() => vi.fn());
+const saveJobQueuedMock = vi.hoisted(() => vi.fn<(job: JobSpec) => Promise<void>>());
 const getDiscordMessageContextAttachmentsMock = vi.hoisted(() => vi.fn());
 const loadDiscordContextFilesMock = vi.hoisted(() => vi.fn());
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
@@ -27,9 +33,7 @@ vi.mock('../../permissions/discordPermissionGuards.js', () => ({
 }));
 
 vi.mock('../../threadContext.js', async () => {
-  const actual = await vi.importActual<typeof import('../../threadContext.js')>(
-    '../../threadContext.js',
-  );
+  const actual = await vi.importActual<DiscordThreadContextModule>('../../threadContext.js');
   return {
     ...actual,
     fetchDiscordThreadContext: fetchDiscordThreadContextMock,
@@ -59,6 +63,7 @@ describe('Discord mention event flow', () => {
   });
 
   it('queues a mention job without attaching allowlisted repos', async () => {
+    const reply = vi.fn<(message: string) => Promise<void>>().mockResolvedValue(undefined);
     const message = {
       id: 'M1',
       content: '<@123> hello there',
@@ -70,10 +75,10 @@ describe('Discord mention event flow', () => {
       mentions: { has: vi.fn().mockReturnValue(true) },
       channel: {
         isThread: () => false,
-        messages: { cache: new Map() },
+        messages: { cache: new Map<string, unknown>() },
       },
       react: vi.fn().mockResolvedValue(undefined),
-      reply: vi.fn().mockResolvedValue(undefined),
+      reply,
       startThread: vi.fn(),
     } as never;
 
@@ -87,24 +92,24 @@ describe('Discord mention event flow', () => {
 
     await handleMention(message, config, {} as never, {} as never);
 
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'MENTION',
-        repoKeys: [],
-        gitRef: 'staging',
-        requestText: 'hello there',
-        channel: expect.objectContaining({
-          provider: 'discord',
-          channelId: 'C1',
-          userId: 'U1',
-          guildId: 'G1',
-        }),
-      }),
-    );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob).toMatchObject({
+      type: 'MENTION',
+      repoKeys: [],
+      gitRef: 'staging',
+      requestText: 'hello there',
+    });
+    expect(savedJob?.channel).toMatchObject({
+      provider: 'discord',
+      channelId: 'C1',
+      userId: 'U1',
+      guildId: 'G1',
+    });
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
   });
 
   it('attaches context files from the triggering Discord mention message', async () => {
+    const reply = vi.fn<(message: string) => Promise<void>>().mockResolvedValue(undefined);
     const message = {
       id: 'M2',
       content: '<@123> review this',
@@ -116,12 +121,12 @@ describe('Discord mention event flow', () => {
       mentions: { has: vi.fn().mockReturnValue(true) },
       channel: {
         isThread: () => false,
-        messages: { cache: new Map() },
+        messages: { cache: new Map<string, unknown>() },
       },
       react: vi.fn().mockResolvedValue(undefined),
-      reply: vi.fn().mockResolvedValue(undefined),
+      reply,
       startThread: vi.fn(),
-      attachments: new Map(),
+      attachments: new Map<string, unknown>(),
     } as never;
     const attachments = [
       {
@@ -155,18 +160,14 @@ describe('Discord mention event flow', () => {
 
     expect(getDiscordMessageContextAttachmentsMock).toHaveBeenCalledWith(message);
     expect(loadDiscordContextFilesMock).toHaveBeenCalledWith(attachments);
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contextFiles: [
-          expect.objectContaining({
-            originalName: 'notes.md',
-          }),
-        ],
-      }),
-    );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0] as
+      | (JobSpec & { contextFiles?: Array<{ originalName: string }> })
+      | undefined;
+    expect(savedJob?.contextFiles?.[0]?.originalName).toBe('notes.md');
   });
 
   it('replies with an error when Discord mention attachments cannot be used', async () => {
+    const reply = vi.fn<(message: string) => Promise<void>>().mockResolvedValue(undefined);
     const message = {
       id: 'M3',
       content: '<@123> bad file',
@@ -178,12 +179,12 @@ describe('Discord mention event flow', () => {
       mentions: { has: vi.fn().mockReturnValue(true) },
       channel: {
         isThread: () => false,
-        messages: { cache: new Map() },
+        messages: { cache: new Map<string, unknown>() },
       },
       react: vi.fn().mockResolvedValue(undefined),
-      reply: vi.fn().mockResolvedValue(undefined),
+      reply,
       startThread: vi.fn(),
-      attachments: new Map(),
+      attachments: new Map<string, unknown>(),
     } as never;
 
     getDiscordMessageContextAttachmentsMock.mockReturnValue([
@@ -195,7 +196,9 @@ describe('Discord mention event flow', () => {
         byteSize: 12,
       },
     ]);
-    loadDiscordContextFilesMock.mockRejectedValue(new Error('Unsupported file type for archive.zip.'));
+    loadDiscordContextFilesMock.mockRejectedValue(
+      new Error('Unsupported file type for archive.zip.'),
+    );
 
     await handleMention(
       message,
@@ -207,7 +210,7 @@ describe('Discord mention event flow', () => {
       {} as never,
     );
 
-    expect(message.reply).toHaveBeenCalledWith(
+    expect(reply).toHaveBeenCalledWith(
       "I couldn't use the attached files: Unsupported file type for archive.zip.",
     );
     expect(saveJobQueuedMock).not.toHaveBeenCalled();

@@ -95,12 +95,14 @@ function buildStoredContextFileName(originalName: string, usedNames: Set<string>
 async function loadExistingContextManifest(paths: JobPaths): Promise<MaterializedJobContextFile[]> {
   const manifestPath = join(paths.contextRoot, contextManifestFileName);
   const currentFiles = new Set(
-    (await readdir(paths.contextRoot, { withFileTypes: true }).catch((err) => {
-      if (isMissingPath(err)) {
-        return [];
-      }
-      throw err;
-    }))
+    (
+      await readdir(paths.contextRoot, { withFileTypes: true }).catch((err) => {
+        if (isMissingPath(err)) {
+          return [];
+        }
+        throw err;
+      })
+    )
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name),
   );

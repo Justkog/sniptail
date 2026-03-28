@@ -1,6 +1,9 @@
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import { WORKER_EVENT_SCHEMA_VERSION, type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import {
+  WORKER_EVENT_SCHEMA_VERSION,
+  type WorkerEvent,
+} from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';

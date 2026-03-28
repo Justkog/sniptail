@@ -425,7 +425,11 @@ describe('worker/pipeline helpers', () => {
     ] as never);
     copyFileMock.mockResolvedValue(undefined);
 
-    await copyContextFromResumedJob('job-prev', '/tmp/sniptail/job-root', createJobPaths('job-next'));
+    await copyContextFromResumedJob(
+      'job-prev',
+      '/tmp/sniptail/job-root',
+      createJobPaths('job-next'),
+    );
 
     expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/context', {
       withFileTypes: true,
@@ -469,26 +473,23 @@ describe('worker/pipeline helpers', () => {
     );
     writeFileMock.mockResolvedValue(undefined);
 
-    const newEntries = await materializeJobContextFiles(
-      createJobPaths('job-next'),
-      {
-        jobId: 'job-next',
-        type: 'ASK',
-        repoKeys: ['repo-1'],
-        gitRef: 'main',
-        requestText: 'Use the files',
-        channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
-        contextFiles: [
-          {
-            originalName: 'Design Diagram.png',
-            mediaType: 'image/png',
-            byteSize: 7,
-            contentBase64: Buffer.from('pngdata').toString('base64'),
-            source: { provider: 'slack', externalId: 'F123' },
-          },
-        ],
-      } as never,
-    );
+    const newEntries = await materializeJobContextFiles(createJobPaths('job-next'), {
+      jobId: 'job-next',
+      type: 'ASK',
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Use the files',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      contextFiles: [
+        {
+          originalName: 'Design Diagram.png',
+          mediaType: 'image/png',
+          byteSize: 7,
+          contentBase64: Buffer.from('pngdata').toString('base64'),
+          source: { provider: 'slack', externalId: 'F123' },
+        },
+      ],
+    } as never);
 
     expect(newEntries).toEqual([
       expect.objectContaining({
@@ -511,9 +512,9 @@ describe('worker/pipeline helpers', () => {
       expect.stringContaining('context/Design-Diagram.png'),
       'utf8',
     );
-    expect(getWriteFileContentForPath('/tmp/sniptail/job-root/job-next/context/manifest.json')).toContain(
-      'context/existing.txt',
-    );
+    expect(
+      getWriteFileContentForPath('/tmp/sniptail/job-root/job-next/context/manifest.json'),
+    ).toContain('context/existing.txt');
   });
 
   it('resolveAgentThreadId returns explicit thread id', async () => {

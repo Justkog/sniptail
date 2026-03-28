@@ -25,6 +25,13 @@ describe('Discord ask attachment flow', () => {
       },
     } as never;
 
+    const reply = vi
+      .fn<
+        (payload: { content: string; components: unknown[]; ephemeral: boolean }) => Promise<void>
+      >()
+      .mockResolvedValue(undefined);
+    const showModal = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
     const commandInteraction = {
       user: { id: 'U1' },
       options: {
@@ -41,17 +48,18 @@ describe('Discord ask attachment flow', () => {
           return null;
         }),
       },
-      reply: vi.fn().mockResolvedValue(undefined),
-      showModal: vi.fn().mockResolvedValue(undefined),
+      reply,
+      showModal,
     } as never;
 
     await handleAskStart(commandInteraction, config);
 
-    expect(commandInteraction.reply).toHaveBeenCalledWith({
+    const replyPayload = reply.mock.calls[0]?.[0];
+    expect(replyPayload).toMatchObject({
       content: 'Select repositories for your question.',
-      components: expect.any(Array),
       ephemeral: true,
     });
+    expect(replyPayload?.components).toBeInstanceOf(Array);
     expect(askSelectionByUser.get('U1')).toEqual(
       expect.objectContaining({
         repoKeys: [],

@@ -105,7 +105,8 @@ function getUniqueSlackContextFileIds(files?: SlackUploadedFile[]): string[] {
 }
 
 function getSubmittedSlackContextFileIds(state: SlackViewStateValues): string[] {
-  const actionState = state[SLACK_CONTEXT_FILE_INPUT_BLOCK_ID]?.[SLACK_CONTEXT_FILE_INPUT_ACTION_ID];
+  const actionState =
+    state[SLACK_CONTEXT_FILE_INPUT_BLOCK_ID]?.[SLACK_CONTEXT_FILE_INPUT_ACTION_ID];
   return getUniqueSlackContextFileIds(actionState?.files);
 }
 
@@ -166,12 +167,16 @@ async function loadSlackContextFilesByIds(input: {
       throw new Error(`Unsupported file type for ${fileName}. Use images or small text files.`);
     }
     if (typeof file.size === 'number' && file.size > MAX_CONTEXT_FILE_BYTES) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
     }
 
     const content = await downloadSlackFile(input.botToken, file);
     if (content.byteLength > MAX_CONTEXT_FILE_BYTES) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
     }
     totalBytes += content.byteLength;
     if (totalBytes > MAX_CONTEXT_TOTAL_BYTES) {

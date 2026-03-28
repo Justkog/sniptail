@@ -2,37 +2,44 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JobSpec } from '../types/job.js';
 import { runCopilot } from './copilot.js';
 
+type MockSession = {
+  sessionId: string;
+  on: ReturnType<typeof vi.fn>;
+  sendAndWait: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+};
+
 const hoisted = vi.hoisted(() => {
   const clientCtor = vi.fn();
-  const start = vi.fn();
-  const stop = vi.fn();
-  const forceStop = vi.fn();
-  const createSession = vi.fn();
-  const resumeSession = vi.fn();
-  const buildPromptForJob = vi.fn(() => 'mock prompt');
+  const start = vi.fn<() => Promise<void>>();
+  const stop = vi.fn<() => Promise<unknown[]>>();
+  const forceStop = vi.fn<() => Promise<void>>();
+  const createSession = vi.fn<(options?: unknown) => Promise<MockSession>>();
+  const resumeSession = vi.fn<(sessionId: string) => Promise<MockSession>>();
+  const buildPromptForJob = vi.fn<() => string>(() => 'mock prompt');
 
   class CopilotClientMock {
     constructor(options: unknown) {
       clientCtor(options);
     }
 
-    start() {
+    start(): Promise<void> {
       return start();
     }
 
-    stop() {
+    stop(): Promise<unknown[]> {
       return stop();
     }
 
-    forceStop() {
+    forceStop(): Promise<void> {
       return forceStop();
     }
 
-    createSession(options: unknown) {
+    createSession(options: unknown): Promise<MockSession> {
       return createSession(options);
     }
 
-    resumeSession(sessionId: string) {
+    resumeSession(sessionId: string): Promise<MockSession> {
       return resumeSession(sessionId);
     }
   }
@@ -82,7 +89,10 @@ function buildJob(type: JobSpec['type']): JobSpec {
   };
 }
 
-function createSessionMock(sendAndWait: ReturnType<typeof vi.fn>, sessionId = 'session-1') {
+function createSessionMock(
+  sendAndWait: ReturnType<typeof vi.fn>,
+  sessionId = 'session-1',
+): MockSession {
   return {
     sessionId,
     on: vi.fn(() => () => undefined),
@@ -106,20 +116,25 @@ describe('runCopilot', () => {
     });
     hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      currentTurnAttachments: [
-        {
-          path: 'context/diagram.png',
-          displayName: 'diagram.png',
-          mediaType: 'image/png',
-        },
-        {
-          path: 'context/notes.md',
-          displayName: 'notes.md',
-          mediaType: 'text/markdown',
-        },
-      ],
-    });
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        currentTurnAttachments: [
+          {
+            path: 'context/diagram.png',
+            displayName: 'diagram.png',
+            mediaType: 'image/png',
+          },
+          {
+            path: 'context/notes.md',
+            displayName: 'notes.md',
+            mediaType: 'text/markdown',
+          },
+        ],
+      },
+    );
 
     expect(sendAndWait).toHaveBeenCalledWith({
       prompt: 'mock prompt',
@@ -139,16 +154,21 @@ describe('runCopilot', () => {
     hoisted.createSession.mockResolvedValue(createSessionMock(firstSendAndWait, 'session-1'));
     hoisted.resumeSession.mockResolvedValue(createSessionMock(secondSendAndWait, 'session-1'));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      currentTurnAttachments: [
-        {
-          path: 'context/diagram.png',
-          displayName: 'diagram.png',
-          mediaType: 'image/png',
-        },
-      ],
-      copilotIdleRetries: 1,
-    });
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        currentTurnAttachments: [
+          {
+            path: 'context/diagram.png',
+            displayName: 'diagram.png',
+            mediaType: 'image/png',
+          },
+        ],
+        copilotIdleRetries: 1,
+      },
+    );
 
     expect(firstSendAndWait).toHaveBeenCalledWith({
       prompt: 'mock prompt',

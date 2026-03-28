@@ -132,7 +132,9 @@ export async function runCodex(
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;
-  const { events } = await thread.runStreamed(buildCodexInput(prompt, workDir, options.currentTurnAttachments));
+  const { events } = await thread.runStreamed(
+    buildCodexInput(prompt, workDir, options.currentTurnAttachments),
+  );
   let finalResponse = '';
   let threadId = options.resumeThreadId;
 

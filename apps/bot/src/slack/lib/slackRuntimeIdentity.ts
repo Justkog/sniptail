@@ -15,8 +15,8 @@ export async function resolveSlackRuntimeIdentity(app: App): Promise<SlackRuntim
     return cached;
   }
 
-  const promise = app.client
-    .auth.test()
+  const promise = app.client.auth
+    .test()
     .then((auth) => ({
       ...(auth.user_id ? { botUserId: auth.user_id } : {}),
       ...(auth.bot_id ? { botId: auth.bot_id } : {}),

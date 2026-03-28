@@ -1,9 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
+import type { fetchDiscordThreadContext } from '../../threadContext.js';
 import { handleAskModalSubmit } from './askSubmit.js';
 import { askSelectionByUser } from '../../state.js';
 
+type DiscordContextFilesModule = Record<string, unknown> & {
+  loadDiscordContextFiles: typeof loadDiscordContextFiles;
+};
+
+type DiscordThreadContextModule = Record<string, unknown> & {
+  fetchDiscordThreadContext: typeof fetchDiscordThreadContext;
+};
+
 const enqueueJobMock = vi.hoisted(() => vi.fn());
-const saveJobQueuedMock = vi.hoisted(() => vi.fn());
+const saveJobQueuedMock = vi.hoisted(() => vi.fn<(job: JobSpec) => Promise<void>>());
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
 const postDiscordJobAcceptanceMock = vi.hoisted(() => vi.fn());
 const fetchDiscordThreadContextMock = vi.hoisted(() => vi.fn());
@@ -27,9 +38,7 @@ vi.mock('../../lib/threads.js', () => ({
 }));
 
 vi.mock('../../threadContext.js', async () => {
-  const actual = await vi.importActual<typeof import('../../threadContext.js')>(
-    '../../threadContext.js',
-  );
+  const actual = await vi.importActual<DiscordThreadContextModule>('../../threadContext.js');
   return {
     ...actual,
     fetchDiscordThreadContext: fetchDiscordThreadContextMock,
@@ -41,7 +50,7 @@ vi.mock('../../permissions/discordPermissionGuards.js', () => ({
 }));
 
 vi.mock('../../lib/discordContextFiles.js', async () => {
-  const actual = await vi.importActual<typeof import('../../lib/discordContextFiles.js')>(
+  const actual = await vi.importActual<DiscordContextFilesModule>(
     '../../lib/discordContextFiles.js',
   );
   return {
@@ -90,6 +99,7 @@ describe('handleAskModalSubmit', () => {
       ],
     });
 
+    const editReply = vi.fn<(message: string) => Promise<void>>().mockResolvedValue(undefined);
     const interaction = {
       user: { id: 'U1' },
       channelId: 'C1',
@@ -105,7 +115,7 @@ describe('handleAskModalSubmit', () => {
         }),
       },
       deferReply: vi.fn().mockResolvedValue(undefined),
-      editReply: vi.fn().mockResolvedValue(undefined),
+      editReply,
       reply: vi.fn().mockResolvedValue(undefined),
       deleteReply: vi.fn().mockResolvedValue(undefined),
     } as never;
@@ -129,33 +139,32 @@ describe('handleAskModalSubmit', () => {
         byteSize: 7,
       },
     ]);
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'ASK',
-        repoKeys: ['repo-a'],
-        requestText: 'What changed?',
-        contextFiles: [
-          {
-            originalName: 'diagram.png',
-            mediaType: 'image/png',
-            byteSize: 7,
-            contentBase64: Buffer.from('pngdata').toString('base64'),
-            source: {
-              provider: 'discord',
-              externalId: 'A1',
-              metadata: { mediaType: 'image/png' },
-            },
-          },
-        ],
-        channel: expect.objectContaining({
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob).toMatchObject({
+      type: 'ASK',
+      repoKeys: ['repo-a'],
+      requestText: 'What changed?',
+    });
+    expect(savedJob?.contextFiles).toEqual([
+      {
+        originalName: 'diagram.png',
+        mediaType: 'image/png',
+        byteSize: 7,
+        contentBase64: Buffer.from('pngdata').toString('base64'),
+        source: {
           provider: 'discord',
-          channelId: 'C1',
-          userId: 'U1',
-          guildId: 'G1',
-        }),
-      }),
-    );
+          externalId: 'A1',
+          metadata: { mediaType: 'image/png' },
+        },
+      },
+    ]);
+    expect(savedJob?.channel).toMatchObject({
+      provider: 'discord',
+      channelId: 'C1',
+      userId: 'U1',
+      guildId: 'G1',
+    });
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
-    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining("I've accepted job"));
+    expect(editReply.mock.calls[0]?.[0]).toContain("I've accepted job");
   });
 });

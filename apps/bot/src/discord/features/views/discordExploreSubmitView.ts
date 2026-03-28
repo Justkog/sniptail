@@ -122,7 +122,10 @@ export async function handleDiscordExploreModalSubmit(
     try {
       await interaction.deleteReply();
     } catch (err) {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to delete interaction reply after posting acceptance');
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Failed to delete interaction reply after posting acceptance',
+      );
     }
     return;
   }

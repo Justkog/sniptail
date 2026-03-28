@@ -7,20 +7,27 @@ describe('buildDiscordCommandDefinitions', () => {
     const { names, commands } = buildDiscordCommandDefinitions('Sniptail');
     const commandDefinitions = commands as Array<{
       name: string;
-      options?: Array<{ name: string; type: number; required?: boolean }>;
+      options?: Array<{
+        name: string;
+        type: number;
+        required?: boolean;
+        description?: string;
+      }>;
     }>;
 
     for (const commandName of [names.ask, names.explore, names.plan, names.implement]) {
       const command = commandDefinitions.find((entry) => entry.name === commandName);
       expect(command).toBeDefined();
-      expect(command?.options).toEqual(
-        DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES.map((optionName) => ({
-          description: expect.stringContaining('Optional context file'),
-          name: optionName,
+      expect(command?.options).toHaveLength(DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES.length);
+
+      command?.options?.forEach((option, index) => {
+        expect(option).toMatchObject({
+          name: DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES[index],
           type: 11,
           required: false,
-        })),
-      );
+        });
+        expect(option.description).toContain('Optional context file');
+      });
     }
 
     const runCommand = commandDefinitions.find((entry) => entry.name === names.run);

@@ -114,20 +114,25 @@ describe('runCodex', () => {
   });
 
   it('passes only current-turn images as native Codex attachments', async () => {
-    await runCodex(buildJob('ASK'), '/tmp/work', {}, {
-      currentTurnAttachments: [
-        {
-          path: 'context/diagram.png',
-          displayName: 'diagram.png',
-          mediaType: 'image/png',
-        },
-        {
-          path: 'context/notes.md',
-          displayName: 'notes.md',
-          mediaType: 'text/markdown',
-        },
-      ],
-    });
+    await runCodex(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        currentTurnAttachments: [
+          {
+            path: 'context/diagram.png',
+            displayName: 'diagram.png',
+            mediaType: 'image/png',
+          },
+          {
+            path: 'context/notes.md',
+            displayName: 'notes.md',
+            mediaType: 'text/markdown',
+          },
+        ],
+      },
+    );
 
     expect(hoisted.runStreamed).toHaveBeenCalledWith([
       { type: 'text', text: 'mock prompt' },

@@ -6,10 +6,7 @@ import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { resolve } from 'node:path';
 import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
 import type { JobRegistry } from '../job/jobRegistry.js';
-import {
-  appendAgentEventLog,
-  type MaterializedJobContextFile,
-} from '../job/artifacts.js';
+import { appendAgentEventLog, type MaterializedJobContextFile } from '../job/artifacts.js';
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
 type JobPaths = ReturnType<typeof buildJobPaths>;

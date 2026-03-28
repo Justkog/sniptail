@@ -84,7 +84,9 @@ export function getDiscordMessageContextAttachments(
   return dedupeDiscordContextAttachments(attachments);
 }
 
-async function downloadDiscordContextAttachment(attachment: DiscordContextAttachmentRef): Promise<Buffer> {
+async function downloadDiscordContextAttachment(
+  attachment: DiscordContextAttachmentRef,
+): Promise<Buffer> {
   const response = await fetch(attachment.url);
   if (!response.ok) {
     throw new Error(`Discord file download failed (${response.status}).`);
@@ -117,12 +119,16 @@ export async function loadDiscordContextFiles(
       throw new Error(`Unsupported file type for ${fileName}. Use images or small text files.`);
     }
     if (attachment.byteSize > MAX_CONTEXT_FILE_BYTES) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
     }
 
     const content = await downloadDiscordContextAttachment(attachment);
     if (content.byteLength > MAX_CONTEXT_FILE_BYTES) {
-      throw new Error(`${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`);
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
     }
 
     totalBytes += content.byteLength;

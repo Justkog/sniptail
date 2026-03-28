@@ -72,7 +72,7 @@ export function registerDmMentionEvent({
       name: 'eyes',
       timestamp: eventTs,
     });
-    
+
     logger.info(
       { channelId, threadId, subtype, channelType, text },
       'Received Slack DM mention event',
