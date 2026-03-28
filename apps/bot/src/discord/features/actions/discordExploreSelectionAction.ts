@@ -17,9 +17,13 @@ export async function handleDiscordExploreSelection(
     return;
   }
 
+  const currentSelection = exploreSelectionByUser.get(interaction.user.id);
   exploreSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.contextAttachments?.length
+      ? { contextAttachments: currentSelection.contextAttachments }
+      : {}),
   });
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);

@@ -17,9 +17,13 @@ export async function handlePlanSelection(
     return;
   }
 
+  const currentSelection = planSelectionByUser.get(interaction.user.id);
   planSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.contextAttachments?.length
+      ? { contextAttachments: currentSelection.contextAttachments }
+      : {}),
   });
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);

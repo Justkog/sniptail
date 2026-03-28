@@ -4,7 +4,8 @@ This guide walks through creating a Discord application/bot, inviting it to your
 
 Sniptail’s Discord bot:
 - Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
-- Supports `@mention` in a channel to kick off a job.
+- Accepts up to 3 small context-file attachments on `/sniptail-ask`, `/sniptail-explore`, `/sniptail-plan`, and `/sniptail-implement`.
+- Supports `@mention` in a channel to kick off a job, and will include supported files attached to that triggering mention message.
 - Posts job results and uploads Markdown reports as file attachments.
 - Tries to create a thread per job (and falls back to replying in the channel if it can’t).
 
@@ -116,8 +117,12 @@ pnpm run dev
 
 3. In a Discord channel the bot can read/write:
    - Try a slash command, e.g. `/sniptail-usage`
+   - Try `/sniptail-ask` with up to 3 attachments. Attach files to the slash command itself, then complete the modal.
    - Mention the bot: `@Sniptail hello`
+   - Mention the bot with files attached to that same message to include them as context for the mention job.
    - If a rule returns `require_approval`, Sniptail posts an approval message with **Approve**, **Deny**, and **Cancel** buttons in the same context.
+
+Supported attachment types for slash commands and mention messages: PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Current limit: 3 files, 2 MiB each, 6 MiB total. For mentions, Sniptail only uses files attached to the triggering message itself.
 
 ## Troubleshooting
 
@@ -130,6 +135,11 @@ pnpm run dev
 
 - Ensure **MESSAGE CONTENT INTENT** is enabled in the Developer Portal.
 - Confirm the bot has access to the channel and can read message history.
+
+### Mention files are ignored
+
+- Attach files directly to the same message that mentions the bot. Sniptail does not pull files from earlier thread messages or the replied-to message.
+- Keep mention attachments within the current limit: up to 3 files, 2 MiB each, 6 MiB total.
 
 ### Threads aren’t created
 

@@ -1,17 +1,19 @@
-export const askSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
-export const exploreSelectionByUser = new Map<
-  string,
-  { repoKeys: string[]; requestedAt: number }
->();
-export const planSelectionByUser = new Map<string, { repoKeys: string[]; requestedAt: number }>();
+import type { DiscordContextAttachmentRef } from './lib/discordContextFiles.js';
+
+type DiscordJobSelectionState = {
+  repoKeys: string[];
+  requestedAt: number;
+  contextAttachments?: DiscordContextAttachmentRef[];
+};
+
+export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
+export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
+export const planSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const answerQuestionsByUser = new Map<
   string,
   { jobId: string; openQuestions: string[]; requestedAt: number }
 >();
-export const implementSelectionByUser = new Map<
-  string,
-  { repoKeys: string[]; requestedAt: number }
->();
+export const implementSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const runSelectionByUser = new Map<
   string,
   {

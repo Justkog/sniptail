@@ -99,7 +99,10 @@ export async function handleAnswerQuestionsSubmit(
     try {
       await interaction.deleteReply();
     } catch (err) {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to delete interaction reply after job acceptance');
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Failed to delete interaction reply after job acceptance',
+      );
     }
     return;
   }

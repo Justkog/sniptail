@@ -1,10 +1,10 @@
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobSettings, JobSpec } from '@sniptail/core/types/job.js';
+import type { JobContextFile, JobSettings, JobSpec } from '@sniptail/core/types/job.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
-import { postMessage, uploadFile } from '../../helpers.js';
+import { loadSlackModalContextFiles, postMessage, uploadFile } from '../../helpers.js';
 import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { parseCommaList } from '../../lib/parsing.js';
@@ -37,6 +37,23 @@ export function registerImplementSubmitView({
     const reviewers = parseCommaList(state.reviewers?.reviewers?.value ?? undefined);
     const labels = parseCommaList(state.labels?.labels?.value ?? undefined);
     const resumeFromJobId = state.resume?.resume_from?.value?.trim() || undefined;
+    let contextFiles: JobContextFile[] | undefined;
+
+    try {
+      const uploadedFiles = await loadSlackModalContextFiles({
+        client: app.client,
+        botToken: config.slack?.botToken,
+        state,
+      });
+      contextFiles = uploadedFiles.length ? uploadedFiles : undefined;
+    } catch (err) {
+      logger.warn({ err }, 'Failed to load Slack modal context files for implement job');
+      await postMessage(app, {
+        channel: metadata?.channelId ?? body.user.id,
+        text: `I couldn't use the uploaded files: ${(err as Error).message}`,
+      });
+      return;
+    }
 
     if (!repoKeys.length) {
       await postMessage(app, {
@@ -69,6 +86,7 @@ export function registerImplementSubmitView({
         ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
       },
       ...(threadContext ? { threadContext } : {}),
+      ...(contextFiles ? { contextFiles } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     };
     const job: JobSpec = Object.keys(settings).length ? { ...jobBase, settings } : jobBase;

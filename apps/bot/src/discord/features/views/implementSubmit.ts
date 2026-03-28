@@ -11,6 +11,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { implementSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
+import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
 import { parseCommaList } from '../../../slack/lib/parsing.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
@@ -35,6 +36,16 @@ export async function handleImplementModalSubmit(
   }
 
   await interaction.deferReply({ ephemeral: true });
+
+  let contextFiles;
+  try {
+    const uploadedFiles = await loadDiscordContextFiles(selection?.contextAttachments ?? []);
+    contextFiles = uploadedFiles.length ? uploadedFiles : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load Discord command context files for implement job');
+    await interaction.editReply(`I couldn't use the attached files: ${(err as Error).message}`);
+    return;
+  }
 
   const gitRef = interaction.fields.getTextInputValue('git_ref').trim();
   const requestText = interaction.fields.getTextInputValue('request_text').trim();
@@ -61,6 +72,7 @@ export async function handleImplementModalSubmit(
     requestText,
     agent: config.primaryAgent,
     channel: buildInteractionChannelContext(interaction),
+    ...(contextFiles ? { contextFiles } : {}),
     ...(threadContext ? { threadContext } : {}),
     ...(resumeFromJobId ? { resumeFromJobId } : {}),
   };
