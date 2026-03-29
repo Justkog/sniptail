@@ -36,6 +36,7 @@ export function buildJobPaths(jobWorkRoot: string, jobId: string) {
   return {
     root,
     reposRoot: join(root, 'repos'),
+    contextRoot: join(root, 'context'),
     artifactsRoot: join(root, 'artifacts'),
     logsRoot: join(root, 'logs'),
     logFile: join(root, 'logs', 'runner.log'),

@@ -5,7 +5,10 @@ import { parseArgs } from 'node:util';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { closeJobRegistryDb } from '@sniptail/core/db/index.js';
 import { closeRepoCatalogStore } from '@sniptail/core/repos/catalogStore.js';
-import { listRepoCatalogEntries, syncAllowlistFileFromCatalog } from '@sniptail/core/repos/catalog.js';
+import {
+  listRepoCatalogEntries,
+  syncAllowlistFileFromCatalog,
+} from '@sniptail/core/repos/catalog.js';
 import { syncRunActionMetadata } from '../repos/syncRunActionMetadata.js';
 import {
   addRepoCatalogEntryFromInput,

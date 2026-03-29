@@ -123,6 +123,7 @@ vi.mock('@sniptail/core/jobs/utils.js', () => {
     buildJobPaths: (_jobRoot: string, jobId: string) => ({
       root: `${jobWorkRoot}/${jobId}`,
       reposRoot: `${jobWorkRoot}/${jobId}/repos`,
+      contextRoot: `${jobWorkRoot}/${jobId}/context`,
       artifactsRoot: `${jobWorkRoot}/${jobId}/artifacts`,
       logsRoot: `${jobWorkRoot}/${jobId}/logs`,
       logFile: `${jobWorkRoot}/${jobId}/logs/runner.log`,
@@ -238,7 +239,9 @@ import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import {
   copyArtifactsFromResumedJob,
+  copyContextFromResumedJob,
   copyJobRootSeed,
+  materializeJobContextFiles,
   resolveAgentThreadId,
   resolveMentionWorkingDirectory,
   runJob,
@@ -257,6 +260,21 @@ function createRegistryMock() {
     findLatestJobByChannelThread: vi.fn(),
     findLatestJobByChannelThreadAndTypes: vi.fn(),
   } satisfies JobRegistry;
+}
+
+function createDirent(name: string, isFile: boolean): Dirent {
+  return { name, isFile: () => isFile } as unknown as Dirent;
+}
+
+function createJobPaths(jobId: string) {
+  return {
+    root: `/tmp/sniptail/job-root/${jobId}`,
+    reposRoot: `/tmp/sniptail/job-root/${jobId}/repos`,
+    contextRoot: `/tmp/sniptail/job-root/${jobId}/context`,
+    artifactsRoot: `/tmp/sniptail/job-root/${jobId}/artifacts`,
+    logsRoot: `/tmp/sniptail/job-root/${jobId}/logs`,
+    logFile: `/tmp/sniptail/job-root/${jobId}/logs/runner.log`,
+  } as never;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -299,6 +317,11 @@ function getWriteFileContentForPath(targetPath: string): string {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(appendFile).mockResolvedValue(undefined);
+  vi.mocked(copyFile).mockResolvedValue(undefined);
+  vi.mocked(mkdir).mockResolvedValue(undefined);
+  vi.mocked(readdir).mockResolvedValue([]);
+  vi.mocked(writeFile).mockResolvedValue(undefined);
 });
 
 describe('worker/pipeline helpers', () => {
@@ -341,19 +364,17 @@ describe('worker/pipeline helpers', () => {
     const copyFileMock = vi.mocked(copyFile);
 
     readdirMock.mockResolvedValueOnce([
-      { name: 'plan.md', isFile: () => true } as Dirent,
-      { name: 'job-spec.json', isFile: () => true } as Dirent,
-      { name: 'attachments', isFile: () => false } as Dirent,
-    ]);
+      createDirent('plan.md', true),
+      createDirent('job-spec.json', true),
+      createDirent('attachments', false),
+    ] as never);
     copyFileMock.mockResolvedValueOnce(undefined);
 
-    await copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
-      root: '/tmp/sniptail/job-root/job-next',
-      reposRoot: '/tmp/sniptail/job-root/job-next/repos',
-      artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
-      logsRoot: '/tmp/sniptail/job-root/job-next/logs',
-      logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
-    });
+    await copyArtifactsFromResumedJob(
+      'job-prev',
+      '/tmp/sniptail/job-root',
+      createJobPaths('job-next'),
+    );
 
     expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/artifacts', {
       withFileTypes: true,
@@ -375,13 +396,7 @@ describe('worker/pipeline helpers', () => {
     );
 
     await expect(
-      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
-        root: '/tmp/sniptail/job-root/job-next',
-        reposRoot: '/tmp/sniptail/job-root/job-next/repos',
-        artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
-        logsRoot: '/tmp/sniptail/job-root/job-next/logs',
-        logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
-      }),
+      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', createJobPaths('job-next')),
     ).resolves.toBeUndefined();
 
     expect(copyFileMock).not.toHaveBeenCalled();
@@ -391,18 +406,115 @@ describe('worker/pipeline helpers', () => {
     const readdirMock = vi.mocked(readdir);
     const copyFileMock = vi.mocked(copyFile);
 
-    readdirMock.mockResolvedValueOnce([{ name: 'plan.md', isFile: () => true } as Dirent]);
+    readdirMock.mockResolvedValueOnce([createDirent('plan.md', true)] as never);
     copyFileMock.mockRejectedValueOnce(Object.assign(new Error('exists'), { code: 'EEXIST' }));
 
     await expect(
-      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', {
-        root: '/tmp/sniptail/job-root/job-next',
-        reposRoot: '/tmp/sniptail/job-root/job-next/repos',
-        artifactsRoot: '/tmp/sniptail/job-root/job-next/artifacts',
-        logsRoot: '/tmp/sniptail/job-root/job-next/logs',
-        logFile: '/tmp/sniptail/job-root/job-next/logs/runner.log',
-      }),
+      copyArtifactsFromResumedJob('job-prev', '/tmp/sniptail/job-root', createJobPaths('job-next')),
     ).resolves.toBeUndefined();
+  });
+
+  it('copyContextFromResumedJob copies context files and manifest', async () => {
+    const readdirMock = vi.mocked(readdir);
+    const copyFileMock = vi.mocked(copyFile);
+
+    readdirMock.mockResolvedValueOnce([
+      createDirent('manifest.json', true),
+      createDirent('diagram.png', true),
+      createDirent('nested', false),
+    ] as never);
+    copyFileMock.mockResolvedValue(undefined);
+
+    await copyContextFromResumedJob(
+      'job-prev',
+      '/tmp/sniptail/job-root',
+      createJobPaths('job-next'),
+    );
+
+    expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/context', {
+      withFileTypes: true,
+    });
+    expect(copyFileMock).toHaveBeenCalledTimes(2);
+    expect(copyFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail/job-root/job-prev/context/manifest.json',
+      '/tmp/sniptail/job-root/job-next/context/manifest.json',
+      constants.COPYFILE_EXCL,
+    );
+    expect(copyFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail/job-root/job-prev/context/diagram.png',
+      '/tmp/sniptail/job-root/job-next/context/diagram.png',
+      constants.COPYFILE_EXCL,
+    );
+  });
+
+  it('materializeJobContextFiles writes files and updates manifest', async () => {
+    const readdirMock = vi.mocked(readdir);
+    const readFileMock = vi.mocked(readFile);
+    const writeFileMock = vi.mocked(writeFile);
+
+    readdirMock.mockResolvedValueOnce([
+      createDirent('existing.txt', true),
+      createDirent('manifest.json', true),
+    ] as never);
+    readFileMock.mockResolvedValueOnce(
+      JSON.stringify({
+        version: 1,
+        generatedAt: '2026-03-01T00:00:00.000Z',
+        files: [
+          {
+            path: 'context/existing.txt',
+            storedName: 'existing.txt',
+            originalName: 'existing.txt',
+            mediaType: 'text/plain',
+            byteSize: 3,
+          },
+        ],
+      }),
+    );
+    writeFileMock.mockResolvedValue(undefined);
+
+    const newEntries = await materializeJobContextFiles(createJobPaths('job-next'), {
+      jobId: 'job-next',
+      type: 'ASK',
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Use the files',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      contextFiles: [
+        {
+          originalName: 'Design Diagram.png',
+          mediaType: 'image/png',
+          byteSize: 7,
+          contentBase64: Buffer.from('pngdata').toString('base64'),
+          source: { provider: 'slack', externalId: 'F123' },
+        },
+      ],
+    } as never);
+
+    expect(newEntries).toEqual([
+      expect.objectContaining({
+        path: 'context/Design-Diagram.png',
+        storedName: 'Design-Diagram.png',
+        originalName: 'Design Diagram.png',
+        mediaType: 'image/png',
+        byteSize: 7,
+      }),
+    ]);
+    expect(writeFileMock).toHaveBeenCalledTimes(2);
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      1,
+      '/tmp/sniptail/job-root/job-next/context/Design-Diagram.png',
+      Buffer.from('pngdata'),
+    );
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      2,
+      '/tmp/sniptail/job-root/job-next/context/manifest.json',
+      expect.stringContaining('context/Design-Diagram.png'),
+      'utf8',
+    );
+    expect(
+      getWriteFileContentForPath('/tmp/sniptail/job-root/job-next/context/manifest.json'),
+    ).toContain('context/existing.txt');
   });
 
   it('resolveAgentThreadId returns explicit thread id', async () => {
@@ -731,6 +843,8 @@ describe('worker/pipeline runJob', () => {
     buildSlackIdsMock.mockReturnValue({
       commandPrefix: 'sniptail',
       commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
         ask: '/sniptail-ask',
         explore: '/sniptail-explore',
         plan: '/sniptail-plan',
@@ -741,6 +855,8 @@ describe('worker/pipeline runJob', () => {
         usage: '/sniptail-usage',
       },
       actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
         askFromJob: 'ask-from-job',
         exploreFromJob: 'explore-from-job',
         planFromJob: 'plan-from-job',
@@ -859,6 +975,8 @@ describe('worker/pipeline runJob', () => {
     buildSlackIdsMock.mockReturnValue({
       commandPrefix: 'sniptail',
       commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
         ask: '/sniptail-ask',
         explore: '/sniptail-explore',
         plan: '/sniptail-plan',
@@ -869,6 +987,8 @@ describe('worker/pipeline runJob', () => {
         usage: '/sniptail-usage',
       },
       actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
         askFromJob: 'ask-from-job',
         exploreFromJob: 'explore-from-job',
         planFromJob: 'plan-from-job',
@@ -983,6 +1103,8 @@ describe('worker/pipeline runJob', () => {
     buildSlackIdsMock.mockReturnValue({
       commandPrefix: 'sniptail',
       commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
         ask: '/sniptail-ask',
         explore: '/sniptail-explore',
         plan: '/sniptail-plan',
@@ -993,6 +1115,8 @@ describe('worker/pipeline runJob', () => {
         usage: '/sniptail-usage',
       },
       actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
         askFromJob: 'ask-from-job',
         exploreFromJob: 'explore-from-job',
         planFromJob: 'plan-from-job',
@@ -1098,6 +1222,8 @@ describe('worker/pipeline runJob', () => {
     buildSlackIdsMock.mockReturnValue({
       commandPrefix: 'sniptail',
       commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
         ask: '/sniptail-ask',
         explore: '/sniptail-explore',
         plan: '/sniptail-plan',
@@ -1108,6 +1234,8 @@ describe('worker/pipeline runJob', () => {
         usage: '/sniptail-usage',
       },
       actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
         askFromJob: 'ask-from-job',
         exploreFromJob: 'explore-from-job',
         planFromJob: 'plan-from-job',

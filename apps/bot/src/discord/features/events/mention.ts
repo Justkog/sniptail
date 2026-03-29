@@ -13,6 +13,10 @@ import { dedupe } from '../../../slack/lib/dedupe.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
+import {
+  getDiscordMessageContextAttachments,
+  loadDiscordContextFiles,
+} from '../../lib/discordContextFiles.js';
 
 async function isReplyToBot(message: Message): Promise<boolean> {
   if (message.type !== MessageType.Reply || !message.reference?.messageId) {
@@ -81,7 +85,7 @@ export async function handleMention(
   await refreshRepoAllowlist(config);
   const gitRef = resolveDefaultBaseBranch(config.repoAllowlist);
 
-  const job: JobSpec = {
+  const baseJob: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
     repoKeys: [],
@@ -95,10 +99,10 @@ export async function handleMention(
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
     action: 'jobs.mention',
-    summary: `Queue mention job ${job.jobId}`,
+    summary: `Queue mention job ${baseJob.jobId}`,
     operation: {
       kind: 'enqueueJob',
-      job,
+      job: baseJob,
     },
     actor: {
       userId: message.author.id,
@@ -135,6 +139,24 @@ export async function handleMention(
   if (!authorized) {
     return;
   }
+
+  const attachments = getDiscordMessageContextAttachments(message);
+  let contextFiles = undefined;
+  if (attachments.length) {
+    try {
+      const loadedFiles = await loadDiscordContextFiles(attachments);
+      contextFiles = loadedFiles.length ? loadedFiles : undefined;
+    } catch (err) {
+      logger.warn({ err, messageId: message.id }, 'Failed to load Discord mention context files');
+      await message.reply(`I couldn't use the attached files: ${(err as Error).message}`);
+      return;
+    }
+  }
+
+  const job: JobSpec = {
+    ...baseJob,
+    ...(contextFiles ? { contextFiles } : {}),
+  };
 
   try {
     await saveJobQueued(job);

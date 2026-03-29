@@ -1,9 +1,9 @@
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { JobContextFile, JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
-import { postMessage } from '../../helpers.js';
+import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
@@ -14,7 +14,7 @@ export function registerAnswerQuestionsSubmitView({
   queue,
   permissions,
 }: SlackHandlerContext) {
-  app.view(slackIds.actions.answerQuestionsSubmit, async ({ ack, body, view }) => {
+  app.view(slackIds.actions.answerQuestionsSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
     const metadata = view.private_metadata
@@ -49,6 +49,24 @@ export function registerAnswerQuestionsSubmitView({
     }
 
     const answers = view.state.values.answers?.answers?.value?.trim() ?? '';
+    let contextFiles: JobContextFile[] | undefined;
+
+    try {
+      const uploadedFiles = await loadSlackModalContextFiles({
+        client,
+        botToken: config.slack?.botToken,
+        state: view.state.values,
+      });
+      contextFiles = uploadedFiles.length ? uploadedFiles : undefined;
+    } catch (err) {
+      logger.warn({ err, jobId }, 'Failed to load Slack modal context files for answer questions');
+      await postMessage(app, {
+        channel: body.user.id,
+        text: `I couldn't use the uploaded files: ${(err as Error).message}`,
+      });
+      return;
+    }
+
     const requestText = [record.job.requestText, answers && `Follow-up answers:\n${answers}`]
       .filter(Boolean)
       .join('\n\n');
@@ -71,6 +89,7 @@ export function registerAnswerQuestionsSubmitView({
         userId,
         ...(threadId ? { threadId } : {}),
       },
+      ...(contextFiles ? { contextFiles } : {}),
       resumeFromJobId: record.job.jobId,
     };
 

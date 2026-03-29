@@ -1,5 +1,6 @@
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
+import { DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES } from './discordContextFiles.js';
 
 export function buildCommandNames(prefix: string) {
   return {
@@ -16,13 +17,25 @@ export function buildCommandNames(prefix: string) {
   };
 }
 
-export async function registerDiscordCommands(
-  appId: string,
-  token: string,
-  botName: string,
-  guildId?: string,
-) {
-  const rest = new REST({ version: '10' }).setToken(token);
+function buildContextAttachmentOptions() {
+  return DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES.map((optionName, index) => ({
+    name: optionName,
+    description: `Optional context file ${index + 1}`,
+    type: 11,
+    required: false,
+  }));
+}
+
+function buildContextJobCommand(name: string, description: string) {
+  return {
+    name,
+    description,
+    type: 1,
+    options: buildContextAttachmentOptions(),
+  };
+}
+
+export function buildDiscordCommandDefinitions(botName: string) {
   const prefix = toSlackCommandPrefix(botName);
   const names = buildCommandNames(prefix);
 
@@ -93,26 +106,10 @@ export async function registerDiscordCommands(
         },
       ],
     },
-    {
-      name: names.ask,
-      description: 'Ask a question about one or more repositories',
-      type: 1,
-    },
-    {
-      name: names.explore,
-      description: 'Explore solution options for one or more repositories',
-      type: 1,
-    },
-    {
-      name: names.plan,
-      description: 'Plan a change for one or more repositories',
-      type: 1,
-    },
-    {
-      name: names.implement,
-      description: 'Request a change for one or more repositories',
-      type: 1,
-    },
+    buildContextJobCommand(names.ask, 'Ask a question about one or more repositories'),
+    buildContextJobCommand(names.explore, 'Explore solution options for one or more repositories'),
+    buildContextJobCommand(names.plan, 'Plan a change for one or more repositories'),
+    buildContextJobCommand(names.implement, 'Request a change for one or more repositories'),
     {
       name: names.run,
       description: 'Run a configured repo action on one or more repositories',
@@ -137,6 +134,18 @@ export async function registerDiscordCommands(
       ],
     },
   ];
+
+  return { names, commands };
+}
+
+export async function registerDiscordCommands(
+  appId: string,
+  token: string,
+  botName: string,
+  guildId?: string,
+) {
+  const rest = new REST({ version: '10' }).setToken(token);
+  const { commands } = buildDiscordCommandDefinitions(botName);
   const route = guildId
     ? Routes.applicationGuildCommands(appId, guildId)
     : Routes.applicationCommands(appId);

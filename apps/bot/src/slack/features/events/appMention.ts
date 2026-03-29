@@ -18,6 +18,7 @@ export function registerAppMentionEvent({
     const eventTs = (event as { ts?: string }).ts;
     const botId = (event as { bot_id?: string }).bot_id;
     const userId = (event as { user?: string }).user;
+    const messageFiles = (event as { files?: Array<{ id?: string }> }).files;
 
     logger.info({ channelId, threadId, botId, text }, 'Received app_mention event');
 
@@ -45,6 +46,7 @@ export function registerAppMentionEvent({
         channelId,
         text,
         threadId,
+        ...(messageFiles?.length ? { messageFiles } : {}),
         dedupeMode: 'mention',
         onDenyText: 'You are not authorized to mention this bot for jobs.',
         ...(eventTs ? { eventTs } : {}),

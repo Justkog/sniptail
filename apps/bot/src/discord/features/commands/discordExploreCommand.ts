@@ -4,12 +4,14 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildExploreModal, buildExploreRepoSelect } from '../../modals.js';
 import { exploreSelectionByUser } from '../../state.js';
+import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
 
 export async function handleDiscordExploreStart(
   interaction: ChatInputCommandInteraction,
   config: BotConfig,
 ) {
   await refreshRepoAllowlist(config);
+  const contextAttachments = getDiscordCommandContextAttachments(interaction);
 
   const repoKeys = Object.keys(config.repoAllowlist);
   if (!repoKeys.length) {
@@ -23,6 +25,7 @@ export async function handleDiscordExploreStart(
     exploreSelectionByUser.set(interaction.user.id, {
       repoKeys,
       requestedAt: Date.now(),
+      ...(contextAttachments.length ? { contextAttachments } : {}),
     });
     const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
     const modal = buildExploreModal(config.botName, repoKeys, baseBranch);
@@ -37,6 +40,12 @@ export async function handleDiscordExploreStart(
     });
     return;
   }
+
+  exploreSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+  });
 
   const row = buildExploreRepoSelect(repoKeys);
   await interaction.reply({

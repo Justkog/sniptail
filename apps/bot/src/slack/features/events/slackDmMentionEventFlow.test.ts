@@ -1,12 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { registerAppMentionEvent } from './appMention.js';
 import { registerDmMentionEvent } from './dmMentionEvent.js';
 
+type SlackThreadContextModule = Record<string, unknown> & {
+  fetchSlackThreadContext: typeof fetchSlackThreadContext;
+};
+
+type SlackAuthorizeInput = {
+  actor: {
+    userId: string;
+    channelId: string;
+    threadId?: string;
+    workspaceId?: string;
+  };
+  onDeny: () => Promise<void>;
+};
+
+type SlackLoadedContextFile = {
+  originalName: string;
+  mediaType: string;
+  byteSize: number;
+  contentBase64: string;
+  source?: {
+    provider: string;
+    externalId: string;
+    metadata?: Record<string, string>;
+  };
+};
+
 const enqueueJobMock = vi.hoisted(() => vi.fn());
-const saveJobQueuedMock = vi.hoisted(() => vi.fn());
+const saveJobQueuedMock = vi.hoisted(() => vi.fn<(job: JobSpec) => Promise<void>>());
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
-const authorizeSlackOperationAndRespondMock = vi.hoisted(() => vi.fn());
+const authorizeSlackOperationAndRespondMock = vi.hoisted(() =>
+  vi.fn<(input: SlackAuthorizeInput) => Promise<boolean>>(),
+);
 const addReactionMock = vi.hoisted(() => vi.fn());
+const loadSlackMentionContextFilesMock = vi.hoisted(() =>
+  vi.fn<() => Promise<SlackLoadedContextFile[]>>(),
+);
 const postMessageMock = vi.hoisted(() => vi.fn());
 const fetchSlackThreadContextMock = vi.hoisted(() => vi.fn());
 
@@ -28,20 +61,22 @@ vi.mock('../../permissions/slackPermissionGuards.js', () => ({
 
 vi.mock('../../helpers.js', () => ({
   addReaction: addReactionMock,
+  loadSlackMentionContextFiles: loadSlackMentionContextFilesMock,
   postMessage: postMessageMock,
 }));
 
 vi.mock('../../lib/threadContext.js', async () => {
-  const actual = await vi.importActual<typeof import('../../lib/threadContext.js')>(
-    '../../lib/threadContext.js',
-  );
+  const actual = await vi.importActual<SlackThreadContextModule>('../../lib/threadContext.js');
   return {
     ...actual,
     fetchSlackThreadContext: fetchSlackThreadContextMock,
   };
 });
 
-type EventHandler = (args: { event: Record<string, unknown>; client: SlackClient }) => Promise<void>;
+type EventHandler = (args: {
+  event: Record<string, unknown>;
+  client: SlackClient;
+}) => Promise<void>;
 
 type SlackClient = {
   auth: {
@@ -72,6 +107,7 @@ function createSlackContext() {
     config: {
       botName: 'JC.exe',
       primaryAgent: 'codex',
+      slack: { botToken: 'xoxb-test' },
       repoAllowlist: {
         'repo-1': { baseBranch: 'experimental' },
         'repo-2': { baseBranch: 'develop' },
@@ -96,6 +132,7 @@ describe('Slack DM mention event flow', () => {
     refreshRepoAllowlistMock.mockResolvedValue(undefined);
     authorizeSlackOperationAndRespondMock.mockResolvedValue(true);
     addReactionMock.mockResolvedValue(undefined);
+    loadSlackMentionContextFilesMock.mockResolvedValue([]);
     postMessageMock.mockResolvedValue(undefined);
     fetchSlackThreadContextMock.mockResolvedValue(undefined);
   });
@@ -125,27 +162,102 @@ describe('Slack DM mention event flow', () => {
         timestamp: '111.222',
       }),
     );
-    const authInput = authorizeSlackOperationAndRespondMock.mock.calls[0]?.[0];
-    expect(authInput.actor).toEqual({
-      userId: 'U1',
-      channelId: 'D1',
-      threadId: '111.222',
-    });
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
+    expect(authorizeSlackOperationAndRespondMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'MENTION',
-        repoKeys: [],
-        gitRef: 'staging',
-        requestText: 'hello there',
-        channel: expect.objectContaining({
-          provider: 'slack',
-          channelId: 'D1',
+        actor: {
           userId: 'U1',
+          channelId: 'D1',
           threadId: '111.222',
-        }),
+        },
       }),
     );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob).toMatchObject({
+      type: 'MENTION',
+      repoKeys: [],
+      gitRef: 'staging',
+      requestText: 'hello there',
+    });
+    expect(savedJob?.channel).toMatchObject({
+      provider: 'slack',
+      channelId: 'D1',
+      userId: 'U1',
+      threadId: '111.222',
+    });
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches context files from the triggering Slack mention message', async () => {
+    const { handlers } = createSlackContext();
+    const messageHandler = handlers.get('message');
+    if (!messageHandler) throw new Error('Expected message handler registration.');
+
+    loadSlackMentionContextFilesMock.mockResolvedValue([
+      {
+        originalName: 'notes.md',
+        mediaType: 'text/markdown',
+        byteSize: 5,
+        contentBase64: 'bm90ZXM=',
+        source: {
+          provider: 'slack',
+          externalId: 'F123',
+        },
+      },
+    ]);
+
+    await messageHandler({
+      client: { auth: { test: vi.fn() } } as never,
+      event: {
+        channel: 'D1',
+        channel_type: 'im',
+        text: '<@UBOT> use these files',
+        ts: '111.226',
+        user: 'U1',
+        files: [{ id: 'F123' }],
+      },
+    });
+
+    expect(loadSlackMentionContextFilesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'D1',
+        threadTs: '111.226',
+        messageTs: '111.226',
+        botToken: 'xoxb-test',
+      }),
+    );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0] as
+      | (JobSpec & { contextFiles?: Array<{ originalName: string }> })
+      | undefined;
+    expect(savedJob?.contextFiles?.[0]?.originalName).toBe('notes.md');
+  });
+
+  it('posts an error when Slack mention attachments cannot be used', async () => {
+    const { handlers } = createSlackContext();
+    const appMentionHandler = handlers.get('app_mention');
+    if (!appMentionHandler) throw new Error('Expected app_mention handler registration.');
+
+    loadSlackMentionContextFilesMock.mockRejectedValue(
+      new Error('Unsupported file type for archive.zip.'),
+    );
+
+    await appMentionHandler({
+      client: { auth: { test: vi.fn() } } as never,
+      event: {
+        channel: 'C1',
+        text: '<@UBOT> hello',
+        ts: '333.112',
+        user: 'U1',
+        files: [{ id: 'F999' }],
+      },
+    });
+
+    expect(postMessageMock).toHaveBeenCalledWith(expect.anything(), {
+      channel: 'C1',
+      text: "I couldn't use the attached files: Unsupported file type for archive.zip.",
+      threadTs: '333.112',
+    });
+    expect(saveJobQueuedMock).not.toHaveBeenCalled();
+    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
   it('queues a mention job for a threaded IM mention using thread_ts', async () => {
@@ -165,13 +277,8 @@ describe('Slack DM mention event flow', () => {
       },
     });
 
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: expect.objectContaining({
-          threadId: '111.222',
-        }),
-      }),
-    );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob?.channel.threadId).toBe('111.222');
   });
 
   it('queues a mention job for MPIM mentions', async () => {
@@ -190,14 +297,11 @@ describe('Slack DM mention event flow', () => {
       },
     });
 
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: expect.objectContaining({
-          channelId: 'G1',
-          threadId: '222.111',
-        }),
-      }),
-    );
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob?.channel).toMatchObject({
+      channelId: 'G1',
+      threadId: '222.111',
+    });
     expect(addReactionMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -333,14 +437,11 @@ describe('Slack DM mention event flow', () => {
       },
     });
 
-    expect(postMessageMock).toHaveBeenCalledWith(
-      expect.anything(),
-      {
-        channel: 'D1',
-        text: 'You are not authorized to mention this bot in DMs for jobs.',
-        threadTs: '111.225',
-      },
-    );
+    expect(postMessageMock).toHaveBeenCalledWith(expect.anything(), {
+      channel: 'D1',
+      text: 'You are not authorized to mention this bot in DMs for jobs.',
+      threadTs: '111.225',
+    });
   });
 
   it('caches Slack runtime identity across DM mention events', async () => {
@@ -387,21 +488,15 @@ describe('Slack DM mention event flow', () => {
       },
     });
 
-    expect(addReactionMock).toHaveBeenCalledWith(
-      expect.anything(),
-      {
-        channel: 'C1',
-        name: 'eyes',
-        timestamp: '333.111',
-      },
-    );
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: expect.objectContaining({
-          channelId: 'C1',
-          threadId: '333.111',
-        }),
-      }),
-    );
+    expect(addReactionMock).toHaveBeenCalledWith(expect.anything(), {
+      channel: 'C1',
+      name: 'eyes',
+      timestamp: '333.111',
+    });
+    const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
+    expect(savedJob?.channel).toMatchObject({
+      channelId: 'C1',
+      threadId: '333.111',
+    });
   });
 });

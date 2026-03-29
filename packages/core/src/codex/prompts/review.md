@@ -7,6 +7,8 @@ Repositories are located under the job root:
 - {{this}}: repos/{{this}}
   {{/each}}
 
+If the job root contains context/manifest.json, inspect it and any relevant files under context/ before reviewing.
+
 For each repo:
 
 - Determine the current branch and compare it to the base ref {{gitRef}}.
