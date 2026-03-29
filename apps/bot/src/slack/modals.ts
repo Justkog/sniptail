@@ -4,6 +4,30 @@ import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.js';
 import type { ModalView } from '@slack/web-api';
 import { resolveDefaultBaseBranch } from '../lib/repoBaseBranch.js';
+import {
+  SLACK_CONTEXT_FILE_INPUT_ACTION_ID,
+  SLACK_CONTEXT_FILE_INPUT_BLOCK_ID,
+  SLACK_CONTEXT_FILE_INPUT_FILETYPES,
+} from './helpers.js';
+
+function buildContextFilesInputBlock() {
+  return {
+    type: 'input' as const,
+    block_id: SLACK_CONTEXT_FILE_INPUT_BLOCK_ID,
+    optional: true,
+    label: { type: 'plain_text' as const, text: 'Context files (optional)' },
+    hint: {
+      type: 'plain_text' as const,
+      text: 'PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Up to 3 files, 2 MiB each.',
+    },
+    element: {
+      type: 'file_input' as const,
+      action_id: SLACK_CONTEXT_FILE_INPUT_ACTION_ID,
+      filetypes: [...SLACK_CONTEXT_FILE_INPUT_FILETYPES],
+      max_files: 3,
+    },
+  };
+}
 
 export function buildAskModal(
   repoAllowlist: Record<string, RepoConfig>,
@@ -57,6 +81,7 @@ export function buildAskModal(
           multiline: true,
         },
       },
+      buildContextFilesInputBlock(),
       {
         type: 'input' as const,
         block_id: 'resume',
@@ -124,6 +149,7 @@ export function buildPlanModal(
           multiline: true,
         },
       },
+      buildContextFilesInputBlock(),
       {
         type: 'input' as const,
         block_id: 'resume',
@@ -191,6 +217,7 @@ export function buildExploreModal(
           multiline: true,
         },
       },
+      buildContextFilesInputBlock(),
       {
         type: 'input' as const,
         block_id: 'resume',
@@ -241,6 +268,7 @@ export function buildAnswerQuestionsModal(
           multiline: true,
         },
       },
+      buildContextFilesInputBlock(),
     ],
   };
 }
@@ -297,6 +325,7 @@ export function buildImplementModal(
           multiline: true,
         },
       },
+      buildContextFilesInputBlock(),
       {
         type: 'input' as const,
         block_id: 'reviewers',

@@ -4,9 +4,11 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildPlanModal, buildPlanRepoSelect } from '../../modals.js';
 import { planSelectionByUser } from '../../state.js';
+import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
 
 export async function handlePlanStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
+  const contextAttachments = getDiscordCommandContextAttachments(interaction);
 
   const repoKeys = Object.keys(config.repoAllowlist);
   if (!repoKeys.length) {
@@ -20,6 +22,7 @@ export async function handlePlanStart(interaction: ChatInputCommandInteraction, 
     planSelectionByUser.set(interaction.user.id, {
       repoKeys,
       requestedAt: Date.now(),
+      ...(contextAttachments.length ? { contextAttachments } : {}),
     });
     const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
     const modal = buildPlanModal(config.botName, repoKeys, baseBranch);
@@ -34,6 +37,12 @@ export async function handlePlanStart(interaction: ChatInputCommandInteraction, 
     });
     return;
   }
+
+  planSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+  });
 
   const row = buildPlanRepoSelect(repoKeys);
   await interaction.reply({

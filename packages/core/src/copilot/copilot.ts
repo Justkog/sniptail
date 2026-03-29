@@ -23,6 +23,16 @@ function isIdleTimeout(err: unknown): boolean {
   return String((err as { message?: unknown })?.message ?? err).includes('session.idle');
 }
 
+function buildCopilotAttachments(options: AgentRunOptions) {
+  const attachments = (options.currentTurnAttachments ?? []).map((attachment) => ({
+    type: 'file' as const,
+    path: attachment.path,
+    displayName: attachment.displayName,
+  }));
+
+  return attachments.length ? attachments : undefined;
+}
+
 export async function runCopilot(
   job: JobSpec,
   workDir: string,
@@ -68,6 +78,7 @@ export async function runCopilot(
   let finalResponse = '';
   let started = false;
   let fatalError: Error | undefined;
+  const attachments = buildCopilotAttachments(options);
 
   try {
     await client.start();
@@ -112,6 +123,7 @@ export async function runCopilot(
       try {
         response = await session.sendAndWait({
           prompt: attempt === 0 ? prompt : continuationPrompt,
+          ...(attachments ? { attachments } : {}),
         });
         if (fatalError) {
           throw fatalError;

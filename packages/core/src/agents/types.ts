@@ -8,6 +8,12 @@ export type AgentRunResult = {
   threadId?: string;
 };
 
+export type AgentAttachment = {
+  path: string;
+  displayName: string;
+  mediaType: string;
+};
+
 export type AgentRunOptions = {
   onEvent?: (event: unknown) => void | Promise<void>;
   sandboxMode?: 'read-only' | 'workspace-write';
@@ -18,6 +24,7 @@ export type AgentRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  currentTurnAttachments?: AgentAttachment[];
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
   copilotIdleRetries?: number;

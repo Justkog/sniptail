@@ -17,9 +17,13 @@ export async function handleAskSelection(
     return;
   }
 
+  const currentSelection = askSelectionByUser.get(interaction.user.id);
   askSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.contextAttachments?.length
+      ? { contextAttachments: currentSelection.contextAttachments }
+      : {}),
   });
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);

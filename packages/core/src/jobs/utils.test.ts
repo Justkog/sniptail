@@ -8,6 +8,7 @@ describe('jobs/utils', () => {
 
     expect(paths.root).toBe('/tmp/sniptail/job-root/job-123');
     expect(paths.reposRoot).toBe('/tmp/sniptail/job-root/job-123/repos');
+    expect(paths.contextRoot).toBe('/tmp/sniptail/job-root/job-123/context');
     expect(paths.artifactsRoot).toBe('/tmp/sniptail/job-root/job-123/artifacts');
     expect(paths.logsRoot).toBe('/tmp/sniptail/job-root/job-123/logs');
     expect(paths.logFile).toBe('/tmp/sniptail/job-root/job-123/logs/runner.log');

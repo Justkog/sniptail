@@ -4,8 +4,48 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { debugFor, isDebugNamespaceEnabled, logger } from '@sniptail/core/logger.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
+import {
+  CONTEXT_FILE_EXTENSIONS,
+  isAllowedContextFile,
+  MAX_CONTEXT_FILES,
+  MAX_CONTEXT_FILE_BYTES,
+  MAX_CONTEXT_TOTAL_BYTES,
+} from '../lib/contextFilePolicy.js';
 
 const debugSlack = debugFor('slack');
+
+export const SLACK_CONTEXT_FILE_INPUT_BLOCK_ID = 'context_files';
+export const SLACK_CONTEXT_FILE_INPUT_ACTION_ID = 'context_files';
+export const SLACK_CONTEXT_FILE_INPUT_FILETYPES = CONTEXT_FILE_EXTENSIONS;
+
+type SlackFileInfo = {
+  id: string;
+  name?: string;
+  mimetype?: string;
+  filetype?: string;
+  size?: number;
+  url_private?: string;
+  url_private_download?: string;
+};
+
+type SlackUploadedFile = {
+  id?: string;
+};
+
+type SlackReplyMessage = {
+  ts?: string;
+  files?: SlackUploadedFile[];
+};
+
+type SlackViewStateValue = {
+  files?: SlackUploadedFile[];
+};
+
+type SlackViewStateValues = Record<
+  string,
+  Record<string, SlackViewStateValue | undefined> | undefined
+>;
 
 type SlackErrorShape = {
   code?: string;
@@ -48,6 +88,164 @@ function getSlackErrorDetails(err: unknown): {
 
 function isChannelNotFoundError(err: unknown): boolean {
   return (err as SlackErrorShape).data?.error === 'channel_not_found';
+}
+
+function isAllowedSlackContextFile(file: SlackFileInfo): boolean {
+  return isAllowedContextFile({ fileName: file.name, mediaType: file.mimetype });
+}
+
+function getUniqueSlackContextFileIds(files?: SlackUploadedFile[]): string[] {
+  const fileIds = files
+    ?.map((file) => file.id?.trim())
+    .filter((fileId): fileId is string => Boolean(fileId));
+  if (!fileIds?.length) {
+    return [];
+  }
+  return Array.from(new Set(fileIds));
+}
+
+function getSubmittedSlackContextFileIds(state: SlackViewStateValues): string[] {
+  const actionState =
+    state[SLACK_CONTEXT_FILE_INPUT_BLOCK_ID]?.[SLACK_CONTEXT_FILE_INPUT_ACTION_ID];
+  return getUniqueSlackContextFileIds(actionState?.files);
+}
+
+async function fetchSlackFileInfo(client: App['client'], fileId: string): Promise<SlackFileInfo> {
+  const response = await client.files.info({ file: fileId });
+  const file = (response as { file?: SlackFileInfo }).file;
+  if (!file?.id) {
+    throw new Error(`Slack did not return metadata for uploaded file ${fileId}.`);
+  }
+  return file;
+}
+
+async function downloadSlackFile(botToken: string, file: SlackFileInfo): Promise<Buffer> {
+  const downloadUrl = file.url_private_download ?? file.url_private;
+  if (!downloadUrl) {
+    throw new Error(`Slack file ${file.id} does not expose a download URL.`);
+  }
+
+  const response = await fetch(downloadUrl, {
+    headers: {
+      Authorization: `Bearer ${botToken}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Slack file download failed (${response.status}).`);
+  }
+
+  const content = Buffer.from(await response.arrayBuffer());
+  if (!content.byteLength) {
+    throw new Error(`Slack file ${file.id} is empty.`);
+  }
+  return content;
+}
+
+async function loadSlackContextFilesByIds(input: {
+  client: App['client'];
+  botToken?: string | undefined;
+  fileIds: string[];
+}): Promise<JobContextFile[]> {
+  if (!input.fileIds.length) {
+    return [];
+  }
+  if (!input.botToken) {
+    throw new Error('Slack bot token is required to download uploaded files.');
+  }
+  if (input.fileIds.length > MAX_CONTEXT_FILES) {
+    throw new Error(`Attach at most ${MAX_CONTEXT_FILES} files.`);
+  }
+
+  let totalBytes = 0;
+  const contextFiles: JobContextFile[] = [];
+
+  for (const fileId of input.fileIds) {
+    const file = await fetchSlackFileInfo(input.client, fileId);
+    const fileName = file.name?.trim() || `slack-file-${file.id}`;
+
+    if (!isAllowedSlackContextFile(file)) {
+      throw new Error(`Unsupported file type for ${fileName}. Use images or small text files.`);
+    }
+    if (typeof file.size === 'number' && file.size > MAX_CONTEXT_FILE_BYTES) {
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
+    }
+
+    const content = await downloadSlackFile(input.botToken, file);
+    if (content.byteLength > MAX_CONTEXT_FILE_BYTES) {
+      throw new Error(
+        `${fileName} exceeds the ${Math.floor(MAX_CONTEXT_FILE_BYTES / (1024 * 1024))} MiB limit.`,
+      );
+    }
+    totalBytes += content.byteLength;
+    if (totalBytes > MAX_CONTEXT_TOTAL_BYTES) {
+      throw new Error(
+        `Attached files exceed the ${Math.floor(MAX_CONTEXT_TOTAL_BYTES / (1024 * 1024))} MiB total limit.`,
+      );
+    }
+
+    const sourceMetadata: Record<string, string> = {};
+    if (file.filetype?.trim()) {
+      sourceMetadata.filetype = file.filetype.trim();
+    }
+
+    contextFiles.push({
+      originalName: fileName,
+      mediaType: file.mimetype?.trim() || 'application/octet-stream',
+      byteSize: content.byteLength,
+      contentBase64: content.toString('base64'),
+      source: {
+        provider: 'slack',
+        externalId: file.id,
+        ...(Object.keys(sourceMetadata).length ? { metadata: sourceMetadata } : {}),
+      },
+    });
+  }
+
+  return contextFiles;
+}
+
+export async function loadSlackModalContextFiles(input: {
+  client: App['client'];
+  botToken?: string | undefined;
+  state: SlackViewStateValues;
+}): Promise<JobContextFile[]> {
+  return loadSlackContextFilesByIds({
+    client: input.client,
+    botToken: input.botToken,
+    fileIds: getSubmittedSlackContextFileIds(input.state),
+  });
+}
+
+export async function loadSlackMentionContextFiles(input: {
+  client: App['client'];
+  botToken?: string | undefined;
+  channelId: string;
+  threadTs: string;
+  messageTs: string;
+}): Promise<JobContextFile[]> {
+  const response = await input.client.conversations.replies({
+    channel: input.channelId,
+    ts: input.threadTs,
+    oldest: input.messageTs,
+    inclusive: true,
+    limit: 1,
+  });
+  const messages = ((response as { messages?: SlackReplyMessage[] }).messages ?? []).filter(
+    (message): message is SlackReplyMessage => Boolean(message.ts),
+  );
+  const triggeringMessage = messages[0];
+
+  if (!triggeringMessage || triggeringMessage.ts !== input.messageTs) {
+    throw new Error('Slack could not resolve the triggering mention message.');
+  }
+
+  return loadSlackContextFilesByIds({
+    client: input.client,
+    botToken: input.botToken,
+    fileIds: getUniqueSlackContextFileIds(triggeringMessage.files),
+  });
 }
 
 async function debugProbeChannelAccess(app: App, channelId: string): Promise<void> {

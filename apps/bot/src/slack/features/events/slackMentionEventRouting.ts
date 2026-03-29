@@ -3,7 +3,7 @@ import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
-import { postMessage } from '../../helpers.js';
+import { loadSlackMentionContextFiles, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
@@ -16,6 +16,7 @@ type SlackMentionEventJobInput = {
   text?: string;
   threadId?: string;
   eventTs?: string;
+  messageFiles?: Array<{ id?: string }>;
   userId?: string;
   workspaceId?: string;
   dedupeMode: 'mention' | 'dm-mention';
@@ -33,8 +34,17 @@ export async function queueSlackMentionJob(
   client: SlackHandlerContext['app']['client'],
   input: SlackMentionEventJobInput,
 ): Promise<boolean> {
-  const { channelId, eventTs, text = '', threadId, userId, workspaceId, dedupeMode, onDenyText } =
-    input;
+  const {
+    channelId,
+    eventTs,
+    text = '',
+    threadId,
+    messageFiles,
+    userId,
+    workspaceId,
+    dedupeMode,
+    onDenyText,
+  } = input;
 
   if (!channelId || !threadId || !userId) {
     return false;
@@ -54,7 +64,7 @@ export async function queueSlackMentionJob(
 
   await refreshRepoAllowlist(config);
   const gitRef = resolveDefaultBaseBranch(config.repoAllowlist);
-  const job: JobSpec = {
+  const baseJob: JobSpec = {
     jobId: createJobId('mention'),
     type: 'MENTION',
     repoKeys: [],
@@ -75,10 +85,10 @@ export async function queueSlackMentionJob(
     client,
     slackIds,
     action: 'jobs.mention',
-    summary: `Queue mention job ${job.jobId}`,
+    summary: `Queue mention job ${baseJob.jobId}`,
     operation: {
       kind: 'enqueueJob',
-      job,
+      job: baseJob,
     },
     actor: {
       userId,
@@ -98,6 +108,33 @@ export async function queueSlackMentionJob(
   if (!authorized) {
     return false;
   }
+
+  let contextFiles = undefined;
+  if (messageFiles?.length && eventTs) {
+    try {
+      const loadedFiles = await loadSlackMentionContextFiles({
+        client,
+        botToken: config.slack?.botToken,
+        channelId,
+        threadTs: threadId,
+        messageTs: eventTs,
+      });
+      contextFiles = loadedFiles.length ? loadedFiles : undefined;
+    } catch (err) {
+      logger.warn({ err, channelId, eventTs }, 'Failed to load Slack mention context files');
+      await postMessage(app, {
+        channel: channelId,
+        text: `I couldn't use the attached files: ${(err as Error).message}`,
+        threadTs: threadId,
+      });
+      return false;
+    }
+  }
+
+  const job: JobSpec = {
+    ...baseJob,
+    ...(contextFiles ? { contextFiles } : {}),
+  };
 
   try {
     await saveJobQueued(job);

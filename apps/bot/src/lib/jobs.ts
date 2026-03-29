@@ -13,9 +13,30 @@ export async function persistUploadSpec(job: JobSpec): Promise<string | null> {
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');
   try {
     await mkdir(artifactsRoot, { recursive: true });
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { requestText: _requestText, threadContext: _threadContext, ...jobSpec } = job;
-    await writeFile(jobSpecPath, `${JSON.stringify(jobSpec, null, 2)}\n`, 'utf8');
+    const { contextFiles, ...jobSpec } = job;
+    const sanitizedJobSpec = {
+      ...jobSpec,
+      requestText: undefined,
+      threadContext: undefined,
+    };
+    const sanitizedContextFiles = contextFiles?.map((file) => ({
+      originalName: file.originalName,
+      mediaType: file.mediaType,
+      byteSize: file.byteSize,
+      source: file.source,
+    }));
+    await writeFile(
+      jobSpecPath,
+      `${JSON.stringify(
+        {
+          ...sanitizedJobSpec,
+          ...(sanitizedContextFiles ? { contextFiles: sanitizedContextFiles } : {}),
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
     return jobSpecPath;
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to write job spec upload artifact');
