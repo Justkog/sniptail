@@ -6,7 +6,7 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage, uploadFile } from '../../helpers.js';
-import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
+import { createJobId, persistUploadSpec, truncateRequestSummary } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -123,7 +123,7 @@ export function registerSlackExploreSubmitView({
 
     await enqueueJob(queue, job);
 
-    const requestSummary = requestText.trim() || 'No request text provided.';
+    const requestSummary = truncateRequestSummary(requestText);
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
       text: `*Job request: ${job.jobId}*\n\`\`\`\n${requestSummary}\n\`\`\``,

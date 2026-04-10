@@ -10,6 +10,7 @@ import {
   type GroupMembershipCacheEntry,
 } from './slackPermissionsActorGroups.js';
 import { logger } from '@sniptail/core/logger.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 const slackGroupMembershipCache = new Map<string, GroupMembershipCacheEntry>();
 const defaultPendingApprovalText = 'Approval required. Your request has been submitted.';
@@ -35,11 +36,11 @@ function resolveRequestSummaryFromOperation(
   if (operation.kind === 'enqueueJob') {
     const requestSummary = operation.job.requestText?.trim();
     if (requestSummary) {
-      return requestSummary;
+      return truncateRequestSummary(requestSummary);
     }
   }
   const fallbackSummary = summary.trim();
-  return fallbackSummary || 'No request text provided.';
+  return truncateRequestSummary(fallbackSummary);
 }
 
 function buildSlackJobRequestText(requestSummary: string, jobId?: string): string {

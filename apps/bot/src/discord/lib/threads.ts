@@ -3,6 +3,7 @@ import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { isSendableTextChannel, type SendableTextChannel } from '../helpers.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 export type DiscordJobAcceptanceResult = {
   acceptancePosted: boolean;
@@ -39,7 +40,7 @@ async function postDiscordJobRequest(
   requestText: string,
   jobId: string,
 ) {
-  const requestSummary = requestText.trim() || 'No request text provided.';
+  const requestSummary = truncateRequestSummary(requestText);
   try {
     await channel.send(`**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``);
   } catch (err) {
@@ -65,9 +66,7 @@ export async function postDiscordJobAcceptance(
   try {
     const rootMessage = await channel.send(
       options?.requestAsPrimaryMessage
-        ? `**Job request: ${job.jobId}**\n\`\`\`\n${
-            requestText.trim() || 'No request text provided.'
-          }\n\`\`\``
+        ? `**Job request: ${job.jobId}**\n\`\`\`\n${truncateRequestSummary(requestText)}\n\`\`\``
         : (options?.acceptanceMessage ??
           `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
     );

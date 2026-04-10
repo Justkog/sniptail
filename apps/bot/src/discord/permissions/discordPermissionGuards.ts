@@ -11,6 +11,7 @@ import type { PermissionsRuntimeService } from '../../permissions/permissionsRun
 import type { DiscordPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
 import { resolvePermissionsProviderCapabilities } from '../../permissions/permissionsProviderCapabilities.js';
 import { resolveDiscordActorGroups } from './discordPermissionsActorGroups.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 const defaultPendingApprovalText = 'Approval required. Your request has been submitted.';
 
@@ -35,11 +36,11 @@ function resolveRequestSummaryFromOperation(
   if (operation.kind === 'enqueueJob') {
     const requestSummary = operation.job.requestText?.trim();
     if (requestSummary) {
-      return requestSummary;
+      return truncateRequestSummary(requestSummary);
     }
   }
   const fallbackSummary = summary.trim();
-  return fallbackSummary || 'No request text provided.';
+  return truncateRequestSummary(fallbackSummary);
 }
 
 function buildDiscordJobRequestText(requestSummary: string, jobId?: string): string {
