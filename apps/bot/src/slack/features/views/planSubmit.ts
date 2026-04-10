@@ -123,23 +123,14 @@ export function registerPlanSubmitView({
 
     await enqueueJob(queue, job);
 
+    const requestSummary = requestText.trim() || 'No request text provided.';
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
-      text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+      text: `*Job request: ${job.jobId}*\n\`\`\`\n${requestSummary}\n\`\`\``,
       ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
 
     const ackThreadId = metadata?.threadId ?? ackResponse?.ts;
-    if (ackThreadId) {
-      const requestSummary = requestText.trim() || 'No request text provided.';
-      await postMessage(app, {
-        channel: metadata?.channelId ?? body.user.id,
-        text: `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``,
-        threadTs: ackThreadId,
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
-      });
-    }
     if (config.debugJobSpecMessages) {
       const botNamePrefix = toSlackCommandPrefix(config.botName);
       const uploadSpecPath = await persistUploadSpec(job);
