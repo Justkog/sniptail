@@ -41,7 +41,7 @@ async function postDiscordJobRequest(
 ) {
   const requestSummary = requestText.trim() || 'No request text provided.';
   try {
-    await channel.send(`**Job request**\n\`\`\`\n${requestSummary}\n\`\`\``);
+    await channel.send(`**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``);
   } catch (err) {
     logger.warn({ err, jobId }, 'Failed to post Discord job request');
   }
@@ -52,6 +52,10 @@ export async function postDiscordJobAcceptance(
   job: JobSpec,
   requestText: string,
   botName: string,
+  options?: {
+    requestAsPrimaryMessage?: boolean;
+    acceptanceMessage?: string;
+  },
 ): Promise<DiscordJobAcceptanceResult> {
   const channel = interaction.channel;
   if (!channel || !channel.isTextBased() || !isSendableTextChannel(channel)) {
@@ -59,11 +63,18 @@ export async function postDiscordJobAcceptance(
   }
 
   try {
-    const acceptedMessage = await channel.send(
-      `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+    const rootMessage = await channel.send(
+      options?.requestAsPrimaryMessage
+        ? `**Job request: ${job.jobId}**\n\`\`\`\n${
+            requestText.trim() || 'No request text provided.'
+          }\n\`\`\``
+        : (options?.acceptanceMessage ??
+          `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
     );
-    const threadTarget = await resolveDiscordThreadChannel(acceptedMessage, botName, job.jobId);
-    await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId);
+    const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
+    if (!options?.requestAsPrimaryMessage) {
+      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId);
+    }
 
     if (threadTarget.threadId) {
       await updateJobRecord(job.jobId, {

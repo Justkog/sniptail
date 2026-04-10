@@ -42,8 +42,9 @@ function resolveRequestSummaryFromOperation(
   return fallbackSummary || 'No request text provided.';
 }
 
-function buildDiscordJobRequestText(requestSummary: string): string {
-  return `**Job request**\n\`\`\`\n${requestSummary}\n\`\`\``;
+function buildDiscordJobRequestText(requestSummary: string, jobId?: string): string {
+  const title = jobId ? `**Job request: ${jobId}**` : '**Job request**';
+  return `${title}\n\`\`\`\n${requestSummary}\n\`\`\``;
 }
 
 export function extractDiscordRoleIds(member: unknown): string[] {
@@ -198,8 +199,9 @@ async function postDiscordJobRequestAndResolveThread(input: {
   existingThreadId?: string;
   requestSummary: string;
   approvalId: string;
+  jobId?: string;
 }): Promise<string | undefined> {
-  const text = buildDiscordJobRequestText(input.requestSummary);
+  const text = buildDiscordJobRequestText(input.requestSummary, input.jobId);
   const botNamePrefix = toSlackCommandPrefix(input.botName);
   if (input.existingThreadId) {
     try {
@@ -317,6 +319,7 @@ export async function authorizeDiscordOperationAndRespond(input: {
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,
       approvalId: authorization.approval.id,
+      ...(input.operation.kind === 'enqueueJob' ? { jobId: input.operation.job.jobId } : {}),
     });
     let approvalThreadId = requestThreadId;
     if (!input.actor.threadId && requestThreadId) {
