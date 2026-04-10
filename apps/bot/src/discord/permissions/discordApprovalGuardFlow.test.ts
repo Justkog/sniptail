@@ -104,7 +104,7 @@ describe('Discord approval guard flow', () => {
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
-      botName: 'orchid',
+      botName: 'Orchid Bot',
       action: 'jobs.clearBefore',
       summary: 'Clear jobs before 2025-01-01T00:00:00.000Z',
       operation: {
@@ -131,7 +131,7 @@ describe('Discord approval guard flow', () => {
       content: '**Job request**\n```\nClear jobs before 2025-01-01T00:00:00.000Z\n```',
     });
     const threadOptions = startThread.mock.calls[0]?.[0] as { name?: string } | undefined;
-    expect(threadOptions?.name).toBe('orchid approval approval-2');
+    expect(threadOptions?.name).toBe('orchid-bot approval approval-2');
     expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
       approvalId: 'approval-2',
       channelId: 'thread-created',

@@ -3,6 +3,7 @@ import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js'
 import { logger } from '@sniptail/core/logger.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
@@ -372,6 +373,7 @@ export function registerRunSubmitView({
 
     const ackThreadId = metadata?.threadId ?? ackResponse?.ts;
     if (config.debugJobSpecMessages) {
+      const botNamePrefix = toSlackCommandPrefix(config.botName);
       const uploadSpecPath = await persistUploadSpec(job);
       if (!uploadSpecPath) {
         logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
@@ -379,7 +381,7 @@ export function registerRunSubmitView({
         const jobSpecOptions = {
           channel: metadata?.channelId ?? body.user.id,
           filePath: uploadSpecPath,
-          title: `${config.botName}-${job.jobId}-job-spec.json`,
+          title: `${botNamePrefix}-${job.jobId}-job-spec.json`,
         };
         try {
           await uploadFile(

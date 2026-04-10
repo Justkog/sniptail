@@ -5,6 +5,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
@@ -176,6 +177,7 @@ export async function runJob(
   validateJob(job, repoAllowlist);
   const notifier = createNotifier(events);
   const channelAdapter = resolveWorkerChannelAdapter(job.channel.provider);
+  const botNamePrefix = toSlackCommandPrefix(config.botName);
 
   await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
@@ -359,7 +361,7 @@ export async function runJob(
       if (report) {
         await notifier.uploadFile(channelRef, {
           fileContent: report,
-          title: `${config.botName}-${job.jobId}-${reportFileName}`,
+          title: `${botNamePrefix}-${job.jobId}-${reportFileName}`,
         });
       }
       const completionText = report
@@ -425,7 +427,7 @@ export async function runJob(
     const channelRef = buildChannelRef(job, threadId);
     await notifier.uploadFile(channelRef, {
       fileContent: summary,
-      title: `${config.botName}-${job.jobId}-summary.md`,
+      title: `${botNamePrefix}-${job.jobId}-summary.md`,
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;

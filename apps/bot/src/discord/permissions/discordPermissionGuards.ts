@@ -5,6 +5,7 @@ import {
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
 import { logger } from '@sniptail/core/logger.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { isSendableTextChannel, postDiscordMessage } from '../helpers.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import type { DiscordPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
@@ -199,6 +200,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
   approvalId: string;
 }): Promise<string | undefined> {
   const text = buildDiscordJobRequestText(input.requestSummary);
+  const botNamePrefix = toSlackCommandPrefix(input.botName);
   if (input.existingThreadId) {
     try {
       await postDiscordMessage(input.client, {
@@ -222,7 +224,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
       return undefined;
     }
     const requestMessage = await channel.send({ content: text });
-    const threadName = `${input.botName} approval ${input.approvalId}`.slice(0, 100);
+    const threadName = `${botNamePrefix} approval ${input.approvalId}`.slice(0, 100);
     try {
       const thread = await requestMessage.startThread({
         name: threadName,
