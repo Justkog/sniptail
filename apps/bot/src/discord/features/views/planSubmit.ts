@@ -82,6 +82,7 @@ export async function handlePlanModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.plan',
     summary: `Queue plan job ${job.jobId}`,
     operation: {

@@ -5,6 +5,7 @@ import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadContext.js';
@@ -98,6 +99,7 @@ export async function handleMention(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.mention',
     summary: `Queue mention job ${baseJob.jobId}`,
     operation: {
@@ -120,7 +122,10 @@ export async function handleMention(
       if (message.channel.isThread()) {
         return message.channelId;
       }
-      const threadName = `sniptail approval ${approvalId}`.slice(0, 100);
+      const threadName = `${toSlackCommandPrefix(config.botName)} approval ${approvalId}`.slice(
+        0,
+        100,
+      );
       try {
         const thread = await message.startThread({
           name: threadName,

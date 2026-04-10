@@ -5,6 +5,7 @@ import {
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
 import { logger } from '@sniptail/core/logger.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { isSendableTextChannel, postDiscordMessage } from '../helpers.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import type { DiscordPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
@@ -192,12 +193,14 @@ async function postDiscordApprovalMessage(input: {
 
 async function postDiscordJobRequestAndResolveThread(input: {
   client: Parameters<typeof postDiscordMessage>[0];
+  botName: string;
   channelId: string;
   existingThreadId?: string;
   requestSummary: string;
   approvalId: string;
 }): Promise<string | undefined> {
   const text = buildDiscordJobRequestText(input.requestSummary);
+  const botNamePrefix = toSlackCommandPrefix(input.botName);
   if (input.existingThreadId) {
     try {
       await postDiscordMessage(input.client, {
@@ -221,7 +224,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
       return undefined;
     }
     const requestMessage = await channel.send({ content: text });
-    const threadName = `sniptail approval ${input.approvalId}`.slice(0, 100);
+    const threadName = `${botNamePrefix} approval ${input.approvalId}`.slice(0, 100);
     try {
       const thread = await requestMessage.startThread({
         name: threadName,
@@ -240,6 +243,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
 
 export async function authorizeDiscordOperationAndRespond(input: {
   permissions: PermissionsRuntimeService;
+  botName: string;
   action: PermissionAction;
   summary: string;
   operation: DeferredPermissionOperation;
@@ -308,6 +312,7 @@ export async function authorizeDiscordOperationAndRespond(input: {
     const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
     const requestThreadId = await postDiscordJobRequestAndResolveThread({
       client: input.client,
+      botName: input.botName,
       channelId: input.actor.channelId,
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,

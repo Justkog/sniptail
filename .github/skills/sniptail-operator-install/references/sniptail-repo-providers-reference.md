@@ -38,12 +38,13 @@ Use `GITHUB_API_TOKEN` when Sniptail needs to create GitHub pull requests.
 ### Clone-only access
 
 - the worker needs SSH access to the repository
-- no GitLab API variables are required just to clone and inspect the repo
+- `--project-id` is required even for clone-only access (the GitLab provider always validates its presence)
+- no GitLab API variables (`GITLAB_BASE_URL` / `GITLAB_TOKEN`) are needed just to clone and inspect the repo
 
 Example:
 
 ```bash
-sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git
+sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git --project-id 12345
 ```
 
 ### Merge request support
@@ -74,6 +75,7 @@ If the repository should be treated as GitLab for merge requests, pass `--projec
   - `GITHUB_API_TOKEN`
 - GitLab clone-only:
   - SSH access only
+  - `--project-id` required
 - GitLab merge request support:
   - `GITLAB_BASE_URL`
   - `GITLAB_TOKEN`

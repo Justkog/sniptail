@@ -82,6 +82,7 @@ export async function handleAskModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.ask',
     summary: `Queue ask job ${job.jobId}`,
     operation: {

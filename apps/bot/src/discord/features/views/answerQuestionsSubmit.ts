@@ -59,6 +59,7 @@ export async function handleAnswerQuestionsSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.answerQuestions',
     summary: `Queue answer-questions job ${job.jobId}`,
     operation: {

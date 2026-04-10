@@ -82,6 +82,7 @@ export async function handleDiscordExploreModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.explore',
     summary: `Queue explore job ${job.jobId}`,
     operation: {

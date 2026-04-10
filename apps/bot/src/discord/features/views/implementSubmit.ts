@@ -86,6 +86,7 @@ export async function handleImplementModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.implement',
     summary: `Queue implement job ${job.jobId}`,
     operation: {
