@@ -8,6 +8,16 @@ export function createJobId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const REQUEST_SUMMARY_MAX_LENGTH = 1000;
+
+export function truncateRequestSummary(requestText: string): string {
+  const trimmed = requestText.trim() || 'No request text provided.';
+  if (trimmed.length <= REQUEST_SUMMARY_MAX_LENGTH) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, REQUEST_SUMMARY_MAX_LENGTH)}…`;
+}
+
 export async function persistUploadSpec(job: JobSpec): Promise<string | null> {
   const artifactsRoot = join(tmpdir(), 'sniptail', job.jobId);
   const jobSpecPath = join(artifactsRoot, 'job-spec-upload.json');

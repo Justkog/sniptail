@@ -66,7 +66,7 @@ describe('Discord approval guard flow', () => {
       expect.objectContaining({
         channelId: 'D1',
         threadId: 'thread-1',
-        text: '**Job request**\n```\nPlan a migration\n```',
+        text: '**Job request: plan-1**\n```\nPlan a migration\n```',
       }),
     );
     expect(postDiscordMessage).toHaveBeenNthCalledWith(

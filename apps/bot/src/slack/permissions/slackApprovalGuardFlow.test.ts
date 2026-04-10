@@ -80,7 +80,7 @@ describe('Slack approval guard flow', () => {
       expect.objectContaining({
         channel: 'C1',
         thread_ts: 'thread-1',
-        text: '*Job request*\n```\nCheck repo history\n```',
+        text: '*Job request: explore-1*\n```\nCheck repo history\n```',
       }),
     );
     expect(postMessage).toHaveBeenNthCalledWith(
@@ -146,7 +146,7 @@ describe('Slack approval guard flow', () => {
       1,
       expect.objectContaining({
         channel: 'C1',
-        text: '*Job request*\n```\nHow does this work?\n```',
+        text: '*Job request: ask-1*\n```\nHow does this work?\n```',
       }),
     );
     expect(permissions.assignApprovalThreadIfPending).toHaveBeenCalledWith({

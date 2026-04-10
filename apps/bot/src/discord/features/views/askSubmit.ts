@@ -117,7 +117,9 @@ export async function handleAskModalSubmit(
   }
 
   await enqueueJob(queue, job);
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    requestAsPrimaryMessage: true,
+  });
   askSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     try {

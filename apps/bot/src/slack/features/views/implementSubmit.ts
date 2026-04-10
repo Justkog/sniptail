@@ -6,7 +6,7 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage, uploadFile } from '../../helpers.js';
-import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
+import { createJobId, persistUploadSpec, truncateRequestSummary } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { parseCommaList } from '../../lib/parsing.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
@@ -131,23 +131,14 @@ export function registerImplementSubmitView({
 
     await enqueueJob(queue, job);
 
+    const requestSummary = truncateRequestSummary(requestText);
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
-      text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+      text: `*Job request: ${job.jobId}*\n\`\`\`\n${requestSummary}\n\`\`\``,
       ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
 
     const ackThreadId = metadata?.threadId ?? ackResponse?.ts;
-    if (ackThreadId) {
-      const requestSummary = requestText.trim() || 'No request text provided.';
-      await postMessage(app, {
-        channel: metadata?.channelId ?? body.user.id,
-        text: `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``,
-        threadTs: ackThreadId,
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to post job request');
-      });
-    }
     if (config.debugJobSpecMessages) {
       const botNamePrefix = toSlackCommandPrefix(config.botName);
       const uploadSpecPath = await persistUploadSpec(job);
