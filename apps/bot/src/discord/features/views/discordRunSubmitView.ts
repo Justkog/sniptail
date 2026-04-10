@@ -135,6 +135,7 @@ export async function handleRunModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.run',
     summary: `Queue run job ${job.jobId}`,
     operation: {

@@ -192,6 +192,7 @@ async function postDiscordApprovalMessage(input: {
 
 async function postDiscordJobRequestAndResolveThread(input: {
   client: Parameters<typeof postDiscordMessage>[0];
+  botName: string;
   channelId: string;
   existingThreadId?: string;
   requestSummary: string;
@@ -221,7 +222,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
       return undefined;
     }
     const requestMessage = await channel.send({ content: text });
-    const threadName = `sniptail approval ${input.approvalId}`.slice(0, 100);
+    const threadName = `${input.botName} approval ${input.approvalId}`.slice(0, 100);
     try {
       const thread = await requestMessage.startThread({
         name: threadName,
@@ -240,6 +241,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
 
 export async function authorizeDiscordOperationAndRespond(input: {
   permissions: PermissionsRuntimeService;
+  botName: string;
   action: PermissionAction;
   summary: string;
   operation: DeferredPermissionOperation;
@@ -308,6 +310,7 @@ export async function authorizeDiscordOperationAndRespond(input: {
     const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
     const requestThreadId = await postDiscordJobRequestAndResolveThread({
       client: input.client,
+      botName: input.botName,
       channelId: input.actor.channelId,
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,

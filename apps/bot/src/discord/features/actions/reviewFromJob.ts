@@ -57,6 +57,7 @@ export async function handleReviewFromJobButton(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.review',
     summary: `Queue review job from ${jobId}`,
     operation: {

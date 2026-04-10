@@ -359,7 +359,7 @@ export async function runJob(
       if (report) {
         await notifier.uploadFile(channelRef, {
           fileContent: report,
-          title: `sniptail-${job.jobId}-${reportFileName}`,
+          title: `${config.botName}-${job.jobId}-${reportFileName}`,
         });
       }
       const completionText = report
@@ -425,7 +425,7 @@ export async function runJob(
     const channelRef = buildChannelRef(job, threadId);
     await notifier.uploadFile(channelRef, {
       fileContent: summary,
-      title: `sniptail-${job.jobId}-summary.md`,
+      title: `${config.botName}-${job.jobId}-summary.md`,
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;

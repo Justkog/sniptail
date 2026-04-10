@@ -1,4 +1,5 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
@@ -9,6 +10,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 
 export async function handleRepoRemoveAdmin(
   interaction: ChatInputCommandInteraction,
+  config: BotConfig,
   workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
@@ -31,6 +33,7 @@ export async function handleRepoRemoveAdmin(
   };
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'repos.remove',
     summary: `Remove repo ${repoKey}`,
     operation: {

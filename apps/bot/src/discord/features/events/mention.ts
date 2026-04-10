@@ -98,6 +98,7 @@ export async function handleMention(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.mention',
     summary: `Queue mention job ${baseJob.jobId}`,
     operation: {
@@ -120,7 +121,7 @@ export async function handleMention(
       if (message.channel.isThread()) {
         return message.channelId;
       }
-      const threadName = `sniptail approval ${approvalId}`.slice(0, 100);
+      const threadName = `${config.botName} approval ${approvalId}`.slice(0, 100);
       try {
         const thread = await message.startThread({
           name: threadName,

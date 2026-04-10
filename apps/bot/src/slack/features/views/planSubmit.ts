@@ -147,7 +147,7 @@ export function registerPlanSubmitView({
         const jobSpecOptions = {
           channel: metadata?.channelId ?? body.user.id,
           filePath: uploadSpecPath,
-          title: `sniptail-${job.jobId}-job-spec.json`,
+          title: `${config.botName}-${job.jobId}-job-spec.json`,
         };
         try {
           await uploadFile(

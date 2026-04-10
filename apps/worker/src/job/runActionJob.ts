@@ -389,7 +389,7 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
 
   await notifier.uploadFile(channelRef, {
     fileContent: report,
-    title: `sniptail-${job.jobId}-report.md`,
+    title: `${config.botName}-${job.jobId}-report.md`,
   });
 
   const inputsSummary = buildRunChannelInputsSummary(
