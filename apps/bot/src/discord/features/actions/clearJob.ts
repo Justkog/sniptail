@@ -1,4 +1,5 @@
 import type { ButtonInteraction } from 'discord.js';
+import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
@@ -21,6 +22,7 @@ export async function handleClearJobButton(interaction: ButtonInteraction, jobId
 export async function handleClearJobConfirmButton(
   interaction: ButtonInteraction,
   jobId: string,
+  config: BotConfig,
   workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
@@ -34,6 +36,7 @@ export async function handleClearJobConfirmButton(
   };
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.clear',
     summary: `Clear job data for ${jobId}`,
     operation: {

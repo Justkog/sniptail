@@ -12,6 +12,7 @@ import {
 import { CommandError, runCommand, type RunResult } from '@sniptail/core/runner/commandRunner.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import type { Notifier } from '../channels/notifier.js';
 import type { WorkerChannelAdapter } from '../channels/runtimeWorkerChannelAdapter.js';
 import type { prepareRepoWorktrees } from '../repos/worktrees.js';
@@ -386,10 +387,11 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
   const report = reportSections.join('\n');
   const reportPath = join(paths.artifactsRoot, 'report.md');
   await writeFile(reportPath, `${report}\n`, 'utf8');
+  const botNamePrefix = toSlackCommandPrefix(config.botName);
 
   await notifier.uploadFile(channelRef, {
     fileContent: report,
-    title: `sniptail-${job.jobId}-report.md`,
+    title: `${botNamePrefix}-${job.jobId}-report.md`,
   });
 
   const inputsSummary = buildRunChannelInputsSummary(

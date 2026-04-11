@@ -5,11 +5,13 @@ import {
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
 import { logger } from '@sniptail/core/logger.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { isSendableTextChannel, postDiscordMessage } from '../helpers.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import type { DiscordPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
 import { resolvePermissionsProviderCapabilities } from '../../permissions/permissionsProviderCapabilities.js';
 import { resolveDiscordActorGroups } from './discordPermissionsActorGroups.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 const defaultPendingApprovalText = 'Approval required. Your request has been submitted.';
 
@@ -34,15 +36,16 @@ function resolveRequestSummaryFromOperation(
   if (operation.kind === 'enqueueJob') {
     const requestSummary = operation.job.requestText?.trim();
     if (requestSummary) {
-      return requestSummary;
+      return truncateRequestSummary(requestSummary);
     }
   }
   const fallbackSummary = summary.trim();
-  return fallbackSummary || 'No request text provided.';
+  return truncateRequestSummary(fallbackSummary);
 }
 
-function buildDiscordJobRequestText(requestSummary: string): string {
-  return `**Job request**\n\`\`\`\n${requestSummary}\n\`\`\``;
+function buildDiscordJobRequestText(requestSummary: string, jobId?: string): string {
+  const title = jobId ? `**Job request: ${jobId}**` : '**Job request**';
+  return `${title}\n\`\`\`\n${requestSummary}\n\`\`\``;
 }
 
 export function extractDiscordRoleIds(member: unknown): string[] {
@@ -192,12 +195,15 @@ async function postDiscordApprovalMessage(input: {
 
 async function postDiscordJobRequestAndResolveThread(input: {
   client: Parameters<typeof postDiscordMessage>[0];
+  botName: string;
   channelId: string;
   existingThreadId?: string;
   requestSummary: string;
   approvalId: string;
+  jobId?: string;
 }): Promise<string | undefined> {
-  const text = buildDiscordJobRequestText(input.requestSummary);
+  const text = buildDiscordJobRequestText(input.requestSummary, input.jobId);
+  const botNamePrefix = toSlackCommandPrefix(input.botName);
   if (input.existingThreadId) {
     try {
       await postDiscordMessage(input.client, {
@@ -221,7 +227,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
       return undefined;
     }
     const requestMessage = await channel.send({ content: text });
-    const threadName = `sniptail approval ${input.approvalId}`.slice(0, 100);
+    const threadName = `${botNamePrefix} approval ${input.approvalId}`.slice(0, 100);
     try {
       const thread = await requestMessage.startThread({
         name: threadName,
@@ -240,6 +246,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
 
 export async function authorizeDiscordOperationAndRespond(input: {
   permissions: PermissionsRuntimeService;
+  botName: string;
   action: PermissionAction;
   summary: string;
   operation: DeferredPermissionOperation;
@@ -308,10 +315,12 @@ export async function authorizeDiscordOperationAndRespond(input: {
     const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
     const requestThreadId = await postDiscordJobRequestAndResolveThread({
       client: input.client,
+      botName: input.botName,
       channelId: input.actor.channelId,
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,
       approvalId: authorization.approval.id,
+      ...(input.operation.kind === 'enqueueJob' ? { jobId: input.operation.job.jobId } : {}),
     });
     let approvalThreadId = requestThreadId;
     if (!input.actor.threadId && requestThreadId) {

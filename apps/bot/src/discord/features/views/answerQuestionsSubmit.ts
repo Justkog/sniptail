@@ -59,6 +59,7 @@ export async function handleAnswerQuestionsSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.answerQuestions',
     summary: `Queue answer-questions job ${job.jobId}`,
     operation: {
@@ -93,7 +94,9 @@ export async function handleAnswerQuestionsSubmit(
   }
 
   await enqueueJob(queue, job);
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    requestAsPrimaryMessage: true,
+  });
   answerQuestionsByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     try {

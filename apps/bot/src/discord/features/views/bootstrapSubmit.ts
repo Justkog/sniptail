@@ -81,6 +81,7 @@ export async function handleBootstrapModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.bootstrap',
     summary: `Queue bootstrap request ${request.requestId} for ${repoName}`,
     operation: {

@@ -86,6 +86,7 @@ export async function handleImplementModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.implement',
     summary: `Queue implement job ${job.jobId}`,
     operation: {
@@ -120,7 +121,9 @@ export async function handleImplementModalSubmit(
   }
 
   await enqueueJob(queue, job);
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    requestAsPrimaryMessage: true,
+  });
   implementSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     try {

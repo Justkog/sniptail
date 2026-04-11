@@ -3,6 +3,7 @@ import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { isSendableTextChannel, type SendableTextChannel } from '../helpers.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 export type DiscordJobAcceptanceResult = {
   acceptancePosted: boolean;
@@ -39,9 +40,9 @@ async function postDiscordJobRequest(
   requestText: string,
   jobId: string,
 ) {
-  const requestSummary = requestText.trim() || 'No request text provided.';
+  const requestSummary = truncateRequestSummary(requestText);
   try {
-    await channel.send(`**Job request**\n\`\`\`\n${requestSummary}\n\`\`\``);
+    await channel.send(`**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``);
   } catch (err) {
     logger.warn({ err, jobId }, 'Failed to post Discord job request');
   }
@@ -52,6 +53,10 @@ export async function postDiscordJobAcceptance(
   job: JobSpec,
   requestText: string,
   botName: string,
+  options?: {
+    requestAsPrimaryMessage?: boolean;
+    acceptanceMessage?: string;
+  },
 ): Promise<DiscordJobAcceptanceResult> {
   const channel = interaction.channel;
   if (!channel || !channel.isTextBased() || !isSendableTextChannel(channel)) {
@@ -59,11 +64,16 @@ export async function postDiscordJobAcceptance(
   }
 
   try {
-    const acceptedMessage = await channel.send(
-      `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+    const rootMessage = await channel.send(
+      options?.requestAsPrimaryMessage
+        ? `**Job request: ${job.jobId}**\n\`\`\`\n${truncateRequestSummary(requestText)}\n\`\`\``
+        : (options?.acceptanceMessage ??
+          `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
     );
-    const threadTarget = await resolveDiscordThreadChannel(acceptedMessage, botName, job.jobId);
-    await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId);
+    const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
+    if (!options?.requestAsPrimaryMessage) {
+      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId);
+    }
 
     if (threadTarget.threadId) {
       await updateJobRecord(job.jobId, {

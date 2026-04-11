@@ -82,6 +82,7 @@ export async function handlePlanModalSubmit(
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
+    botName: config.botName,
     action: 'jobs.plan',
     summary: `Queue plan job ${job.jobId}`,
     operation: {
@@ -116,7 +117,9 @@ export async function handlePlanModalSubmit(
   }
 
   await enqueueJob(queue, job);
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName);
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    requestAsPrimaryMessage: true,
+  });
   planSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     await interaction.deleteReply().catch((err) => {

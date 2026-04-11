@@ -309,7 +309,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.repoAdd) {
       try {
-        await handleRepoAddAdmin(interaction, workerEventQueue, permissions);
+        await handleRepoAddAdmin(interaction, config, workerEventQueue, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -319,7 +319,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.repoRemove) {
       try {
-        await handleRepoRemoveAdmin(interaction, workerEventQueue, permissions);
+        await handleRepoRemoveAdmin(interaction, config, workerEventQueue, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -329,7 +329,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.clearBefore) {
       try {
-        await handleClearBefore(interaction, workerEventQueue, permissions);
+        await handleClearBefore(interaction, config, workerEventQueue, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -341,7 +341,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     try {
       if (interaction.commandName === commandNames.usage) {
-        await handleUsage(interaction, workerEventQueue, permissions);
+        await handleUsage(interaction, config, workerEventQueue, permissions);
       }
     } catch (err) {
       logger.error({ err, command: interaction.commandName }, 'Discord command failed');
@@ -576,6 +576,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             await handleClearJobConfirmButton(
               interaction,
               parsed.jobId,
+              config,
               workerEventQueue,
               permissions,
             );

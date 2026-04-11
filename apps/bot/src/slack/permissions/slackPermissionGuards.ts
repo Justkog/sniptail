@@ -10,6 +10,7 @@ import {
   type GroupMembershipCacheEntry,
 } from './slackPermissionsActorGroups.js';
 import { logger } from '@sniptail/core/logger.js';
+import { truncateRequestSummary } from '../../lib/jobs.js';
 
 const slackGroupMembershipCache = new Map<string, GroupMembershipCacheEntry>();
 const defaultPendingApprovalText = 'Approval required. Your request has been submitted.';
@@ -35,15 +36,16 @@ function resolveRequestSummaryFromOperation(
   if (operation.kind === 'enqueueJob') {
     const requestSummary = operation.job.requestText?.trim();
     if (requestSummary) {
-      return requestSummary;
+      return truncateRequestSummary(requestSummary);
     }
   }
   const fallbackSummary = summary.trim();
-  return fallbackSummary || 'No request text provided.';
+  return truncateRequestSummary(fallbackSummary);
 }
 
-function buildSlackJobRequestText(requestSummary: string): string {
-  return `*Job request*\n\`\`\`\n${requestSummary}\n\`\`\``;
+function buildSlackJobRequestText(requestSummary: string, jobId?: string): string {
+  const title = jobId ? `*Job request: ${jobId}*` : '*Job request*';
+  return `${title}\n\`\`\`\n${requestSummary}\n\`\`\``;
 }
 
 function buildSlackApprovalBlocks(
@@ -247,12 +249,13 @@ async function postSlackJobRequestAndResolveThread(input: {
   channelId: string;
   existingThreadId?: string;
   requestSummary: string;
+  jobId?: string;
 }): Promise<string | undefined> {
   try {
     const response = await input.client.chat.postMessage({
       channel: input.channelId,
       ...(input.existingThreadId ? { thread_ts: input.existingThreadId } : {}),
-      text: buildSlackJobRequestText(input.requestSummary),
+      text: buildSlackJobRequestText(input.requestSummary, input.jobId),
     });
     return input.existingThreadId ?? response.ts;
   } catch (err) {
@@ -310,6 +313,7 @@ export async function authorizeSlackOperationAndRespond(input: {
       channelId: input.actor.channelId,
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,
+      ...(input.operation.kind === 'enqueueJob' ? { jobId: input.operation.job.jobId } : {}),
     });
     let approvalThreadId = requestThreadId;
     if (!input.actor.threadId && requestThreadId) {

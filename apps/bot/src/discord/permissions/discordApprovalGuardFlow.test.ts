@@ -30,6 +30,7 @@ describe('Discord approval guard flow', () => {
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
+      botName: 'sniptail',
       action: 'jobs.plan',
       summary: 'Queue plan job plan-1',
       operation: {
@@ -65,7 +66,7 @@ describe('Discord approval guard flow', () => {
       expect.objectContaining({
         channelId: 'D1',
         threadId: 'thread-1',
-        text: '**Job request**\n```\nPlan a migration\n```',
+        text: '**Job request: plan-1**\n```\nPlan a migration\n```',
       }),
     );
     expect(postDiscordMessage).toHaveBeenNthCalledWith(
@@ -103,6 +104,7 @@ describe('Discord approval guard flow', () => {
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
+      botName: 'Orchid Bot',
       action: 'jobs.clearBefore',
       summary: 'Clear jobs before 2025-01-01T00:00:00.000Z',
       operation: {
@@ -129,7 +131,7 @@ describe('Discord approval guard flow', () => {
       content: '**Job request**\n```\nClear jobs before 2025-01-01T00:00:00.000Z\n```',
     });
     const threadOptions = startThread.mock.calls[0]?.[0] as { name?: string } | undefined;
-    expect(threadOptions?.name).toBe('sniptail approval approval-2');
+    expect(threadOptions?.name).toBe('orchid-bot approval approval-2');
     expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
       approvalId: 'approval-2',
       channelId: 'thread-created',
@@ -160,6 +162,7 @@ describe('Discord approval guard flow', () => {
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
+      botName: 'sniptail',
       action: 'jobs.mention',
       summary: 'Queue mention job mention-1',
       operation: {
@@ -222,6 +225,7 @@ describe('Discord approval guard flow', () => {
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
+      botName: 'sniptail',
       action: 'jobs.mention',
       summary: 'Queue mention job mention-2',
       operation: {
