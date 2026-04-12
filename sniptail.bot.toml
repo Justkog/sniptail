@@ -55,6 +55,7 @@ redis_url = "redis://localhost:6379"
 # - "user:<platform_user_id>" or "user:*"
 # - "group:slack:<usergroup_id>"
 # - "group:discord:<role_id>"
+# - Telegram currently supports user-based subjects best; group subjects are not implemented in this MVP.
 # - omit `actions` to apply a rule to all actions
 #   (for effect="require_approval", omitted `actions` applies to all non-approval actions)
 #
@@ -83,6 +84,12 @@ redis_url = "redis://localhost:6379"
 # Optional. Default: false.
 [channels.discord]
 # enabled = false
+
+# Telegram channel settings.
+# Optional. Default: false.
+[channels.telegram]
+# enabled = false
+# chat_ids = ["123456789", "-1001234567890"]
 
 # Optional run action catalog for /<bot>-run.
 # Keys are action ids and should match worker config and repo contracts.
@@ -120,3 +127,13 @@ description = "Test action that prints typed run parameters"
 # Optional. Default: [] (empty). Example: ["123", "456"]
 # Mentions/commands in threads are also allowed when the thread's parent channel ID is listed.
 # channel_ids = ["123456789012345678"]
+
+# Telegram bot token.
+# Required when channels.telegram.enabled = true.
+# Optional otherwise.
+# Set TELEGRAM_BOT_TOKEN in the bot environment.
+
+# Telegram chat IDs to allow.
+# Optional. Default: [] (empty, all chats allowed).
+# Example: ["123456789", "-1001234567890"]
+# chat_ids = ["123456789"]

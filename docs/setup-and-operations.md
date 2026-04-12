@@ -107,9 +107,9 @@ When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it'
 
 Prebuilt release artifacts prune `@openai/codex-sdk/vendor` and bundled `@github/copilot*` packages during packaging, so local Codex and Copilot execution require system-installed `codex` and `copilot` CLIs.
 
-#### 5) Slack / Discord setup
+#### 5) Slack / Discord / Telegram setup
 
-See `docs/slack-bot-setup.md` and `docs/discord-bot-setup.md`.
+See `docs/slack-bot-setup.md`, `docs/discord-bot-setup.md`, and `docs/telegram-bot-setup.md`.
 
 Enable channels in `sniptail.bot.toml` using the channel section:
 
@@ -120,9 +120,14 @@ enabled = true
 [channels.discord]
 enabled = true
 app_id = "123456789012345678"
+
+[channels.telegram]
+enabled = true
+# Optional: restrict the bot to specific Telegram chats.
+# chat_ids = ["123456789", "-1001234567890"]
 ```
 
-For single-channel bot processes, set `SNIPTAIL_CHANNELS` at runtime (for example `SNIPTAIL_CHANNELS=slack` or `SNIPTAIL_CHANNELS=discord`).
+For single-channel bot processes, set `SNIPTAIL_CHANNELS` at runtime (for example `SNIPTAIL_CHANNELS=slack`, `SNIPTAIL_CHANNELS=discord`, or `SNIPTAIL_CHANNELS=telegram`).
 
 To generate a Slack manifest from the template:
 

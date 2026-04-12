@@ -3,6 +3,7 @@ import { BOT_EVENT_SCHEMA_VERSION, type CoreBotEvent } from '@sniptail/core/type
 import type { ChannelProvider, ChannelRef } from '@sniptail/core/types/channel.js';
 import { DiscordWorkerChannelAdapter } from '../discord/discordWorkerChannelAdapter.js';
 import { SlackWorkerChannelAdapter } from '../slack/slackWorkerChannelAdapter.js';
+import { TelegramWorkerChannelAdapter } from '../telegram/telegramWorkerChannelAdapter.js';
 import type { FileUpload, MessageOptions } from './notifier.js';
 import {
   type BootstrapSuccessRenderInput,
@@ -87,6 +88,7 @@ class GenericWorkerChannelAdapter implements WorkerChannelAdapter {
 const baseRegistry = new ChannelRegistry<WorkerChannelAdapter>([
   new SlackWorkerChannelAdapter(),
   new DiscordWorkerChannelAdapter(),
+  new TelegramWorkerChannelAdapter(),
 ]);
 
 const genericAdapterCache = new Map<ChannelProvider, WorkerChannelAdapter>();
