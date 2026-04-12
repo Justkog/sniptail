@@ -22,7 +22,10 @@ import { authorizeTelegramOperationAndRespond, enqueueTelegramUsageRequest, reso
 
 type TelegramJobType = 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW';
 
-function toChatId(chatId: number | string): string {
+function toChatId(chatId: number | string | null | undefined): string | undefined {
+  if (chatId == null) {
+    return undefined;
+  }
   return String(chatId);
 }
 
