@@ -44,7 +44,7 @@ export async function submitNormalizedJobRequest({
   input,
   authorize,
 }: SubmitNormalizedJobRequestInput): Promise<NormalizedJobRequestResult> {
-  if (!input.repoKeys.length) {
+  if (input.type !== 'MENTION' && !input.repoKeys.length) {
     return {
       status: 'invalid',
       message: 'Select at least one repository before submitting the request.',
