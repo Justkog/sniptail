@@ -68,7 +68,7 @@ export async function postDiscordJobAcceptance(
       options?.requestAsPrimaryMessage
         ? `**Job request: ${job.jobId}**\n\`\`\`\n${truncateRequestSummary(requestText)}\n\`\`\``
         : (options?.acceptanceMessage ??
-          `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
+            `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
     );
     const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
     if (!options?.requestAsPrimaryMessage) {

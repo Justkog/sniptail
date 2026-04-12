@@ -15,7 +15,10 @@ export class TelegramBotChannelAdapter implements RuntimeBotChannelAdapter {
   capabilities = {
     fileUploads: true,
   } as const;
-  supportedEventTypes = ['message.post', 'file.upload'] as const satisfies readonly CoreBotEventType[];
+  supportedEventTypes = [
+    'message.post',
+    'file.upload',
+  ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
     if (event.provider !== this.providerId) {

@@ -1,6 +1,9 @@
 import type { JobType } from '@sniptail/core/types/job.js';
 
-const TELEGRAM_JOB_LABELS: Record<Extract<JobType, 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW'>, string> = {
+const TELEGRAM_JOB_LABELS: Record<
+  Extract<JobType, 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW'>,
+  string
+> = {
   ASK: 'Ask',
   EXPLORE: 'Explore',
   PLAN: 'Plan',
@@ -83,7 +86,9 @@ export function buildTelegramAcceptedText(jobId: string, type: JobType): string 
   return `Accepted ${type.toLowerCase()} job ${jobId}. I will report back here.`;
 }
 
-export function parseRepoAndRequestInput(raw: string): { repoKeys: string[]; requestText: string } | undefined {
+export function parseRepoAndRequestInput(
+  raw: string,
+): { repoKeys: string[]; requestText: string } | undefined {
   const [reposRaw, ...requestParts] = raw.split('|');
   if (!reposRaw) {
     return undefined;
@@ -99,11 +104,13 @@ export function parseRepoAndRequestInput(raw: string): { repoKeys: string[]; req
   return { repoKeys, requestText };
 }
 
-export function parseRunInput(raw: string): {
-  repoKeys: string[];
-  actionId: string;
-  params?: Record<string, string>;
-} | undefined {
+export function parseRunInput(raw: string):
+  | {
+      repoKeys: string[];
+      actionId: string;
+      params?: Record<string, string>;
+    }
+  | undefined {
   const parts = raw.split('|').map((value) => value.trim());
   if (parts.length < 2) {
     return undefined;
