@@ -4,6 +4,7 @@ import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { RuntimeBotChannelAdapter } from './runtimeBotChannelAdapter.js';
 import { DiscordBotChannelAdapter } from '../discord/discordBotChannelAdapter.js';
 import { SlackBotChannelAdapter } from '../slack/slackBotChannelAdapter.js';
+import { TelegramBotChannelAdapter } from '../telegram/telegramBotChannelAdapter.js';
 
 class GenericBotChannelAdapter implements RuntimeBotChannelAdapter {
   capabilities = {} as const;
@@ -20,6 +21,7 @@ class GenericBotChannelAdapter implements RuntimeBotChannelAdapter {
 const baseRegistry = new ChannelRegistry<RuntimeBotChannelAdapter>([
   new SlackBotChannelAdapter(),
   new DiscordBotChannelAdapter(),
+  new TelegramBotChannelAdapter(),
 ]);
 const genericAdapterCache = new Map<ChannelProvider, RuntimeBotChannelAdapter>();
 

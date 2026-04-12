@@ -1,5 +1,6 @@
 import type { App } from '@slack/bolt';
 import type { Client } from 'discord.js';
+import type { Bot } from 'grammy';
 import { logger } from '@sniptail/core/logger.js';
 import type {
   QueueConsumerHandle,
@@ -12,12 +13,14 @@ type BotEventWorkerDeps = {
   queueRuntime: QueueTransportRuntime;
   slackApp?: App;
   discordClient?: Client;
+  telegramBot?: Bot;
 };
 
 export function startBotEventWorker({
   queueRuntime,
   slackApp,
   discordClient,
+  telegramBot,
 }: BotEventWorkerDeps): QueueConsumerHandle {
   return queueRuntime.consumeBotEvents({
     concurrency: 4,
@@ -27,6 +30,7 @@ export function startBotEventWorker({
       const handled = await adapter.handleEvent(event, {
         ...(slackApp ? { slackApp } : {}),
         ...(discordClient ? { discordClient } : {}),
+        ...(telegramBot ? { telegramBot } : {}),
       });
       if (!handled) {
         logger.warn(

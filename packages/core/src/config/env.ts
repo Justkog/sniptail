@@ -590,6 +590,7 @@ export function loadBotConfig(): BotConfig {
   const runToml = getTomlTable(toml.run, 'run');
   const channelsSlackToml = getTomlTable(channelsToml?.slack, 'channels.slack');
   const channelsDiscordToml = getTomlTable(channelsToml?.discord, 'channels.discord');
+  const channelsTelegramToml = getTomlTable(channelsToml?.telegram, 'channels.telegram');
 
   const core = loadCoreConfigFromToml(coreToml, botToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
@@ -617,22 +618,33 @@ export function loadBotConfig(): BotConfig {
     channelsDiscordToml?.enabled,
     'channels.discord.enabled',
   );
+  const telegramEnabledByTable = parseTomlOptionalBoolean(
+    channelsTelegramToml?.enabled,
+    'channels.telegram.enabled',
+  );
   const enabledChannels = hasRuntimeChannelOverride
     ? runtimeEnabledChannels
     : uniqueProviderList([
         ...(slackEnabledByTable ? ['slack'] : []),
         ...(discordEnabledByTable ? ['discord'] : []),
+        ...(telegramEnabledByTable ? ['telegram'] : []),
       ]);
 
   const slackEnabled = enabledChannels.includes('slack');
   const discordEnabled = enabledChannels.includes('discord');
+  const telegramEnabled = enabledChannels.includes('telegram');
 
   const discordGuildId = resolveStringValue('DISCORD_GUILD_ID', channelsDiscordToml?.guild_id);
   const discordChannelIds = resolveStringArrayFromSources(
     'DISCORD_CHANNEL_IDS',
     channelsDiscordToml?.channel_ids,
   );
+  const telegramChatIds = resolveStringArrayFromSources(
+    'TELEGRAM_CHAT_IDS',
+    channelsTelegramToml?.chat_ids,
+  );
   const discordBotToken = process.env.DISCORD_BOT_TOKEN?.trim();
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const discordAppId = resolveStringValue('DISCORD_APP_ID', channelsDiscordToml?.app_id, {
     required: false,
   });
@@ -649,6 +661,7 @@ export function loadBotConfig(): BotConfig {
     {
       slack: { enabled: slackEnabled },
       discord: { enabled: discordEnabled },
+      telegram: { enabled: telegramEnabled },
     },
   );
 
@@ -662,6 +675,7 @@ export function loadBotConfig(): BotConfig {
     channels,
     slackEnabled,
     discordEnabled,
+    telegramEnabled,
     ...(slackEnabled && {
       slack: {
         botToken: requireEnv('SLACK_BOT_TOKEN'),
@@ -675,6 +689,12 @@ export function loadBotConfig(): BotConfig {
         appId: resolveStringValue('DISCORD_APP_ID', discordAppId, { required: true }) as string,
         ...(discordGuildId ? { guildId: discordGuildId } : {}),
         ...(discordChannelIds.length ? { channelIds: discordChannelIds } : {}),
+      },
+    }),
+    ...(telegramEnabled && {
+      telegram: {
+        botToken: telegramBotToken || requireEnv('TELEGRAM_BOT_TOKEN'),
+        ...(telegramChatIds.length ? { chatIds: telegramChatIds } : {}),
       },
     }),
     permissions,

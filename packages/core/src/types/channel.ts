@@ -1,5 +1,5 @@
-export type KnownChannelProvider = 'slack' | 'discord';
-export const KNOWN_CHANNEL_PROVIDERS: KnownChannelProvider[] = ['slack', 'discord'];
+export type KnownChannelProvider = 'slack' | 'discord' | 'telegram';
+export const KNOWN_CHANNEL_PROVIDERS: KnownChannelProvider[] = ['slack', 'discord', 'telegram'];
 export type ChannelProvider = KnownChannelProvider | (string & {});
 
 export function isKnownChannelProvider(
@@ -29,8 +29,17 @@ export type DiscordChannelContext = ChannelContextBase & {
   interactionApplicationId?: string;
 };
 
+export type TelegramChannelContext = ChannelContextBase & {
+  provider: 'telegram';
+  userId: string;
+};
+
 export type GenericChannelContext = ChannelContextBase;
 
-export type ChannelContext = SlackChannelContext | DiscordChannelContext | GenericChannelContext;
+export type ChannelContext =
+  | SlackChannelContext
+  | DiscordChannelContext
+  | TelegramChannelContext
+  | GenericChannelContext;
 
 export type ChannelRef = Pick<ChannelContextBase, 'provider' | 'channelId' | 'threadId'>;

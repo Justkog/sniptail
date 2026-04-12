@@ -6,7 +6,7 @@
   <em>Or any codebase, really.</em>
 </p>
 
-Sniptail is an omnichannel bot that accepts slash commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. Slack and Discord are the currently supported channels. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
+Sniptail is an omnichannel bot that accepts slash commands or chat commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. Slack, Discord, and Telegram are supported channels. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
 ## Bot mention
 
@@ -88,7 +88,7 @@ Expected result:
 - Agent runs and produces a Markdown report.
 - Bot posts the report and completion message back in the same Discord channel/thread.
 
-For deeper setup and operations documentation, see `docs/setup-and-operations.md`, `docs/chat-commands.md`, `docs/project-roadmap.md`, and `docs/sniptail-cloud-faq.md`.
+For deeper setup and operations documentation, see `docs/setup-and-operations.md`, `docs/chat-commands.md`, `docs/telegram-bot-setup.md`, `docs/project-roadmap.md`, and `docs/sniptail-cloud-faq.md`.
 
 ## Agent skill
 
@@ -123,7 +123,7 @@ If your agent only supports single-file skills, fetch `SKILL.md` at minimum, but
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack and Discord, alongside Codex/GitHub_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack, Discord, and Telegram, alongside Codex/GitHub_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 > **Sniptail is source-available, self-hostable, and free to use and modify.**
 >
@@ -135,10 +135,10 @@ Roadmap detail tables are in `docs/project-roadmap.md`.
 
 ## How it works (high level)
 
-1. A user triggers a slash command or mentions the bot in Slack or Discord.
+1. A user triggers a slash command or mentions the bot in Slack or Discord, or sends a Telegram command/message to the bot.
 2. The bot queues a job via the configured transport (`redis` or in-process `inproc`) and records metadata in the configured job registry.
 3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex or Copilot).
-4. Results are posted back to Slack or Discord as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
+4. Results are posted back to Slack, Discord, or Telegram as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
 ## Why not just use Copilot or Codex?
 
@@ -148,7 +148,7 @@ Sniptail doesn't replace them - it runs them on your behalf.
 
 Instead of being tied to one developer's IDE, Sniptail turns those same agents into a team-facing automation layer:
 
-- Ask questions about how a feature works - directly from Slack or Discord
+- Ask questions about how a feature works - directly from Slack, Discord, or Telegram
 - Explore product capabilities without digging through the repo
 - Help onboard new team members who aren't technical
 - Generate reports, plans, or lightweight PRs
