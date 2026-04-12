@@ -284,7 +284,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
 
   bot.command('start', async (ctx: any) => {
     const chatId = toChatId(ctx.chat?.id);
-    if (!isAllowedChat(context, chatId)) {
+    if (!chatId || !isAllowedChat(context, chatId)) {
       return;
     }
     await ctx.reply(buildTelegramHelpText(config.botName));
