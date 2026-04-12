@@ -62,24 +62,22 @@ async function submitTelegramJob(input: {
   repoKeys: string[];
   promptMessageId?: number;
 }) {
-  let action: 'jobs.ask' | 'jobs.explore' | 'jobs.plan' | 'jobs.implement' | 'jobs.review';
-  switch (input.type) {
-    case 'ASK':
-      action = 'jobs.ask';
-      break;
-    case 'EXPLORE':
-      action = 'jobs.explore';
-      break;
-    case 'PLAN':
-      action = 'jobs.plan';
-      break;
-    case 'IMPLEMENT':
-      action = 'jobs.implement';
-      break;
-    case 'REVIEW':
-      action = 'jobs.review';
-      break;
-  }
+  const action = (() => {
+    switch (input.type) {
+      case 'ASK':
+        return 'jobs.ask';
+      case 'EXPLORE':
+        return 'jobs.explore';
+      case 'PLAN':
+        return 'jobs.plan';
+      case 'IMPLEMENT':
+        return 'jobs.implement';
+      case 'REVIEW':
+        return 'jobs.review';
+      default:
+        throw new Error(`Unsupported Telegram job type: ${String(input.type)}`);
+    }
+  })();
 
   const { context } = input;
   await refreshRepoAllowlist(context.config);
