@@ -10,10 +10,27 @@ export type TelegramWizardState = {
 
 const wizardState = new Map<string, TelegramWizardState>();
 const WIZARD_TTL_MS = 15 * 60 * 1000;
+const WIZARD_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 function makeKey(chatId: string, userId: string): string {
   return `${chatId}:${userId}`;
 }
+
+function isExpired(state: TelegramWizardState, now: number = Date.now()): boolean {
+  return now - state.startedAt > WIZARD_TTL_MS;
+}
+
+function cleanupExpiredWizardState(): void {
+  const now = Date.now();
+  for (const [key, state] of wizardState.entries()) {
+    if (isExpired(state, now)) {
+      wizardState.delete(key);
+    }
+  }
+}
+
+const wizardStateCleanupTimer = setInterval(cleanupExpiredWizardState, WIZARD_CLEANUP_INTERVAL_MS);
+wizardStateCleanupTimer.unref?.();
 
 export function loadTelegramWizardState(chatId: string, userId: string): TelegramWizardState | undefined {
   const key = makeKey(chatId, userId);
@@ -21,7 +38,7 @@ export function loadTelegramWizardState(chatId: string, userId: string): Telegra
   if (!state) {
     return undefined;
   }
-  if (Date.now() - state.startedAt > WIZARD_TTL_MS) {
+  if (isExpired(state)) {
     wizardState.delete(key);
     return undefined;
   }
