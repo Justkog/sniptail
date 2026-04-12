@@ -101,7 +101,7 @@ export function registerAskSubmitView({
     if (result.status === 'invalid') {
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        text: `Please select at least one repo for ${slackIds.commands.ask}.`,
+        text: result.message,
       });
       return;
     }
