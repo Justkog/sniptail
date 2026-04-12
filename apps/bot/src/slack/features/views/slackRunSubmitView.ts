@@ -1,17 +1,16 @@
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
-import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
+import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage, uploadFile } from '../../helpers.js';
-import { createJobId, persistUploadSpec } from '../../../lib/jobs.js';
+import { persistUploadSpec } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
+import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 import {
   normalizeCollectedRunParams,
   resolveRunActionMetadata,
@@ -305,65 +304,74 @@ export function registerRunSubmitView({
         ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadId)
         : undefined;
 
-    const job: JobSpec = {
-      jobId: createJobId('run'),
-      type: 'RUN',
-      repoKeys,
-      primaryRepoKey: repoKeys[0]!,
-      gitRef,
-      requestText: `Run action ${actionId}`,
-      run: {
-        actionId,
-        params: normalizedParams.normalized,
+    const requestText = `Run action ${actionId}`;
+    const result = await submitNormalizedJobRequest({
+      config,
+      queue,
+      input: {
+        type: 'RUN',
+        repoKeys,
+        ...(gitRef ? { gitRef } : {}),
+        requestText,
+        channel: {
+          provider: 'slack',
+          channelId: metadata?.channelId ?? body.user.id,
+          userId: metadata?.userId ?? body.user.id,
+          ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        },
+        ...(threadContext ? { threadContext } : {}),
+        run: {
+          actionId,
+          params: normalizedParams.normalized,
+        },
       },
-      agent: config.primaryAgent,
-      channel: {
-        provider: 'slack',
-        channelId: metadata?.channelId ?? body.user.id,
-        userId: metadata?.userId ?? body.user.id,
-        ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
-      },
-      ...(threadContext ? { threadContext } : {}),
-    };
-
-    const authorized = await authorizeSlackOperationAndRespond({
-      permissions,
-      client: app.client,
-      slackIds,
-      action: 'jobs.run',
-      summary: `Queue run job ${job.jobId}`,
-      operation: {
-        kind: 'enqueueJob',
-        job,
-      },
-      actor: {
-        userId: job.channel.userId ?? body.user.id,
-        channelId: job.channel.channelId,
-        ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
-      },
-      onDeny: async () => {
-        await postMessage(app, {
-          channel: metadata?.channelId ?? body.user.id,
-          text: 'You are not authorized to run custom actions.',
-        });
-      },
+      authorize: async (job) =>
+        authorizeSlackOperationAndRespond({
+          permissions,
+          client: app.client,
+          slackIds,
+          action: 'jobs.run',
+          summary: `Queue run job ${job.jobId}`,
+          operation: {
+            kind: 'enqueueJob',
+            job,
+          },
+          actor: {
+            userId: job.channel.userId ?? body.user.id,
+            channelId: job.channel.channelId,
+            ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+          },
+          onDeny: async () => {
+            await postMessage(app, {
+              channel: metadata?.channelId ?? body.user.id,
+              text: 'You are not authorized to run custom actions.',
+            });
+          },
+        }),
     });
-    if (!authorized) {
-      return;
-    }
 
-    try {
-      await saveJobQueued(job);
-    } catch (err) {
-      logger.error({ err, jobId: job.jobId }, 'Failed to persist run job');
+    if (result.status === 'invalid') {
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        text: `I couldn't persist job ${job.jobId}. Please try again.`,
+        text: result.message,
       });
       return;
     }
 
-    await enqueueJob(queue, job);
+    if (result.status === 'stopped') {
+      return;
+    }
+
+    if (result.status === 'persist_failed') {
+      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist run job');
+      await postMessage(app, {
+        channel: metadata?.channelId ?? body.user.id,
+        text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
+      });
+      return;
+    }
+
+    const job = result.job;
 
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
