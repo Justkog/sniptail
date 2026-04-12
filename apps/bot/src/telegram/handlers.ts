@@ -62,6 +62,25 @@ async function submitTelegramJob(input: {
   repoKeys: string[];
   promptMessageId?: number;
 }) {
+  let action: 'jobs.ask' | 'jobs.explore' | 'jobs.plan' | 'jobs.implement' | 'jobs.review';
+  switch (input.type) {
+    case 'ASK':
+      action = 'jobs.ask';
+      break;
+    case 'EXPLORE':
+      action = 'jobs.explore';
+      break;
+    case 'PLAN':
+      action = 'jobs.plan';
+      break;
+    case 'IMPLEMENT':
+      action = 'jobs.implement';
+      break;
+    case 'REVIEW':
+      action = 'jobs.review';
+      break;
+  }
+
   const { context } = input;
   await refreshRepoAllowlist(context.config);
   const result = await submitNormalizedJobRequest({
@@ -81,16 +100,7 @@ async function submitTelegramJob(input: {
       authorizeTelegramOperationAndRespond({
         bot: context.bot,
         permissions: context.permissions,
-        action:
-          input.type === 'ASK'
-            ? 'jobs.ask'
-            : input.type === 'EXPLORE'
-              ? 'jobs.explore'
-              : input.type === 'PLAN'
-                ? 'jobs.plan'
-                : input.type === 'IMPLEMENT'
-                  ? 'jobs.implement'
-                  : 'jobs.review',
+        action,
         summary: `Queue ${input.type.toLowerCase()} job ${job.jobId}`,
         operation: {
           kind: 'enqueueJob',
