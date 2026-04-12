@@ -1,13 +1,10 @@
 import type { ModalSubmitInteraction } from 'discord.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
-import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { createJobId } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { runSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
@@ -23,6 +20,7 @@ import {
   resolveRunSelectionSchema,
   toRunParamPayload,
 } from '../../lib/runStepper.js';
+import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 
 export async function handleRunModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -117,59 +115,64 @@ export async function handleRunModalSubmit(
     true,
   );
 
-  const job: JobSpec = {
-    jobId: createJobId('run'),
-    type: 'RUN',
-    repoKeys,
-    ...(repoKeys[0] ? { primaryRepoKey: repoKeys[0] } : {}),
-    gitRef,
-    requestText,
-    run: {
-      actionId,
-      params: toRunParamPayload(normalized.normalized),
+  const result = await submitNormalizedJobRequest({
+    config,
+    queue,
+    input: {
+      type: 'RUN',
+      repoKeys,
+      ...(gitRef ? { gitRef } : {}),
+      requestText,
+      channel: buildInteractionChannelContext(interaction),
+      ...(threadContext ? { threadContext } : {}),
+      run: {
+        actionId,
+        params: toRunParamPayload(normalized.normalized),
+      },
     },
-    agent: config.primaryAgent,
-    channel: buildInteractionChannelContext(interaction),
-    ...(threadContext ? { threadContext } : {}),
-  };
-
-  const authorized = await authorizeDiscordOperationAndRespond({
-    permissions,
-    botName: config.botName,
-    action: 'jobs.run',
-    summary: `Queue run job ${job.jobId}`,
-    operation: {
-      kind: 'enqueueJob',
-      job,
-    },
-    actor: {
-      userId: interaction.user.id,
-      channelId: job.channel.channelId,
-      ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
-      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-      member: interaction.member,
-    },
-    client: interaction.client,
-    onDeny: async () => {
-      await interaction.editReply('You are not authorized to run custom actions.');
-    },
-    onRequireApprovalNotice: async (message) => {
-      await interaction.editReply(message);
-    },
+    authorize: async (job) =>
+      authorizeDiscordOperationAndRespond({
+        permissions,
+        botName: config.botName,
+        action: 'jobs.run',
+        summary: `Queue run job ${job.jobId}`,
+        operation: {
+          kind: 'enqueueJob',
+          job,
+        },
+        actor: {
+          userId: interaction.user.id,
+          channelId: job.channel.channelId,
+          ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+          ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+          member: interaction.member,
+        },
+        client: interaction.client,
+        onDeny: async () => {
+          await interaction.editReply('You are not authorized to run custom actions.');
+        },
+        onRequireApprovalNotice: async (message) => {
+          await interaction.editReply(message);
+        },
+      }),
   });
-  if (!authorized) {
+
+  if (result.status === 'invalid') {
+    await interaction.editReply(result.message);
     return;
   }
 
-  try {
-    await saveJobQueued(job);
-  } catch (err) {
-    logger.error({ err, jobId: job.jobId }, 'Failed to persist run job');
-    await interaction.editReply(`I couldn't persist job ${job.jobId}. Please try again.`);
+  if (result.status === 'stopped') {
     return;
   }
 
-  await enqueueJob(queue, job);
+  if (result.status === 'persist_failed') {
+    logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist run job');
+    await interaction.editReply(`I couldn't persist job ${result.job.jobId}. Please try again.`);
+    return;
+  }
+
+  const job = result.job;
   const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
     acceptanceMessage: `Thanks! I've accepted run job ${job.jobId} (action: ${actionId}). I'll report back here.`,
   });

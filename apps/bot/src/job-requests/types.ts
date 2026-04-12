@@ -6,10 +6,12 @@ export type NormalizedJobRequestInput = {
   repoKeys: string[];
   gitRef?: string;
   requestText: string;
+  agent?: JobSpec['agent'];
   channel: ChannelContext;
   threadContext?: string;
   contextFiles?: JobContextFile[];
   resumeFromJobId?: string;
+  settings?: JobSpec['settings'];
   run?: JobSpec['run'];
 };
 

@@ -29,11 +29,12 @@ export function buildNormalizedJobRequest(
     ...(input.repoKeys[0] ? { primaryRepoKey: input.repoKeys[0] } : {}),
     gitRef: input.gitRef || resolveDefaultBaseBranch(config.repoAllowlist, input.repoKeys[0]),
     requestText: input.requestText,
-    agent: config.primaryAgent,
+    agent: input.agent ?? config.primaryAgent,
     channel: input.channel,
     ...(input.threadContext ? { threadContext: input.threadContext } : {}),
     ...(input.contextFiles ? { contextFiles: input.contextFiles } : {}),
     ...(input.resumeFromJobId ? { resumeFromJobId: input.resumeFromJobId } : {}),
+    ...(input.settings ? { settings: input.settings } : {}),
     ...(input.run ? { run: input.run } : {}),
   };
 }

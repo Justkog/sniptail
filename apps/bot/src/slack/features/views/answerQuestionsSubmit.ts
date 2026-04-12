@@ -1,11 +1,10 @@
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
-import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
+import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobContextFile, JobSpec } from '@sniptail/core/types/job.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
-import { createJobId } from '../../../lib/jobs.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
+import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 
 export function registerAnswerQuestionsSubmitView({
   app,
@@ -75,64 +74,74 @@ export function registerAnswerQuestionsSubmitView({
     const userId = metadata?.userId ?? record.job.channel.userId ?? body.user.id;
     const threadId = metadata?.threadId ?? record.job.channel.threadId;
 
-    const job: JobSpec = {
-      jobId: createJobId('plan'),
-      type: 'PLAN',
-      repoKeys: record.job.repoKeys,
-      ...(record.job.primaryRepoKey ? { primaryRepoKey: record.job.primaryRepoKey } : {}),
-      gitRef: record.job.gitRef,
-      requestText,
-      agent: record.job.agent ?? config.primaryAgent,
-      channel: {
-        provider: 'slack',
-        channelId,
-        userId,
-        ...(threadId ? { threadId } : {}),
+    const result = await submitNormalizedJobRequest({
+      config,
+      queue,
+      input: {
+        type: 'PLAN',
+        repoKeys: record.job.repoKeys,
+        ...(record.job.gitRef ? { gitRef: record.job.gitRef } : {}),
+        requestText,
+        agent: record.job.agent ?? config.primaryAgent,
+        channel: {
+          provider: 'slack',
+          channelId,
+          userId,
+          ...(threadId ? { threadId } : {}),
+        },
+        ...(contextFiles ? { contextFiles } : {}),
+        resumeFromJobId: record.job.jobId,
       },
-      ...(contextFiles ? { contextFiles } : {}),
-      resumeFromJobId: record.job.jobId,
-    };
-
-    const authorized = await authorizeSlackOperationAndRespond({
-      permissions,
-      client: app.client,
-      slackIds,
-      action: 'jobs.answerQuestions',
-      summary: `Queue answer-questions job ${job.jobId}`,
-      operation: {
-        kind: 'enqueueJob',
-        job,
-      },
-      actor: {
-        userId,
-        channelId,
-        ...(threadId ? { threadId } : {}),
-      },
-      onDeny: async () => {
-        await postMessage(app, {
-          channel: channelId,
-          text: 'You are not authorized to submit answers for this job.',
-          ...(threadId ? { threadTs: threadId } : {}),
-        });
-      },
+      authorize: async (job) =>
+        authorizeSlackOperationAndRespond({
+          permissions,
+          client: app.client,
+          slackIds,
+          action: 'jobs.answerQuestions',
+          summary: `Queue answer-questions job ${job.jobId}`,
+          operation: {
+            kind: 'enqueueJob',
+            job,
+          },
+          actor: {
+            userId,
+            channelId,
+            ...(threadId ? { threadId } : {}),
+          },
+          onDeny: async () => {
+            await postMessage(app, {
+              channel: channelId,
+              text: 'You are not authorized to submit answers for this job.',
+              ...(threadId ? { threadTs: threadId } : {}),
+            });
+          },
+        }),
     });
-    if (!authorized) {
-      return;
-    }
 
-    try {
-      await saveJobQueued(job);
-    } catch (err) {
-      logger.error({ err, jobId: job.jobId }, 'Failed to persist answer questions job');
+    if (result.status === 'invalid') {
       await postMessage(app, {
         channel: channelId,
-        text: `I couldn't persist job ${job.jobId}. Please try again.`,
+        text: result.message,
         ...(threadId ? { threadTs: threadId } : {}),
       });
       return;
     }
 
-    await enqueueJob(queue, job);
+    if (result.status === 'stopped') {
+      return;
+    }
+
+    if (result.status === 'persist_failed') {
+      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist answer questions job');
+      await postMessage(app, {
+        channel: channelId,
+        text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
+        ...(threadId ? { threadTs: threadId } : {}),
+      });
+      return;
+    }
+
+    const job = result.job;
 
     await postMessage(app, {
       channel: channelId,
