@@ -3,6 +3,7 @@ import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.j
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import { submitNormalizedJobRequest } from '../job-requests/engine.js';
 import { refreshRepoAllowlist } from '../lib/repoAllowlist.js';
+import { parseCutoffDateInput } from '../slack/lib/parsing.js';
 import { buildTelegramChannelContext } from './lib/channel.js';
 import { clearTelegramWizardState, loadTelegramWizardState, saveTelegramWizardState } from './state.js';
 import {
@@ -379,11 +380,13 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     if (!chatId || !userId || !messageId || !isAllowedChat(context, chatId)) {
       return;
     }
-    const cutoffIso = commandArgs(ctx.msg?.text ?? '');
-    if (!cutoffIso) {
-      await ctx.reply('Usage: /clearbefore 2025-01-01T00:00:00.000Z');
+    const cutoffInput = commandArgs(ctx.msg?.text ?? '');
+    const cutoff = parseCutoffDateInput(cutoffInput);
+    if (!cutoff) {
+      await ctx.reply('Usage: /clearbefore YYYY-MM-DD (or ISO timestamp).');
       return;
     }
+    const cutoffIso = cutoff.toISOString();
     const event = {
       schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
       type: 'jobs.clearBefore' as const,
@@ -406,16 +409,16 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
       permissions: context.permissions,
       action: 'jobs.clearBefore',
       summary: `Clear jobs before ${cutoffIso}`,
-        operation: {
-          kind: 'enqueueWorkerEvent',
-          event,
-        },
-        userId,
-        channelId: chatId,
-        threadId: String(promptMessageId),
-        approvalMessageId: promptMessageId,
-        onDeny: async (message) => {
-          await editTelegramMessage(bot, chatId, promptMessageId, message);
+      operation: {
+        kind: 'enqueueWorkerEvent',
+        event,
+      },
+      userId,
+      channelId: chatId,
+      threadId: String(promptMessageId),
+      approvalMessageId: promptMessageId,
+      onDeny: async (message) => {
+        await editTelegramMessage(bot, chatId, promptMessageId, message);
       },
     });
     if (!authorized) {
