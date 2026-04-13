@@ -132,7 +132,10 @@ export function registerAnswerQuestionsSubmitView({
     }
 
     if (result.status === 'persist_failed') {
-      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist answer questions job');
+      logger.error(
+        { err: result.error, jobId: result.job.jobId },
+        'Failed to persist answer questions job',
+      );
       await postMessage(app, {
         channel: channelId,
         text: `I couldn't persist job ${result.job.jobId}. Please try again.`,

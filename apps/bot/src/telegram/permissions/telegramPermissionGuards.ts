@@ -3,7 +3,6 @@ import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.j
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import { buildTelegramApprovalKeyboard } from '../helpers.js';
@@ -49,13 +48,7 @@ export async function authorizeTelegramOperationAndRespond(input: {
       threadId: routingThreadId,
       updateOperationRouting: true,
     });
-    await editTelegramMessage(
-      input.bot,
-      input.channelId,
-      input.approvalMessageId,
-      text,
-      keyboard,
-    );
+    await editTelegramMessage(input.bot, input.channelId, input.approvalMessageId, text, keyboard);
   } else {
     const approvalMessageId = await sendTelegramMessage(input.bot, input.channelId, text, keyboard);
     if (approvalMessageId) {
@@ -67,7 +60,9 @@ export async function authorizeTelegramOperationAndRespond(input: {
     }
   }
   if (input.onRequireApprovalNotice) {
-    await input.onRequireApprovalNotice('Approval required. I posted approval controls in this chat.');
+    await input.onRequireApprovalNotice(
+      'Approval required. I posted approval controls in this chat.',
+    );
   }
   return false;
 }
@@ -109,7 +104,13 @@ export async function enqueueTelegramUsageRequest(input: {
       await editTelegramMessage(input.bot, input.channelId, input.replyMessageId, message);
     },
     onRequireApprovalNotice: async (message) => {
-      await sendTelegramMessage(input.bot, input.channelId, message, undefined, input.replyMessageId);
+      await sendTelegramMessage(
+        input.bot,
+        input.channelId,
+        message,
+        undefined,
+        input.replyMessageId,
+      );
     },
   });
   if (!authorized) {
@@ -117,7 +118,12 @@ export async function enqueueTelegramUsageRequest(input: {
   }
 
   await enqueueWorkerEvent(input.workerEventQueue, event);
-  await editTelegramMessage(input.bot, input.channelId, input.replyMessageId, 'Checking Codex usage...');
+  await editTelegramMessage(
+    input.bot,
+    input.channelId,
+    input.replyMessageId,
+    'Checking Codex usage...',
+  );
 }
 
 export async function resolveTelegramApprovalCallback(input: {

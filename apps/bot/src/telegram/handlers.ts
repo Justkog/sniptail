@@ -5,7 +5,11 @@ import { submitNormalizedJobRequest } from '../job-requests/engine.js';
 import { refreshRepoAllowlist } from '../lib/repoAllowlist.js';
 import { parseCutoffDateInput } from '../slack/lib/parsing.js';
 import { buildTelegramChannelContext } from './lib/channel.js';
-import { clearTelegramWizardState, loadTelegramWizardState, saveTelegramWizardState } from './state.js';
+import {
+  clearTelegramWizardState,
+  loadTelegramWizardState,
+  saveTelegramWizardState,
+} from './state.js';
 import {
   buildTelegramAcceptedText,
   buildTelegramCancelKeyboard,
@@ -18,7 +22,11 @@ import {
 } from './helpers.js';
 import { editTelegramMessage, sendTelegramMessage } from './lib/messageEditing.js';
 import type { TelegramHandlerContext } from './context.js';
-import { authorizeTelegramOperationAndRespond, enqueueTelegramUsageRequest, resolveTelegramApprovalCallback } from './permissions/telegramPermissionGuards.js';
+import {
+  authorizeTelegramOperationAndRespond,
+  enqueueTelegramUsageRequest,
+  resolveTelegramApprovalCallback,
+} from './permissions/telegramPermissionGuards.js';
 
 type TelegramJobType = 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW';
 
@@ -146,7 +154,13 @@ async function submitTelegramJob(input: {
   if (input.promptMessageId) {
     await editTelegramMessage(context.bot, input.chatId, input.promptMessageId, message);
   } else {
-    await sendTelegramMessage(context.bot, input.chatId, message, undefined, Number.parseInt(input.replyToMessageId, 10));
+    await sendTelegramMessage(
+      context.bot,
+      input.chatId,
+      message,
+      undefined,
+      Number.parseInt(input.replyToMessageId, 10),
+    );
   }
 }
 
@@ -282,7 +296,7 @@ async function submitTelegramMention(input: {
 export function registerTelegramHandlers(context: TelegramHandlerContext): void {
   const { bot, config } = context;
 
-  bot.command('start', async (ctx: any) => {
+  bot.command('start', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     if (!chatId || !isAllowedChat(context, chatId)) {
       return;
@@ -290,7 +304,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     await ctx.reply(buildTelegramHelpText(config.botName));
   });
 
-  bot.command('usage', async (ctx: any) => {
+  bot.command('usage', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     const userId = String(ctx.from?.id ?? '');
     const messageId = ctx.msg?.message_id;
@@ -319,7 +333,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
   });
 
   for (const command of ['ask', 'explore', 'plan', 'implement', 'review'] as const) {
-    bot.command(command, async (ctx: any) => {
+    bot.command(command, async (ctx) => {
       const chatId = toChatId(ctx.chat?.id);
       const userId = String(ctx.from?.id ?? '');
       const messageId = ctx.msg?.message_id;
@@ -368,7 +382,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     });
   }
 
-  bot.command('run', async (ctx: any) => {
+  bot.command('run', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     const userId = String(ctx.from?.id ?? '');
     const messageId = ctx.msg?.message_id;
@@ -384,7 +398,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     });
   });
 
-  bot.command('clearbefore', async (ctx: any) => {
+  bot.command('clearbefore', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     const userId = String(ctx.from?.id ?? '');
     const messageId = ctx.msg?.message_id;
@@ -436,10 +450,15 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
       return;
     }
     await enqueueWorkerEvent(context.workerEventQueue, event);
-    await editTelegramMessage(bot, chatId, promptMessageId, `Queued clear-before request for ${cutoffIso}.`);
+    await editTelegramMessage(
+      bot,
+      chatId,
+      promptMessageId,
+      `Queued clear-before request for ${cutoffIso}.`,
+    );
   });
 
-  bot.on('callback_query:data', async (ctx: any) => {
+  bot.on('callback_query:data', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     const userId = String(ctx.from?.id ?? '');
     const data = ctx.callbackQuery?.data ?? '';
@@ -497,7 +516,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     }
   });
 
-  bot.on('message:text', async (ctx: any) => {
+  bot.on('message:text', async (ctx) => {
     const chatId = toChatId(ctx.chat?.id);
     const userId = String(ctx.from?.id ?? '');
     const messageId = ctx.msg?.message_id;
@@ -535,7 +554,13 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
           .map((value: string) => value.trim())
           .filter(Boolean);
         if (!repoKeys.length || !state.requestText) {
-          await sendTelegramMessage(bot, chatId, 'Please send one or more repo keys separated by commas.', undefined, messageId);
+          await sendTelegramMessage(
+            bot,
+            chatId,
+            'Please send one or more repo keys separated by commas.',
+            undefined,
+            messageId,
+          );
           return;
         }
         clearTelegramWizardState(chatId, userId);
