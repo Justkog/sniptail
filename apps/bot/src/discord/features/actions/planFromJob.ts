@@ -2,7 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
+  type StringSelectMenuBuilder,
   type ButtonInteraction,
 } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
@@ -11,15 +11,38 @@ import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import {
+  buildPlanFromJobContinueButtonCustomId,
   buildPlanModal,
   buildPlanRepoSelect,
-  planFromJobContinueButtonCustomId,
 } from '../../modals.js';
-import { planSelectionByUser } from '../../state.js';
+import {
+  createDiscordSelectionToken,
+  planFromJobSelectionByToken,
+  planSelectionByUser,
+} from '../../state.js';
 
-async function openPlanModalFromSelection(interaction: ButtonInteraction, config: BotConfig) {
-  const selection = planSelectionByUser.get(interaction.user.id);
-  const repoKeys = selection?.repoKeys ?? [];
+async function openPlanModalFromSelection(
+  interaction: ButtonInteraction,
+  config: BotConfig,
+  selectionToken: string,
+) {
+  const selection = planFromJobSelectionByToken.get(selectionToken);
+  if (!selection || selection.userId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the plan action again.',
+      ephemeral: true,
+    });
+    return;
+  }
+  planFromJobSelectionByToken.delete(selectionToken);
+
+  planSelectionByUser.set(interaction.user.id, {
+    repoKeys: selection.repoKeys,
+    requestedAt: Date.now(),
+    ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+  });
+
+  const repoKeys = selection.repoKeys;
   if (!repoKeys.length) {
     await interaction.reply({
       content: 'Repository selection expired. Please run the plan action again.',
@@ -63,6 +86,13 @@ export async function handlePlanFromJobButton(
     return;
   }
 
+  const selectionToken = createDiscordSelectionToken();
+  planFromJobSelectionByToken.set(selectionToken, {
+    userId: interaction.user.id,
+    repoKeys,
+    requestedAt: Date.now(),
+    resumeFromJobId: jobId,
+  });
   planSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
@@ -71,7 +101,7 @@ export async function handlePlanFromJobButton(
 
   const allowlistRepoKeys = Object.keys(config.repoAllowlist);
   const continueButton = new ButtonBuilder()
-    .setCustomId(planFromJobContinueButtonCustomId)
+    .setCustomId(buildPlanFromJobContinueButtonCustomId(selectionToken))
     .setStyle(ButtonStyle.Primary)
     .setLabel('Use same repos');
   const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
@@ -96,7 +126,8 @@ export async function handlePlanFromJobButton(
 export async function handlePlanFromJobContinueButton(
   interaction: ButtonInteraction,
   config: BotConfig,
+  selectionToken: string,
 ) {
   await refreshRepoAllowlist(config);
-  await openPlanModalFromSelection(interaction, config);
+  await openPlanModalFromSelection(interaction, config, selectionToken);
 }

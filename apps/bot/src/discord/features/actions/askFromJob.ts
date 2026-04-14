@@ -2,7 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
+  type StringSelectMenuBuilder,
   type ButtonInteraction,
 } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
@@ -10,12 +10,39 @@ import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { askFromJobContinueButtonCustomId, buildAskModal, buildAskRepoSelect } from '../../modals.js';
-import { askSelectionByUser } from '../../state.js';
+import {
+  buildAskFromJobContinueButtonCustomId,
+  buildAskModal,
+  buildAskRepoSelect,
+} from '../../modals.js';
+import {
+  askFromJobSelectionByToken,
+  askSelectionByUser,
+  createDiscordSelectionToken,
+} from '../../state.js';
 
-async function openAskModalFromSelection(interaction: ButtonInteraction, config: BotConfig) {
-  const selection = askSelectionByUser.get(interaction.user.id);
-  const repoKeys = selection?.repoKeys ?? [];
+async function openAskModalFromSelection(
+  interaction: ButtonInteraction,
+  config: BotConfig,
+  selectionToken: string,
+) {
+  const selection = askFromJobSelectionByToken.get(selectionToken);
+  if (!selection || selection.userId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the ask action again.',
+      ephemeral: true,
+    });
+    return;
+  }
+  askFromJobSelectionByToken.delete(selectionToken);
+
+  askSelectionByUser.set(interaction.user.id, {
+    repoKeys: selection.repoKeys,
+    requestedAt: Date.now(),
+    ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+  });
+
+  const repoKeys = selection.repoKeys;
   if (!repoKeys.length) {
     await interaction.reply({
       content: 'Repository selection expired. Please run the ask action again.',
@@ -59,6 +86,13 @@ export async function handleAskFromJobButton(
     return;
   }
 
+  const selectionToken = createDiscordSelectionToken();
+  askFromJobSelectionByToken.set(selectionToken, {
+    userId: interaction.user.id,
+    repoKeys,
+    requestedAt: Date.now(),
+    resumeFromJobId: jobId,
+  });
   askSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
@@ -67,7 +101,7 @@ export async function handleAskFromJobButton(
 
   const allowlistRepoKeys = Object.keys(config.repoAllowlist);
   const continueButton = new ButtonBuilder()
-    .setCustomId(askFromJobContinueButtonCustomId)
+    .setCustomId(buildAskFromJobContinueButtonCustomId(selectionToken))
     .setStyle(ButtonStyle.Primary)
     .setLabel('Use same repos');
   const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
@@ -92,7 +126,8 @@ export async function handleAskFromJobButton(
 export async function handleAskFromJobContinueButton(
   interaction: ButtonInteraction,
   config: BotConfig,
+  selectionToken: string,
 ) {
   await refreshRepoAllowlist(config);
-  await openAskModalFromSelection(interaction, config);
+  await openAskModalFromSelection(interaction, config, selectionToken);
 }

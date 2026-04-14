@@ -2,7 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
+  type StringSelectMenuBuilder,
   type ButtonInteraction,
 } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
@@ -11,15 +11,38 @@ import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import {
+  buildImplementFromJobContinueButtonCustomId,
   buildImplementModal,
   buildImplementRepoSelect,
-  implementFromJobContinueButtonCustomId,
 } from '../../modals.js';
-import { implementSelectionByUser } from '../../state.js';
+import {
+  createDiscordSelectionToken,
+  implementFromJobSelectionByToken,
+  implementSelectionByUser,
+} from '../../state.js';
 
-async function openImplementModalFromSelection(interaction: ButtonInteraction, config: BotConfig) {
-  const selection = implementSelectionByUser.get(interaction.user.id);
-  const repoKeys = selection?.repoKeys ?? [];
+async function openImplementModalFromSelection(
+  interaction: ButtonInteraction,
+  config: BotConfig,
+  selectionToken: string,
+) {
+  const selection = implementFromJobSelectionByToken.get(selectionToken);
+  if (!selection || selection.userId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the implement action again.',
+      ephemeral: true,
+    });
+    return;
+  }
+  implementFromJobSelectionByToken.delete(selectionToken);
+
+  implementSelectionByUser.set(interaction.user.id, {
+    repoKeys: selection.repoKeys,
+    requestedAt: Date.now(),
+    ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+  });
+
+  const repoKeys = selection.repoKeys;
   if (!repoKeys.length) {
     await interaction.reply({
       content: 'Repository selection expired. Please run the implement action again.',
@@ -68,6 +91,13 @@ export async function handleImplementFromJobButton(
     return;
   }
 
+  const selectionToken = createDiscordSelectionToken();
+  implementFromJobSelectionByToken.set(selectionToken, {
+    userId: interaction.user.id,
+    repoKeys,
+    requestedAt: Date.now(),
+    resumeFromJobId: jobId,
+  });
   implementSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
@@ -76,7 +106,7 @@ export async function handleImplementFromJobButton(
 
   const allowlistRepoKeys = Object.keys(config.repoAllowlist);
   const continueButton = new ButtonBuilder()
-    .setCustomId(implementFromJobContinueButtonCustomId)
+    .setCustomId(buildImplementFromJobContinueButtonCustomId(selectionToken))
     .setStyle(ButtonStyle.Primary)
     .setLabel('Use same repos');
   const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
@@ -102,7 +132,8 @@ export async function handleImplementFromJobButton(
 export async function handleImplementFromJobContinueButton(
   interaction: ButtonInteraction,
   config: BotConfig,
+  selectionToken: string,
 ) {
   await refreshRepoAllowlist(config);
-  await openImplementModalFromSelection(interaction, config);
+  await openImplementModalFromSelection(interaction, config, selectionToken);
 }

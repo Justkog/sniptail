@@ -73,20 +73,20 @@ import { handleReviewFromJobButton } from './features/actions/reviewFromJob.js';
 import { handleWorktreeCommandsButton } from './features/actions/worktreeCommands.js';
 import {
   askModalCustomId,
-  askFromJobContinueButtonCustomId,
   askRepoSelectCustomId,
   answerQuestionsModalCustomId,
   exploreModalCustomId,
-  exploreFromJobContinueButtonCustomId,
   exploreRepoSelectCustomId,
   planRepoSelectCustomId,
   bootstrapModalCustomId,
   implementModalCustomId,
-  implementFromJobContinueButtonCustomId,
   runModalCustomId,
   planModalCustomId,
-  planFromJobContinueButtonCustomId,
   implementRepoSelectCustomId,
+  parseAskFromJobContinueButtonCustomId,
+  parseExploreFromJobContinueButtonCustomId,
+  parseImplementFromJobContinueButtonCustomId,
+  parsePlanFromJobContinueButtonCustomId,
   runRepoSelectCustomId,
   runActionSelectCustomId,
 } from './modals.js';
@@ -368,20 +368,26 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
-      if (interaction.customId === askFromJobContinueButtonCustomId) {
-        await handleAskFromJobContinueButton(interaction, config);
+      const askFromJobToken = parseAskFromJobContinueButtonCustomId(interaction.customId);
+      if (askFromJobToken) {
+        await handleAskFromJobContinueButton(interaction, config, askFromJobToken);
         return;
       }
-      if (interaction.customId === exploreFromJobContinueButtonCustomId) {
-        await handleDiscordExploreFromJobContinueButton(interaction, config);
+      const exploreFromJobToken = parseExploreFromJobContinueButtonCustomId(interaction.customId);
+      if (exploreFromJobToken) {
+        await handleDiscordExploreFromJobContinueButton(interaction, config, exploreFromJobToken);
         return;
       }
-      if (interaction.customId === planFromJobContinueButtonCustomId) {
-        await handlePlanFromJobContinueButton(interaction, config);
+      const planFromJobToken = parsePlanFromJobContinueButtonCustomId(interaction.customId);
+      if (planFromJobToken) {
+        await handlePlanFromJobContinueButton(interaction, config, planFromJobToken);
         return;
       }
-      if (interaction.customId === implementFromJobContinueButtonCustomId) {
-        await handleImplementFromJobContinueButton(interaction, config);
+      const implementFromJobToken = parseImplementFromJobContinueButtonCustomId(
+        interaction.customId,
+      );
+      if (implementFromJobToken) {
+        await handleImplementFromJobContinueButton(interaction, config, implementFromJobToken);
         return;
       }
 

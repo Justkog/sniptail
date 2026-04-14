@@ -7,14 +7,25 @@ type DiscordJobSelectionState = {
   resumeFromJobId?: string;
 };
 
+type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
+  userId: string;
+};
+
 export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const planSelectionByUser = new Map<string, DiscordJobSelectionState>();
+export const askFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
+export const exploreFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
+export const planFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
 export const answerQuestionsByUser = new Map<
   string,
   { jobId: string; openQuestions: string[]; requestedAt: number }
 >();
 export const implementSelectionByUser = new Map<string, DiscordJobSelectionState>();
+export const implementFromJobSelectionByToken = new Map<
+  string,
+  DiscordScopedJobSelectionState
+>();
 export const runSelectionByUser = new Map<
   string,
   {
@@ -35,3 +46,7 @@ export const bootstrapExtrasByUser = new Map<
     requestedAt: number;
   }
 >();
+
+export function createDiscordSelectionToken(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}

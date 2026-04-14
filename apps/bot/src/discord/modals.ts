@@ -36,6 +36,51 @@ export const bootstrapQuickstartSelectCustomId = 'bootstrap_quickstart_select';
 export const bootstrapServiceSelectCustomId = 'bootstrap_service_select';
 export const bootstrapContinueButtonCustomId = 'bootstrap_continue';
 
+function buildScopedCustomId(baseCustomId: string, token: string): string {
+  return `${baseCustomId}:${token}`;
+}
+
+function parseScopedCustomId(customId: string, baseCustomId: string): string | undefined {
+  const prefix = `${baseCustomId}:`;
+  if (!customId.startsWith(prefix)) {
+    return undefined;
+  }
+  const token = customId.slice(prefix.length).trim();
+  return token || undefined;
+}
+
+export function buildAskFromJobContinueButtonCustomId(token: string): string {
+  return buildScopedCustomId(askFromJobContinueButtonCustomId, token);
+}
+
+export function parseAskFromJobContinueButtonCustomId(customId: string): string | undefined {
+  return parseScopedCustomId(customId, askFromJobContinueButtonCustomId);
+}
+
+export function buildExploreFromJobContinueButtonCustomId(token: string): string {
+  return buildScopedCustomId(exploreFromJobContinueButtonCustomId, token);
+}
+
+export function parseExploreFromJobContinueButtonCustomId(customId: string): string | undefined {
+  return parseScopedCustomId(customId, exploreFromJobContinueButtonCustomId);
+}
+
+export function buildPlanFromJobContinueButtonCustomId(token: string): string {
+  return buildScopedCustomId(planFromJobContinueButtonCustomId, token);
+}
+
+export function parsePlanFromJobContinueButtonCustomId(customId: string): string | undefined {
+  return parseScopedCustomId(customId, planFromJobContinueButtonCustomId);
+}
+
+export function buildImplementFromJobContinueButtonCustomId(token: string): string {
+  return buildScopedCustomId(implementFromJobContinueButtonCustomId, token);
+}
+
+export function parseImplementFromJobContinueButtonCustomId(customId: string): string | undefined {
+  return parseScopedCustomId(customId, implementFromJobContinueButtonCustomId);
+}
+
 export type BootstrapExtrasSelection = {
   service: RepoBootstrapService;
   visibility: 'private' | 'public';
