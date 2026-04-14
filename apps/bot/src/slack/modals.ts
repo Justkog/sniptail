@@ -410,25 +410,10 @@ export function buildRunModal(
     selectedActionId?: string;
   },
 ): ModalView {
-  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
-    text: { type: 'plain_text' as const, text: key },
-    value: key,
-  }));
-  const initialOptionsFromInput =
-    initialRepoKeys
-      ?.map((repoKey) => repoOptions.find((option) => option.value === repoKey))
-      .filter((value): value is (typeof repoOptions)[number] => Boolean(value)) ?? [];
-  const singleRepoDefault = repoOptions.length === 1 ? repoOptions[0] : undefined;
-  const defaultRepoOptions =
-    initialOptionsFromInput.length > 0
-      ? initialOptionsFromInput
-      : singleRepoDefault
-        ? [singleRepoDefault]
-        : undefined;
-  const defaultGitRef =
-    defaultRepoOptions && defaultRepoOptions.length > 0
-      ? resolveDefaultBaseBranch(repoAllowlist, defaultRepoOptions[0]?.value)
-      : resolveDefaultBaseBranch(repoAllowlist);
+  const { repoOptions, defaultRepoOptions, defaultGitRef } = resolveRepoSelectionDefaults(
+    repoAllowlist,
+    initialRepoKeys,
+  );
 
   const includeRepoSelection = options?.includeRepoSelection ?? true;
   const includeActionSelection = options?.includeActionSelection ?? true;
