@@ -22,7 +22,12 @@ vi.mock('../runner/commandRunner.js', () => ({
 }));
 
 import { runCommand } from '../runner/commandRunner.js';
-import { commitAndPush, runChecks, runNamedRunContractDetailed, runSetupContract } from './jobOps.js';
+import {
+  commitAndPush,
+  runChecks,
+  runNamedRunContractDetailed,
+  runSetupContract,
+} from './jobOps.js';
 
 function makeMissingPathError(): Error & { code: string } {
   return Object.assign(new Error('missing path'), { code: 'ENOENT' });
@@ -223,7 +228,14 @@ describe('git job operations contracts', () => {
     rmMock.mockResolvedValueOnce(undefined);
 
     await expect(
-      commitAndPush('/tmp/repo', 'feature-branch', 'feat: subject\n\nbody', {}, '/tmp/runner.log', []),
+      commitAndPush(
+        '/tmp/repo',
+        'feature-branch',
+        'feat: subject\n\nbody',
+        {},
+        '/tmp/runner.log',
+        [],
+      ),
     ).resolves.toBe(true);
 
     expect(writeFileMock).toHaveBeenCalledWith(
@@ -231,11 +243,12 @@ describe('git job operations contracts', () => {
       'feat: subject\n\nbody',
       { encoding: 'utf8', flag: 'wx' },
     );
-    expect(runCommandMock).toHaveBeenNthCalledWith(3, 'git', [
-      'commit',
-      '--file',
-      '/tmp/sniptail-commit-message-abc123/message.txt',
-    ], expect.objectContaining({ cwd: '/tmp/repo' }));
+    expect(runCommandMock).toHaveBeenNthCalledWith(
+      3,
+      'git',
+      ['commit', '--file', '/tmp/sniptail-commit-message-abc123/message.txt'],
+      expect.objectContaining({ cwd: '/tmp/repo' }),
+    );
     expect(rmMock).toHaveBeenCalledWith('/tmp/sniptail-commit-message-abc123', {
       recursive: true,
       force: true,

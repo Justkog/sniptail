@@ -504,7 +504,12 @@ export async function runJob(
         });
         followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
         if (followupRun.result.threadId) {
-          await recordAgentThreadId(registry, job, followupRun.agentId, followupRun.result.threadId);
+          await recordAgentThreadId(
+            registry,
+            job,
+            followupRun.agentId,
+            followupRun.result.threadId,
+          );
         }
       } catch (err) {
         logger.warn(

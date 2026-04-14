@@ -25,10 +25,7 @@ export const answerQuestionsByUser = new Map<
   { jobId: string; openQuestions: string[]; requestedAt: number }
 >();
 export const implementSelectionByUser = new Map<string, DiscordJobSelectionState>();
-export const implementFromJobSelectionByToken = new Map<
-  string,
-  DiscordScopedJobSelectionState
->();
+export const implementFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
 export const runSelectionByUser = new Map<
   string,
   {

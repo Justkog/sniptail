@@ -114,8 +114,7 @@ export async function handleImplementFromJobButton(
     new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
   ];
 
-  let content =
-    'Use the same repositories for this implement job, or choose a different repo set.';
+  let content = 'Use the same repositories for this implement job, or choose a different repo set.';
   if (allowlistRepoKeys.length <= 25) {
     components.unshift(buildImplementRepoSelect(allowlistRepoKeys, repoKeys));
   } else {
