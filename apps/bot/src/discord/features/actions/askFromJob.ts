@@ -1,11 +1,62 @@
-import type { ButtonInteraction } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type StringSelectMenuBuilder,
+  type ButtonInteraction,
+} from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { buildAskModal } from '../../modals.js';
-import { askSelectionByUser } from '../../state.js';
+import {
+  buildAskFromJobContinueButtonCustomId,
+  buildAskModal,
+  buildAskRepoSelect,
+} from '../../modals.js';
+import {
+  askFromJobSelectionByToken,
+  askSelectionByUser,
+  createDiscordSelectionToken,
+  setFromJobSelectionWithCap,
+} from '../../state.js';
+
+async function openAskModalFromSelection(
+  interaction: ButtonInteraction,
+  config: BotConfig,
+  selectionToken: string,
+) {
+  const selection = askFromJobSelectionByToken.get(selectionToken);
+  if (!selection || selection.userId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the ask action again.',
+      ephemeral: true,
+    });
+    return;
+  }
+  askFromJobSelectionByToken.delete(selectionToken);
+
+  const baseSelection = {
+    repoKeys: selection.repoKeys,
+    requestedAt: Date.now(),
+    ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+  };
+  askSelectionByUser.set(interaction.user.id, baseSelection);
+
+  const repoKeys = selection.repoKeys;
+  if (!repoKeys.length) {
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the ask action again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+  const modal = buildAskModal(config.botName, repoKeys, baseBranch, selection?.resumeFromJobId);
+  await interaction.showModal(modal);
+}
 
 export async function handleAskFromJobButton(
   interaction: ButtonInteraction,
@@ -37,12 +88,47 @@ export async function handleAskFromJobButton(
     return;
   }
 
-  askSelectionByUser.set(interaction.user.id, {
+  const selectionToken = createDiscordSelectionToken();
+  const baseSelection = {
     repoKeys,
     requestedAt: Date.now(),
+    resumeFromJobId: jobId,
+  };
+  setFromJobSelectionWithCap(askFromJobSelectionByToken, selectionToken, {
+    userId: interaction.user.id,
+    ...baseSelection,
   });
+  askSelectionByUser.set(interaction.user.id, baseSelection);
 
-  const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
-  const modal = buildAskModal(config.botName, repoKeys, baseBranch, jobId);
-  await interaction.showModal(modal);
+  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
+  const continueButton = new ButtonBuilder()
+    .setCustomId(buildAskFromJobContinueButtonCustomId(selectionToken))
+    .setStyle(ButtonStyle.Primary)
+    .setLabel('Use same repos');
+  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
+  ];
+
+  let content = 'Use the same repositories for this ask job, or choose a different repo set.';
+  if (allowlistRepoKeys.length <= 25) {
+    components.unshift(buildAskRepoSelect(allowlistRepoKeys, repoKeys));
+  } else {
+    content =
+      'Use the same repositories for this ask job. Changing repos is unavailable in Discord because the allowlist exceeds 25 repositories.';
+  }
+
+  await interaction.reply({
+    content,
+    components,
+    ephemeral: true,
+  });
+}
+
+export async function handleAskFromJobContinueButton(
+  interaction: ButtonInteraction,
+  config: BotConfig,
+  selectionToken: string,
+) {
+  await refreshRepoAllowlist(config);
+  await openAskModalFromSelection(interaction, config, selectionToken);
 }
