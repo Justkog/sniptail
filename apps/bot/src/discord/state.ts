@@ -4,6 +4,7 @@ type DiscordJobSelectionState = {
   repoKeys: string[];
   requestedAt: number;
   contextAttachments?: DiscordContextAttachmentRef[];
+  resumeFromJobId?: string;
 };
 
 export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();

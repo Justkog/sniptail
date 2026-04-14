@@ -15,13 +15,17 @@ import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.j
 
 export const askRepoSelectCustomId = 'ask_repo_select';
 export const askModalCustomId = 'ask_modal';
+export const askFromJobContinueButtonCustomId = 'ask_from_job_continue';
 export const exploreRepoSelectCustomId = 'explore_repo_select';
 export const exploreModalCustomId = 'explore_modal';
+export const exploreFromJobContinueButtonCustomId = 'explore_from_job_continue';
 export const planRepoSelectCustomId = 'plan_repo_select';
 export const planModalCustomId = 'plan_modal';
+export const planFromJobContinueButtonCustomId = 'plan_from_job_continue';
 export const answerQuestionsModalCustomId = 'answer_questions_modal';
 export const implementRepoSelectCustomId = 'implement_repo_select';
 export const implementModalCustomId = 'implement_modal';
+export const implementFromJobContinueButtonCustomId = 'implement_from_job_continue';
 export const runRepoSelectCustomId = 'run_repo_select';
 export const runActionSelectCustomId = 'run_action_select';
 export const runModalCustomId = 'run_modal';
@@ -38,13 +42,19 @@ export type BootstrapExtrasSelection = {
   quickstart: boolean;
 };
 
-export function buildImplementRepoSelect(repoKeys: string[]) {
-  const options = repoKeys.map((key) =>
+function buildRepoSelectOptions(repoKeys: string[], selectedRepoKeys?: string[]) {
+  return repoKeys.map((key) =>
     new StringSelectMenuOptionBuilder()
       .setLabel(key)
       .setValue(key)
-      .setDefault(repoKeys.length === 1),
+      .setDefault(
+        selectedRepoKeys ? selectedRepoKeys.includes(key) : repoKeys.length === 1,
+      ),
   );
+}
+
+export function buildImplementRepoSelect(repoKeys: string[], selectedRepoKeys?: string[]) {
+  const options = buildRepoSelectOptions(repoKeys, selectedRepoKeys);
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(implementRepoSelectCustomId)
@@ -89,13 +99,8 @@ export function buildRunActionSelect(actions: Array<{ id: string; label: string 
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 }
 
-export function buildAskRepoSelect(repoKeys: string[]) {
-  const options = repoKeys.map((key) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(key)
-      .setValue(key)
-      .setDefault(repoKeys.length === 1),
-  );
+export function buildAskRepoSelect(repoKeys: string[], selectedRepoKeys?: string[]) {
+  const options = buildRepoSelectOptions(repoKeys, selectedRepoKeys);
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(askRepoSelectCustomId)
@@ -107,13 +112,8 @@ export function buildAskRepoSelect(repoKeys: string[]) {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 }
 
-export function buildPlanRepoSelect(repoKeys: string[]) {
-  const options = repoKeys.map((key) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(key)
-      .setValue(key)
-      .setDefault(repoKeys.length === 1),
-  );
+export function buildPlanRepoSelect(repoKeys: string[], selectedRepoKeys?: string[]) {
+  const options = buildRepoSelectOptions(repoKeys, selectedRepoKeys);
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(planRepoSelectCustomId)
@@ -125,13 +125,8 @@ export function buildPlanRepoSelect(repoKeys: string[]) {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 }
 
-export function buildExploreRepoSelect(repoKeys: string[]) {
-  const options = repoKeys.map((key) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(key)
-      .setValue(key)
-      .setDefault(repoKeys.length === 1),
-  );
+export function buildExploreRepoSelect(repoKeys: string[], selectedRepoKeys?: string[]) {
+  const options = buildRepoSelectOptions(repoKeys, selectedRepoKeys);
 
   const select = new StringSelectMenuBuilder()
     .setCustomId(exploreRepoSelectCustomId)

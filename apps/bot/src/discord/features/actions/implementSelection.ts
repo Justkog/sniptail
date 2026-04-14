@@ -21,12 +21,20 @@ export async function handleImplementSelection(
   implementSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.resumeFromJobId
+      ? { resumeFromJobId: currentSelection.resumeFromJobId }
+      : {}),
     ...(currentSelection?.contextAttachments?.length
       ? { contextAttachments: currentSelection.contextAttachments }
       : {}),
   });
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
-  const modal = buildImplementModal(config.botName, repoKeys, baseBranch);
+  const modal = buildImplementModal(
+    config.botName,
+    repoKeys,
+    baseBranch,
+    currentSelection?.resumeFromJobId,
+  );
   await interaction.showModal(modal);
 }

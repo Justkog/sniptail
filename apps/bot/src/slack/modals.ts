@@ -29,18 +29,49 @@ function buildContextFilesInputBlock() {
   };
 }
 
+function resolveRepoSelectionDefaults(
+  repoAllowlist: Record<string, RepoConfig>,
+  initialRepoKeys?: string[],
+) {
+  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
+    text: { type: 'plain_text' as const, text: key },
+    value: key,
+  }));
+  const initialOptionsFromInput =
+    initialRepoKeys
+      ?.map((repoKey) => repoOptions.find((option) => option.value === repoKey))
+      .filter((value): value is (typeof repoOptions)[number] => Boolean(value)) ?? [];
+  const singleRepoDefault = repoOptions.length === 1 ? repoOptions[0] : undefined;
+  const defaultRepoOptions =
+    initialOptionsFromInput.length > 0
+      ? initialOptionsFromInput
+      : singleRepoDefault
+        ? [singleRepoDefault]
+        : undefined;
+  const defaultGitRef =
+    defaultRepoOptions && defaultRepoOptions.length > 0
+      ? resolveDefaultBaseBranch(repoAllowlist, defaultRepoOptions[0]?.value)
+      : resolveDefaultBaseBranch(repoAllowlist);
+
+  return {
+    repoOptions,
+    defaultRepoOptions,
+    defaultGitRef,
+  };
+}
+
 export function buildAskModal(
   repoAllowlist: Record<string, RepoConfig>,
   botName: string,
   callbackId: string,
   privateMetadata: string,
   resumeFromJobId?: string,
+  initialRepoKeys?: string[],
 ) {
-  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
-    text: { type: 'plain_text' as const, text: key },
-    value: key,
-  }));
-  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
+  const { repoOptions, defaultRepoOptions, defaultGitRef } = resolveRepoSelectionDefaults(
+    repoAllowlist,
+    initialRepoKeys,
+  );
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -68,7 +99,7 @@ export function buildAskModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: resolveDefaultBaseBranch(repoAllowlist),
+          initial_value: defaultGitRef,
         },
       },
       {
@@ -103,12 +134,12 @@ export function buildPlanModal(
   callbackId: string,
   privateMetadata: string,
   resumeFromJobId?: string,
+  initialRepoKeys?: string[],
 ) {
-  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
-    text: { type: 'plain_text' as const, text: key },
-    value: key,
-  }));
-  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
+  const { repoOptions, defaultRepoOptions, defaultGitRef } = resolveRepoSelectionDefaults(
+    repoAllowlist,
+    initialRepoKeys,
+  );
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -136,7 +167,7 @@ export function buildPlanModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: resolveDefaultBaseBranch(repoAllowlist),
+          initial_value: defaultGitRef,
         },
       },
       {
@@ -171,12 +202,12 @@ export function buildExploreModal(
   callbackId: string,
   privateMetadata: string,
   resumeFromJobId?: string,
+  initialRepoKeys?: string[],
 ) {
-  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
-    text: { type: 'plain_text' as const, text: key },
-    value: key,
-  }));
-  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
+  const { repoOptions, defaultRepoOptions, defaultGitRef } = resolveRepoSelectionDefaults(
+    repoAllowlist,
+    initialRepoKeys,
+  );
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -204,7 +235,7 @@ export function buildExploreModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: resolveDefaultBaseBranch(repoAllowlist),
+          initial_value: defaultGitRef,
         },
       },
       {
@@ -279,12 +310,12 @@ export function buildImplementModal(
   callbackId: string,
   privateMetadata: string,
   resumeFromJobId?: string,
+  initialRepoKeys?: string[],
 ) {
-  const repoOptions = Object.keys(repoAllowlist).map((key) => ({
-    text: { type: 'plain_text' as const, text: key },
-    value: key,
-  }));
-  const defaultRepoOptions = repoOptions.length === 1 ? [repoOptions[0]] : undefined;
+  const { repoOptions, defaultRepoOptions, defaultGitRef } = resolveRepoSelectionDefaults(
+    repoAllowlist,
+    initialRepoKeys,
+  );
   return {
     type: 'modal' as const,
     callback_id: callbackId,
@@ -312,7 +343,7 @@ export function buildImplementModal(
         element: {
           type: 'plain_text_input' as const,
           action_id: 'git_ref',
-          initial_value: resolveDefaultBaseBranch(repoAllowlist),
+          initial_value: defaultGitRef,
         },
       },
       {

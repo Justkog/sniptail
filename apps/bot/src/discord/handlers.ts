@@ -47,29 +47,45 @@ import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
-import { handleAskFromJobButton } from './features/actions/askFromJob.js';
-import { handleDiscordExploreFromJobButton } from './features/actions/discordExploreFromJobAction.js';
-import { handlePlanFromJobButton } from './features/actions/planFromJob.js';
+import {
+  handleAskFromJobButton,
+  handleAskFromJobContinueButton,
+} from './features/actions/askFromJob.js';
+import {
+  handleDiscordExploreFromJobButton,
+  handleDiscordExploreFromJobContinueButton,
+} from './features/actions/discordExploreFromJobAction.js';
+import {
+  handlePlanFromJobButton,
+  handlePlanFromJobContinueButton,
+} from './features/actions/planFromJob.js';
 import {
   handleClearJobButton,
   handleClearJobCancelButton,
   handleClearJobConfirmButton,
 } from './features/actions/clearJob.js';
-import { handleImplementFromJobButton } from './features/actions/implementFromJob.js';
+import {
+  handleImplementFromJobButton,
+  handleImplementFromJobContinueButton,
+} from './features/actions/implementFromJob.js';
 import { handleRunFromJobButton } from './features/actions/runFromJobAction.js';
 import { handleReviewFromJobButton } from './features/actions/reviewFromJob.js';
 import { handleWorktreeCommandsButton } from './features/actions/worktreeCommands.js';
 import {
   askModalCustomId,
+  askFromJobContinueButtonCustomId,
   askRepoSelectCustomId,
   answerQuestionsModalCustomId,
   exploreModalCustomId,
+  exploreFromJobContinueButtonCustomId,
   exploreRepoSelectCustomId,
   planRepoSelectCustomId,
   bootstrapModalCustomId,
   implementModalCustomId,
+  implementFromJobContinueButtonCustomId,
   runModalCustomId,
   planModalCustomId,
+  planFromJobContinueButtonCustomId,
   implementRepoSelectCustomId,
   runRepoSelectCustomId,
   runActionSelectCustomId,
@@ -352,6 +368,23 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
+      if (interaction.customId === askFromJobContinueButtonCustomId) {
+        await handleAskFromJobContinueButton(interaction, config);
+        return;
+      }
+      if (interaction.customId === exploreFromJobContinueButtonCustomId) {
+        await handleDiscordExploreFromJobContinueButton(interaction, config);
+        return;
+      }
+      if (interaction.customId === planFromJobContinueButtonCustomId) {
+        await handlePlanFromJobContinueButton(interaction, config);
+        return;
+      }
+      if (interaction.customId === implementFromJobContinueButtonCustomId) {
+        await handleImplementFromJobContinueButton(interaction, config);
+        return;
+      }
+
       const parsedApproval = parseDiscordApprovalCustomId(interaction.customId);
       if (parsedApproval) {
         const resolutionAction = toApprovalResolutionAction(parsedApproval.action);
