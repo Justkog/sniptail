@@ -493,17 +493,24 @@ export async function runJob(
 
     let followupFinalResponse = '';
     if (job.type === 'IMPLEMENT') {
-      const followupRun = await runAgentJob({
-        job,
-        config,
-        paths,
-        env,
-        registry,
-        promptOverride: buildImplementArtifactsPrompt(job, config.botName),
-      });
-      followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
-      if (followupRun.result.threadId) {
-        await recordAgentThreadId(registry, job, followupRun.agentId, followupRun.result.threadId);
+      try {
+        const followupRun = await runAgentJob({
+          job,
+          config,
+          paths,
+          env,
+          registry,
+          promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+        });
+        followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
+        if (followupRun.result.threadId) {
+          await recordAgentThreadId(registry, job, followupRun.agentId, followupRun.result.threadId);
+        }
+      } catch (err) {
+        logger.warn(
+          { err, jobId: job.jobId },
+          'IMPLEMENT follow-up artifact generation failed; continuing with synthesized artifacts',
+        );
       }
     }
 
