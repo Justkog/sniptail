@@ -5,7 +5,9 @@ import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
+import { buildImplementArtifactsPrompt } from '@sniptail/core/codex/prompts.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
+import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
@@ -49,80 +51,8 @@ function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
   };
 }
 
-function buildImplementArtifactsPrompt(job: JobSpec, botName: string): string {
-  const repoLines = job.repoKeys.map((repoKey) => `- ${repoKey}: repos/${repoKey}`).join('\n');
-  return [
-    `You are ${botName} (IMPLEMENT ARTIFACTS mode).`,
-    'You have already completed the code changes for this implementation job on this thread.',
-    'Do not make further repo code changes unless strictly necessary to repair the working tree.',
-    'Focus only on producing implementation artifacts that describe the completed changes.',
-    'Repositories are located under the job root:',
-    repoLines,
-    '',
-    'If the job root contains context/manifest.json, inspect it and any relevant files under context/ before producing artifacts.',
-    '',
-    'Write these files:',
-    '- artifacts/summary.md: concise human-readable summary of the implemented changes',
-    '- artifacts/change-metadata.json: JSON object with keys "mrTitle", "commitTitle", and "commitBody"',
-    '',
-    'Constraints:',
-    '- mrTitle must be at most 255 characters',
-    '- commitTitle must be at most 50 characters',
-    '- commitBody should clearly explain why the change was made and any important implementation notes',
-    '- Base the metadata on the changes that were actually implemented, not just the raw request text',
-    '- Do not include markdown code fences in the JSON file',
-    '',
-    `Request: ${job.requestText}`,
-  ].join('\n');
-}
-
 function isMissingArtifact(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
-}
-
-function clampText(value: string, maxLength: number): string {
-  const trimmed = value.trim().replace(/\s+/g, ' ');
-  return trimmed.length <= maxLength ? trimmed : trimmed.slice(0, maxLength).trimEnd();
-}
-
-function wrapText(value: string, width: number): string {
-  const normalized = value
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .map((line) => line.trim())
-    .join('\n')
-    .trim();
-  if (!normalized) return '';
-
-  const paragraphs = normalized.split(/\n{2,}/);
-  return paragraphs
-    .map((paragraph) => {
-      const words = paragraph.replace(/\s+/g, ' ').trim().split(' ');
-      if (!words[0]) return '';
-      const lines: string[] = [];
-      let current = words[0];
-      for (const word of words.slice(1)) {
-        if (`${current} ${word}`.length > width) {
-          lines.push(current);
-          current = word;
-        } else {
-          current = `${current} ${word}`;
-        }
-      }
-      lines.push(current);
-      return lines.join('\n');
-    })
-    .filter(Boolean)
-    .join('\n\n');
-}
-
-function firstContentLine(text: string): string {
-  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    return trimmed.replace(/^#+\s*/, '');
-  }
-  return '';
 }
 
 function synthesizeSummary(
@@ -144,12 +74,16 @@ function synthesizeMetadata(
   botName: string,
   jobId: string,
 ): ImplementChangeMetadata {
-  const titleSource = firstContentLine(summary) || firstContentLine(requestText) || `Update for ${jobId}`;
+  const titleSource =
+    firstContentLine(summary) || firstContentLine(requestText) || `Update for ${jobId}`;
   const commitTitle = clampText(titleSource, 50) || 'Update implementation';
   const mrTitle =
     clampText(firstContentLine(summary) || firstContentLine(requestText) || commitTitle, 255) ||
     `${botName} job ${jobId}`;
-  const commitBody = wrapText(summary.trim() || requestText.trim() || `${botName} job ${jobId}`, 72);
+  const commitBody = wrapText(
+    summary.trim() || requestText.trim() || `${botName} job ${jobId}`,
+    72,
+  );
   return { mrTitle, commitTitle, commitBody };
 }
 
@@ -161,13 +95,13 @@ function parseImplementMetadata(
   jobId: string,
 ): ImplementChangeMetadata {
   try {
-    const parsed = JSON.parse(raw) as Partial<Record<'mrTitle' | 'commitTitle' | 'commitBody', unknown>>;
-    const mrTitle =
-      typeof parsed.mrTitle === 'string' ? clampText(parsed.mrTitle, 255) : '';
+    const parsed = JSON.parse(raw) as Partial<
+      Record<'mrTitle' | 'commitTitle' | 'commitBody', unknown>
+    >;
+    const mrTitle = typeof parsed.mrTitle === 'string' ? clampText(parsed.mrTitle, 255) : '';
     const commitTitle =
       typeof parsed.commitTitle === 'string' ? clampText(parsed.commitTitle, 50) : '';
-    const commitBody =
-      typeof parsed.commitBody === 'string' ? wrapText(parsed.commitBody, 72) : '';
+    const commitBody = typeof parsed.commitBody === 'string' ? wrapText(parsed.commitBody, 72) : '';
     if (mrTitle && commitTitle && commitBody) {
       return { mrTitle, commitTitle, commitBody };
     }
@@ -178,7 +112,11 @@ function parseImplementMetadata(
   return synthesizeMetadata(summary, requestText, botName, jobId);
 }
 
-function buildCommitMessage(metadata: ImplementChangeMetadata, botName: string, jobId: string): string {
+function buildCommitMessage(
+  metadata: ImplementChangeMetadata,
+  botName: string,
+  jobId: string,
+): string {
   return `${metadata.commitTitle}\n${botName}: ${jobId}\n\n${metadata.commitBody}\n`;
 }
 
@@ -563,14 +501,25 @@ export async function runJob(
       if (!isMissingArtifact(err)) {
         throw err;
       }
-      logger.warn({ err, jobId: job.jobId }, 'Missing summary.md for IMPLEMENT job; using synthesized summary');
-      return synthesizeSummary(job.requestText, primaryFinalResponse, followupFinalResponse, job.jobId);
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Missing summary.md for IMPLEMENT job; using synthesized summary',
+      );
+      return synthesizeSummary(
+        job.requestText,
+        primaryFinalResponse,
+        followupFinalResponse,
+        job.jobId,
+      );
     });
     const rawMetadata = await readJobArtifact(paths, 'change-metadata.json').catch((err) => {
       if (!isMissingArtifact(err)) {
         throw err;
       }
-      logger.warn({ err, jobId: job.jobId }, 'Missing change-metadata.json for IMPLEMENT job; using synthesized metadata');
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Missing change-metadata.json for IMPLEMENT job; using synthesized metadata',
+      );
       return '';
     });
     const metadata = rawMetadata
