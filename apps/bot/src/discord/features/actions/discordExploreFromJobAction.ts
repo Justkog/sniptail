@@ -54,12 +54,7 @@ async function openExploreModalFromSelection(
   }
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
-  const modal = buildExploreModal(
-    config.botName,
-    repoKeys,
-    baseBranch,
-    selection?.resumeFromJobId,
-  );
+  const modal = buildExploreModal(config.botName, repoKeys, baseBranch, selection?.resumeFromJobId);
   await interaction.showModal(modal);
 }
 

@@ -92,9 +92,7 @@ function buildRepoSelectOptions(repoKeys: string[], selectedRepoKeys?: string[])
     new StringSelectMenuOptionBuilder()
       .setLabel(key)
       .setValue(key)
-      .setDefault(
-        selectedRepoKeys ? selectedRepoKeys.includes(key) : repoKeys.length === 1,
-      ),
+      .setDefault(selectedRepoKeys ? selectedRepoKeys.includes(key) : repoKeys.length === 1),
   );
 }
 
