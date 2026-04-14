@@ -36,11 +36,12 @@ async function openPlanModalFromSelection(
   }
   planFromJobSelectionByToken.delete(selectionToken);
 
-  planSelectionByUser.set(interaction.user.id, {
+  const baseSelection = {
     repoKeys: selection.repoKeys,
     requestedAt: Date.now(),
     ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
-  });
+  };
+  planSelectionByUser.set(interaction.user.id, baseSelection);
 
   const repoKeys = selection.repoKeys;
   if (!repoKeys.length) {
@@ -87,17 +88,16 @@ export async function handlePlanFromJobButton(
   }
 
   const selectionToken = createDiscordSelectionToken();
+  const baseSelection = {
+    repoKeys,
+    requestedAt: Date.now(),
+    resumeFromJobId: jobId,
+  };
   planFromJobSelectionByToken.set(selectionToken, {
     userId: interaction.user.id,
-    repoKeys,
-    requestedAt: Date.now(),
-    resumeFromJobId: jobId,
+    ...baseSelection,
   });
-  planSelectionByUser.set(interaction.user.id, {
-    repoKeys,
-    requestedAt: Date.now(),
-    resumeFromJobId: jobId,
-  });
+  planSelectionByUser.set(interaction.user.id, baseSelection);
 
   const allowlistRepoKeys = Object.keys(config.repoAllowlist);
   const continueButton = new ButtonBuilder()

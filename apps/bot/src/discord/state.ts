@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { DiscordContextAttachmentRef } from './lib/discordContextFiles.js';
 
 type DiscordJobSelectionState = {
@@ -48,5 +49,5 @@ export const bootstrapExtrasByUser = new Map<
 >();
 
 export function createDiscordSelectionToken(): string {
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return randomUUID();
 }
