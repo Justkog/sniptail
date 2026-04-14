@@ -19,6 +19,7 @@ import {
   createDiscordSelectionToken,
   planFromJobSelectionByToken,
   planSelectionByUser,
+  setFromJobSelectionWithCap,
 } from '../../state.js';
 
 async function openPlanModalFromSelection(
@@ -93,7 +94,7 @@ export async function handlePlanFromJobButton(
     requestedAt: Date.now(),
     resumeFromJobId: jobId,
   };
-  planFromJobSelectionByToken.set(selectionToken, {
+  setFromJobSelectionWithCap(planFromJobSelectionByToken, selectionToken, {
     userId: interaction.user.id,
     ...baseSelection,
   });

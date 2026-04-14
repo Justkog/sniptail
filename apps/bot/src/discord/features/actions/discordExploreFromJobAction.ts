@@ -19,6 +19,7 @@ import {
   createDiscordSelectionToken,
   exploreFromJobSelectionByToken,
   exploreSelectionByUser,
+  setFromJobSelectionWithCap,
 } from '../../state.js';
 
 async function openExploreModalFromSelection(
@@ -98,7 +99,7 @@ export async function handleDiscordExploreFromJobButton(
     requestedAt: Date.now(),
     resumeFromJobId: jobId,
   };
-  exploreFromJobSelectionByToken.set(selectionToken, {
+  setFromJobSelectionWithCap(exploreFromJobSelectionByToken, selectionToken, {
     userId: interaction.user.id,
     ...baseSelection,
   });

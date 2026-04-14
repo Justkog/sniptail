@@ -12,6 +12,8 @@ type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
   userId: string;
 };
 
+const FROM_JOB_SELECTION_MAX_ENTRIES = 50;
+
 export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const planSelectionByUser = new Map<string, DiscordJobSelectionState>();
@@ -50,4 +52,19 @@ export const bootstrapExtrasByUser = new Map<
 
 export function createDiscordSelectionToken(): string {
   return randomUUID();
+}
+
+export function setFromJobSelectionWithCap(
+  selectionMap: Map<string, DiscordScopedJobSelectionState>,
+  selectionToken: string,
+  selection: DiscordScopedJobSelectionState,
+): void {
+  if (!selectionMap.has(selectionToken) && selectionMap.size >= FROM_JOB_SELECTION_MAX_ENTRIES) {
+    const oldestSelectionToken = selectionMap.keys().next().value;
+    if (oldestSelectionToken) {
+      selectionMap.delete(oldestSelectionToken);
+    }
+  }
+
+  selectionMap.set(selectionToken, selection);
 }

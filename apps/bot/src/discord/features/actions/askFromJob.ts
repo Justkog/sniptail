@@ -19,6 +19,7 @@ import {
   askFromJobSelectionByToken,
   askSelectionByUser,
   createDiscordSelectionToken,
+  setFromJobSelectionWithCap,
 } from '../../state.js';
 
 async function openAskModalFromSelection(
@@ -93,7 +94,7 @@ export async function handleAskFromJobButton(
     requestedAt: Date.now(),
     resumeFromJobId: jobId,
   };
-  askFromJobSelectionByToken.set(selectionToken, {
+  setFromJobSelectionWithCap(askFromJobSelectionByToken, selectionToken, {
     userId: interaction.user.id,
     ...baseSelection,
   });

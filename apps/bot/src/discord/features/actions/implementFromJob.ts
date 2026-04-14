@@ -19,6 +19,7 @@ import {
   createDiscordSelectionToken,
   implementFromJobSelectionByToken,
   implementSelectionByUser,
+  setFromJobSelectionWithCap,
 } from '../../state.js';
 
 async function openImplementModalFromSelection(
@@ -98,7 +99,7 @@ export async function handleImplementFromJobButton(
     requestedAt: Date.now(),
     resumeFromJobId: jobId,
   };
-  implementFromJobSelectionByToken.set(selectionToken, {
+  setFromJobSelectionWithCap(implementFromJobSelectionByToken, selectionToken, {
     userId: interaction.user.id,
     ...baseSelection,
   });
