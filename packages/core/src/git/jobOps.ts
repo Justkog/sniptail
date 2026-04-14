@@ -1,5 +1,5 @@
 import { constants as fsConstants } from 'node:fs';
-import { access, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { logger } from '../logger.js';
@@ -222,11 +222,9 @@ export async function commitAndPush(
     timeoutMs: 30_000,
     redact,
   });
-  const commitMessageFile = join(
-    tmpdir(),
-    `sniptail-commit-message-${process.pid}-${Date.now()}.txt`,
-  );
-  await writeFile(commitMessageFile, commitMessage, 'utf8');
+  const commitMessageDir = await mkdtemp(join(tmpdir(), 'sniptail-commit-message-'));
+  const commitMessageFile = join(commitMessageDir, 'message.txt');
+  await writeFile(commitMessageFile, commitMessage, { encoding: 'utf8', flag: 'wx' });
   try {
     await runCommand('git', ['commit', '--file', commitMessageFile], {
       cwd: repoPath,
@@ -236,7 +234,7 @@ export async function commitAndPush(
       redact,
     });
   } finally {
-    await rm(commitMessageFile, { force: true }).catch(() => undefined);
+    await rm(commitMessageDir, { recursive: true, force: true }).catch(() => undefined);
   }
   await runCommand('git', ['push', 'origin', branch], {
     cwd: repoPath,
