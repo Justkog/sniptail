@@ -76,17 +76,18 @@ export async function prepareRepoWorktrees(
         },
       );
     } catch (err) {
-      const legacyResumeBranch = job.resumeFromJobId
-        ? buildLegacyJobBranch(job.resumeFromJobId)
-        : undefined;
-      const shouldRetryLegacyResume =
-        resumeRecord &&
-        !resumeBranch &&
-        legacyResumeBranch &&
-        legacyResumeBranch !== baseRef &&
-        err instanceof Error &&
-        err.message.includes(`Branch not found in clone: ${baseRef}`);
-      if (!shouldRetryLegacyResume) {
+      if (
+        !resumeRecord ||
+        resumeBranch ||
+        !job.resumeFromJobId ||
+        !(err instanceof Error) ||
+        !err.message.includes(`Branch not found in clone: ${baseRef}`)
+      ) {
+        throw err;
+      }
+
+      const legacyResumeBranch = buildLegacyJobBranch(job.resumeFromJobId);
+      if (legacyResumeBranch === baseRef) {
         throw err;
       }
 
