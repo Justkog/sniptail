@@ -55,6 +55,10 @@ export async function readJobSummary(paths: JobPaths): Promise<string> {
   return readFile(summaryPath, 'utf8');
 }
 
+export async function readJobArtifact(paths: JobPaths, fileName: string): Promise<string> {
+  return readFile(join(paths.artifactsRoot, fileName), 'utf8');
+}
+
 export async function appendAgentEventLog(logFile: string, content: string): Promise<void> {
   await appendFile(logFile, content);
 }

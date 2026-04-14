@@ -1,9 +1,12 @@
 import { constants as fsConstants } from 'node:fs';
-import { access } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:fs/promises', () => ({
   access: vi.fn(),
+  mkdtemp: vi.fn(),
+  writeFile: vi.fn(),
+  rm: vi.fn(),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -19,7 +22,7 @@ vi.mock('../runner/commandRunner.js', () => ({
 }));
 
 import { runCommand } from '../runner/commandRunner.js';
-import { runChecks, runNamedRunContractDetailed, runSetupContract } from './jobOps.js';
+import { commitAndPush, runChecks, runNamedRunContractDetailed, runSetupContract } from './jobOps.js';
 
 function makeMissingPathError(): Error & { code: string } {
   return Object.assign(new Error('missing path'), { code: 'ENOENT' });
@@ -184,5 +187,58 @@ describe('git job operations contracts', () => {
     await expect(
       runNamedRunContractDetailed('/tmp/repo', '../refresh', {}, '/tmp/runner.log', []),
     ).rejects.toThrow('Invalid run action id');
+  });
+
+  it('commits and pushes using an exclusive temp commit message file', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const writeFileMock = vi.mocked(writeFile);
+    const rmMock = vi.mocked(rm);
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValue({
+        cmd: 'git',
+        args: [],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      });
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    await expect(
+      commitAndPush('/tmp/repo', 'feature-branch', 'feat: subject\n\nbody', {}, '/tmp/runner.log', []),
+    ).resolves.toBe(true);
+
+    expect(writeFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail-commit-message-abc123/message.txt',
+      'feat: subject\n\nbody',
+      { encoding: 'utf8', flag: 'wx' },
+    );
+    expect(runCommandMock).toHaveBeenNthCalledWith(3, 'git', [
+      'commit',
+      '--file',
+      '/tmp/sniptail-commit-message-abc123/message.txt',
+    ], expect.objectContaining({ cwd: '/tmp/repo' }));
+    expect(rmMock).toHaveBeenCalledWith('/tmp/sniptail-commit-message-abc123', {
+      recursive: true,
+      force: true,
+    });
   });
 });

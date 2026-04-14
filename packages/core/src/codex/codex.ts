@@ -30,6 +30,7 @@ export type CodexRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  promptOverride?: string;
   currentTurnAttachments?: AgentAttachment[];
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
@@ -128,7 +129,7 @@ export async function runCodex(
     : codex.startThread(threadOptions);
 
   const botName = options.botName?.trim() || 'Sniptail';
-  const basePrompt = buildPromptForJob(job, botName);
+  const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;

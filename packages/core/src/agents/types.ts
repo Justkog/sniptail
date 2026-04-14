@@ -24,6 +24,7 @@ export type AgentRunOptions = {
   webSearchEnabled?: boolean;
   botName?: string;
   resumeThreadId?: string;
+  promptOverride?: string;
   currentTurnAttachments?: AgentAttachment[];
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
