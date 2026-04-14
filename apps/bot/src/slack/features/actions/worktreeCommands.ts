@@ -4,7 +4,7 @@ import {
 } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
-import { postMessage } from '../../helpers.js';
+import { postEphemeral, postMessage } from '../../helpers.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { buildWorktreeCommandsText } from '../../lib/worktree.js';
 import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -39,8 +39,12 @@ export function registerWorktreeCommandsAction({
           ...(threadId ? { threadId } : {}),
         },
         onDeny: async () => {
-          await postMessage(app, {
+          if (!userId) {
+            return;
+          }
+          await postEphemeral(app, {
             channel: channelId,
+            user: userId,
             text: 'You are not authorized to view worktree commands.',
             ...(threadId ? { threadTs: threadId } : {}),
           });
@@ -58,8 +62,12 @@ export function registerWorktreeCommandsAction({
     });
 
     if (!record?.job?.repoKeys?.length) {
-      await postMessage(app, {
+      if (!userId) {
+        return;
+      }
+      await postEphemeral(app, {
         channel: channelId,
+        user: userId,
         text: `Unable to build worktree commands for job ${jobId}.`,
         ...(threadId ? { threadTs: threadId } : {}),
       });
@@ -93,8 +101,26 @@ export function registerWorktreeCommandsAction({
           baseRef: record.job.gitRef,
         });
     const messageJobId = latestImplement?.job?.jobId ?? record.job.jobId;
-    await postMessage(app, {
+    if (!userId) {
+      await postMessage(app, {
+        channel: channelId,
+        text: `Worktree commands for job ${messageJobId}.`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: messageText,
+            },
+          },
+        ],
+        ...(threadId ? { threadTs: threadId } : {}),
+      });
+      return;
+    }
+    await postEphemeral(app, {
       channel: channelId,
+      user: userId,
       text: `Worktree commands for job ${messageJobId}.`,
       blocks: [
         {
