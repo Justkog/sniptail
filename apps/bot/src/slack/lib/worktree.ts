@@ -1,6 +1,5 @@
 import type { BotConfig } from '@sniptail/core/config/config.js';
-
-const worktreeBranchPrefix = 'sniptail';
+import { toGitBranchPrefix } from '@sniptail/core/git/branch.js';
 
 export type WorktreeCommandsTarget =
   | {
@@ -17,6 +16,7 @@ export type WorktreeCommandsTarget =
     };
 
 export function buildWorktreeCommandsText(config: BotConfig, target: WorktreeCommandsTarget) {
+  const worktreeBranchPrefix = toGitBranchPrefix(config.botName);
   const lines: string[] = [
     target.mode === 'branch'
       ? `*Worktree branch commands for job ${target.jobId}*`

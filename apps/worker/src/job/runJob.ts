@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
+import { toGitBranchPrefix } from '@sniptail/core/git/branch.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
@@ -35,7 +36,7 @@ import { enforceJobCleanup } from './cleanup.js';
 import { buildRunJobFailureSnippet, runRunJob } from './runActionJob.js';
 
 const config = loadWorkerConfig();
-const branchPrefix = 'sniptail';
+const branchPrefix = toGitBranchPrefix(config.botName);
 
 type ImplementChangeMetadata = {
   mrTitle: string;

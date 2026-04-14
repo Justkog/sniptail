@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import { buildLegacyJobBranch } from '@sniptail/core/git/branch.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
 import { runSetupContract } from '@sniptail/core/git/jobOps.js';
 import { addWorktree } from '@sniptail/core/git/worktree.js';
@@ -58,24 +59,56 @@ export async function prepareRepoWorktrees(
       job.type === 'RUN'
         ? `${branchPrefix}/${job.jobId}`
         : undefined;
+    let resolvedBaseRef = baseRef;
 
-    await ensureClone(
-      repoKey,
-      repoConfig,
-      clonePath,
-      paths.logFile,
-      env,
-      baseRef,
-      redactionPatterns,
-      {
-        checkoutRef: !resumeRecord,
-        forceLocalBranchUpdate: !resumeRecord,
-      },
-    );
+    try {
+      await ensureClone(
+        repoKey,
+        repoConfig,
+        clonePath,
+        paths.logFile,
+        env,
+        baseRef,
+        redactionPatterns,
+        {
+          checkoutRef: !resumeRecord,
+          forceLocalBranchUpdate: !resumeRecord,
+        },
+      );
+    } catch (err) {
+      const legacyResumeBranch = job.resumeFromJobId
+        ? buildLegacyJobBranch(job.resumeFromJobId)
+        : undefined;
+      const shouldRetryLegacyResume =
+        resumeRecord &&
+        !resumeBranch &&
+        legacyResumeBranch &&
+        legacyResumeBranch !== baseRef &&
+        err instanceof Error &&
+        err.message.includes(`Branch not found in clone: ${baseRef}`);
+      if (!shouldRetryLegacyResume) {
+        throw err;
+      }
+
+      await ensureClone(
+        repoKey,
+        repoConfig,
+        clonePath,
+        paths.logFile,
+        env,
+        legacyResumeBranch,
+        redactionPatterns,
+        {
+          checkoutRef: !resumeRecord,
+          forceLocalBranchUpdate: !resumeRecord,
+        },
+      );
+      resolvedBaseRef = legacyResumeBranch;
+    }
     await addWorktree({
       clonePath,
       worktreePath,
-      baseRef,
+      baseRef: resolvedBaseRef,
       ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
       ...(config.worktreeSetupAllowFailure !== undefined
         ? { setupAllowFailure: config.worktreeSetupAllowFailure }
