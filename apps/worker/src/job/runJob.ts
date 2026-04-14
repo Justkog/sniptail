@@ -127,7 +127,7 @@ function buildCommitMessage(
   botName: string,
   jobId: string,
 ): string {
-  return `${metadata.commitTitle}\n${botName}: ${jobId}\n\n${metadata.commitBody}\n`;
+  return `${metadata.commitTitle}\n\n${botName}: ${jobId}\n\n${metadata.commitBody}\n`;
 }
 
 async function recordAgentThreadId(
