@@ -11,8 +11,6 @@ Repositories are located under the job root:
 
 If the job root contains context/manifest.json, inspect it and any relevant files under context/ before implementing.
 
-Write a summary to artifacts/summary.md.
-
 {{#if threadContext}}
 Thread history (oldest to newest):
 {{threadContext}}

@@ -114,7 +114,7 @@ export async function runCopilot(
     registerSessionHandlers(session);
 
     const botName = options.botName?.trim() || 'Sniptail';
-    const prompt = buildPromptForJob(job, botName);
+    const prompt = options.promptOverride ?? buildPromptForJob(job, botName);
     const maxIdleRetries = options.copilotIdleRetries ?? 2;
     let attempt = 0;
     let response: SessionEvent | undefined;

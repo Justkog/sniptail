@@ -17,6 +17,7 @@ import {
   copyJobRootSeed,
   ensureJobDirectories,
   materializeJobContextFiles,
+  readJobArtifact,
   readJobPlan,
   readJobReport,
   readJobSummary,
@@ -34,6 +35,12 @@ import { buildRunJobFailureSnippet, runRunJob } from './runActionJob.js';
 const config = loadWorkerConfig();
 const branchPrefix = 'sniptail';
 
+type ImplementChangeMetadata = {
+  mrTitle: string;
+  commitTitle: string;
+  commitBody: string;
+};
+
 function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
   return {
     provider: job.channel.provider,
@@ -42,8 +49,137 @@ function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
   };
 }
 
+function buildImplementArtifactsPrompt(job: JobSpec, botName: string): string {
+  const repoLines = job.repoKeys.map((repoKey) => `- ${repoKey}: repos/${repoKey}`).join('\n');
+  return [
+    `You are ${botName} (IMPLEMENT ARTIFACTS mode).`,
+    'You have already completed the code changes for this implementation job on this thread.',
+    'Do not make further repo code changes unless strictly necessary to repair the working tree.',
+    'Focus only on producing implementation artifacts that describe the completed changes.',
+    'Repositories are located under the job root:',
+    repoLines,
+    '',
+    'If the job root contains context/manifest.json, inspect it and any relevant files under context/ before producing artifacts.',
+    '',
+    'Write these files:',
+    '- artifacts/summary.md: concise human-readable summary of the implemented changes',
+    '- artifacts/change-metadata.json: JSON object with keys "mrTitle", "commitTitle", and "commitBody"',
+    '',
+    'Constraints:',
+    '- mrTitle must be at most 255 characters',
+    '- commitTitle must be at most 50 characters',
+    '- commitBody should clearly explain why the change was made and any important implementation notes',
+    '- Base the metadata on the changes that were actually implemented, not just the raw request text',
+    '- Do not include markdown code fences in the JSON file',
+    '',
+    `Request: ${job.requestText}`,
+  ].join('\n');
+}
+
 function isMissingArtifact(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
+function clampText(value: string, maxLength: number): string {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  return trimmed.length <= maxLength ? trimmed : trimmed.slice(0, maxLength).trimEnd();
+}
+
+function wrapText(value: string, width: number): string {
+  const normalized = value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n')
+    .trim();
+  if (!normalized) return '';
+
+  const paragraphs = normalized.split(/\n{2,}/);
+  return paragraphs
+    .map((paragraph) => {
+      const words = paragraph.replace(/\s+/g, ' ').trim().split(' ');
+      if (!words[0]) return '';
+      const lines: string[] = [];
+      let current = words[0];
+      for (const word of words.slice(1)) {
+        if (`${current} ${word}`.length > width) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = `${current} ${word}`;
+        }
+      }
+      lines.push(current);
+      return lines.join('\n');
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function firstContentLine(text: string): string {
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    return trimmed.replace(/^#+\s*/, '');
+  }
+  return '';
+}
+
+function synthesizeSummary(
+  requestText: string,
+  primaryResponse: string,
+  followupResponse: string,
+  jobId: string,
+): string {
+  const candidate = [followupResponse, primaryResponse, requestText]
+    .map((value) => value.trim())
+    .find(Boolean);
+  if (!candidate) return `Implementation completed for ${jobId}.`;
+  return candidate;
+}
+
+function synthesizeMetadata(
+  summary: string,
+  requestText: string,
+  botName: string,
+  jobId: string,
+): ImplementChangeMetadata {
+  const titleSource = firstContentLine(summary) || firstContentLine(requestText) || `Update for ${jobId}`;
+  const commitTitle = clampText(titleSource, 50) || 'Update implementation';
+  const mrTitle =
+    clampText(firstContentLine(summary) || firstContentLine(requestText) || commitTitle, 255) ||
+    `${botName} job ${jobId}`;
+  const commitBody = wrapText(summary.trim() || requestText.trim() || `${botName} job ${jobId}`, 72);
+  return { mrTitle, commitTitle, commitBody };
+}
+
+function parseImplementMetadata(
+  raw: string,
+  summary: string,
+  requestText: string,
+  botName: string,
+  jobId: string,
+): ImplementChangeMetadata {
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<'mrTitle' | 'commitTitle' | 'commitBody', unknown>>;
+    const mrTitle =
+      typeof parsed.mrTitle === 'string' ? clampText(parsed.mrTitle, 255) : '';
+    const commitTitle =
+      typeof parsed.commitTitle === 'string' ? clampText(parsed.commitTitle, 50) : '';
+    const commitBody =
+      typeof parsed.commitBody === 'string' ? wrapText(parsed.commitBody, 72) : '';
+    if (mrTitle && commitTitle && commitBody) {
+      return { mrTitle, commitTitle, commitBody };
+    }
+  } catch (err) {
+    logger.warn({ err, jobId }, 'Invalid change-metadata.json; using synthesized metadata');
+  }
+
+  return synthesizeMetadata(summary, requestText, botName, jobId);
+}
+
+function buildCommitMessage(metadata: ImplementChangeMetadata, botName: string, jobId: string): string {
+  return `${metadata.commitTitle}\n${botName}: ${jobId}\n\n${metadata.commitBody}\n`;
 }
 
 async function recordAgentThreadId(
@@ -76,6 +212,7 @@ async function publishRepoChanges(options: {
   job: JobSpec;
   summary: string;
   requestText: string;
+  metadata: ImplementChangeMetadata;
   repoWorktrees: Awaited<ReturnType<typeof prepareRepoWorktrees>>['repoWorktrees'];
   checks?: string[];
   labels?: string[];
@@ -88,6 +225,7 @@ async function publishRepoChanges(options: {
     job,
     summary,
     requestText,
+    metadata,
     repoWorktrees,
     checks,
     labels,
@@ -114,8 +252,7 @@ async function publishRepoChanges(options: {
     const committed = await commitRepoChanges(
       repo.worktreePath,
       repo.branch,
-      job.jobId,
-      config.botName,
+      buildCommitMessage(metadata, config.botName, job.jobId),
       env,
       logFile,
       redactionPatterns,
@@ -124,7 +261,7 @@ async function publishRepoChanges(options: {
       continue;
     }
 
-    const title = `${config.botName}: ${requestText.slice(0, 60)}`;
+    const title = metadata.mrTitle;
     const description = config.includeRawRequestInMr
       ? buildMergeRequestDescription(summary, requestText, config.botName, job.jobId)
       : summary || `${config.botName} job ${job.jobId}`;
@@ -274,6 +411,12 @@ export async function runJob(
             job,
             summary: `Run action ${actionId} completed`,
             requestText: `Run action ${actionId}`,
+            metadata: synthesizeMetadata(
+              `Run action ${actionId} completed`,
+              `Run action ${actionId}`,
+              config.botName,
+              job.jobId,
+            ),
             repoWorktrees,
             ...(checks ? { checks } : {}),
             env,
@@ -291,6 +434,7 @@ export async function runJob(
       registry,
       currentTurnContextFiles,
     });
+    const primaryFinalResponse = agentRun.result.finalResponse?.trim() ?? '';
 
     if (agentRun.result.threadId) {
       await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);
@@ -399,12 +543,45 @@ export async function runJob(
       };
     }
 
-    const summary = await readJobSummary(paths);
+    let followupFinalResponse = '';
+    if (job.type === 'IMPLEMENT') {
+      const followupRun = await runAgentJob({
+        job,
+        config,
+        paths,
+        env,
+        registry,
+        promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+      });
+      followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
+      if (followupRun.result.threadId) {
+        await recordAgentThreadId(registry, job, followupRun.agentId, followupRun.result.threadId);
+      }
+    }
+
+    const summary = await readJobSummary(paths).catch((err) => {
+      if (!isMissingArtifact(err)) {
+        throw err;
+      }
+      logger.warn({ err, jobId: job.jobId }, 'Missing summary.md for IMPLEMENT job; using synthesized summary');
+      return synthesizeSummary(job.requestText, primaryFinalResponse, followupFinalResponse, job.jobId);
+    });
+    const rawMetadata = await readJobArtifact(paths, 'change-metadata.json').catch((err) => {
+      if (!isMissingArtifact(err)) {
+        throw err;
+      }
+      logger.warn({ err, jobId: job.jobId }, 'Missing change-metadata.json for IMPLEMENT job; using synthesized metadata');
+      return '';
+    });
+    const metadata = rawMetadata
+      ? parseImplementMetadata(rawMetadata, summary, job.requestText, config.botName, job.jobId)
+      : synthesizeMetadata(summary, job.requestText, config.botName, job.jobId);
 
     const { mergeRequests, localBranchMessages } = await publishRepoChanges({
       job,
       summary,
       requestText: job.requestText,
+      metadata,
       repoWorktrees,
       ...(job.settings?.checks ? { checks: job.settings.checks } : {}),
       ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
