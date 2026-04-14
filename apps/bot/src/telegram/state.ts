@@ -32,7 +32,10 @@ function cleanupExpiredWizardState(): void {
 const wizardStateCleanupTimer = setInterval(cleanupExpiredWizardState, WIZARD_CLEANUP_INTERVAL_MS);
 wizardStateCleanupTimer.unref?.();
 
-export function loadTelegramWizardState(chatId: string, userId: string): TelegramWizardState | undefined {
+export function loadTelegramWizardState(
+  chatId: string,
+  userId: string,
+): TelegramWizardState | undefined {
   const key = makeKey(chatId, userId);
   const state = wizardState.get(key);
   if (!state) {
@@ -45,7 +48,11 @@ export function loadTelegramWizardState(chatId: string, userId: string): Telegra
   return state;
 }
 
-export function saveTelegramWizardState(chatId: string, userId: string, state: TelegramWizardState): void {
+export function saveTelegramWizardState(
+  chatId: string,
+  userId: string,
+  state: TelegramWizardState,
+): void {
   wizardState.set(makeKey(chatId, userId), state);
 }
 

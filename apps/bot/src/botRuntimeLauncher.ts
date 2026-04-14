@@ -115,7 +115,7 @@ export async function startBotRuntime(
       });
     }
     if (telegramBot) {
-      telegramBot.stop();
+      await telegramBot.stop();
     }
     if (closeQueueRuntimeOnShutdown) {
       await queueRuntime.close();
@@ -140,7 +140,7 @@ export async function startBotRuntime(
         });
       }
       if (telegramBot) {
-        telegramBot.stop();
+        await telegramBot.stop();
       }
       if (closeQueueRuntimeOnShutdown) {
         await queueRuntime.close();

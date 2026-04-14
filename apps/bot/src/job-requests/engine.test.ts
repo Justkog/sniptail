@@ -21,9 +21,7 @@ function makeConfig(): BotConfig {
   } as BotConfig;
 }
 
-function makeInput(
-  overrides: Partial<NormalizedJobRequestInput> = {},
-): NormalizedJobRequestInput {
+function makeInput(overrides: Partial<NormalizedJobRequestInput> = {}): NormalizedJobRequestInput {
   return {
     type: 'ASK',
     repoKeys: ['repo-a'],

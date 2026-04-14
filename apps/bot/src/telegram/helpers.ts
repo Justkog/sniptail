@@ -1,6 +1,10 @@
 import type { JobType } from '@sniptail/core/types/job.js';
+import type { InlineKeyboardMarkup } from 'grammy/types';
 
-const TELEGRAM_JOB_LABELS: Record<Extract<JobType, 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW'>, string> = {
+const TELEGRAM_JOB_LABELS: Record<
+  Extract<JobType, 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW'>,
+  string
+> = {
   ASK: 'Ask',
   EXPLORE: 'Explore',
   PLAN: 'Plan',
@@ -23,17 +27,13 @@ export function buildTelegramHelpText(botName: string): string {
   ].join('\n');
 }
 
-type TelegramInlineKeyboard = {
-  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
-};
-
-export function buildTelegramCancelKeyboard(action = 'cancel'): TelegramInlineKeyboard {
+export function buildTelegramCancelKeyboard(action = 'cancel'): InlineKeyboardMarkup {
   return {
     inline_keyboard: [[{ text: 'Cancel', callback_data: action }]],
   };
 }
 
-export function buildTelegramApprovalKeyboard(approvalId: string): TelegramInlineKeyboard {
+export function buildTelegramApprovalKeyboard(approvalId: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
@@ -47,7 +47,7 @@ export function buildTelegramApprovalKeyboard(approvalId: string): TelegramInlin
 
 export function buildTelegramRepoSelectionKeyboard(
   repoKeys: string[],
-): TelegramInlineKeyboard | undefined {
+): InlineKeyboardMarkup | undefined {
   if (!repoKeys.length || repoKeys.length > 6) {
     return undefined;
   }
@@ -83,7 +83,9 @@ export function buildTelegramAcceptedText(jobId: string, type: JobType): string 
   return `Accepted ${type.toLowerCase()} job ${jobId}. I will report back here.`;
 }
 
-export function parseRepoAndRequestInput(raw: string): { repoKeys: string[]; requestText: string } | undefined {
+export function parseRepoAndRequestInput(
+  raw: string,
+): { repoKeys: string[]; requestText: string } | undefined {
   const [reposRaw, ...requestParts] = raw.split('|');
   if (!reposRaw) {
     return undefined;
@@ -99,11 +101,13 @@ export function parseRepoAndRequestInput(raw: string): { repoKeys: string[]; req
   return { repoKeys, requestText };
 }
 
-export function parseRunInput(raw: string): {
-  repoKeys: string[];
-  actionId: string;
-  params?: Record<string, string>;
-} | undefined {
+export function parseRunInput(raw: string):
+  | {
+      repoKeys: string[];
+      actionId: string;
+      params?: Record<string, string>;
+    }
+  | undefined {
   const parts = raw.split('|').map((value) => value.trim());
   if (parts.length < 2) {
     return undefined;
