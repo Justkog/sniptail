@@ -105,6 +105,16 @@ function parseImplementMetadata(
     if (mrTitle && commitTitle && commitBody) {
       return { mrTitle, commitTitle, commitBody };
     }
+
+    const invalidKeys = [
+      !mrTitle ? 'mrTitle' : null,
+      !commitTitle ? 'commitTitle' : null,
+      !commitBody ? 'commitBody' : null,
+    ].filter((key): key is 'mrTitle' | 'commitTitle' | 'commitBody' => key !== null);
+    logger.warn(
+      { jobId, invalidKeys },
+      'Incomplete or invalid change-metadata.json; using synthesized metadata',
+    );
   } catch (err) {
     logger.warn({ err, jobId }, 'Invalid change-metadata.json; using synthesized metadata');
   }
