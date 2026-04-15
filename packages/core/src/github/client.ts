@@ -63,6 +63,7 @@ export async function findOpenPullRequests(options: {
   const search = new URLSearchParams({
     state: 'open',
     base,
+    head: `${owner}:${head}`,
     per_page: '100',
   });
   const response = await requestGitHub(

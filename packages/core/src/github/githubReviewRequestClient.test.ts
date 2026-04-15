@@ -52,7 +52,7 @@ describe('github review request client', () => {
       },
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.test/repos/org/repo/pulls?state=open&base=main&per_page=100',
+      'https://api.github.test/repos/org/repo/pulls?state=open&base=main&head=org%3Afeature&per_page=100',
       expect.objectContaining({
         method: 'GET',
       }),
