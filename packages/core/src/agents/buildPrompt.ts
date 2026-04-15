@@ -63,7 +63,7 @@ export function buildPromptForJobWithLineageWarnings(
 
 Lineage drift warning:
 The lineage branch moved since the previously recorded tip for this resumed job.
-Inspect the changes since the previous recorded SHA before proceeding because the code may have changed.
+Inspect the changes since the previously recorded SHA before proceeding because the code may have changed.
 
 ${renderedWarnings}`;
 }
