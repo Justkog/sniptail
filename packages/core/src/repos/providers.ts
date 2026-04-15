@@ -238,20 +238,24 @@ const githubProvider: RepoProviderDefinition = {
       title: input.title,
       body: input.description,
     });
-    await replacePullRequestLabels({
-      config: context.github,
-      owner: repoInfo.owner,
-      repo: repoInfo.repo,
-      number: input.iid,
-      labels: input.labels ?? [],
-    });
-    await syncPullRequestReviewers({
-      config: context.github,
-      owner: repoInfo.owner,
-      repo: repoInfo.repo,
-      number: input.iid,
-      reviewers: input.reviewers ?? [],
-    });
+    if (input.labels !== undefined) {
+      await replacePullRequestLabels({
+        config: context.github,
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        number: input.iid,
+        labels: input.labels,
+      });
+    }
+    if (input.reviewers !== undefined) {
+      await syncPullRequestReviewers({
+        config: context.github,
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        number: input.iid,
+        reviewers: input.reviewers,
+      });
+    }
     return {
       url: pr.url,
       iid: pr.number,
