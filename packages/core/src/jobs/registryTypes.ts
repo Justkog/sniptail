@@ -8,6 +8,10 @@ export type JobRecord = {
   createdAt: string;
   updatedAt: string;
   branchByRepo?: Record<string, string>;
+  originBranchByRepo?: Record<string, string>;
+  lineageTipShaByRepo?: Record<string, string>;
+  lineageBaseShaByRepo?: Record<string, string>;
+  lineageWarningByRepo?: Record<string, string>;
   deleteAt?: string;
   summary?: string;
   mergeRequests?: MergeRequestResult[];

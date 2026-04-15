@@ -1,20 +1,32 @@
 import { join } from 'node:path';
-import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
-import { buildLegacyJobBranch } from '@sniptail/core/git/branch.js';
+import type { LineagePromptWarning } from '@sniptail/core/agents/buildPrompt.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
-import { runSetupContract } from '@sniptail/core/git/jobOps.js';
+import { resolveGitRef, runSetupContract } from '@sniptail/core/git/jobOps.js';
 import { addWorktree } from '@sniptail/core/git/worktree.js';
+import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
+import type { JobSpec } from '@sniptail/core/types/job.js';
 
 export type RepoWorktree = {
   clonePath: string;
   worktreePath: string;
-  branch?: string;
+  originBranch: string;
+  detached: boolean;
+  expectedBaseTipSha: string;
+  worktreeBranch?: string;
 };
 
 export type RepoWorktreeMap = Map<string, RepoWorktree>;
+
+export type PreparedRepoLineage = {
+  branchByRepo: Record<string, string>;
+  originBranchByRepo: Record<string, string>;
+  lineageTipShaByRepo: Record<string, string>;
+  lineageBaseShaByRepo: Record<string, string>;
+  lineageWarningByRepo: Record<string, string>;
+  promptWarnings: LineagePromptWarning[];
+};
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
 type JobPaths = ReturnType<typeof buildJobPaths>;
@@ -29,67 +41,77 @@ type PrepareRepoWorktreesOptions = {
   branchPrefix: string;
 };
 
+function isBranchBackedJob(job: JobSpec): boolean {
+  return (
+    job.type === 'IMPLEMENT' ||
+    job.type === 'ASK' ||
+    job.type === 'EXPLORE' ||
+    job.type === 'PLAN' ||
+    job.type === 'RUN'
+  );
+}
+
+async function resolveBranchTipSha(
+  repoPath: string,
+  branch: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redactionPatterns: Array<string | RegExp>,
+): Promise<string | undefined> {
+  return (
+    (await resolveGitRef(
+      repoPath,
+      `refs/remotes/origin/${branch}`,
+      env,
+      logFile,
+      redactionPatterns,
+    )) ?? (await resolveGitRef(repoPath, `refs/heads/${branch}`, env, logFile, redactionPatterns))
+  );
+}
+
+function requireRecordMapValue(
+  record: JobRecord,
+  repoKey: string,
+  fieldName: 'originBranchByRepo' | 'lineageTipShaByRepo' | 'lineageBaseShaByRepo',
+): string {
+  const map = record[fieldName];
+  const value = map?.[repoKey]?.trim();
+  if (!value) {
+    throw new Error(
+      `Resume job ${record.job.jobId} is missing required ${fieldName} metadata for repo ${repoKey}.`,
+    );
+  }
+  return value;
+}
+
 export async function prepareRepoWorktrees(
   options: PrepareRepoWorktreesOptions,
-): Promise<{ repoWorktrees: RepoWorktreeMap; branchByRepo: Record<string, string> }> {
+): Promise<{ repoWorktrees: RepoWorktreeMap; lineage: PreparedRepoLineage }> {
   const { job, config, paths, env, redactionPatterns, resumeRecord, branchPrefix } = options;
 
   const repoWorktrees: RepoWorktreeMap = new Map();
-  const branchByRepo: Record<string, string> = {};
+  const lineage: PreparedRepoLineage = {
+    branchByRepo: {},
+    originBranchByRepo: {},
+    lineageTipShaByRepo: {},
+    lineageBaseShaByRepo: {},
+    lineageWarningByRepo: {},
+    promptWarnings: [],
+  };
 
   for (const repoKey of job.repoKeys) {
     const repoConfig = config.repoAllowlist[repoKey];
     if (!repoConfig) {
       throw new Error(`Repo ${repoKey} is not in allowlist.`);
     }
+
     const clonePath = join(config.repoCacheRoot, `${repoKey}.git`);
     const worktreePath = join(paths.reposRoot, repoKey);
-    const resumeBranch = resumeRecord?.branchByRepo?.[repoKey];
     const mentionBaseRef = repoConfig.baseBranch?.trim() || job.gitRef;
-    const baseRef = resumeRecord
-      ? (resumeBranch ?? `${branchPrefix}/${job.resumeFromJobId}`)
-      : job.type === 'MENTION'
-        ? mentionBaseRef
-        : job.gitRef;
-    const branch =
-      job.type === 'IMPLEMENT' ||
-      job.type === 'ASK' ||
-      job.type === 'EXPLORE' ||
-      job.type === 'PLAN' ||
-      job.type === 'RUN'
-        ? `${branchPrefix}/${job.jobId}`
-        : undefined;
-    let resolvedBaseRef = baseRef;
 
-    try {
-      await ensureClone(
-        repoKey,
-        repoConfig,
-        clonePath,
-        paths.logFile,
-        env,
-        baseRef,
-        redactionPatterns,
-        {
-          checkoutRef: !resumeRecord,
-          forceLocalBranchUpdate: !resumeRecord,
-        },
-      );
-    } catch (err) {
-      if (
-        !resumeRecord ||
-        resumeBranch ||
-        !job.resumeFromJobId ||
-        !(err instanceof Error) ||
-        !err.message.includes(`Branch not found in clone: ${baseRef}`)
-      ) {
-        throw err;
-      }
-
-      const legacyResumeBranch = buildLegacyJobBranch(job.resumeFromJobId);
-      if (legacyResumeBranch === baseRef) {
-        throw err;
-      }
+    if (resumeRecord) {
+      const originBranch = requireRecordMapValue(resumeRecord, repoKey, 'originBranchByRepo');
+      const persistedTipSha = requireRecordMapValue(resumeRecord, repoKey, 'lineageTipShaByRepo');
 
       await ensureClone(
         repoKey,
@@ -97,34 +119,122 @@ export async function prepareRepoWorktrees(
         clonePath,
         paths.logFile,
         env,
-        legacyResumeBranch,
+        originBranch,
         redactionPatterns,
         {
-          checkoutRef: !resumeRecord,
-          forceLocalBranchUpdate: !resumeRecord,
+          checkoutRef: false,
+          forceLocalBranchUpdate: false,
         },
       );
-      resolvedBaseRef = legacyResumeBranch;
+
+      const currentOriginTipSha = await resolveBranchTipSha(
+        clonePath,
+        originBranch,
+        env,
+        paths.logFile,
+        redactionPatterns,
+      );
+      if (!currentOriginTipSha) {
+        throw new Error(`Origin branch missing for repo ${repoKey}: ${originBranch}`);
+      }
+
+      await addWorktree({
+        clonePath,
+        worktreePath,
+        baseRef: currentOriginTipSha,
+        ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
+        ...(config.worktreeSetupAllowFailure !== undefined
+          ? { setupAllowFailure: config.worktreeSetupAllowFailure }
+          : {}),
+        logFilePath: paths.logFile,
+        env,
+        redact: redactionPatterns,
+      });
+      await runSetupContract(worktreePath, env, paths.logFile, redactionPatterns);
+
+      repoWorktrees.set(repoKey, {
+        clonePath,
+        worktreePath,
+        originBranch,
+        detached: true,
+        expectedBaseTipSha: currentOriginTipSha,
+      });
+      lineage.originBranchByRepo[repoKey] = originBranch;
+      lineage.lineageBaseShaByRepo[repoKey] = currentOriginTipSha;
+      lineage.lineageTipShaByRepo[repoKey] = currentOriginTipSha;
+
+      if (persistedTipSha !== currentOriginTipSha) {
+        lineage.lineageWarningByRepo[repoKey] =
+          `Lineage branch ${originBranch} moved from ${persistedTipSha} to ${currentOriginTipSha}.`;
+        lineage.promptWarnings.push({
+          repoKey,
+          originBranch,
+          previousTipSha: persistedTipSha,
+          currentTipSha: currentOriginTipSha,
+        });
+      }
+      continue;
     }
+
+    const baseRef = job.type === 'MENTION' ? mentionBaseRef : job.gitRef;
+    const worktreeBranch = isBranchBackedJob(job) ? `${branchPrefix}/${job.jobId}` : undefined;
+
+    await ensureClone(
+      repoKey,
+      repoConfig,
+      clonePath,
+      paths.logFile,
+      env,
+      baseRef,
+      redactionPatterns,
+      {
+        checkoutRef: true,
+        forceLocalBranchUpdate: true,
+      },
+    );
     await addWorktree({
       clonePath,
       worktreePath,
-      baseRef: resolvedBaseRef,
+      baseRef,
       ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
       ...(config.worktreeSetupAllowFailure !== undefined
         ? { setupAllowFailure: config.worktreeSetupAllowFailure }
         : {}),
-      ...(branch ? { branch } : {}),
+      ...(worktreeBranch ? { branch: worktreeBranch } : {}),
       logFilePath: paths.logFile,
       env,
       redact: redactionPatterns,
     });
     await runSetupContract(worktreePath, env, paths.logFile, redactionPatterns);
-    repoWorktrees.set(repoKey, { clonePath, worktreePath, ...(branch ? { branch } : {}) });
-    if (branch) {
-      branchByRepo[repoKey] = branch;
+
+    const worktreeHeadSha = await resolveGitRef(
+      worktreePath,
+      'HEAD',
+      env,
+      paths.logFile,
+      redactionPatterns,
+    );
+    if (!worktreeHeadSha) {
+      throw new Error(`Unable to resolve HEAD for worktree ${worktreePath}`);
+    }
+
+    const originBranch = worktreeBranch ?? baseRef;
+    repoWorktrees.set(repoKey, {
+      clonePath,
+      worktreePath,
+      originBranch,
+      detached: !worktreeBranch,
+      expectedBaseTipSha: worktreeHeadSha,
+      ...(worktreeBranch ? { worktreeBranch } : {}),
+    });
+
+    if (worktreeBranch) {
+      lineage.branchByRepo[repoKey] = worktreeBranch;
+      lineage.originBranchByRepo[repoKey] = worktreeBranch;
+      lineage.lineageBaseShaByRepo[repoKey] = worktreeHeadSha;
+      lineage.lineageTipShaByRepo[repoKey] = worktreeHeadSha;
     }
   }
 
-  return { repoWorktrees, branchByRepo };
+  return { repoWorktrees, lineage };
 }
