@@ -377,7 +377,7 @@ const gitlabProvider: RepoProviderDefinition = {
     }
     const reviewers = input.reviewers
       ?.map((value) => Number.parseInt(value, 10))
-      .filter((value) => Number.isFinite(value));
+      ?.filter((value) => Number.isFinite(value));
     const projectId = parseProviderProjectId(input.providerData) ?? undefined;
     if (projectId === undefined) {
       throw new Error('GitLab repositories require providerData.projectId.');
