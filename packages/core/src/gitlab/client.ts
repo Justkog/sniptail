@@ -99,15 +99,20 @@ export async function updateMergeRequest(options: {
   reviewerIds?: number[];
 }): Promise<MergeRequestResponse> {
   const { config, projectId, iid, title, description, labels, reviewerIds } = options;
+  const body: Record<string, unknown> = {
+    title,
+    description,
+  };
+  if (labels !== undefined) {
+    body.labels = labels.join(',');
+  }
+  if (reviewerIds !== undefined) {
+    body.reviewer_ids = reviewerIds;
+  }
   const response = await requestGitLab(
     config,
     `/api/v4/projects/${projectId}/merge_requests/${iid}`,
-    {
-      title,
-      description,
-      labels: labels?.join(',') || '',
-      reviewer_ids: reviewerIds ?? [],
-    },
+    body,
     { method: 'PUT' },
   );
   const data = (await response.json()) as { web_url: string; iid: number };

@@ -375,8 +375,8 @@ const gitlabProvider: RepoProviderDefinition = {
         'GITLAB_BASE_URL and GITLAB_TOKEN are required to update GitLab merge requests.',
       );
     }
-    const reviewers = (input.reviewers ?? [])
-      .map((value) => Number.parseInt(value, 10))
+    const reviewers = input.reviewers
+      ?.map((value) => Number.parseInt(value, 10))
       .filter((value) => Number.isFinite(value));
     const projectId = parseProviderProjectId(input.providerData) ?? undefined;
     if (projectId === undefined) {
@@ -388,8 +388,8 @@ const gitlabProvider: RepoProviderDefinition = {
       iid: input.iid,
       title: input.title,
       description: input.description,
-      labels: input.labels ?? [],
-      reviewerIds: reviewers,
+      ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(reviewers !== undefined ? { reviewerIds: reviewers } : {}),
     });
   },
   createRepository: async (context, input) => {

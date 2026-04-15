@@ -149,4 +149,57 @@ describe('repo review request provider', () => {
       }),
     );
   });
+
+  it('reuses existing GitLab merge request without clearing labels/reviewers when omitted', async () => {
+    hoisted.findOpenMergeRequests.mockResolvedValue([
+      {
+        url: 'https://gitlab.test/mr/7',
+        iid: 7,
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        updatedAt: '2026-04-15T12:00:00.000Z',
+      },
+    ]);
+    hoisted.updateMergeRequest.mockResolvedValue({
+      url: 'https://gitlab.test/mr/7',
+      iid: 7,
+    });
+
+    const result = await createRepoReviewRequest({
+      providerId: 'gitlab',
+      repo: {
+        sshUrl: 'git@gitlab.com:org/repo.git',
+        providerData: { projectId: 42 },
+      },
+      context: {
+        gitlab: {
+          baseUrl: 'https://gitlab.test',
+          token: 'token',
+        },
+      },
+      input: {
+        head: 'feature',
+        base: 'main',
+        title: 'MR title',
+        description: 'MR description',
+      },
+    });
+
+    expect(result).toEqual({
+      url: 'https://gitlab.test/mr/7',
+      iid: 7,
+      reused: true,
+    });
+    expect(hoisted.updateMergeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 42,
+        iid: 7,
+        title: 'MR title',
+        description: 'MR description',
+      }),
+    );
+    const updateInput = hoisted.updateMergeRequest.mock.calls[0]?.[0];
+    expect(updateInput).not.toHaveProperty('labels');
+    expect(updateInput).not.toHaveProperty('reviewerIds');
+  });
 });

@@ -96,4 +96,35 @@ describe('gitlab review request client', () => {
       }),
     );
   });
+
+  it('updates merge request title and description without modifying labels/reviewers when omitted', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          web_url: 'https://gitlab.test/mr/9',
+          iid: 9,
+        }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await updateMergeRequest({
+      config,
+      projectId: 42,
+      iid: 9,
+      title: 'Updated title',
+      description: 'Updated description',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gitlab.test/api/v4/projects/42/merge_requests/9',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          title: 'Updated title',
+          description: 'Updated description',
+        }),
+      }),
+    );
+  });
 });
