@@ -24,6 +24,7 @@ vi.mock('../runner/commandRunner.js', () => ({
 import { runCommand } from '../runner/commandRunner.js';
 import {
   commitAndPush,
+  commitAndPushLineage,
   runChecks,
   runNamedRunContractDetailed,
   runSetupContract,
@@ -212,6 +213,42 @@ describe('git job operations contracts', () => {
         timedOut: false,
         aborted: false,
       })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit', '--file', '/tmp/sniptail-commit-message-abc123/message.txt'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'feature-sha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
       .mockResolvedValue({
         cmd: 'git',
         args: [],
@@ -253,5 +290,305 @@ describe('git job operations contracts', () => {
       recursive: true,
       force: true,
     });
+  });
+
+  it('pushes detached lineage updates with force-with-lease when the branch tip matches', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const writeFileMock = vi.mocked(writeFile);
+    const rmMock = vi.mocked(rm);
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'basesha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['push'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      });
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    const result = await commitAndPushLineage({
+      repoPath: '/tmp/repo',
+      targetBranch: 'feature-branch',
+      commitMessage: 'feat: subject\n\nbody',
+      env: {},
+      logFile: '/tmp/runner.log',
+      redact: [],
+      expectedRemoteSha: 'basesha',
+    });
+
+    expect(result).toEqual({
+      committed: true,
+      rebased: false,
+      targetBranch: 'feature-branch',
+      commitSha: 'newsha',
+      pushedSha: 'newsha',
+    });
+    expect(writeFileMock).toHaveBeenCalledWith(
+      '/tmp/sniptail-commit-message-abc123/message.txt',
+      'feat: subject\n\nbody',
+      { encoding: 'utf8', flag: 'wx' },
+    );
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      ['push', '--force-with-lease=feature-branch:basesha', 'origin', 'HEAD:feature-branch'],
+      expect.objectContaining({ cwd: '/tmp/repo' }),
+    );
+  });
+
+  it('rebases detached lineage updates once when the branch moved', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const rmMock = vi.mocked(rm);
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'old-commit-sha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'new-base-sha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rebase', 'refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'new-base-sha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['push'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'rebased-sha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      });
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    const result = await commitAndPushLineage({
+      repoPath: '/tmp/repo',
+      targetBranch: 'feature-branch',
+      commitMessage: 'feat: subject\n\nbody',
+      env: {},
+      logFile: '/tmp/runner.log',
+      redact: [],
+      expectedRemoteSha: 'old-base-sha',
+    });
+
+    expect(result).toEqual({
+      committed: true,
+      rebased: true,
+      targetBranch: 'feature-branch',
+      commitSha: 'old-commit-sha',
+      pushedSha: 'rebased-sha',
+    });
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      ['rebase', 'refs/remotes/origin/feature-branch'],
+      expect.objectContaining({ cwd: '/tmp/repo', allowFailure: true }),
+    );
   });
 });

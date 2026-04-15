@@ -8,6 +8,14 @@ export type MergeRequestResponse = {
   iid: number;
 };
 
+export type MergeRequestSummary = {
+  url: string;
+  iid: number;
+  sourceBranch: string;
+  targetBranch: string;
+  updatedAt: string;
+};
+
 export type CreateProjectResponse = {
   id: number;
   webUrl: string;
@@ -20,15 +28,18 @@ export type CreateProjectResponse = {
 async function requestGitLab(
   config: GitLabConfig,
   path: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | null,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT';
+  } = {},
 ): Promise<Response> {
   const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}${path}`, {
-    method: 'POST',
+    method: options.method ?? 'POST',
     headers: {
       'Content-Type': 'application/json',
       'PRIVATE-TOKEN': config.token,
     },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : null,
   });
 
   if (!response.ok) {
@@ -37,6 +48,78 @@ async function requestGitLab(
   }
 
   return response;
+}
+
+export async function findOpenMergeRequests(options: {
+  config: GitLabConfig;
+  projectId: number;
+  sourceBranch: string;
+  targetBranch: string;
+}): Promise<MergeRequestSummary[]> {
+  const { config, projectId, sourceBranch, targetBranch } = options;
+  const search = new URLSearchParams({
+    state: 'opened',
+    source_branch: sourceBranch,
+    target_branch: targetBranch,
+    per_page: '100',
+    order_by: 'updated_at',
+    sort: 'desc',
+  });
+  const response = await requestGitLab(
+    config,
+    `/api/v4/projects/${projectId}/merge_requests?${search.toString()}`,
+    null,
+    { method: 'GET' },
+  );
+  const data = (await response.json()) as Array<{
+    web_url: string;
+    iid: number;
+    source_branch: string;
+    target_branch: string;
+    updated_at: string;
+  }>;
+  return data
+    .map((mr) => ({
+      url: mr.web_url,
+      iid: mr.iid,
+      sourceBranch: mr.source_branch,
+      targetBranch: mr.target_branch,
+      updatedAt: mr.updated_at,
+    }))
+    .filter((mr) => mr.sourceBranch === sourceBranch && mr.targetBranch === targetBranch);
+}
+
+export async function updateMergeRequest(options: {
+  config: GitLabConfig;
+  projectId: number;
+  iid: number;
+  title: string;
+  description: string;
+  labels?: string[];
+  reviewerIds?: number[];
+}): Promise<MergeRequestResponse> {
+  const { config, projectId, iid, title, description, labels, reviewerIds } = options;
+  const body: Record<string, unknown> = {
+    title,
+    description,
+  };
+  if (labels !== undefined) {
+    body.labels = labels.join(',');
+  }
+  if (reviewerIds !== undefined) {
+    body.reviewer_ids = reviewerIds;
+  }
+  const response = await requestGitLab(
+    config,
+    `/api/v4/projects/${projectId}/merge_requests/${iid}`,
+    body,
+    { method: 'PUT' },
+  );
+  const data = (await response.json()) as { web_url: string; iid: number };
+  return {
+    url: data.web_url,
+    iid: data.iid,
+  };
 }
 
 export async function createProject(options: {

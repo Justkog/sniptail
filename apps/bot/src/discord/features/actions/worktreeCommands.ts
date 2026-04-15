@@ -54,6 +54,9 @@ export async function handleWorktreeCommandsButton(
         jobId: latestImplement.job.jobId,
         repoKeys: targetRepoKeys,
         ...(latestImplement.branchByRepo ? { branchByRepo: latestImplement.branchByRepo } : {}),
+        ...(latestImplement.originBranchByRepo
+          ? { originBranchByRepo: latestImplement.originBranchByRepo }
+          : {}),
       })
     : buildWorktreeCommandsText(config, {
         mode: 'base',

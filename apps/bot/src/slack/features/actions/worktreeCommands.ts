@@ -93,6 +93,9 @@ export function registerWorktreeCommandsAction({
           jobId: latestImplement.job.jobId,
           repoKeys: targetRepoKeys,
           ...(latestImplement.branchByRepo ? { branchByRepo: latestImplement.branchByRepo } : {}),
+          ...(latestImplement.originBranchByRepo
+            ? { originBranchByRepo: latestImplement.originBranchByRepo }
+            : {}),
         })
       : buildWorktreeCommandsText(config, {
           mode: 'base',

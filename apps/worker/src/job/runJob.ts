@@ -6,6 +6,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
+import { buildPromptForJobWithLineageWarnings } from '@sniptail/core/agents/buildPrompt.js';
 import { buildImplementArtifactsPrompt } from '@sniptail/core/codex/prompts.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
@@ -169,7 +170,11 @@ async function publishRepoChanges(options: {
   env: NodeJS.ProcessEnv;
   logFile: string;
   redactionPatterns: Array<string | RegExp>;
-}): Promise<{ mergeRequests: MergeRequestResult[]; localBranchMessages: string[] }> {
+}): Promise<{
+  mergeRequests: MergeRequestResult[];
+  localBranchMessages: string[];
+  pushedTipShaByRepo: Record<string, string>;
+}> {
   const {
     job,
     summary,
@@ -185,6 +190,7 @@ async function publishRepoChanges(options: {
   } = options;
   const mergeRequests: MergeRequestResult[] = [];
   const localBranchMessages: string[] = [];
+  const pushedTipShaByRepo: Record<string, string> = {};
 
   for (const [repoKey, repo] of repoWorktrees.entries()) {
     const repoConfig = config.repoAllowlist[repoKey];
@@ -194,21 +200,20 @@ async function publishRepoChanges(options: {
 
     await runRepoChecks(repo.worktreePath, checks, env, logFile, redactionPatterns);
 
-    if (!repo.branch) {
-      continue;
-    }
-
-    const committed = await commitRepoChanges(
-      repo.worktreePath,
-      repo.branch,
-      buildCommitMessage(metadata, config.botName, job.jobId),
+    const committed = await commitRepoChanges({
+      worktreePath: repo.worktreePath,
+      targetBranch: repo.originBranch,
+      commitMessage: buildCommitMessage(metadata, config.botName, job.jobId),
       env,
       logFile,
       redactionPatterns,
-    );
-    if (!committed) {
+      ...(repo.worktreeBranch ? { worktreeBranch: repo.worktreeBranch } : {}),
+      ...(repo.detached ? { expectedRemoteSha: repo.expectedBaseTipSha } : {}),
+    });
+    if (!committed.committed) {
       continue;
     }
+    pushedTipShaByRepo[repoKey] = committed.pushedSha;
 
     const title = metadata.mrTitle;
     const description = config.includeRawRequestInMr
@@ -218,7 +223,7 @@ async function publishRepoChanges(options: {
 
     if (repoConfig.localPath) {
       localBranchMessages.push(
-        `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
+        `${repoKey}: local branch ${repo.detached ? 'updated' : 'created'} at ${repoConfig.localPath} (${repo.originBranch})`,
       );
       continue;
     }
@@ -236,7 +241,7 @@ async function publishRepoChanges(options: {
         ...(config.gitlab ? { gitlab: config.gitlab } : {}),
       },
       input: {
-        head: repo.branch,
+        head: repo.originBranch,
         base: job.gitRef,
         title,
         description,
@@ -250,6 +255,7 @@ async function publishRepoChanges(options: {
   return {
     mergeRequests,
     localBranchMessages,
+    pushedTipShaByRepo,
   };
 }
 
@@ -321,7 +327,7 @@ export async function runJob(
 
     const currentTurnContextFiles = await materializeJobContextFiles(paths, job);
 
-    const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
+    const { repoWorktrees, lineage } = await prepareRepoWorktrees({
       job,
       config,
       paths,
@@ -331,9 +337,24 @@ export async function runJob(
       branchPrefix,
     });
 
-    if (Object.keys(branchByRepo).length) {
-      await registry.updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record job branches');
+    const lineagePatch = {
+      ...(Object.keys(lineage.branchByRepo).length ? { branchByRepo: lineage.branchByRepo } : {}),
+      ...(Object.keys(lineage.originBranchByRepo).length
+        ? { originBranchByRepo: lineage.originBranchByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageTipShaByRepo).length
+        ? { lineageTipShaByRepo: lineage.lineageTipShaByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageBaseShaByRepo).length
+        ? { lineageBaseShaByRepo: lineage.lineageBaseShaByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageWarningByRepo).length
+        ? { lineageWarningByRepo: lineage.lineageWarningByRepo }
+        : {}),
+    };
+    if (Object.keys(lineagePatch).length) {
+      await registry.updateJobRecord(job.jobId, lineagePatch).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record job lineage metadata');
       });
     }
 
@@ -351,7 +372,7 @@ export async function runJob(
         env,
         redactionPatterns,
         repoWorktrees,
-        branchByRepo,
+        lineageTipShaByRepo: lineage.lineageTipShaByRepo,
         notifier,
         channelAdapter,
         channelRef,
@@ -375,6 +396,15 @@ export async function runJob(
       });
     }
 
+    const promptOverride =
+      (job.type === 'ASK' ||
+        job.type === 'EXPLORE' ||
+        job.type === 'PLAN' ||
+        job.type === 'IMPLEMENT') &&
+      lineage.promptWarnings.length > 0
+        ? buildPromptForJobWithLineageWarnings(job, config.botName, lineage.promptWarnings)
+        : undefined;
+
     const agentRun = await runAgentJob({
       job,
       config,
@@ -382,6 +412,7 @@ export async function runJob(
       env,
       registry,
       currentTurnContextFiles,
+      ...(promptOverride ? { promptOverride } : {}),
     });
     const primaryFinalResponse = agentRun.result.finalResponse?.trim() ?? '';
 
@@ -549,7 +580,7 @@ export async function runJob(
       ? parseImplementMetadata(rawMetadata, summary, job.requestText, config.botName, job.jobId)
       : synthesizeMetadata(summary, job.requestText, config.botName, job.jobId);
 
-    const { mergeRequests, localBranchMessages } = await publishRepoChanges({
+    const { mergeRequests, localBranchMessages, pushedTipShaByRepo } = await publishRepoChanges({
       job,
       summary,
       requestText: job.requestText,
@@ -580,7 +611,7 @@ export async function runJob(
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
-    const includeReviewFromJob = Object.keys(branchByRepo).length > 0;
+    const includeReviewFromJob = repoWorktrees.size > 0;
     const rendered = channelAdapter.renderCompletionMessage({
       botName: config.botName,
       text: implText,
@@ -594,6 +625,10 @@ export async function runJob(
         status: 'ok',
         summary: summary || 'IMPLEMENT complete',
         mergeRequests,
+        lineageTipShaByRepo: {
+          ...lineage.lineageTipShaByRepo,
+          ...pushedTipShaByRepo,
+        },
       })
       .catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');

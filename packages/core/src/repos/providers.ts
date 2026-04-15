@@ -5,8 +5,22 @@ import {
   resolveLocalRepoPath,
 } from '../git/bootstrap.js';
 import { parseGitHubRepo } from '../git/ssh.js';
-import { createPullRequest, createRepository, type GitHubConfig } from '../github/client.js';
-import { createMergeRequest, createProject, type GitLabConfig } from '../gitlab/client.js';
+import {
+  createPullRequest,
+  createRepository,
+  findOpenPullRequests,
+  replacePullRequestLabels,
+  syncPullRequestReviewers,
+  updatePullRequest,
+  type GitHubConfig,
+} from '../github/client.js';
+import {
+  createMergeRequest,
+  createProject,
+  findOpenMergeRequests,
+  updateMergeRequest,
+  type GitLabConfig,
+} from '../gitlab/client.js';
 import type { RepoConfig } from '../types/job.js';
 
 export type RepoProviderCapabilities = {
@@ -43,6 +57,18 @@ type CreateReviewRequestInput = {
   reviewers?: string[];
 };
 
+type ReviewRequestMatch = {
+  url: string;
+  iid: number;
+  updatedAt: string;
+};
+
+type ReviewRequestResult = {
+  url: string;
+  iid: number;
+  reused: boolean;
+};
+
 type CreateRepositoryInput = {
   repoName: string;
   owner?: string;
@@ -71,6 +97,14 @@ export type RepoProviderDefinition = {
   createReviewRequest?: (
     context: ReviewRequestContext,
     input: CreateReviewRequestInput,
+  ) => Promise<{ url: string; iid: number }>;
+  findOpenReviewRequests?: (
+    context: ReviewRequestContext,
+    input: CreateReviewRequestInput,
+  ) => Promise<ReviewRequestMatch[]>;
+  updateReviewRequest?: (
+    context: ReviewRequestContext,
+    input: CreateReviewRequestInput & { iid: number },
   ) => Promise<{ url: string; iid: number }>;
   createRepository?: (
     context: ReviewRequestContext,
@@ -167,6 +201,66 @@ const githubProvider: RepoProviderDefinition = {
       iid: pr.number,
     };
   },
+  findOpenReviewRequests: async (context, input) => {
+    if (!context.github) {
+      throw new Error('GITHUB_API_TOKEN is required to inspect GitHub pull requests.');
+    }
+    const repoInfo = parseGitHubRepo(input.sshUrl);
+    if (!repoInfo) {
+      throw new Error(`Unable to parse GitHub repo from sshUrl: ${input.sshUrl}`);
+    }
+    const prs = await findOpenPullRequests({
+      config: context.github,
+      owner: repoInfo.owner,
+      repo: repoInfo.repo,
+      head: input.head,
+      base: input.base,
+    });
+    return prs.map((pr) => ({
+      url: pr.url,
+      iid: pr.number,
+      updatedAt: pr.updatedAt,
+    }));
+  },
+  updateReviewRequest: async (context, input) => {
+    if (!context.github) {
+      throw new Error('GITHUB_API_TOKEN is required to update GitHub pull requests.');
+    }
+    const repoInfo = parseGitHubRepo(input.sshUrl);
+    if (!repoInfo) {
+      throw new Error(`Unable to parse GitHub repo from sshUrl: ${input.sshUrl}`);
+    }
+    const pr = await updatePullRequest({
+      config: context.github,
+      owner: repoInfo.owner,
+      repo: repoInfo.repo,
+      number: input.iid,
+      title: input.title,
+      body: input.description,
+    });
+    if (input.labels !== undefined) {
+      await replacePullRequestLabels({
+        config: context.github,
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        number: input.iid,
+        labels: input.labels,
+      });
+    }
+    if (input.reviewers !== undefined) {
+      await syncPullRequestReviewers({
+        config: context.github,
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        number: input.iid,
+        reviewers: input.reviewers,
+      });
+    }
+    return {
+      url: pr.url,
+      iid: pr.number,
+    };
+  },
   createRepository: async (context, input) => {
     if (!context.github) {
       throw new Error('GitHub is not configured. Set GITHUB_API_TOKEN.');
@@ -257,6 +351,51 @@ const gitlabProvider: RepoProviderDefinition = {
       iid: mr.iid,
     };
   },
+  findOpenReviewRequests: async (context, input) => {
+    if (!context.gitlab) {
+      throw new Error(
+        'GITLAB_BASE_URL and GITLAB_TOKEN are required to inspect GitLab merge requests.',
+      );
+    }
+    const projectId = parseProviderProjectId(input.providerData) ?? undefined;
+    if (projectId === undefined) {
+      throw new Error('GitLab repositories require providerData.projectId.');
+    }
+    const mrs = await findOpenMergeRequests({
+      config: context.gitlab,
+      projectId,
+      sourceBranch: input.head,
+      targetBranch: input.base,
+    });
+    return mrs.map((mr) => ({
+      url: mr.url,
+      iid: mr.iid,
+      updatedAt: mr.updatedAt,
+    }));
+  },
+  updateReviewRequest: async (context, input) => {
+    if (!context.gitlab) {
+      throw new Error(
+        'GITLAB_BASE_URL and GITLAB_TOKEN are required to update GitLab merge requests.',
+      );
+    }
+    const reviewers = input.reviewers
+      ?.map((value) => Number.parseInt(value, 10))
+      ?.filter((value) => Number.isFinite(value));
+    const projectId = parseProviderProjectId(input.providerData) ?? undefined;
+    if (projectId === undefined) {
+      throw new Error('GitLab repositories require providerData.projectId.');
+    }
+    return updateMergeRequest({
+      config: context.gitlab,
+      projectId,
+      iid: input.iid,
+      title: input.title,
+      description: input.description,
+      ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(reviewers !== undefined ? { reviewerIds: reviewers } : {}),
+    });
+  },
   createRepository: async (context, input) => {
     if (!context.gitlab) {
       throw new Error('GitLab is not configured. Set GITLAB_BASE_URL and GITLAB_TOKEN.');
@@ -337,7 +476,7 @@ export async function createRepoReviewRequest(options: {
   repo: RepoConfig;
   context: ReviewRequestContext;
   input: Omit<CreateReviewRequestInput, 'sshUrl' | 'providerData'>;
-}): Promise<{ url: string; iid: number }> {
+}): Promise<ReviewRequestResult> {
   const provider = getRepoProvider(options.providerId);
   if (!provider) {
     throw new Error(`Unsupported repository provider: ${options.providerId}`);
@@ -348,9 +487,34 @@ export async function createRepoReviewRequest(options: {
   if (!options.repo.sshUrl) {
     throw new Error('Remote repositories require sshUrl.');
   }
-  return provider.createReviewRequest(options.context, {
+  const requestInput = {
     ...options.input,
     sshUrl: options.repo.sshUrl,
     ...(options.repo.providerData ? { providerData: options.repo.providerData } : {}),
-  });
+  };
+
+  const matches = provider.findOpenReviewRequests
+    ? await provider.findOpenReviewRequests(options.context, requestInput)
+    : [];
+  const latestMatch = [...matches].sort(
+    (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+  )[0];
+  if (latestMatch && provider.updateReviewRequest) {
+    const updated = await provider.updateReviewRequest(options.context, {
+      ...requestInput,
+      iid: latestMatch.iid,
+    });
+    return {
+      url: updated.url,
+      iid: updated.iid,
+      reused: true,
+    };
+  }
+
+  const created = await provider.createReviewRequest(options.context, requestInput);
+  return {
+    url: created.url,
+    iid: created.iid,
+    reused: false,
+  };
 }

@@ -50,6 +50,7 @@ type RunPublishRepoChanges = (
 ) => Promise<{
   mergeRequests: MergeRequestResult[];
   localBranchMessages: string[];
+  pushedTipShaByRepo: Record<string, string>;
 }>;
 
 type RunJobInput = {
@@ -60,7 +61,7 @@ type RunJobInput = {
   env: NodeJS.ProcessEnv;
   redactionPatterns: Array<string | RegExp>;
   repoWorktrees: RepoWorktrees;
-  branchByRepo: Record<string, string>;
+  lineageTipShaByRepo: Record<string, string>;
   notifier: Notifier;
   channelAdapter: WorkerChannelAdapter;
   channelRef: ChannelRef;
@@ -263,7 +264,7 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     env,
     redactionPatterns,
     repoWorktrees,
-    branchByRepo,
+    lineageTipShaByRepo,
     notifier,
     channelAdapter,
     channelRef,
@@ -353,10 +354,12 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
 
   let mergeRequests: MergeRequestResult[] = [];
   let localBranchMessages: string[] = [];
+  let pushedTipShaByRepo: Record<string, string> = {};
   if (actionConfig.gitMode === 'implement') {
     const published = await publishRepoChanges(actionId, actionConfig.checks);
     mergeRequests = published.mergeRequests;
     localBranchMessages = published.localBranchMessages;
+    pushedTipShaByRepo = published.pushedTipShaByRepo;
   }
 
   const mrTextParts: string[] = [];
@@ -411,8 +414,7 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     completionLines.push('', 'Git output:', mrText);
   }
   const completionText = completionLines.join('\n');
-  const includeReviewFromJob =
-    actionConfig.gitMode === 'implement' && Object.keys(branchByRepo).length > 0;
+  const includeReviewFromJob = actionConfig.gitMode === 'implement' && repoWorktrees.size > 0;
   const rendered = channelAdapter.renderCompletionMessage({
     botName: config.botName,
     text: completionText,
@@ -424,6 +426,14 @@ export async function runRunJob(options: RunJobInput): Promise<JobResult> {
     .updateJobRecord(job.jobId, {
       status: 'ok',
       summary: report.slice(0, 500),
+      ...(Object.keys(pushedTipShaByRepo).length
+        ? {
+            lineageTipShaByRepo: {
+              ...lineageTipShaByRepo,
+              ...pushedTipShaByRepo,
+            },
+          }
+        : {}),
       ...(mergeRequests.length ? { mergeRequests } : {}),
     })
     .catch((err) => {
