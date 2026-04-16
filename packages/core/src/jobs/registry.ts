@@ -39,6 +39,27 @@ async function loadAllRecords(): Promise<JobRecord[]> {
   return store.loadAllRecordsByPrefix(JOB_KEY_PREFIX);
 }
 
+function matchesChannelThread(
+  provider: ChannelProvider,
+  record: JobRecord,
+  channelId: string,
+  threadId: string,
+): boolean {
+  const channel = record?.job?.channel;
+  if (!channel || channel.provider !== provider) {
+    return false;
+  }
+
+  if (provider === 'discord') {
+    return (
+      channel.threadId === threadId &&
+      (channel.channelId === channelId || channel.channelId === threadId || channelId === threadId)
+    );
+  }
+
+  return channel.channelId === channelId && channel.threadId === threadId;
+}
+
 export async function loadJobRecord(jobId: string): Promise<JobRecord | undefined> {
   const store = await getJobRegistryStore();
   return store.loadRecordByKey(jobKey(jobId));
@@ -126,9 +147,7 @@ export async function findLatestJobByChannelThread(
   let latestTime = -1;
 
   for (const record of records) {
-    const channel = record?.job?.channel;
-    if (!channel || channel.provider !== provider) continue;
-    if (channel.channelId !== channelId || channel.threadId !== threadId) continue;
+    if (!matchesChannelThread(provider, record, channelId, threadId)) continue;
     const agentThreadId = record.job?.agentThreadIds?.[agentId];
     if (!agentThreadId) continue;
     const createdTime = Date.parse(record.createdAt);
@@ -153,9 +172,7 @@ export async function findLatestJobByChannelThreadAndTypes(
   let latestTime = -1;
 
   for (const record of records) {
-    const channel = record?.job?.channel;
-    if (!channel || channel.provider !== provider) continue;
-    if (channel.channelId !== channelId || channel.threadId !== threadId) continue;
+    if (!matchesChannelThread(provider, record, channelId, threadId)) continue;
     if (!types.includes(record.job.type)) continue;
     const createdTime = Date.parse(record.createdAt);
     if (Number.isNaN(createdTime)) continue;
