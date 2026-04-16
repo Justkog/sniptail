@@ -57,4 +57,27 @@ describe('buildPromptForJobWithLineageWarnings', () => {
     expect(prompt).toContain('Previous recorded SHA: 1111111');
     expect(prompt).toContain('Current branch SHA: 2222222');
   });
+
+  it('appends local-only lineage fallback details to the base action prompt', () => {
+    const job = buildJob('IMPLEMENT');
+    const warnings: LineagePromptWarning[] = [
+      {
+        kind: 'local-only-fallback',
+        repoKey: 'repo-1',
+        originBranch: 'sniptail/explore-job',
+        previousTipSha: '1111111',
+        currentTipSha: '2222222',
+        nextBranch: 'sniptail/implement-job',
+      },
+    ];
+
+    const prompt = buildPromptForJobWithLineageWarnings(job, 'sniptail', warnings);
+
+    expect(prompt).toContain('implement prompt');
+    expect(prompt).toContain('Lineage resume warning:');
+    expect(prompt).toContain('Previous lineage branch: sniptail/explore-job');
+    expect(prompt).toContain('Previous recorded SHA: 1111111');
+    expect(prompt).toContain('Cached branch SHA: 2222222');
+    expect(prompt).toContain('New publish branch: sniptail/implement-job');
+  });
 });

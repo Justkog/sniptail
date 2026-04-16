@@ -8,12 +8,22 @@ import {
 } from '../codex/prompts.js';
 import type { JobSpec } from '../types/job.js';
 
-export type LineagePromptWarning = {
-  repoKey: string;
-  originBranch: string;
-  previousTipSha: string;
-  currentTipSha: string;
-};
+export type LineagePromptWarning =
+  | {
+      kind?: 'drift';
+      repoKey: string;
+      originBranch: string;
+      previousTipSha: string;
+      currentTipSha: string;
+    }
+  | {
+      kind: 'local-only-fallback';
+      repoKey: string;
+      originBranch: string;
+      previousTipSha: string;
+      currentTipSha: string;
+      nextBranch: string;
+    };
 
 function assertNeverJobType(jobType: never): never {
   throw new Error(`Unsupported job type: ${String(jobType)}`);
@@ -48,22 +58,49 @@ export function buildPromptForJobWithLineageWarnings(
     return basePrompt;
   }
 
-  const renderedWarnings = warnings
-    .map((warning) =>
-      [
-        `- Repo: ${warning.repoKey}`,
-        `  Branch: ${warning.originBranch}`,
-        `  Previous recorded SHA: ${warning.previousTipSha}`,
-        `  Current branch SHA: ${warning.currentTipSha}`,
-      ].join('\n'),
-    )
-    .join('\n');
+  const driftWarnings = warnings.filter((warning) => warning.kind !== 'local-only-fallback');
+  const localOnlyWarnings = warnings.filter((warning) => warning.kind === 'local-only-fallback');
+  const sections: string[] = [];
 
-  return `${basePrompt}
-
-Lineage drift warning:
+  if (driftWarnings.length > 0) {
+    const renderedWarnings = driftWarnings
+      .map((warning) =>
+        [
+          `- Repo: ${warning.repoKey}`,
+          `  Branch: ${warning.originBranch}`,
+          `  Previous recorded SHA: ${warning.previousTipSha}`,
+          `  Current branch SHA: ${warning.currentTipSha}`,
+        ].join('\n'),
+      )
+      .join('\n');
+    sections.push(`Lineage drift warning:
 The lineage branch moved since the previously recorded tip for this resumed job.
 Inspect the changes since the previously recorded SHA before proceeding because the code may have changed.
 
-${renderedWarnings}`;
+${renderedWarnings}`);
+  }
+
+  if (localOnlyWarnings.length > 0) {
+    const renderedWarnings = localOnlyWarnings
+      .map((warning) =>
+        [
+          `- Repo: ${warning.repoKey}`,
+          `  Previous lineage branch: ${warning.originBranch}`,
+          `  Previous recorded SHA: ${warning.previousTipSha}`,
+          `  Cached branch SHA: ${warning.currentTipSha}`,
+          `  New publish branch: ${warning.nextBranch}`,
+        ].join('\n'),
+      )
+      .join('\n');
+    sections.push(`Lineage resume warning:
+The previous lineage branch is only available in the worker cache for this resumed job.
+Inspect the cached tip before proceeding because the remote lineage branch no longer exists.
+Any new commits from this run will be published to a fresh branch.
+
+${renderedWarnings}`);
+  }
+
+  return `${basePrompt}
+
+${sections.join('\n\n')}`;
 }
