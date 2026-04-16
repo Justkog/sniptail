@@ -349,7 +349,19 @@ describe('git job operations contracts', () => {
       })
       .mockResolvedValueOnce({
         cmd: 'git',
-        args: ['fetch'],
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'basesha\trefs/heads/feature-branch\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch', 'origin', '+refs/heads/feature-branch:refs/remotes/origin/feature-branch'],
         cwd: '/tmp/repo',
         durationMs: 5,
         exitCode: 0,
@@ -425,6 +437,16 @@ describe('git job operations contracts', () => {
       ['push', '--force-with-lease=feature-branch:basesha', 'origin', 'HEAD:feature-branch'],
       expect.objectContaining({ cwd: '/tmp/repo' }),
     );
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+      expect.objectContaining({ cwd: '/tmp/repo', allowFailure: true }),
+    );
+    expect(runCommandMock).toHaveBeenCalledWith(
+      'git',
+      ['fetch', 'origin', '+refs/heads/feature-branch:refs/remotes/origin/feature-branch'],
+      expect.objectContaining({ cwd: '/tmp/repo', allowFailure: true }),
+    );
   });
 
   it('rebases detached lineage updates once when the branch moved', async () => {
@@ -483,7 +505,19 @@ describe('git job operations contracts', () => {
       })
       .mockResolvedValueOnce({
         cmd: 'git',
-        args: ['fetch'],
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'new-base-sha\trefs/heads/feature-branch\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch', 'origin', '+refs/heads/feature-branch:refs/remotes/origin/feature-branch'],
         cwd: '/tmp/repo',
         durationMs: 5,
         exitCode: 0,
@@ -519,7 +553,19 @@ describe('git job operations contracts', () => {
       })
       .mockResolvedValueOnce({
         cmd: 'git',
-        args: ['fetch'],
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'new-base-sha\trefs/heads/feature-branch\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch', 'origin', '+refs/heads/feature-branch:refs/remotes/origin/feature-branch'],
         cwd: '/tmp/repo',
         durationMs: 5,
         exitCode: 0,
@@ -590,5 +636,312 @@ describe('git job operations contracts', () => {
       ['rebase', 'refs/remotes/origin/feature-branch'],
       expect.objectContaining({ cwd: '/tmp/repo', allowFailure: true }),
     );
+  });
+
+  it('treats ls-remote as the source of truth for existing lineage branches on origin', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const rmMock = vi.mocked(rm);
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'basesha\trefs/heads/feature-branch\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['fetch', 'origin', '+refs/heads/feature-branch:refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' - [deleted]         (none)     -> origin/feature-branch\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'refs/remotes/origin/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'basesha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['push'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      });
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    const result = await commitAndPushLineage({
+      repoPath: '/tmp/repo',
+      targetBranch: 'feature-branch',
+      commitMessage: 'feat: subject\n\nbody',
+      env: {},
+      logFile: '/tmp/runner.log',
+      redact: [],
+      expectedRemoteSha: 'basesha',
+    });
+
+    expect(result).toEqual({
+      committed: true,
+      rebased: false,
+      targetBranch: 'feature-branch',
+      commitSha: 'newsha',
+      pushedSha: 'newsha',
+    });
+    expect(runCommandMock).not.toHaveBeenCalledWith(
+      'git',
+      ['fetch', '--prune', 'origin', 'feature-branch:refs/remotes/origin/feature-branch'],
+      expect.anything(),
+    );
+  });
+
+  it('throws the origin-branch-missing lineage error when ls-remote reports no branch', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const rmMock = vi.mocked(rm);
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 2,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      });
+
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    await expect(
+      commitAndPushLineage({
+        repoPath: '/tmp/repo',
+        targetBranch: 'feature-branch',
+        commitMessage: 'feat: subject\n\nbody',
+        env: {},
+        logFile: '/tmp/runner.log',
+        redact: [],
+        expectedRemoteSha: 'basesha',
+      }),
+    ).rejects.toThrow('Origin branch missing for lineage update: feature-branch');
+  });
+
+  it('throws ls-remote failure error when ls-remote exits with a non-missing code', async () => {
+    const runCommandMock = vi.mocked(runCommand);
+    const mkdtempMock = vi.mocked(mkdtemp);
+    const rmMock = vi.mocked(rm);
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['status', '--porcelain'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: ' M file.ts\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['add', '-A'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['commit'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['rev-parse', '--verify', 'HEAD'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        stdout: 'newsha\n',
+        stderr: '',
+        timedOut: false,
+        aborted: false,
+      })
+      .mockResolvedValueOnce({
+        cmd: 'git',
+        args: ['ls-remote', '--exit-code', '--heads', 'origin', 'refs/heads/feature-branch'],
+        cwd: '/tmp/repo',
+        durationMs: 5,
+        exitCode: 128,
+        signal: null,
+        stdout: '',
+        stderr: 'fatal: unable to access remote',
+        timedOut: false,
+        aborted: false,
+      });
+
+    mkdtempMock.mockResolvedValueOnce('/tmp/sniptail-commit-message-abc123');
+    rmMock.mockResolvedValueOnce(undefined);
+
+    await expect(
+      commitAndPushLineage({
+        repoPath: '/tmp/repo',
+        targetBranch: 'feature-branch',
+        commitMessage: 'feat: subject\n\nbody',
+        env: {},
+        logFile: '/tmp/runner.log',
+        redact: [],
+        expectedRemoteSha: 'basesha',
+      }),
+    ).rejects.toThrow('git ls-remote failed (128): fatal: unable to access remote');
   });
 });
