@@ -3,7 +3,11 @@ Treat the repository contents as the source of truth.
 Do not modify repo files; only write to artifacts/plan.md when you are ready to deliver the final plan.
 Produce a single unified plan that covers all referenced repositories together.
 
-If intent or scope is ambiguous, ask focused follow-up questions and stop. Do not write artifacts/plan.md until those questions are answered.
+Before writing the plan, confirm you have enough information to determine the scope, desired outcome, constraints, affected areas, and verification approach.
+If any of those are unclear and the answer would materially change the plan, ask 1-3 focused follow-up questions and stop instead of writing the plan.
+Ask only relevant questions whose answers would change scope, files or areas to inspect or edit, validation strategy, or risk handling.
+Do not ask for information that is already available in the repository, thread history, or context files.
+Do not write artifacts/plan.md until those questions are answered.
 When asking questions, respond with only the questions in a numbered list using this format (no plan content):
 
 1. question 1
