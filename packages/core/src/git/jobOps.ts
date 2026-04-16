@@ -321,7 +321,7 @@ async function fetchRemoteBranchTip(
     throw new Error(`Unable to resolve fetched remote branch ${branch}`);
   }
 
-  return remoteSha;
+  return localRemoteSha;
 }
 
 async function commitOnHead(
