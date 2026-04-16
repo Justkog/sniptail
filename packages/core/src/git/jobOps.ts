@@ -244,8 +244,36 @@ async function fetchRemoteBranchTip(
   redact: Array<string | RegExp>,
 ): Promise<string | undefined> {
   const remoteRef = `refs/remotes/origin/${branch}`;
-  const fetchRefspec = `${branch}:${remoteRef}`;
-  const fetchResult = await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
+  const branchRef = `refs/heads/${branch}`;
+  const lsRemoteResult = await runCommand(
+    'git',
+    ['ls-remote', '--exit-code', '--heads', 'origin', branchRef],
+    {
+      cwd: repoPath,
+      env,
+      logFilePath: logFile,
+      timeoutMs: 60_000,
+      redact,
+      allowFailure: true,
+    },
+  );
+  if ((lsRemoteResult.exitCode ?? 1) !== 0) {
+    if ((lsRemoteResult.exitCode ?? 1) === 2) {
+      return undefined;
+    }
+    throw new Error(
+      `git ls-remote failed (${lsRemoteResult.exitCode ?? 'unknown'}): ${(
+        lsRemoteResult.stderr ?? ''
+      ).trim()}`,
+    );
+  }
+  const remoteSha = lsRemoteResult.stdout.trim().split(/\s+/)[0]?.trim();
+  if (!remoteSha) {
+    return undefined;
+  }
+
+  const fetchRefspec = `+${branchRef}:${remoteRef}`;
+  const fetchResult = await runCommand('git', ['fetch', 'origin', fetchRefspec], {
     cwd: repoPath,
     env,
     logFilePath: logFile,
@@ -255,7 +283,6 @@ async function fetchRemoteBranchTip(
   });
   if ((fetchResult.exitCode ?? 1) !== 0) {
     const stderr = fetchResult.stderr ?? '';
-    const missingRemoteRef = stderr.includes("couldn't find remote ref");
     const cannotLockRef = stderr.includes('cannot lock ref') && stderr.includes(remoteRef);
     const nonFastForwardRemoteRef =
       stderr.includes('non-fast-forward') &&
@@ -270,7 +297,7 @@ async function fetchRemoteBranchTip(
         redact,
         allowFailure: true,
       });
-      retryResult = await runCommand('git', ['fetch', '--prune', 'origin', fetchRefspec], {
+      retryResult = await runCommand('git', ['fetch', 'origin', fetchRefspec], {
         cwd: repoPath,
         env,
         logFilePath: logFile,
@@ -280,9 +307,6 @@ async function fetchRemoteBranchTip(
       });
     }
     const retriedOk = retryResult ? (retryResult.exitCode ?? 1) === 0 : false;
-    if (missingRemoteRef) {
-      return undefined;
-    }
     if (!retriedOk) {
       throw new Error(
         `git fetch failed (${retryResult?.exitCode ?? fetchResult.exitCode ?? 'unknown'}): ${(
@@ -292,7 +316,12 @@ async function fetchRemoteBranchTip(
     }
   }
 
-  return resolveGitRef(repoPath, remoteRef, env, logFile, redact);
+  const localRemoteSha = await resolveGitRef(repoPath, remoteRef, env, logFile, redact);
+  if (!localRemoteSha) {
+    throw new Error(`Unable to resolve fetched remote branch ${branch}`);
+  }
+
+  return remoteSha;
 }
 
 async function commitOnHead(
