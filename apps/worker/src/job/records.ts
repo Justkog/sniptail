@@ -79,7 +79,19 @@ export async function resolveMentionWorkingDirectory(
       ['ASK', 'EXPLORE', 'PLAN', 'IMPLEMENT'],
     );
     if (!record) return fallback;
-    return buildJobPaths(jobWorkRoot, record.job.jobId).root;
+    const resolvedWorkDir = buildJobPaths(jobWorkRoot, record.job.jobId).root;
+    logger.info(
+      {
+        jobId: job.jobId,
+        provider: job.channel.provider,
+        channelId: job.channel.channelId,
+        threadId,
+        resumeFromJobId: record.job.jobId,
+        agentWorkDir: resolvedWorkDir,
+      },
+      'Resolved mention working directory from previous job',
+    );
+    return resolvedWorkDir;
   } catch (err) {
     logger.warn({ err, jobId: job.jobId }, 'Failed to resolve working directory from previous job');
     return fallback;

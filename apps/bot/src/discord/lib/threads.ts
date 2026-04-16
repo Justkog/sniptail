@@ -81,6 +81,7 @@ export async function postDiscordJobAcceptance(
           ...job,
           channel: {
             ...job.channel,
+            channelId: threadTarget.channel.id,
             threadId: threadTarget.threadId,
           },
         },
