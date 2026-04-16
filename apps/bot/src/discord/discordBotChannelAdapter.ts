@@ -1,5 +1,7 @@
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
+import { loadBotConfig } from '@sniptail/core/config/config.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
   addDiscordReaction,
   editDiscordInteractionReply,
@@ -163,14 +165,15 @@ function buildOverflowUploadFailedText(jobId?: string): string {
 }
 
 function buildOverflowFileTitle(jobId?: string): string {
+  const botNamePrefix = toSlackCommandPrefix(loadBotConfig().botName);
   if (!jobId?.trim()) {
-    return 'sniptail-discord-message.md';
+    return `${botNamePrefix}-discord-message.md`;
   }
   const sanitizedJobId = sanitizeFileNameSegment(jobId);
   if (!sanitizedJobId) {
-    return 'sniptail-discord-message.md';
+    return `${botNamePrefix}-discord-message.md`;
   }
-  return `sniptail-${sanitizedJobId}-message.md`;
+  return `${botNamePrefix}-${sanitizedJobId}-message.md`;
 }
 
 function sanitizeFileNameSegment(value: string): string {
