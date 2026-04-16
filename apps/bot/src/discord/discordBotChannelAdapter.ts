@@ -1,5 +1,7 @@
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
+import { loadBotConfig } from '@sniptail/core/config/config.js';
+import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
   addDiscordReaction,
   editDiscordInteractionReply,
@@ -40,12 +42,7 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     }
     switch (event.type) {
       case 'message.post':
-        await postDiscordMessage(client, {
-          channelId: event.payload.channelId,
-          text: event.payload.text,
-          ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
-          ...(event.payload.components ? { components: event.payload.components } : {}),
-        });
+        await this.postMessageEvent(client, event);
         return true;
       case 'file.upload': {
         const baseOptions = {
@@ -86,4 +83,112 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
         return false;
     }
   }
+
+  private async postMessageEvent(
+    client: Parameters<typeof postDiscordMessage>[0],
+    event: CoreBotEvent<'message.post'>,
+  ) {
+    const messageOptions = {
+      channelId: event.payload.channelId,
+      text: event.payload.text,
+      ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+      ...(event.payload.components ? { components: event.payload.components } : {}),
+    };
+
+    if (event.payload.text.length <= DISCORD_MESSAGE_CONTENT_LIMIT) {
+      await postDiscordMessage(client, messageOptions);
+      return;
+    }
+
+    const title = buildOverflowFileTitle(event.jobId);
+    logger.info(
+      {
+        jobId: event.jobId,
+        channelId: event.payload.channelId,
+        threadId: event.payload.threadId,
+        textLength: event.payload.text.length,
+        title,
+      },
+      'Discord message.post exceeded content limit; uploading overflow attachment',
+    );
+
+    try {
+      await uploadDiscordFile(client, {
+        channelId: event.payload.channelId,
+        fileContent: event.payload.text,
+        title,
+        ...(event.payload.threadId ? { threadId: event.payload.threadId } : {}),
+      });
+    } catch (err) {
+      logger.error(
+        {
+          err,
+          jobId: event.jobId,
+          channelId: event.payload.channelId,
+          threadId: event.payload.threadId,
+        },
+        'Failed to upload Discord overflow attachment for message.post',
+      );
+      await postDiscordMessage(client, {
+        ...messageOptions,
+        text: buildOverflowUploadFailedText(event.jobId),
+      });
+      return;
+    }
+
+    await postDiscordMessage(client, {
+      ...messageOptions,
+      text: buildOverflowStubText(event.jobId, title),
+    });
+  }
+}
+
+const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
+let overflowFileBotNamePrefix: string | undefined;
+
+function buildOverflowStubText(jobId?: string, title?: string): string {
+  const lines = ['Response was too long for Discord; full content is attached.'];
+  if (jobId) {
+    lines.push(`Job: ${jobId}`);
+  }
+  if (title) {
+    lines.push(`Attachment: ${title}`);
+  }
+  return lines.join('\n');
+}
+
+function buildOverflowUploadFailedText(jobId?: string): string {
+  const lines = ['Response was too long for Discord, and uploading the attachment failed.'];
+  if (jobId) {
+    lines.push(`Job: ${jobId}`);
+  }
+  return lines.join('\n');
+}
+
+function buildOverflowFileTitle(jobId?: string): string {
+  const botNamePrefix = resolveOverflowFileBotNamePrefix();
+  if (!jobId?.trim()) {
+    return `${botNamePrefix}-discord-message.md`;
+  }
+  const sanitizedJobId = sanitizeFileNameSegment(jobId);
+  if (!sanitizedJobId) {
+    return `${botNamePrefix}-discord-message.md`;
+  }
+  return `${botNamePrefix}-${sanitizedJobId}-message.md`;
+}
+
+function resolveOverflowFileBotNamePrefix(): string {
+  if (overflowFileBotNamePrefix) {
+    return overflowFileBotNamePrefix;
+  }
+  overflowFileBotNamePrefix = toSlackCommandPrefix(loadBotConfig().botName);
+  return overflowFileBotNamePrefix;
+}
+
+function sanitizeFileNameSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
 }
