@@ -51,22 +51,14 @@ function isBranchBackedJob(job: JobSpec): boolean {
   );
 }
 
-async function resolveBranchTipSha(
+async function resolveGitRefSha(
   repoPath: string,
-  branch: string,
+  ref: string,
   env: NodeJS.ProcessEnv,
   logFile: string,
   redactionPatterns: Array<string | RegExp>,
 ): Promise<string | undefined> {
-  return (
-    (await resolveGitRef(
-      repoPath,
-      `refs/remotes/origin/${branch}`,
-      env,
-      logFile,
-      redactionPatterns,
-    )) ?? (await resolveGitRef(repoPath, `refs/heads/${branch}`, env, logFile, redactionPatterns))
-  );
+  return resolveGitRef(repoPath, ref, env, logFile, redactionPatterns);
 }
 
 function requireRecordMapValue(
@@ -82,6 +74,16 @@ function requireRecordMapValue(
     );
   }
   return value;
+}
+
+function readRecordMapValue(
+  record: JobRecord,
+  repoKey: string,
+  fieldName: 'originBranchByRepo' | 'lineageTipShaByRepo' | 'lineageBaseShaByRepo',
+): string | undefined {
+  const map = record[fieldName];
+  const value = map?.[repoKey]?.trim();
+  return value || undefined;
 }
 
 export async function prepareRepoWorktrees(
@@ -112,6 +114,8 @@ export async function prepareRepoWorktrees(
     if (resumeRecord) {
       const originBranch = requireRecordMapValue(resumeRecord, repoKey, 'originBranchByRepo');
       const persistedTipSha = requireRecordMapValue(resumeRecord, repoKey, 'lineageTipShaByRepo');
+      const persistedBaseSha = readRecordMapValue(resumeRecord, repoKey, 'lineageBaseShaByRepo');
+      const fallbackBranch = isBranchBackedJob(job) ? `${branchPrefix}/${job.jobId}` : undefined;
 
       await ensureClone(
         repoKey,
@@ -127,21 +131,75 @@ export async function prepareRepoWorktrees(
         },
       );
 
-      const currentOriginTipSha = await resolveBranchTipSha(
+      const remoteOriginTipSha = await resolveGitRefSha(
         clonePath,
-        originBranch,
+        `refs/remotes/origin/${originBranch}`,
         env,
         paths.logFile,
         redactionPatterns,
       );
+      const localOriginTipSha = await resolveGitRefSha(
+        clonePath,
+        `refs/heads/${originBranch}`,
+        env,
+        paths.logFile,
+        redactionPatterns,
+      );
+      const currentOriginTipSha = remoteOriginTipSha ?? localOriginTipSha;
       if (!currentOriginTipSha) {
         throw new Error(`Origin branch missing for repo ${repoKey}: ${originBranch}`);
+      }
+
+      if (remoteOriginTipSha) {
+        await addWorktree({
+          clonePath,
+          worktreePath,
+          baseRef: currentOriginTipSha,
+          ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
+          ...(config.worktreeSetupAllowFailure !== undefined
+            ? { setupAllowFailure: config.worktreeSetupAllowFailure }
+            : {}),
+          logFilePath: paths.logFile,
+          env,
+          redact: redactionPatterns,
+        });
+        await runSetupContract(worktreePath, env, paths.logFile, redactionPatterns);
+
+        repoWorktrees.set(repoKey, {
+          clonePath,
+          worktreePath,
+          originBranch,
+          detached: true,
+          expectedBaseTipSha: currentOriginTipSha,
+        });
+        lineage.originBranchByRepo[repoKey] = originBranch;
+        lineage.lineageBaseShaByRepo[repoKey] = currentOriginTipSha;
+        lineage.lineageTipShaByRepo[repoKey] = currentOriginTipSha;
+
+        if (persistedTipSha !== currentOriginTipSha) {
+          lineage.lineageWarningByRepo[repoKey] =
+            `Lineage branch ${originBranch} moved from ${persistedTipSha} to ${currentOriginTipSha}.`;
+          lineage.promptWarnings.push({
+            repoKey,
+            originBranch,
+            previousTipSha: persistedTipSha,
+            currentTipSha: currentOriginTipSha,
+          });
+        }
+        continue;
+      }
+
+      if (!fallbackBranch) {
+        throw new Error(
+          `Remote lineage branch missing for non-branch-backed resumed job ${job.jobId}: ${originBranch}`,
+        );
       }
 
       await addWorktree({
         clonePath,
         worktreePath,
         baseRef: currentOriginTipSha,
+        branch: fallbackBranch,
         ...(config.worktreeSetupCommand ? { setupCommand: config.worktreeSetupCommand } : {}),
         ...(config.worktreeSetupAllowFailure !== undefined
           ? { setupAllowFailure: config.worktreeSetupAllowFailure }
@@ -155,22 +213,25 @@ export async function prepareRepoWorktrees(
       repoWorktrees.set(repoKey, {
         clonePath,
         worktreePath,
-        originBranch,
-        detached: true,
+        originBranch: fallbackBranch,
+        detached: false,
         expectedBaseTipSha: currentOriginTipSha,
+        worktreeBranch: fallbackBranch,
       });
-      lineage.originBranchByRepo[repoKey] = originBranch;
+      lineage.branchByRepo[repoKey] = fallbackBranch;
+      lineage.originBranchByRepo[repoKey] = fallbackBranch;
       lineage.lineageBaseShaByRepo[repoKey] = currentOriginTipSha;
       lineage.lineageTipShaByRepo[repoKey] = currentOriginTipSha;
-
-      if (persistedTipSha !== currentOriginTipSha) {
-        lineage.lineageWarningByRepo[repoKey] =
-          `Lineage branch ${originBranch} moved from ${persistedTipSha} to ${currentOriginTipSha}.`;
+      lineage.lineageWarningByRepo[repoKey] =
+        `Resumed from local-only lineage branch ${originBranch}; publishing to new branch ${fallbackBranch} from cached SHA ${currentOriginTipSha}.`;
+      if (persistedBaseSha && persistedBaseSha !== persistedTipSha) {
         lineage.promptWarnings.push({
+          kind: 'local-only-fallback',
           repoKey,
           originBranch,
           previousTipSha: persistedTipSha,
           currentTipSha: currentOriginTipSha,
+          nextBranch: fallbackBranch,
         });
       }
       continue;
