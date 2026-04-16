@@ -144,6 +144,7 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
 }
 
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
+let overflowFileBotNamePrefix: string | undefined;
 
 function buildOverflowStubText(jobId?: string, title?: string): string {
   const lines = ['Response was too long for Discord; full content is attached.'];
@@ -165,7 +166,7 @@ function buildOverflowUploadFailedText(jobId?: string): string {
 }
 
 function buildOverflowFileTitle(jobId?: string): string {
-  const botNamePrefix = toSlackCommandPrefix(loadBotConfig().botName);
+  const botNamePrefix = resolveOverflowFileBotNamePrefix();
   if (!jobId?.trim()) {
     return `${botNamePrefix}-discord-message.md`;
   }
@@ -174,6 +175,14 @@ function buildOverflowFileTitle(jobId?: string): string {
     return `${botNamePrefix}-discord-message.md`;
   }
   return `${botNamePrefix}-${sanitizedJobId}-message.md`;
+}
+
+function resolveOverflowFileBotNamePrefix(): string {
+  if (overflowFileBotNamePrefix) {
+    return overflowFileBotNamePrefix;
+  }
+  overflowFileBotNamePrefix = toSlackCommandPrefix(loadBotConfig().botName);
+  return overflowFileBotNamePrefix;
 }
 
 function sanitizeFileNameSegment(value: string): string {
