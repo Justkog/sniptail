@@ -25,6 +25,9 @@ describe('jobs/registry Discord thread lookup', () => {
         job: {
           jobId: 'explore-1',
           type: 'EXPLORE',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Investigate issue',
           channel: {
             provider: 'discord',
             channelId: 'parent-1',
@@ -55,6 +58,9 @@ describe('jobs/registry Discord thread lookup', () => {
         job: {
           jobId: 'explore-legacy',
           type: 'EXPLORE',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Investigate issue',
           channel: {
             provider: 'discord',
             channelId: 'parent-1',
@@ -69,6 +75,9 @@ describe('jobs/registry Discord thread lookup', () => {
         job: {
           jobId: 'explore-normalized',
           type: 'EXPLORE',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Investigate issue',
           channel: {
             provider: 'discord',
             channelId: 'thread-1',
@@ -96,10 +105,14 @@ describe('jobs/registry Discord thread lookup', () => {
         job: {
           jobId: 'slack-job',
           type: 'EXPLORE',
+          repoKeys: ['repo-1'],
+          gitRef: 'main',
+          requestText: 'Investigate issue',
           channel: {
             provider: 'slack',
             channelId: 'C-parent',
             threadId: '123.456',
+            userId: 'U1',
           },
           agentThreadIds: {
             codex: 'agent-thread-1',
