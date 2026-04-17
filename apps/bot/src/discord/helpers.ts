@@ -10,12 +10,14 @@ import {
   Routes,
 } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 
 type DiscordMessageOptions = {
   channelId: string;
   text: string;
   threadId?: string;
   components?: unknown[];
+  contextFiles?: JobContextFile[];
 };
 
 type DiscordFileOptions =
@@ -64,7 +66,15 @@ export async function postDiscordMessage(client: Client, options: DiscordMessage
         components: options.components as NonNullable<MessageCreateOptions['components']>,
       }
     : { content: options.text };
-  await channel.send(message);
+  if (options.contextFiles?.length) {
+    message.files = options.contextFiles.map(
+      (contextFile) =>
+        new AttachmentBuilder(Buffer.from(contextFile.contentBase64, 'base64'), {
+          name: contextFile.originalName,
+        }),
+    );
+  }
+  return channel.send(message);
 }
 
 export async function uploadDiscordFile(client: Client, options: DiscordFileOptions) {

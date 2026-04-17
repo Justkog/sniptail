@@ -4,6 +4,7 @@ import {
 } from '@sniptail/core/discord/components.js';
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { isSendableTextChannel, postDiscordMessage } from '../helpers.js';
@@ -201,6 +202,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
   requestSummary: string;
   approvalId: string;
   jobId?: string;
+  contextFiles?: JobContextFile[];
 }): Promise<string | undefined> {
   const text = buildDiscordJobRequestText(input.requestSummary, input.jobId);
   const botNamePrefix = toSlackCommandPrefix(input.botName);
@@ -210,6 +212,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
         channelId: input.channelId,
         threadId: input.existingThreadId,
         text,
+        ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
       });
     } catch (err) {
       logger.warn(
@@ -226,7 +229,11 @@ async function postDiscordJobRequestAndResolveThread(input: {
       logger.warn({ channelId: input.channelId }, 'Discord channel is not sendable for approvals');
       return undefined;
     }
-    const requestMessage = await channel.send({ content: text });
+    const requestMessage = await postDiscordMessage(input.client, {
+      channelId: input.channelId,
+      text,
+      ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
+    });
     const threadName = `${botNamePrefix} approval ${input.approvalId}`.slice(0, 100);
     try {
       const thread = await requestMessage.startThread({
@@ -321,6 +328,9 @@ export async function authorizeDiscordOperationAndRespond(input: {
       requestSummary,
       approvalId: authorization.approval.id,
       ...(input.operation.kind === 'enqueueJob' ? { jobId: input.operation.job.jobId } : {}),
+      ...(input.operation.kind === 'enqueueJob' && input.operation.job.contextFiles?.length
+        ? { contextFiles: input.operation.job.contextFiles }
+        : {}),
     });
     let approvalThreadId = requestThreadId;
     if (!input.actor.threadId && requestThreadId) {

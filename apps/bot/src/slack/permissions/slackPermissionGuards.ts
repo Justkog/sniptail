@@ -2,6 +2,7 @@ import type { App } from '@slack/bolt';
 import type { SlackIds } from '@sniptail/core/slack/ids.js';
 import type { PermissionAction } from '@sniptail/core/permissions/permissionsActionCatalog.js';
 import type { DeferredPermissionOperation } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 import type { PermissionsRuntimeService } from '../../permissions/permissionsRuntimeService.js';
 import type { SlackPermissionActorContext } from '../../permissions/permissionsGuardTypes.js';
 import { resolvePermissionsProviderCapabilities } from '../../permissions/permissionsProviderCapabilities.js';
@@ -10,6 +11,7 @@ import {
   type GroupMembershipCacheEntry,
 } from './slackPermissionsActorGroups.js';
 import { logger } from '@sniptail/core/logger.js';
+import { postMessage } from '../helpers.js';
 import { truncateRequestSummary } from '../../lib/jobs.js';
 
 const slackGroupMembershipCache = new Map<string, GroupMembershipCacheEntry>();
@@ -250,12 +252,14 @@ async function postSlackJobRequestAndResolveThread(input: {
   existingThreadId?: string;
   requestSummary: string;
   jobId?: string;
+  contextFiles?: JobContextFile[];
 }): Promise<string | undefined> {
   try {
-    const response = await input.client.chat.postMessage({
+    const response = await postMessage(input.client, {
       channel: input.channelId,
-      ...(input.existingThreadId ? { thread_ts: input.existingThreadId } : {}),
+      ...(input.existingThreadId ? { threadTs: input.existingThreadId } : {}),
       text: buildSlackJobRequestText(input.requestSummary, input.jobId),
+      ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
     });
     return input.existingThreadId ?? response.ts;
   } catch (err) {
@@ -314,6 +318,9 @@ export async function authorizeSlackOperationAndRespond(input: {
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
       requestSummary,
       ...(input.operation.kind === 'enqueueJob' ? { jobId: input.operation.job.jobId } : {}),
+      ...(input.operation.kind === 'enqueueJob' && input.operation.job.contextFiles?.length
+        ? { contextFiles: input.operation.job.contextFiles }
+        : {}),
     });
     let approvalThreadId = requestThreadId;
     if (!input.actor.threadId && requestThreadId) {

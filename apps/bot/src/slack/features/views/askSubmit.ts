@@ -128,6 +128,7 @@ export function registerAskSubmitView({
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
       text: `*Job request: ${job.jobId}*\n\`\`\`\n${requestSummary}\n\`\`\``,
+      ...(job.contextFiles?.length ? { contextFiles: job.contextFiles } : {}),
       ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
 

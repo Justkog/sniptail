@@ -2,7 +2,7 @@ import type { ModalSubmitInteraction, Message } from 'discord.js';
 import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
-import { isSendableTextChannel, type SendableTextChannel } from '../helpers.js';
+import { isSendableTextChannel, postDiscordMessage, type SendableTextChannel } from '../helpers.js';
 import { truncateRequestSummary } from '../../lib/jobs.js';
 
 export type DiscordJobAcceptanceResult = {
@@ -39,10 +39,15 @@ async function postDiscordJobRequest(
   channel: SendableTextChannel,
   requestText: string,
   jobId: string,
+  contextFiles?: JobSpec['contextFiles'],
 ) {
   const requestSummary = truncateRequestSummary(requestText);
   try {
-    await channel.send(`**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``);
+    await postDiscordMessage(channel.client, {
+      channelId: channel.id,
+      text: `**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``,
+      ...(contextFiles?.length ? { contextFiles } : {}),
+    });
   } catch (err) {
     logger.warn({ err, jobId }, 'Failed to post Discord job request');
   }
@@ -64,15 +69,19 @@ export async function postDiscordJobAcceptance(
   }
 
   try {
-    const rootMessage = await channel.send(
-      options?.requestAsPrimaryMessage
+    const rootMessage = await postDiscordMessage(channel.client, {
+      channelId: channel.id,
+      text: options?.requestAsPrimaryMessage
         ? `**Job request: ${job.jobId}**\n\`\`\`\n${truncateRequestSummary(requestText)}\n\`\`\``
         : (options?.acceptanceMessage ??
-            `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
-    );
+          `Thanks! I've accepted job ${job.jobId}. I'll report back here.`),
+      ...(options?.requestAsPrimaryMessage && job.contextFiles?.length
+        ? { contextFiles: job.contextFiles }
+        : {}),
+    });
     const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
     if (!options?.requestAsPrimaryMessage) {
-      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId);
+      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId, job.contextFiles);
     }
 
     if (threadTarget.threadId) {
