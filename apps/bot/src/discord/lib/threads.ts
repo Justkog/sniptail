@@ -45,6 +45,7 @@ async function postDiscordJobRequest(
   try {
     await postDiscordMessage(channel.client, {
       channelId: channel.id,
+      channel,
       text: `**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``,
       ...(contextFiles?.length ? { contextFiles } : {}),
     });
@@ -71,6 +72,7 @@ export async function postDiscordJobAcceptance(
   try {
     const rootMessage = await postDiscordMessage(channel.client, {
       channelId: channel.id,
+      channel,
       text: options?.requestAsPrimaryMessage
         ? `**Job request: ${job.jobId}**\n\`\`\`\n${truncateRequestSummary(requestText)}\n\`\`\``
         : (options?.acceptanceMessage ??
