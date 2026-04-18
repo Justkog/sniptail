@@ -20,17 +20,26 @@ describe('discord/lib postDiscordJobAcceptance', () => {
       id: 'thread-1',
       send: vi.fn(),
     };
+    const fetch = vi.fn();
+    const client = {
+      channels: {
+        fetch,
+      },
+    };
     const rootChannel = {
+      id: 'parent-1',
       type: 0,
       partial: false,
+      client,
       isTextBased: () => true,
       isThread: () => false,
       send: vi.fn(),
     };
     const rootMessage = {
       channel: rootChannel,
-      startThread: vi.fn(async () => threadChannel),
+      startThread: vi.fn(() => Promise.resolve(threadChannel)),
     };
+    fetch.mockResolvedValue(rootChannel);
     rootChannel.send.mockResolvedValue(rootMessage);
 
     const interaction = {
@@ -50,13 +59,9 @@ describe('discord/lib postDiscordJobAcceptance', () => {
     };
 
     await expect(
-      postDiscordJobAcceptance(
-        interaction as never,
-        job,
-        'Inspect the service',
-        'sniptail',
-        { requestAsPrimaryMessage: true },
-      ),
+      postDiscordJobAcceptance(interaction as never, job, 'Inspect the service', 'sniptail', {
+        requestAsPrimaryMessage: true,
+      }),
     ).resolves.toMatchObject({
       acceptancePosted: true,
       threadId: 'thread-1',
