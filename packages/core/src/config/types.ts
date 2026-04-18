@@ -48,6 +48,7 @@ export type BotConfig = CoreConfig & {
   channels: Record<ChannelProvider, { enabled: boolean }>;
   slackEnabled: boolean;
   discordEnabled: boolean;
+  telegramEnabled: boolean;
   slack?: {
     botToken: string;
     appToken: string;
@@ -58,6 +59,10 @@ export type BotConfig = CoreConfig & {
     appId: string;
     guildId?: string;
     channelIds?: string[];
+  };
+  telegram?: {
+    botToken: string;
+    chatIds?: string[];
   };
   permissions: PermissionsConfig;
   run?: {

@@ -8,6 +8,14 @@ export type PullRequestResponse = {
   number: number;
 };
 
+export type PullRequestSummary = {
+  url: string;
+  number: number;
+  head: string;
+  base: string;
+  updatedAt: string;
+};
+
 export type CreateRepositoryResponse = {
   url: string;
   sshUrl: string;
@@ -21,9 +29,12 @@ async function requestGitHub(
   config: GitHubConfig,
   path: string,
   body: Record<string, unknown> | null = null,
+  options: {
+    method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  } = {},
 ): Promise<Response> {
   const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, '')}${path}`, {
-    method: 'POST',
+    method: options.method ?? 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.token}`,
@@ -39,6 +50,139 @@ async function requestGitHub(
   }
 
   return response;
+}
+
+export async function findOpenPullRequests(options: {
+  config: GitHubConfig;
+  owner: string;
+  repo: string;
+  head: string;
+  base: string;
+}): Promise<PullRequestSummary[]> {
+  const { config, owner, repo, head, base } = options;
+  const search = new URLSearchParams({
+    state: 'open',
+    base,
+    head: `${owner}:${head}`,
+    per_page: '100',
+  });
+  const response = await requestGitHub(
+    config,
+    `/repos/${owner}/${repo}/pulls?${search.toString()}`,
+    null,
+    { method: 'GET' },
+  );
+  const data = (await response.json()) as Array<{
+    html_url: string;
+    number: number;
+    updated_at: string;
+    head?: { ref?: string };
+    base?: { ref?: string };
+  }>;
+  return data
+    .map((pr) => ({
+      url: pr.html_url,
+      number: pr.number,
+      head: pr.head?.ref ?? '',
+      base: pr.base?.ref ?? '',
+      updatedAt: pr.updated_at,
+    }))
+    .filter((pr) => pr.head === head && pr.base === base);
+}
+
+export async function updatePullRequest(options: {
+  config: GitHubConfig;
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+}): Promise<PullRequestResponse> {
+  const { config, owner, repo, number, title, body } = options;
+  const response = await requestGitHub(
+    config,
+    `/repos/${owner}/${repo}/pulls/${number}`,
+    {
+      title,
+      body,
+    },
+    { method: 'PATCH' },
+  );
+  const prData = (await response.json()) as { html_url: string; number: number };
+  return {
+    url: prData.html_url,
+    number: prData.number,
+  };
+}
+
+export async function replacePullRequestLabels(options: {
+  config: GitHubConfig;
+  owner: string;
+  repo: string;
+  number: number;
+  labels: string[];
+}): Promise<void> {
+  const { config, owner, repo, number, labels } = options;
+  await requestGitHub(
+    config,
+    `/repos/${owner}/${repo}/issues/${number}/labels`,
+    {
+      labels,
+    },
+    { method: 'PUT' },
+  );
+}
+
+async function listRequestedReviewers(options: {
+  config: GitHubConfig;
+  owner: string;
+  repo: string;
+  number: number;
+}): Promise<string[]> {
+  const { config, owner, repo, number } = options;
+  const response = await requestGitHub(
+    config,
+    `/repos/${owner}/${repo}/pulls/${number}/requested_reviewers`,
+    null,
+    { method: 'GET' },
+  );
+  const data = (await response.json()) as {
+    users?: Array<{ login?: string }>;
+  };
+  return (data.users ?? []).map((user) => user.login ?? '').filter(Boolean);
+}
+
+export async function syncPullRequestReviewers(options: {
+  config: GitHubConfig;
+  owner: string;
+  repo: string;
+  number: number;
+  reviewers: string[];
+}): Promise<void> {
+  const { config, owner, repo, number, reviewers } = options;
+  const current = await listRequestedReviewers({ config, owner, repo, number });
+  const desired = Array.from(new Set(reviewers.filter(Boolean)));
+  const currentSet = new Set(current);
+  const desiredSet = new Set(desired);
+  const toAdd = desired.filter((reviewer) => !currentSet.has(reviewer));
+  const toRemove = current.filter((reviewer) => !desiredSet.has(reviewer));
+
+  if (toAdd.length > 0) {
+    await requestGitHub(config, `/repos/${owner}/${repo}/pulls/${number}/requested_reviewers`, {
+      reviewers: toAdd,
+    });
+  }
+
+  if (toRemove.length > 0) {
+    await requestGitHub(
+      config,
+      `/repos/${owner}/${repo}/pulls/${number}/requested_reviewers`,
+      {
+        reviewers: toRemove,
+      },
+      { method: 'DELETE' },
+    );
+  }
 }
 
 export async function createRepository(options: {
@@ -98,20 +242,22 @@ export async function createPullRequest(options: {
   const prData = (await prResponse.json()) as { html_url: string; number: number };
 
   if (labels && labels.length) {
-    await requestGitHub(config, `/repos/${owner}/${repo}/issues/${prData.number}/labels`, {
+    await replacePullRequestLabels({
+      config,
+      owner,
+      repo,
+      number: prData.number,
       labels,
     });
   }
 
-  if (reviewers && reviewers.length) {
-    await requestGitHub(
-      config,
-      `/repos/${owner}/${repo}/pulls/${prData.number}/requested_reviewers`,
-      {
-        reviewers,
-      },
-    );
-  }
+  await syncPullRequestReviewers({
+    config,
+    owner,
+    repo,
+    number: prData.number,
+    reviewers: reviewers ?? [],
+  });
 
   return {
     url: prData.html_url,

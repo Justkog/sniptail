@@ -5,12 +5,16 @@ import askPromptTemplateSource from './prompts/ask.md?raw';
 import explorePromptTemplateSource from './prompts/explore.md?raw';
 import planPromptTemplateSource from './prompts/plan.md?raw';
 import implementPromptTemplateSource from './prompts/implement.md?raw';
+import implementArtifactsPromptTemplateSource from './prompts/implement-artifacts.md?raw';
 import mentionPromptTemplateSource from './prompts/mention.md?raw';
 import reviewPromptTemplateSource from './prompts/review.md?raw';
 
 const askPromptTemplate = Handlebars.compile(askPromptTemplateSource.trimEnd());
 const explorePromptTemplate = Handlebars.compile(explorePromptTemplateSource.trimEnd());
 const implementPromptTemplate = Handlebars.compile(implementPromptTemplateSource.trimEnd());
+const implementArtifactsPromptTemplate = Handlebars.compile(
+  implementArtifactsPromptTemplateSource.trimEnd(),
+);
 const mentionPromptTemplate = Handlebars.compile(mentionPromptTemplateSource.trimEnd());
 const planPromptTemplate = Handlebars.compile(planPromptTemplateSource.trimEnd());
 const reviewPromptTemplate = Handlebars.compile(reviewPromptTemplateSource.trimEnd());
@@ -30,6 +34,13 @@ export function buildImplementPrompt(job: JobSpec, botName: string): string {
     repoKeys: job.repoKeys,
     requestText: job.requestText,
     threadContext: job.threadContext,
+  });
+}
+
+export function buildImplementArtifactsPrompt(job: JobSpec, botName: string): string {
+  return implementArtifactsPromptTemplate({
+    botName,
+    repoKeys: job.repoKeys,
   });
 }
 

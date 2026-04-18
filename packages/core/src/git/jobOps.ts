@@ -1,6 +1,7 @@
 import { constants as fsConstants } from 'node:fs';
-import { access } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { logger } from '../logger.js';
 import { runCommand, type RunResult } from '../runner/commandRunner.js';
 import { normalizeRunActionId } from '../repos/runActions.js';
@@ -192,15 +193,144 @@ export async function runChecks(
   }
 }
 
-export async function commitAndPush(
+export type CommitAndPushLineageOptions = {
+  repoPath: string;
+  commitMessage: string;
+  env: NodeJS.ProcessEnv;
+  logFile: string;
+  redact: Array<string | RegExp>;
+  targetBranch: string;
+  worktreeBranch?: string;
+  expectedRemoteSha?: string;
+};
+
+export type CommitAndPushLineageResult =
+  | { committed: false; rebased: false; targetBranch: string }
+  | {
+      committed: true;
+      rebased: boolean;
+      targetBranch: string;
+      commitSha: string;
+      pushedSha: string;
+    };
+
+export async function resolveGitRef(
   repoPath: string,
-  branch: string,
-  jobId: string,
-  botName: string,
+  ref: string,
   env: NodeJS.ProcessEnv,
   logFile: string,
   redact: Array<string | RegExp>,
-): Promise<boolean> {
+): Promise<string | undefined> {
+  const result = await runCommand('git', ['rev-parse', '--verify', ref], {
+    cwd: repoPath,
+    env,
+    logFilePath: logFile,
+    timeoutMs: 10_000,
+    redact,
+    allowFailure: true,
+  });
+  if ((result.exitCode ?? 1) !== 0) {
+    return undefined;
+  }
+  const sha = result.stdout.trim();
+  return sha || undefined;
+}
+
+async function fetchRemoteBranchTip(
+  repoPath: string,
+  branch: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<string | undefined> {
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  const branchRef = `refs/heads/${branch}`;
+  const lsRemoteResult = await runCommand(
+    'git',
+    ['ls-remote', '--exit-code', '--heads', 'origin', branchRef],
+    {
+      cwd: repoPath,
+      env,
+      logFilePath: logFile,
+      timeoutMs: 60_000,
+      redact,
+      allowFailure: true,
+    },
+  );
+  if ((lsRemoteResult.exitCode ?? 1) !== 0) {
+    if ((lsRemoteResult.exitCode ?? 1) === 2) {
+      return undefined;
+    }
+    throw new Error(
+      `git ls-remote failed (${lsRemoteResult.exitCode ?? 'unknown'}): ${(
+        lsRemoteResult.stderr ?? ''
+      ).trim()}`,
+    );
+  }
+  const remoteSha = lsRemoteResult.stdout.trim().split(/\s+/)[0]?.trim();
+  if (!remoteSha) {
+    return undefined;
+  }
+
+  const fetchRefspec = `+${branchRef}:${remoteRef}`;
+  const fetchResult = await runCommand('git', ['fetch', 'origin', fetchRefspec], {
+    cwd: repoPath,
+    env,
+    logFilePath: logFile,
+    timeoutMs: 60_000,
+    redact,
+    allowFailure: true,
+  });
+  if ((fetchResult.exitCode ?? 1) !== 0) {
+    const stderr = fetchResult.stderr ?? '';
+    const cannotLockRef = stderr.includes('cannot lock ref') && stderr.includes(remoteRef);
+    const nonFastForwardRemoteRef =
+      stderr.includes('non-fast-forward') &&
+      (stderr.includes(`-> origin/${branch}`) || stderr.includes(remoteRef));
+    let retryResult: RunResult | undefined;
+    if (cannotLockRef || nonFastForwardRemoteRef) {
+      await runCommand('git', ['update-ref', '-d', remoteRef], {
+        cwd: repoPath,
+        env,
+        logFilePath: logFile,
+        timeoutMs: 10_000,
+        redact,
+        allowFailure: true,
+      });
+      retryResult = await runCommand('git', ['fetch', 'origin', fetchRefspec], {
+        cwd: repoPath,
+        env,
+        logFilePath: logFile,
+        timeoutMs: 60_000,
+        redact,
+        allowFailure: true,
+      });
+    }
+    const retriedOk = retryResult ? (retryResult.exitCode ?? 1) === 0 : false;
+    if (!retriedOk) {
+      throw new Error(
+        `git fetch failed (${retryResult?.exitCode ?? fetchResult.exitCode ?? 'unknown'}): ${(
+          retryResult?.stderr ?? stderr
+        ).trim()}`,
+      );
+    }
+  }
+
+  const localRemoteSha = await resolveGitRef(repoPath, remoteRef, env, logFile, redact);
+  if (!localRemoteSha) {
+    throw new Error(`Unable to resolve fetched remote branch ${branch}`);
+  }
+
+  return localRemoteSha;
+}
+
+async function commitOnHead(
+  repoPath: string,
+  commitMessage: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<string | undefined> {
   const status = await runCommand('git', ['status', '--porcelain'], {
     cwd: repoPath,
     env,
@@ -212,7 +342,7 @@ export async function commitAndPush(
 
   if (!status.stdout.trim()) {
     logger.info({ repoPath }, 'No changes to commit');
-    return false;
+    return undefined;
   }
 
   await runCommand('git', ['add', '-A'], {
@@ -222,19 +352,160 @@ export async function commitAndPush(
     timeoutMs: 30_000,
     redact,
   });
-  await runCommand('git', ['commit', '-m', `${botName}: ${jobId}`], {
-    cwd: repoPath,
+  const commitMessageDir = await mkdtemp(join(tmpdir(), 'sniptail-commit-message-'));
+  const commitMessageFile = join(commitMessageDir, 'message.txt');
+  await writeFile(commitMessageFile, commitMessage, { encoding: 'utf8', flag: 'wx' });
+  try {
+    await runCommand('git', ['commit', '--file', commitMessageFile], {
+      cwd: repoPath,
+      env,
+      logFilePath: logFile,
+      timeoutMs: 30_000,
+      redact,
+    });
+  } finally {
+    await rm(commitMessageDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+  const commitSha = await resolveGitRef(repoPath, 'HEAD', env, logFile, redact);
+  if (!commitSha) {
+    throw new Error(`Unable to resolve HEAD after commit in ${repoPath}`);
+  }
+  return commitSha;
+}
+
+export async function commitAndPushLineage(
+  options: CommitAndPushLineageOptions,
+): Promise<CommitAndPushLineageResult> {
+  const {
+    repoPath,
+    commitMessage,
     env,
-    logFilePath: logFile,
-    timeoutMs: 30_000,
+    logFile,
     redact,
-  });
-  await runCommand('git', ['push', 'origin', branch], {
-    cwd: repoPath,
+    targetBranch,
+    worktreeBranch,
+    expectedRemoteSha,
+  } = options;
+
+  const initialCommitSha = await commitOnHead(repoPath, commitMessage, env, logFile, redact);
+  if (!initialCommitSha) {
+    return { committed: false, rebased: false, targetBranch };
+  }
+
+  if (!expectedRemoteSha && worktreeBranch && worktreeBranch === targetBranch) {
+    await runCommand('git', ['push', 'origin', targetBranch], {
+      cwd: repoPath,
+      env,
+      logFilePath: logFile,
+      timeoutMs: 60_000,
+      redact,
+    });
+    return {
+      committed: true,
+      rebased: false,
+      targetBranch,
+      commitSha: initialCommitSha,
+      pushedSha: initialCommitSha,
+    };
+  }
+
+  const remoteTip = await fetchRemoteBranchTip(repoPath, targetBranch, env, logFile, redact);
+  if (!remoteTip) {
+    throw new Error(`Origin branch missing for lineage update: ${targetBranch}`);
+  }
+  if (!expectedRemoteSha) {
+    throw new Error(`Missing expected remote SHA for lineage branch ${targetBranch}`);
+  }
+
+  let leaseSha = expectedRemoteSha;
+  let rebased = false;
+
+  if (remoteTip !== expectedRemoteSha) {
+    const rebaseResult = await runCommand(
+      'git',
+      ['rebase', `refs/remotes/origin/${targetBranch}`],
+      {
+        cwd: repoPath,
+        env,
+        logFilePath: logFile,
+        timeoutMs: 60_000,
+        redact,
+        allowFailure: true,
+      },
+    );
+    if ((rebaseResult.exitCode ?? 1) !== 0) {
+      await runCommand('git', ['rebase', '--abort'], {
+        cwd: repoPath,
+        env,
+        logFilePath: logFile,
+        timeoutMs: 30_000,
+        redact,
+        allowFailure: true,
+      });
+      throw new Error(
+        `Lineage branch moved and automatic rebase failed for ${targetBranch}. Expected ${expectedRemoteSha}, observed ${remoteTip}.`,
+      );
+    }
+    const remoteTipAfterRebase = await fetchRemoteBranchTip(
+      repoPath,
+      targetBranch,
+      env,
+      logFile,
+      redact,
+    );
+    if (!remoteTipAfterRebase) {
+      throw new Error(`Origin branch missing after rebase for lineage update: ${targetBranch}`);
+    }
+    if (remoteTipAfterRebase !== remoteTip) {
+      throw new Error(
+        `Lineage branch moved again during retry for ${targetBranch}. Expected ${remoteTip}, observed ${remoteTipAfterRebase}.`,
+      );
+    }
+    leaseSha = remoteTip;
+    rebased = true;
+  }
+
+  await runCommand(
+    'git',
+    ['push', `--force-with-lease=${targetBranch}:${leaseSha}`, 'origin', `HEAD:${targetBranch}`],
+    {
+      cwd: repoPath,
+      env,
+      logFilePath: logFile,
+      timeoutMs: 60_000,
+      redact,
+    },
+  );
+  const pushedSha = await resolveGitRef(repoPath, 'HEAD', env, logFile, redact);
+  if (!pushedSha) {
+    throw new Error(`Unable to resolve HEAD after pushing lineage branch ${targetBranch}`);
+  }
+
+  return {
+    committed: true,
+    rebased,
+    targetBranch,
+    commitSha: initialCommitSha,
+    pushedSha,
+  };
+}
+
+export async function commitAndPush(
+  repoPath: string,
+  branch: string,
+  commitMessage: string,
+  env: NodeJS.ProcessEnv,
+  logFile: string,
+  redact: Array<string | RegExp>,
+): Promise<boolean> {
+  const result = await commitAndPushLineage({
+    repoPath,
+    commitMessage,
     env,
-    logFilePath: logFile,
-    timeoutMs: 60_000,
+    logFile,
     redact,
+    targetBranch: branch,
+    worktreeBranch: branch,
   });
-  return true;
+  return result.committed;
 }

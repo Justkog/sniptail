@@ -1,13 +1,12 @@
 import type { BotConfig } from '@sniptail/core/config/config.js';
 
-const worktreeBranchPrefix = 'sniptail';
-
 export type WorktreeCommandsTarget =
   | {
       mode: 'branch';
       jobId: string;
       repoKeys: string[];
       branchByRepo?: Record<string, string>;
+      originBranchByRepo?: Record<string, string>;
     }
   | {
       mode: 'base';
@@ -25,7 +24,7 @@ export function buildWorktreeCommandsText(config: BotConfig, target: WorktreeCom
   for (const repoKey of target.repoKeys) {
     const ref =
       target.mode === 'branch'
-        ? (target.branchByRepo?.[repoKey] ?? `${worktreeBranchPrefix}/${target.jobId}`)
+        ? (target.branchByRepo?.[repoKey] ?? target.originBranchByRepo?.[repoKey])
         : target.baseRef;
     const repoConfig = config.repoAllowlist[repoKey];
     const cloneUrl = repoConfig?.localPath ?? repoConfig?.sshUrl ?? '<repo-url>';
@@ -34,6 +33,10 @@ export function buildWorktreeCommandsText(config: BotConfig, target: WorktreeCom
     lines.push(`*${repoKey}*`);
     if (!repoConfig) {
       lines.push(`Repo config not found for ${repoKey}.`);
+    }
+    if (!ref) {
+      lines.push('No published branch recorded for this repo.');
+      continue;
     }
     lines.push('Already cloned:');
     lines.push('```');

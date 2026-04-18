@@ -25,6 +25,7 @@ type SlackFileInfo = {
   mimetype?: string;
   filetype?: string;
   size?: number;
+  permalink?: string;
   url_private?: string;
   url_private_download?: string;
 };
@@ -248,9 +249,85 @@ export async function loadSlackMentionContextFiles(input: {
   });
 }
 
-async function debugProbeChannelAccess(app: App, channelId: string): Promise<void> {
+function escapeSlackMrkdwn(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function formatContextFileSize(byteSize: number): string {
+  if (byteSize < 1024) {
+    return `${byteSize} B`;
+  }
+  return `${Math.round(byteSize / 1024)} KiB`;
+}
+
+async function buildSlackContextBlocks(
+  client: App['client'],
+  contextFiles: JobContextFile[],
+): Promise<Record<string, unknown>[]> {
+  const blocks: Record<string, unknown>[] = [];
+  const linkedFiles: string[] = [];
+
+  for (const contextFile of contextFiles) {
+    const sourceFileId =
+      contextFile.source?.provider === 'slack' ? contextFile.source.externalId.trim() : '';
+    let permalink: string | undefined;
+
+    if (sourceFileId) {
+      try {
+        const file = await fetchSlackFileInfo(client, sourceFileId);
+        permalink = file.permalink?.trim() || undefined;
+      } catch (err) {
+        logger.warn(
+          { err, fileId: sourceFileId, fileName: contextFile.originalName },
+          'Failed to resolve Slack context file metadata for message rendering',
+        );
+      }
+    }
+
+    if (contextFile.mediaType.startsWith('image/') && sourceFileId) {
+      blocks.push({
+        type: 'image',
+        slack_file: { id: sourceFileId },
+        alt_text: contextFile.originalName,
+        title: {
+          type: 'plain_text',
+          text: contextFile.originalName.slice(0, 2000),
+        },
+      });
+      continue;
+    }
+
+    const renderedName = escapeSlackMrkdwn(contextFile.originalName);
+    const renderedDetails = escapeSlackMrkdwn(
+      `${contextFile.mediaType}, ${formatContextFileSize(contextFile.byteSize)}`,
+    );
+    linkedFiles.push(
+      permalink
+        ? `- <${permalink}|${renderedName}> (${renderedDetails})`
+        : `- ${renderedName} (${renderedDetails})`,
+    );
+  }
+
+  if (linkedFiles.length) {
+    blocks.unshift({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Context files*\n${linkedFiles.join('\n')}`,
+      },
+    });
+  }
+
+  return blocks;
+}
+
+function resolveSlackClient(input: App | App['client']): App['client'] {
+  return 'client' in input ? input.client : input;
+}
+
+async function debugProbeChannelAccess(client: App['client'], channelId: string): Promise<void> {
   try {
-    const response = await app.client.conversations.info({ channel: channelId });
+    const response = await client.conversations.info({ channel: channelId });
     debugSlack(
       {
         api: 'conversations.info',
@@ -277,19 +354,41 @@ async function debugProbeChannelAccess(app: App, channelId: string): Promise<voi
 }
 
 export async function postMessage(
-  app: App,
+  app: App | App['client'],
   options: {
     channel: string;
     text: string;
     threadTs?: string;
     blocks?: unknown[];
+    contextFiles?: JobContextFile[];
   },
 ): Promise<ChatPostMessageResponse> {
+  const client = resolveSlackClient(app);
+  const contextBlocks = options.contextFiles?.length
+    ? await buildSlackContextBlocks(client, options.contextFiles)
+    : [];
+  const blocks =
+    options.blocks && contextBlocks.length
+      ? [...options.blocks, ...contextBlocks]
+      : options.blocks
+        ? options.blocks
+        : contextBlocks.length
+          ? [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: options.text,
+                },
+              },
+              ...contextBlocks,
+            ]
+          : undefined;
   const payload = {
     channel: options.channel,
     text: options.text,
     ...(options.threadTs && { thread_ts: options.threadTs }),
-    ...(options.blocks && { blocks: options.blocks }),
+    ...(blocks && { blocks }),
   };
 
   if (isDebugNamespaceEnabled('slack')) {
@@ -298,7 +397,7 @@ export async function postMessage(
         api: 'chat.postMessage',
         channel: options.channel,
         threadTs: options.threadTs,
-        hasBlocks: Boolean(options.blocks?.length),
+        hasBlocks: Boolean(blocks?.length),
         textLength: options.text.length,
       },
       'Slack API request',
@@ -306,7 +405,7 @@ export async function postMessage(
   }
 
   try {
-    const response = await app.client.chat.postMessage(payload);
+    const response = await client.chat.postMessage(payload);
     if (isDebugNamespaceEnabled('slack')) {
       debugSlack(
         {
@@ -382,7 +481,7 @@ export async function postEphemeral(
     return response;
   } catch (err) {
     if (isDebugNamespaceEnabled('slack') && isChannelNotFoundError(err)) {
-      await debugProbeChannelAccess(app, options.channel);
+      await debugProbeChannelAccess(resolveSlackClient(app), options.channel);
     }
     debugSlack(
       {

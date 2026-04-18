@@ -1,4 +1,6 @@
 import type { SlackHandlerContext } from '../context.js';
+import { loadJobRecord } from '@sniptail/core/jobs/registry.js';
+import { logger } from '@sniptail/core/logger.js';
 import { buildAskModal } from '../../modals.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -45,6 +47,30 @@ export function registerAskFromJobAction({
     }
 
     await refreshRepoAllowlist(config);
+    const record = await loadJobRecord(jobId).catch((err) => {
+      logger.warn({ err, jobId }, 'Failed to load job record for ask from job');
+      return undefined;
+    });
+    const repoKeys = record?.job?.repoKeys ?? [];
+    if (!repoKeys.length) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `Unable to open ask modal for job ${jobId}.`,
+      });
+      return;
+    }
+
+    const unknownRepos = repoKeys.filter((key) => !config.repoAllowlist[key]);
+    if (unknownRepos.length) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `Unknown repo keys: ${unknownRepos.join(', ')}. Update the allowlist and try again.`,
+      });
+      return;
+    }
+
     await client.views.open({
       trigger_id: triggerId,
       view: buildAskModal(
@@ -57,6 +83,7 @@ export function registerAskFromJobAction({
           threadId: threadId ?? undefined,
         }),
         jobId,
+        repoKeys,
       ),
     });
   });

@@ -23,8 +23,9 @@ export async function runAgentJob(options: {
   env: NodeJS.ProcessEnv;
   registry: JobRegistry;
   currentTurnContextFiles?: MaterializedJobContextFile[];
+  promptOverride?: string;
 }): Promise<RunAgentResult> {
-  const { job, config, paths, env, registry, currentTurnContextFiles } = options;
+  const { job, config, paths, env, registry, currentTurnContextFiles, promptOverride } = options;
 
   const agentId = job.agent ?? config.primaryAgent;
   const descriptor = AGENT_DESCRIPTORS[agentId];
@@ -59,6 +60,7 @@ export async function runAgentJob(options: {
     {
       botName: config.botName,
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
+      ...(promptOverride ? { promptOverride } : {}),
       ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
       ...(modelOverride ? { model: modelOverride.model } : {}),
       ...(modelOverride?.modelReasoningEffort

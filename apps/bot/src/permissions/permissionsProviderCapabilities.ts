@@ -6,7 +6,10 @@ export type PermissionsProviderCapabilities = {
   subjectMentions: boolean;
 };
 
-const KNOWN_PROVIDER_CAPABILITIES: Record<'slack' | 'discord', PermissionsProviderCapabilities> = {
+const KNOWN_PROVIDER_CAPABILITIES: Record<
+  'slack' | 'discord' | 'telegram',
+  PermissionsProviderCapabilities
+> = {
   slack: {
     liveGroupResolution: true,
     approvalButtons: true,
@@ -17,13 +20,18 @@ const KNOWN_PROVIDER_CAPABILITIES: Record<'slack' | 'discord', PermissionsProvid
     approvalButtons: true,
     subjectMentions: true,
   },
+  telegram: {
+    liveGroupResolution: false,
+    approvalButtons: true,
+    subjectMentions: false,
+  },
 };
 
 export function resolvePermissionsProviderCapabilities(
   provider: ChannelProvider,
 ): PermissionsProviderCapabilities {
   return (
-    KNOWN_PROVIDER_CAPABILITIES[provider as 'slack' | 'discord'] ?? {
+    KNOWN_PROVIDER_CAPABILITIES[provider as 'slack' | 'discord' | 'telegram'] ?? {
       liveGroupResolution: false,
       approvalButtons: false,
       subjectMentions: false,

@@ -91,16 +91,15 @@ describe('Discord approval guard flow', () => {
     permissions.assignApprovalContextIfPending.mockResolvedValue(true);
 
     const startThread = vi.fn().mockResolvedValue({ id: 'thread-created' });
-    const send = vi.fn().mockResolvedValue({ startThread });
     const fetch = vi.fn().mockResolvedValue({
       isTextBased: () => true,
-      send,
     });
     const client = {
       channels: {
         fetch,
       },
     };
+    vi.mocked(postDiscordMessage).mockResolvedValueOnce({ startThread } as never);
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
@@ -127,9 +126,14 @@ describe('Discord approval guard flow', () => {
 
     expect(authorized).toBe(false);
     expect(isSendableTextChannel).toHaveBeenCalled();
-    expect(send).toHaveBeenCalledWith({
-      content: '**Job request**\n```\nClear jobs before 2025-01-01T00:00:00.000Z\n```',
-    });
+    expect(postDiscordMessage).toHaveBeenNthCalledWith(
+      1,
+      client,
+      expect.objectContaining({
+        channelId: 'D1',
+        text: '**Job request**\n```\nClear jobs before 2025-01-01T00:00:00.000Z\n```',
+      }),
+    );
     const threadOptions = startThread.mock.calls[0]?.[0] as { name?: string } | undefined;
     expect(threadOptions?.name).toBe('orchid-bot approval approval-2');
     expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
@@ -137,8 +141,9 @@ describe('Discord approval guard flow', () => {
       channelId: 'thread-created',
       threadId: 'thread-created',
     });
-    expect(postDiscordMessage).toHaveBeenCalledTimes(1);
-    expect(postDiscordMessage).toHaveBeenCalledWith(
+    expect(postDiscordMessage).toHaveBeenCalledTimes(2);
+    expect(postDiscordMessage).toHaveBeenNthCalledWith(
+      2,
       client,
       expect.objectContaining({
         channelId: 'D1',

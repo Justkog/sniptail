@@ -1,15 +1,14 @@
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
-import { saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
+import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobContextFile, JobSpec } from '@sniptail/core/types/job.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { rm } from 'node:fs/promises';
 import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage, uploadFile } from '../../helpers.js';
-import { createJobId, persistUploadSpec, truncateRequestSummary } from '../../../lib/jobs.js';
-import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
+import { persistUploadSpec, truncateRequestSummary } from '../../../lib/jobs.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
+import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 
 export function registerAskSubmitView({
   app,
@@ -30,9 +29,7 @@ export function registerAskSubmitView({
         })
       : undefined;
     const repoKeys = state.repos?.repo_keys?.selected_options?.map((opt) => opt.value) ?? [];
-    const gitRef =
-      state.branch?.git_ref?.value?.trim() ||
-      resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+    const gitRef = state.branch?.git_ref?.value?.trim() || undefined;
     const requestText = state.question?.request_text?.value ?? '';
     const resumeFromJobId = state.resume?.resume_from?.value?.trim() || undefined;
     let contextFiles: JobContextFile[] | undefined;
@@ -53,80 +50,85 @@ export function registerAskSubmitView({
       return;
     }
 
-    if (!repoKeys.length) {
-      await postMessage(app, {
-        channel: metadata?.channelId ?? body.user.id,
-        text: `Please select at least one repo for ${slackIds.commands.ask}.`,
-      });
-      return;
-    }
-
     const threadContext =
       metadata?.threadId && metadata?.channelId
         ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadId)
         : undefined;
-    const job: JobSpec = {
-      jobId: createJobId('ask'),
-      type: 'ASK',
-      repoKeys,
-      primaryRepoKey: repoKeys[0]!,
-      gitRef,
-      requestText,
-      agent: config.primaryAgent,
-      channel: {
-        provider: 'slack',
-        channelId: metadata?.channelId ?? body.user.id,
-        userId: metadata?.userId ?? body.user.id,
-        ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
-      },
-      ...(threadContext ? { threadContext } : {}),
-      ...(contextFiles ? { contextFiles } : {}),
-      ...(resumeFromJobId ? { resumeFromJobId } : {}),
-    };
 
-    const authorized = await authorizeSlackOperationAndRespond({
-      permissions,
-      client: app.client,
-      slackIds,
-      action: 'jobs.ask',
-      summary: `Queue ask job ${job.jobId}`,
-      operation: {
-        kind: 'enqueueJob',
-        job,
+    const result = await submitNormalizedJobRequest({
+      config,
+      queue,
+      input: {
+        type: 'ASK',
+        repoKeys,
+        ...(gitRef ? { gitRef } : {}),
+        requestText,
+        channel: {
+          provider: 'slack',
+          channelId: metadata?.channelId ?? body.user.id,
+          userId: metadata?.userId ?? body.user.id,
+          ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        },
+        ...(threadContext ? { threadContext } : {}),
+        ...(contextFiles ? { contextFiles } : {}),
+        ...(resumeFromJobId ? { resumeFromJobId } : {}),
       },
-      actor: {
-        userId: job.channel.userId ?? body.user.id,
-        channelId: job.channel.channelId,
-        ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
-      },
-      onDeny: async () => {
-        await postMessage(app, {
-          channel: metadata?.channelId ?? body.user.id,
-          text: 'You are not authorized to run ask jobs.',
-        });
-      },
+      authorize: async (job) =>
+        authorizeSlackOperationAndRespond({
+          permissions,
+          client: app.client,
+          slackIds,
+          action: 'jobs.ask',
+          summary: `Queue ask job ${job.jobId}`,
+          operation: {
+            kind: 'enqueueJob',
+            job,
+          },
+          actor: {
+            userId: job.channel.userId ?? body.user.id,
+            channelId: job.channel.channelId,
+            ...(job.channel.threadId ? { threadId: job.channel.threadId } : {}),
+          },
+          onDeny: async () => {
+            await postMessage(app, {
+              channel: metadata?.channelId ?? body.user.id,
+              text: 'You are not authorized to run ask jobs.',
+            });
+          },
+        }),
     });
-    if (!authorized) {
-      return;
-    }
 
-    try {
-      await saveJobQueued(job);
-    } catch (err) {
-      logger.error({ err, jobId: job.jobId }, 'Failed to persist job');
+    if (result.status === 'invalid') {
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        text: `I couldn't persist job ${job.jobId}. Please try again.`,
+        text: result.message,
       });
       return;
     }
 
-    await enqueueJob(queue, job);
+    if (result.status === 'stopped') {
+      return;
+    }
+
+    if (result.status === 'persist_failed') {
+      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist job');
+      await postMessage(app, {
+        channel: metadata?.channelId ?? body.user.id,
+        text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
+      });
+      return;
+    }
+
+    const job = result.job;
+    if (!job) {
+      return;
+    }
 
     const requestSummary = truncateRequestSummary(requestText);
     const ackResponse = await postMessage(app, {
       channel: metadata?.channelId ?? body.user.id,
       text: `*Job request: ${job.jobId}*\n\`\`\`\n${requestSummary}\n\`\`\``,
+      ...(job.contextFiles?.length ? { contextFiles: job.contextFiles } : {}),
       ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
 

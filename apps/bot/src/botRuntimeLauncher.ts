@@ -8,6 +8,7 @@ import type {
 import { hostname } from 'node:os';
 import { createSlackApp } from './slack/app.js';
 import { startDiscordBot } from './discord/app.js';
+import { startTelegramBot } from './telegram/app.js';
 import { startBotEventWorker } from './botEventWorker.js';
 
 export type BotRuntimeHandle = {
@@ -47,7 +48,7 @@ export async function startBotRuntime(
   );
 
   const unknownChannels = config.enabledChannels.filter(
-    (provider) => provider !== 'slack' && provider !== 'discord',
+    (provider) => provider !== 'slack' && provider !== 'discord' && provider !== 'telegram',
   );
   if (unknownChannels.length) {
     logger.warn(
@@ -58,6 +59,7 @@ export async function startBotRuntime(
 
   let slackApp: Awaited<ReturnType<typeof createSlackApp>> | undefined;
   let discordClient: Awaited<ReturnType<typeof startDiscordBot>> | undefined;
+  let telegramBot: Awaited<ReturnType<typeof startTelegramBot>> | undefined;
   let botEventConsumer: QueueConsumerHandle | undefined;
 
   try {
@@ -80,7 +82,15 @@ export async function startBotRuntime(
       );
     }
 
-    if (!slackApp && !discordClient) {
+    if (config.telegramEnabled) {
+      telegramBot = await startTelegramBot(
+        queueRuntime.queues.jobs,
+        queueRuntime.queues.bootstrap,
+        queueRuntime.queues.workerEvents,
+      );
+    }
+
+    if (!slackApp && !discordClient && !telegramBot) {
       throw new Error(
         `No supported bot providers enabled. Enabled channels: ${config.enabledChannels.join(', ') || '(none)'}`,
       );
@@ -90,6 +100,7 @@ export async function startBotRuntime(
       queueRuntime,
       ...(slackApp ? { slackApp } : {}),
       ...(discordClient ? { discordClient } : {}),
+      ...(telegramBot ? { telegramBot } : {}),
     });
   } catch (err) {
     if (botEventConsumer) {
@@ -102,6 +113,9 @@ export async function startBotRuntime(
       discordClient.destroy().catch((destroyErr) => {
         logger.error({ err: destroyErr }, 'Error while destroying Discord client during shutdown');
       });
+    }
+    if (telegramBot) {
+      await telegramBot.stop();
     }
     if (closeQueueRuntimeOnShutdown) {
       await queueRuntime.close();
@@ -124,6 +138,9 @@ export async function startBotRuntime(
             'Error while destroying Discord client during shutdown',
           );
         });
+      }
+      if (telegramBot) {
+        await telegramBot.stop();
       }
       if (closeQueueRuntimeOnShutdown) {
         await queueRuntime.close();

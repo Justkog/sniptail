@@ -103,6 +103,105 @@ vi.mock('@sniptail/core/repos/catalog.js', () => ({
   ),
 }));
 
+vi.mock('@sniptail/core/repos/providers.js', () => ({
+  createRepoReviewRequest: vi.fn(() =>
+    Promise.resolve({
+      url: 'https://example.com/review/1',
+      iid: 1,
+    }),
+  ),
+  inferRepoProvider: vi.fn(() => 'gitlab'),
+}));
+
+vi.mock('@sniptail/core/repos/runActions.js', () => ({
+  normalizeRunActionId: vi.fn((value: string) => value.trim()),
+  normalizeRunActionParams: vi.fn((params: unknown) => ({
+    normalized: (params as Record<string, unknown> | undefined) ?? {},
+    sensitiveValues: [],
+  })),
+  resolveRunActionMetadataForRepos: vi.fn(() => ({
+    parameters: [],
+  })),
+}));
+
+vi.mock('../src/channels/workerChannelAdapters.js', () => ({
+  resolveWorkerChannelAdapter: vi.fn(() => ({
+    buildPostMessageEvent: (ref: { channelId: string; threadId?: string }, text: string) => ({
+      schemaVersion: 1,
+      provider: 'slack',
+      type: 'message.post',
+      payload: {
+        channelId: ref.channelId,
+        text,
+        ...(ref.threadId ? { threadId: ref.threadId } : {}),
+      },
+    }),
+    buildUploadFileEvent: (
+      ref: { channelId: string; threadId?: string },
+      file: { title: string; fileContent?: string },
+    ) => ({
+      schemaVersion: 1,
+      provider: 'slack',
+      type: 'file.upload',
+      payload: {
+        channelId: ref.channelId,
+        title: file.title,
+        ...(file.fileContent ? { fileContent: file.fileContent } : {}),
+        ...(ref.threadId ? { threadId: ref.threadId } : {}),
+      },
+    }),
+    renderCompletionMessage: ({
+      text,
+      openQuestions,
+    }: {
+      text: string;
+      openQuestions?: string[];
+    }) => ({
+      text: openQuestions?.length ? `${text}\n${openQuestions.join('\n')}` : text,
+      options: undefined,
+    }),
+  })),
+}));
+
+vi.mock('../channels/workerChannelAdapters.js', () => ({
+  resolveWorkerChannelAdapter: vi.fn(() => ({
+    buildPostMessageEvent: (ref: { channelId: string; threadId?: string }, text: string) => ({
+      schemaVersion: 1,
+      provider: 'slack',
+      type: 'message.post',
+      payload: {
+        channelId: ref.channelId,
+        text,
+        ...(ref.threadId ? { threadId: ref.threadId } : {}),
+      },
+    }),
+    buildUploadFileEvent: (
+      ref: { channelId: string; threadId?: string },
+      file: { title: string; fileContent?: string },
+    ) => ({
+      schemaVersion: 1,
+      provider: 'slack',
+      type: 'file.upload',
+      payload: {
+        channelId: ref.channelId,
+        title: file.title,
+        ...(file.fileContent ? { fileContent: file.fileContent } : {}),
+        ...(ref.threadId ? { threadId: ref.threadId } : {}),
+      },
+    }),
+    renderCompletionMessage: ({
+      text,
+      openQuestions,
+    }: {
+      text: string;
+      openQuestions?: string[];
+    }) => ({
+      text: openQuestions?.length ? `${text}\n${openQuestions.join('\n')}` : text,
+      options: undefined,
+    }),
+  })),
+}));
+
 vi.mock('@sniptail/core/runner/commandRunner.js', () => ({
   CommandError: class MockCommandError extends Error {
     readonly result: unknown;
@@ -163,8 +262,33 @@ vi.mock('@sniptail/core/agents/agentRegistry.js', () => {
   };
 });
 
+vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
+  buildPromptForJobWithLineageWarnings: vi.fn(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    (_job: unknown, _botName: string, _warnings: unknown[]) => 'prompt with lineage warning',
+  ),
+}));
+
+vi.mock('@sniptail/core/codex/prompts.js', () => ({
+  buildImplementArtifactsPrompt: vi.fn(() => 'implement artifacts prompt'),
+}));
+
+vi.mock('@sniptail/core/utils/slack.js', () => ({
+  toSlackCommandPrefix: vi.fn(() => 'sniptail'),
+}));
+
+vi.mock('@sniptail/core/utils/text.js', () => ({
+  clampText: vi.fn((value: string) => value),
+  firstContentLine: vi.fn((value: string) => value.split('\n').find(Boolean) ?? ''),
+  wrapText: vi.fn((value: string) => value),
+}));
+
 vi.mock('@sniptail/core/git/mirror.js', () => ({
   ensureClone: vi.fn(),
+}));
+
+vi.mock('@sniptail/core/git/branch.js', () => ({
+  toGitBranchPrefix: vi.fn(() => 'sniptail'),
 }));
 
 vi.mock('@sniptail/core/git/worktree.js', () => ({
@@ -174,7 +298,9 @@ vi.mock('@sniptail/core/git/worktree.js', () => ({
 
 vi.mock('@sniptail/core/git/jobOps.js', () => ({
   commitAndPush: vi.fn(),
+  commitAndPushLineage: vi.fn(),
   ensureCleanRepo: vi.fn(),
+  resolveGitRef: vi.fn(),
   runNamedRunContractDetailed: vi.fn(),
   runSetupContract: vi.fn(),
   runChecks: vi.fn(),
@@ -223,15 +349,18 @@ import { constants } from 'node:fs';
 import { appendFile, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
 import {
-  commitAndPush,
+  commitAndPushLineage,
+  resolveGitRef,
   runChecks,
   runNamedRunContractDetailed,
 } from '@sniptail/core/git/jobOps.js';
 import { ensureClone } from '@sniptail/core/git/mirror.js';
+import { addWorktree } from '@sniptail/core/git/worktree.js';
 import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import { enqueueBotEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { loadRepoAllowlistFromCatalog } from '@sniptail/core/repos/catalog.js';
+import { createRepoReviewRequest } from '@sniptail/core/repos/providers.js';
 import type { RunOptions } from '@sniptail/core/runner/commandRunner.js';
 import { CommandError, runCommand } from '@sniptail/core/runner/commandRunner.js';
 import { buildCompletionBlocks } from '@sniptail/core/slack/blocks.js';
@@ -321,6 +450,7 @@ beforeEach(() => {
   vi.mocked(copyFile).mockResolvedValue(undefined);
   vi.mocked(mkdir).mockResolvedValue(undefined);
   vi.mocked(readdir).mockResolvedValue([]);
+  vi.mocked(resolveGitRef).mockResolvedValue('abc123');
   vi.mocked(writeFile).mockResolvedValue(undefined);
 });
 
@@ -926,6 +1056,658 @@ describe('worker/pipeline runJob', () => {
     );
   });
 
+  it('creates resumed coding jobs on detached HEAD and appends lineage drift prompt warnings', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const readFileMock = vi.mocked(readFile);
+    const addWorktreeMock = vi.mocked(addWorktree);
+    const resolveGitRefMock = vi.mocked(resolveGitRef);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-explore-resumed',
+      type: 'EXPLORE' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Explore options',
+      resumeFromJobId: 'job-1',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({
+      job: { jobId: 'job-1' },
+      originBranchByRepo: {
+        'repo-1': 'sniptail/job-root',
+      },
+      lineageTipShaByRepo: {
+        'repo-1': 'oldsha',
+      },
+    } as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock.mockResolvedValue({
+      threadId: 'thread-explore-resumed',
+      finalResponse: 'Explore result',
+    });
+    resolveGitRefMock.mockResolvedValue('newsha');
+    readFileMock.mockResolvedValue('# Explore report\n\nOption B\n');
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        run: '/sniptail-run',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        runFromJob: 'run-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        runSubmit: 'run-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        runActionSelect: 'run-action-select',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result.status).toBe('ok');
+    expect(addWorktreeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clonePath: '/tmp/sniptail/repo-cache/repo-1.git',
+        worktreePath: '/tmp/sniptail/job-root/job-explore-resumed/repos/repo-1',
+        baseRef: 'newsha',
+      }),
+    );
+    expect(addWorktreeMock.mock.calls[0]?.[0]).not.toHaveProperty('branch');
+    expect(updateJobRecordMock).toHaveBeenCalledWith(
+      'job-explore-resumed',
+      expect.objectContaining({
+        originBranchByRepo: { 'repo-1': 'sniptail/job-root' },
+        lineageBaseShaByRepo: { 'repo-1': 'newsha' },
+        lineageTipShaByRepo: { 'repo-1': 'newsha' },
+        lineageWarningByRepo: {
+          'repo-1': 'Lineage branch sniptail/job-root moved from oldsha to newsha.',
+        },
+      }),
+    );
+    expect(runAgentMock).toHaveBeenCalledWith(
+      job,
+      '/tmp/sniptail/job-root/job-explore-resumed',
+      expect.any(Object),
+      expect.objectContaining({
+        promptOverride: 'prompt with lineage warning',
+      }),
+    );
+  });
+
+  it('forks resumed implement jobs from local-only lineage branches onto a fresh branch', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const readFileMock = vi.mocked(readFile);
+    const addWorktreeMock = vi.mocked(addWorktree);
+    const resolveGitRefMock = vi.mocked(resolveGitRef);
+    const commitAndPushMock = vi.mocked(commitAndPushLineage);
+    const createRepoReviewRequestMock = vi.mocked(createRepoReviewRequest);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-implement-resumed',
+      type: 'IMPLEMENT' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Implement feature',
+      resumeFromJobId: 'job-1',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({
+      job: { jobId: 'job-1' },
+      originBranchByRepo: {
+        'repo-1': 'sniptail/explore-job',
+      },
+      lineageBaseShaByRepo: {
+        'repo-1': 'baseparent',
+      },
+      lineageTipShaByRepo: {
+        'repo-1': 'basesha',
+      },
+    } as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-resumed',
+        finalResponse: 'Implementation done',
+      })
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-artifacts',
+        finalResponse: 'Artifacts done',
+      });
+    resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
+      if (ref === 'refs/remotes/origin/sniptail/explore-job') {
+        return undefined;
+      }
+      if (ref === 'refs/heads/sniptail/explore-job') {
+        return 'cachedsha';
+      }
+      return 'abc123';
+    });
+    readFileMock.mockResolvedValueOnce('# Summary\n\nImplemented feature\n').mockResolvedValueOnce(
+      JSON.stringify({
+        mrTitle: 'Updated MR',
+        commitTitle: 'feat: implement feature',
+        commitBody: 'implemented feature',
+      }),
+    );
+    commitAndPushMock.mockResolvedValue({
+      committed: true,
+      rebased: false,
+      targetBranch: 'sniptail/job-implement-resumed',
+      commitSha: 'commitsha',
+      pushedSha: 'pushedsha',
+    });
+    createRepoReviewRequestMock.mockResolvedValue({
+      url: 'https://example.com/review/99',
+      iid: 99,
+      reused: false,
+    });
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        run: '/sniptail-run',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        runFromJob: 'run-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        runSubmit: 'run-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        runActionSelect: 'run-action-select',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result.status).toBe('ok');
+    expect(addWorktreeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clonePath: '/tmp/sniptail/repo-cache/repo-1.git',
+        worktreePath: '/tmp/sniptail/job-root/job-implement-resumed/repos/repo-1',
+        baseRef: 'cachedsha',
+        branch: 'sniptail/job-implement-resumed',
+      }),
+    );
+    expect(updateJobRecordMock).toHaveBeenCalledWith(
+      'job-implement-resumed',
+      expect.objectContaining({
+        branchByRepo: { 'repo-1': 'sniptail/job-implement-resumed' },
+        originBranchByRepo: { 'repo-1': 'sniptail/job-implement-resumed' },
+        lineageBaseShaByRepo: { 'repo-1': 'cachedsha' },
+        lineageTipShaByRepo: { 'repo-1': 'cachedsha' },
+        lineageWarningByRepo: {
+          'repo-1':
+            'Resumed from local-only lineage branch sniptail/explore-job; publishing to new branch sniptail/job-implement-resumed from cached SHA cachedsha.',
+        },
+      }),
+    );
+    expect(runAgentMock).toHaveBeenNthCalledWith(
+      1,
+      job,
+      '/tmp/sniptail/job-root/job-implement-resumed',
+      expect.any(Object),
+      expect.objectContaining({
+        promptOverride: 'prompt with lineage warning',
+      }),
+    );
+
+    const commitCall = commitAndPushMock.mock.calls[0]?.[0];
+    expect(commitCall).toEqual(
+      expect.objectContaining({
+        targetBranch: 'sniptail/job-implement-resumed',
+        worktreeBranch: 'sniptail/job-implement-resumed',
+      }),
+    );
+    expect(commitCall).not.toHaveProperty('expectedRemoteSha');
+
+    const reviewRequestCall = createRepoReviewRequestMock.mock.calls[0]?.[0] as
+      | { input: { head: string; base: string } }
+      | undefined;
+    expect(reviewRequestCall).toBeDefined();
+    if (!reviewRequestCall) {
+      throw new Error('Expected createRepoReviewRequest to be called.');
+    }
+    expect(reviewRequestCall.input.head).toBe('sniptail/job-implement-resumed');
+    expect(reviewRequestCall.input.base).toBe('main');
+  });
+
+  it('does not add a prompt warning for local-only fallback when the resumed branch had no local commits', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const readFileMock = vi.mocked(readFile);
+    const resolveGitRefMock = vi.mocked(resolveGitRef);
+    const commitAndPushMock = vi.mocked(commitAndPushLineage);
+    const createRepoReviewRequestMock = vi.mocked(createRepoReviewRequest);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-implement-resumed-no-warning',
+      type: 'IMPLEMENT' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Implement feature',
+      resumeFromJobId: 'job-1',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({
+      job: { jobId: 'job-1' },
+      originBranchByRepo: {
+        'repo-1': 'sniptail/explore-job',
+      },
+      lineageBaseShaByRepo: {
+        'repo-1': 'basesha',
+      },
+      lineageTipShaByRepo: {
+        'repo-1': 'basesha',
+      },
+    } as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-resumed',
+        finalResponse: 'Implementation done',
+      })
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-artifacts',
+        finalResponse: 'Artifacts done',
+      });
+    resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
+      if (ref === 'refs/remotes/origin/sniptail/explore-job') {
+        return undefined;
+      }
+      if (ref === 'refs/heads/sniptail/explore-job') {
+        return 'basesha';
+      }
+      return 'abc123';
+    });
+    readFileMock.mockResolvedValueOnce('# Summary\n\nImplemented feature\n').mockResolvedValueOnce(
+      JSON.stringify({
+        mrTitle: 'Updated MR',
+        commitTitle: 'feat: implement feature',
+        commitBody: 'implemented feature',
+      }),
+    );
+    commitAndPushMock.mockResolvedValue({
+      committed: true,
+      rebased: false,
+      targetBranch: 'sniptail/job-implement-resumed-no-warning',
+      commitSha: 'commitsha',
+      pushedSha: 'pushedsha',
+    });
+    createRepoReviewRequestMock.mockResolvedValue({
+      url: 'https://example.com/review/99',
+      iid: 99,
+      reused: false,
+    });
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        run: '/sniptail-run',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        runFromJob: 'run-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        runSubmit: 'run-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        runActionSelect: 'run-action-select',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result.status).toBe('ok');
+    const initialAgentOptions = runAgentMock.mock.calls[0]?.[3];
+    expect(initialAgentOptions).toBeDefined();
+    expect(initialAgentOptions).not.toHaveProperty('promptOverride');
+    expect(updateJobRecordMock).toHaveBeenCalledWith(
+      'job-implement-resumed-no-warning',
+      expect.objectContaining({
+        lineageWarningByRepo: {
+          'repo-1':
+            'Resumed from local-only lineage branch sniptail/explore-job; publishing to new branch sniptail/job-implement-resumed-no-warning from cached SHA basesha.',
+        },
+      }),
+    );
+  });
+
+  it('reuses an existing review request for resumed implement jobs', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const readFileMock = vi.mocked(readFile);
+    const commitAndPushMock = vi.mocked(commitAndPushLineage);
+    const createRepoReviewRequestMock = vi.mocked(createRepoReviewRequest);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-implement-resumed',
+      type: 'IMPLEMENT' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Implement feature',
+      resumeFromJobId: 'job-1',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({
+      job: { jobId: 'job-1' },
+      originBranchByRepo: {
+        'repo-1': 'sniptail/job-root',
+      },
+      lineageTipShaByRepo: {
+        'repo-1': 'basesha',
+      },
+    } as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-resumed',
+        finalResponse: 'Implementation done',
+      })
+      .mockResolvedValueOnce({
+        threadId: 'thread-implement-artifacts',
+        finalResponse: 'Artifacts done',
+      });
+    readFileMock.mockResolvedValueOnce('# Summary\n\nImplemented feature\n').mockResolvedValueOnce(
+      JSON.stringify({
+        mrTitle: 'Updated MR',
+        commitTitle: 'feat: implement feature',
+        commitBody: 'implemented feature',
+      }),
+    );
+    commitAndPushMock.mockResolvedValue({
+      committed: true,
+      rebased: false,
+      targetBranch: 'sniptail/job-root',
+      commitSha: 'commitsha',
+      pushedSha: 'pushedsha',
+    });
+    createRepoReviewRequestMock.mockResolvedValue({
+      url: 'https://example.com/review/99',
+      iid: 99,
+      reused: true,
+    });
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        run: '/sniptail-run',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        runFromJob: 'run-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        runSubmit: 'run-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        runActionSelect: 'run-action-select',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result.status).toBe('ok');
+    expect(result.mergeRequests).toEqual([
+      { repoKey: 'repo-1', url: 'https://example.com/review/99', iid: 99 },
+    ]);
+    expect(commitAndPushMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetBranch: 'sniptail/job-root',
+        expectedRemoteSha: 'abc123',
+      }),
+    );
+    const reviewRequestCall = createRepoReviewRequestMock.mock.calls[0]?.[0] as
+      | { input: { head: string; base: string } }
+      | undefined;
+    expect(reviewRequestCall).toBeDefined();
+    if (!reviewRequestCall) {
+      throw new Error('Expected createRepoReviewRequest to be called.');
+    }
+    expect(reviewRequestCall.input.head).toBe('sniptail/job-root');
+    expect(reviewRequestCall.input.base).toBe('main');
+    expect(getLatestSlackMessagePostText()).toContain('https://example.com/review/99');
+  });
+
+  it('fails resumed jobs when the lineage branch is missing both remotely and locally', async () => {
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const resolveGitRefMock = vi.mocked(resolveGitRef);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+    const buildSlackIdsMock = vi.mocked(buildSlackIds);
+    const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
+
+    const job = {
+      jobId: 'job-explore-missing-lineage',
+      type: 'EXPLORE' as const,
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Explore options',
+      resumeFromJobId: 'job-1',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({
+      job: { jobId: 'job-1' },
+      originBranchByRepo: {
+        'repo-1': 'sniptail/job-root',
+      },
+      lineageTipShaByRepo: {
+        'repo-1': 'basesha',
+      },
+    } as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    resolveGitRefMock.mockResolvedValue(undefined);
+    buildSlackIdsMock.mockReturnValue({
+      commandPrefix: 'sniptail',
+      commands: {
+        repoAdd: '/sniptail-repo-add',
+        repoRemove: '/sniptail-repo-remove',
+        ask: '/sniptail-ask',
+        explore: '/sniptail-explore',
+        plan: '/sniptail-plan',
+        implement: '/sniptail-implement',
+        run: '/sniptail-run',
+        bootstrap: '/sniptail-bootstrap',
+        clearBefore: '/sniptail-clear-before',
+        usage: '/sniptail-usage',
+      },
+      actions: {
+        repoAddSubmit: 'repo-add-submit',
+        repoRemoveSubmit: 'repo-remove-submit',
+        askFromJob: 'ask-from-job',
+        exploreFromJob: 'explore-from-job',
+        planFromJob: 'plan-from-job',
+        implementFromJob: 'implement-from-job',
+        runFromJob: 'run-from-job',
+        reviewFromJob: 'review-from-job',
+        worktreeCommands: 'worktree-commands',
+        clearJob: 'clear-job',
+        askSubmit: 'ask-submit',
+        exploreSubmit: 'explore-submit',
+        planSubmit: 'plan-submit',
+        implementSubmit: 'implement-submit',
+        runSubmit: 'run-submit',
+        bootstrapSubmit: 'bootstrap-submit',
+        runActionSelect: 'run-action-select',
+        answerQuestions: 'answer-questions',
+        answerQuestionsSubmit: 'answer-questions-submit',
+        approvalApprove: 'approval-approve',
+        approvalDeny: 'approval-deny',
+        approvalCancel: 'approval-cancel',
+      },
+    });
+    buildCompletionBlocksMock.mockReturnValue([]);
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    const botQueue = {} as QueuePublisher<BotEvent>;
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+
+    expect(result.status).toBe('failed');
+    expect(result.summary).toBe('Origin branch missing for repo repo-1: sniptail/job-root');
+    expect(runAgentMock).not.toHaveBeenCalled();
+    expect(updateJobRecordMock).toHaveBeenCalledWith('job-explore-missing-lineage', {
+      status: 'failed',
+      error: 'Origin branch missing for repo repo-1: sniptail/job-root',
+    });
+    expect(getLatestSlackMessagePostText()).toContain(
+      'I hit an issue with job job-explore-missing-lineage: Origin branch missing for repo repo-1: sniptail/job-root',
+    );
+  });
+
   it('runs a RUN job via repo contract and skips agent execution', async () => {
     const registry = createRegistryMock();
     const loadJobRecordMock = registry.loadJobRecord;
@@ -933,7 +1715,7 @@ describe('worker/pipeline runJob', () => {
     const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
     const runNamedRunContractDetailedMock = vi.mocked(runNamedRunContractDetailed);
     const runChecksMock = vi.mocked(runChecks);
-    const commitAndPushMock = vi.mocked(commitAndPush);
+    const commitAndPushMock = vi.mocked(commitAndPushLineage);
     const buildSlackIdsMock = vi.mocked(buildSlackIds);
     const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
     const enqueueBotEventMock = vi.mocked(enqueueBotEvent);
@@ -971,7 +1753,11 @@ describe('worker/pipeline runJob', () => {
       },
     });
     runChecksMock.mockResolvedValue(undefined);
-    commitAndPushMock.mockResolvedValue(false);
+    commitAndPushMock.mockResolvedValue({
+      committed: false,
+      rebased: false,
+      targetBranch: 'sniptail/job-run-contract',
+    });
     buildSlackIdsMock.mockReturnValue({
       commandPrefix: 'sniptail',
       commands: {
@@ -1064,7 +1850,7 @@ describe('worker/pipeline runJob', () => {
     const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
     const runNamedRunContractDetailedMock = vi.mocked(runNamedRunContractDetailed);
     const runChecksMock = vi.mocked(runChecks);
-    const commitAndPushMock = vi.mocked(commitAndPush);
+    const commitAndPushMock = vi.mocked(commitAndPushLineage);
     const runCommandMock = vi.mocked(runCommand);
     const buildSlackIdsMock = vi.mocked(buildSlackIds);
     const buildCompletionBlocksMock = vi.mocked(buildCompletionBlocks);
@@ -1087,7 +1873,11 @@ describe('worker/pipeline runJob', () => {
     updateJobRecordMock.mockResolvedValue({} as JobRecord);
     runNamedRunContractDetailedMock.mockResolvedValue({ executed: false });
     runChecksMock.mockResolvedValue(undefined);
-    commitAndPushMock.mockResolvedValue(false);
+    commitAndPushMock.mockResolvedValue({
+      committed: false,
+      rebased: false,
+      targetBranch: 'sniptail/job-run-implement',
+    });
     runCommandMock.mockResolvedValue({
       cmd: 'pnpm',
       args: ['docs:refresh'],

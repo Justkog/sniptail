@@ -1,11 +1,15 @@
 import { join } from 'node:path';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
+import { toGitBranchPrefix } from '@sniptail/core/git/branch.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
+import { buildPromptForJobWithLineageWarnings } from '@sniptail/core/agents/buildPrompt.js';
+import { buildImplementArtifactsPrompt } from '@sniptail/core/codex/prompts.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
+import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import { resolveWorkerChannelAdapter } from '../channels/workerChannelAdapters.js';
@@ -17,6 +21,7 @@ import {
   copyJobRootSeed,
   ensureJobDirectories,
   materializeJobContextFiles,
+  readJobArtifact,
   readJobPlan,
   readJobReport,
   readJobSummary,
@@ -32,7 +37,13 @@ import { enforceJobCleanup } from './cleanup.js';
 import { buildRunJobFailureSnippet, runRunJob } from './runActionJob.js';
 
 const config = loadWorkerConfig();
-const branchPrefix = 'sniptail';
+const branchPrefix = toGitBranchPrefix(config.botName);
+
+type ImplementChangeMetadata = {
+  mrTitle: string;
+  commitTitle: string;
+  commitBody: string;
+};
 
 function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
   return {
@@ -44,6 +55,81 @@ function buildChannelRef(job: JobSpec, threadId?: string): ChannelRef {
 
 function isMissingArtifact(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
+function synthesizeSummary(
+  requestText: string,
+  primaryResponse: string,
+  followupResponse: string,
+  jobId: string,
+): string {
+  const candidate = [followupResponse, primaryResponse, requestText]
+    .map((value) => value.trim())
+    .find(Boolean);
+  if (!candidate) return `Implementation completed for ${jobId}.`;
+  return candidate;
+}
+
+function synthesizeMetadata(
+  summary: string,
+  requestText: string,
+  botName: string,
+  jobId: string,
+): ImplementChangeMetadata {
+  const titleSource =
+    firstContentLine(summary) || firstContentLine(requestText) || `Update for ${jobId}`;
+  const commitTitle = clampText(titleSource, 50) || 'Update implementation';
+  const mrTitle =
+    clampText(firstContentLine(summary) || firstContentLine(requestText) || commitTitle, 255) ||
+    `${botName} job ${jobId}`;
+  const commitBody = wrapText(
+    summary.trim() || requestText.trim() || `${botName} job ${jobId}`,
+    72,
+  );
+  return { mrTitle, commitTitle, commitBody };
+}
+
+function parseImplementMetadata(
+  raw: string,
+  summary: string,
+  requestText: string,
+  botName: string,
+  jobId: string,
+): ImplementChangeMetadata {
+  try {
+    const parsed = JSON.parse(raw) as Partial<
+      Record<'mrTitle' | 'commitTitle' | 'commitBody', unknown>
+    >;
+    const mrTitle = typeof parsed.mrTitle === 'string' ? clampText(parsed.mrTitle, 255) : '';
+    const commitTitle =
+      typeof parsed.commitTitle === 'string' ? clampText(parsed.commitTitle, 50) : '';
+    const commitBody = typeof parsed.commitBody === 'string' ? wrapText(parsed.commitBody, 72) : '';
+    if (mrTitle && commitTitle && commitBody) {
+      return { mrTitle, commitTitle, commitBody };
+    }
+
+    const invalidKeys = [
+      !mrTitle ? 'mrTitle' : null,
+      !commitTitle ? 'commitTitle' : null,
+      !commitBody ? 'commitBody' : null,
+    ].filter((key): key is 'mrTitle' | 'commitTitle' | 'commitBody' => key !== null);
+    logger.warn(
+      { jobId, invalidKeys },
+      'Incomplete or invalid change-metadata.json; using synthesized metadata',
+    );
+  } catch (err) {
+    logger.warn({ err, jobId }, 'Invalid change-metadata.json; using synthesized metadata');
+  }
+
+  return synthesizeMetadata(summary, requestText, botName, jobId);
+}
+
+function buildCommitMessage(
+  metadata: ImplementChangeMetadata,
+  botName: string,
+  jobId: string,
+): string {
+  return `${metadata.commitTitle}\n\n${botName}: ${jobId}\n\n${metadata.commitBody}\n`;
 }
 
 async function recordAgentThreadId(
@@ -76,6 +162,7 @@ async function publishRepoChanges(options: {
   job: JobSpec;
   summary: string;
   requestText: string;
+  metadata: ImplementChangeMetadata;
   repoWorktrees: Awaited<ReturnType<typeof prepareRepoWorktrees>>['repoWorktrees'];
   checks?: string[];
   labels?: string[];
@@ -83,11 +170,16 @@ async function publishRepoChanges(options: {
   env: NodeJS.ProcessEnv;
   logFile: string;
   redactionPatterns: Array<string | RegExp>;
-}): Promise<{ mergeRequests: MergeRequestResult[]; localBranchMessages: string[] }> {
+}): Promise<{
+  mergeRequests: MergeRequestResult[];
+  localBranchMessages: string[];
+  pushedTipShaByRepo: Record<string, string>;
+}> {
   const {
     job,
     summary,
     requestText,
+    metadata,
     repoWorktrees,
     checks,
     labels,
@@ -98,6 +190,7 @@ async function publishRepoChanges(options: {
   } = options;
   const mergeRequests: MergeRequestResult[] = [];
   const localBranchMessages: string[] = [];
+  const pushedTipShaByRepo: Record<string, string> = {};
 
   for (const [repoKey, repo] of repoWorktrees.entries()) {
     const repoConfig = config.repoAllowlist[repoKey];
@@ -107,24 +200,22 @@ async function publishRepoChanges(options: {
 
     await runRepoChecks(repo.worktreePath, checks, env, logFile, redactionPatterns);
 
-    if (!repo.branch) {
-      continue;
-    }
-
-    const committed = await commitRepoChanges(
-      repo.worktreePath,
-      repo.branch,
-      job.jobId,
-      config.botName,
+    const committed = await commitRepoChanges({
+      worktreePath: repo.worktreePath,
+      targetBranch: repo.originBranch,
+      commitMessage: buildCommitMessage(metadata, config.botName, job.jobId),
       env,
       logFile,
       redactionPatterns,
-    );
-    if (!committed) {
+      ...(repo.worktreeBranch ? { worktreeBranch: repo.worktreeBranch } : {}),
+      ...(repo.detached ? { expectedRemoteSha: repo.expectedBaseTipSha } : {}),
+    });
+    if (!committed.committed) {
       continue;
     }
+    pushedTipShaByRepo[repoKey] = committed.pushedSha;
 
-    const title = `${config.botName}: ${requestText.slice(0, 60)}`;
+    const title = metadata.mrTitle;
     const description = config.includeRawRequestInMr
       ? buildMergeRequestDescription(summary, requestText, config.botName, job.jobId)
       : summary || `${config.botName} job ${job.jobId}`;
@@ -132,7 +223,7 @@ async function publishRepoChanges(options: {
 
     if (repoConfig.localPath) {
       localBranchMessages.push(
-        `${repoKey}: local branch created at ${repoConfig.localPath} (${repo.branch})`,
+        `${repoKey}: local branch ${repo.detached ? 'updated' : 'created'} at ${repoConfig.localPath} (${repo.originBranch})`,
       );
       continue;
     }
@@ -150,7 +241,7 @@ async function publishRepoChanges(options: {
         ...(config.gitlab ? { gitlab: config.gitlab } : {}),
       },
       input: {
-        head: repo.branch,
+        head: repo.originBranch,
         base: job.gitRef,
         title,
         description,
@@ -164,6 +255,7 @@ async function publishRepoChanges(options: {
   return {
     mergeRequests,
     localBranchMessages,
+    pushedTipShaByRepo,
   };
 }
 
@@ -235,7 +327,7 @@ export async function runJob(
 
     const currentTurnContextFiles = await materializeJobContextFiles(paths, job);
 
-    const { repoWorktrees, branchByRepo } = await prepareRepoWorktrees({
+    const { repoWorktrees, lineage } = await prepareRepoWorktrees({
       job,
       config,
       paths,
@@ -245,9 +337,24 @@ export async function runJob(
       branchPrefix,
     });
 
-    if (Object.keys(branchByRepo).length) {
-      await registry.updateJobRecord(job.jobId, { branchByRepo }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record job branches');
+    const lineagePatch = {
+      ...(Object.keys(lineage.branchByRepo).length ? { branchByRepo: lineage.branchByRepo } : {}),
+      ...(Object.keys(lineage.originBranchByRepo).length
+        ? { originBranchByRepo: lineage.originBranchByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageTipShaByRepo).length
+        ? { lineageTipShaByRepo: lineage.lineageTipShaByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageBaseShaByRepo).length
+        ? { lineageBaseShaByRepo: lineage.lineageBaseShaByRepo }
+        : {}),
+      ...(Object.keys(lineage.lineageWarningByRepo).length
+        ? { lineageWarningByRepo: lineage.lineageWarningByRepo }
+        : {}),
+    };
+    if (Object.keys(lineagePatch).length) {
+      await registry.updateJobRecord(job.jobId, lineagePatch).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record job lineage metadata');
       });
     }
 
@@ -265,7 +372,7 @@ export async function runJob(
         env,
         redactionPatterns,
         repoWorktrees,
-        branchByRepo,
+        lineageTipShaByRepo: lineage.lineageTipShaByRepo,
         notifier,
         channelAdapter,
         channelRef,
@@ -274,6 +381,12 @@ export async function runJob(
             job,
             summary: `Run action ${actionId} completed`,
             requestText: `Run action ${actionId}`,
+            metadata: synthesizeMetadata(
+              `Run action ${actionId} completed`,
+              `Run action ${actionId}`,
+              config.botName,
+              job.jobId,
+            ),
             repoWorktrees,
             ...(checks ? { checks } : {}),
             env,
@@ -283,6 +396,15 @@ export async function runJob(
       });
     }
 
+    const promptOverride =
+      (job.type === 'ASK' ||
+        job.type === 'EXPLORE' ||
+        job.type === 'PLAN' ||
+        job.type === 'IMPLEMENT') &&
+      lineage.promptWarnings.length > 0
+        ? buildPromptForJobWithLineageWarnings(job, config.botName, lineage.promptWarnings)
+        : undefined;
+
     const agentRun = await runAgentJob({
       job,
       config,
@@ -290,7 +412,9 @@ export async function runJob(
       env,
       registry,
       currentTurnContextFiles,
+      ...(promptOverride ? { promptOverride } : {}),
     });
+    const primaryFinalResponse = agentRun.result.finalResponse?.trim() ?? '';
 
     if (agentRun.result.threadId) {
       await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);
@@ -399,12 +523,68 @@ export async function runJob(
       };
     }
 
-    const summary = await readJobSummary(paths);
+    let followupFinalResponse = '';
+    if (job.type === 'IMPLEMENT') {
+      try {
+        const followupRun = await runAgentJob({
+          job,
+          config,
+          paths,
+          env,
+          registry,
+          promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+        });
+        followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
+        if (followupRun.result.threadId) {
+          await recordAgentThreadId(
+            registry,
+            job,
+            followupRun.agentId,
+            followupRun.result.threadId,
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          { err, jobId: job.jobId },
+          'IMPLEMENT follow-up artifact generation failed; continuing with synthesized artifacts',
+        );
+      }
+    }
 
-    const { mergeRequests, localBranchMessages } = await publishRepoChanges({
+    const summary = await readJobSummary(paths).catch((err) => {
+      if (!isMissingArtifact(err)) {
+        throw err;
+      }
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Missing summary.md for IMPLEMENT job; using synthesized summary',
+      );
+      return synthesizeSummary(
+        job.requestText,
+        primaryFinalResponse,
+        followupFinalResponse,
+        job.jobId,
+      );
+    });
+    const rawMetadata = await readJobArtifact(paths, 'change-metadata.json').catch((err) => {
+      if (!isMissingArtifact(err)) {
+        throw err;
+      }
+      logger.warn(
+        { err, jobId: job.jobId },
+        'Missing change-metadata.json for IMPLEMENT job; using synthesized metadata',
+      );
+      return '';
+    });
+    const metadata = rawMetadata
+      ? parseImplementMetadata(rawMetadata, summary, job.requestText, config.botName, job.jobId)
+      : synthesizeMetadata(summary, job.requestText, config.botName, job.jobId);
+
+    const { mergeRequests, localBranchMessages, pushedTipShaByRepo } = await publishRepoChanges({
       job,
       summary,
       requestText: job.requestText,
+      metadata,
       repoWorktrees,
       ...(job.settings?.checks ? { checks: job.settings.checks } : {}),
       ...(job.settings?.labels ? { labels: job.settings.labels } : {}),
@@ -431,7 +611,7 @@ export async function runJob(
     });
 
     const implText = `All set! I finished job ${job.jobId}.\n${mrText}`;
-    const includeReviewFromJob = Object.keys(branchByRepo).length > 0;
+    const includeReviewFromJob = repoWorktrees.size > 0;
     const rendered = channelAdapter.renderCompletionMessage({
       botName: config.botName,
       text: implText,
@@ -445,6 +625,10 @@ export async function runJob(
         status: 'ok',
         summary: summary || 'IMPLEMENT complete',
         mergeRequests,
+        lineageTipShaByRepo: {
+          ...lineage.lineageTipShaByRepo,
+          ...pushedTipShaByRepo,
+        },
       })
       .catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as ok');
