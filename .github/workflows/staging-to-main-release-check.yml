@@ -1,0 +1,141 @@
+name: Staging to main release check
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-release-batch:
+    name: Validate staged release labels
+    if: github.event.pull_request.head.ref == 'staging'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Validate release labels for staged PRs
+        uses: actions/github-script@v7
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const { execFileSync } = require('node:child_process');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const headSha = process.env.GITHUB_SHA;
+
+            const execGit = (...args) =>
+              execFileSync('git', args, { encoding: 'utf8' }).trim();
+
+            const releaseLevels = {
+              'release:none': 0,
+              'release:patch': 1,
+              'release:minor': 2,
+              'release:major': 3,
+            };
+
+            const tags = execGit('tag', '--merged', headSha, '--list', 'v*', '--sort=-version:refname')
+              .split('\n')
+              .map((tag) => tag.trim())
+              .filter(Boolean);
+            const existingTag = execGit('tag', '--points-at', headSha, '--list', 'v*')
+              .split('\n')
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+              .at(-1) ?? '';
+            const previousTag = tags.find((tag) => tag !== existingTag) ?? '';
+
+            if (!previousTag && !existingTag) {
+              core.setFailed('No previous v* tag found. Seed the repository with an initial release tag before using automatic main releases.');
+              return;
+            }
+
+            if (existingTag) {
+              core.info(`Head commit ${headSha} is already tagged ${existingTag}; no staged PR validation is needed.`);
+              return;
+            }
+
+            const commitRange = `${previousTag}..${headSha}`;
+            const commits = execGit('rev-list', '--reverse', commitRange)
+              .split('\n')
+              .map((sha) => sha.trim())
+              .filter(Boolean);
+
+            if (commits.length === 0) {
+              core.info(`No commits found after ${previousTag}; nothing to validate.`);
+              return;
+            }
+
+            const prs = new Map();
+
+            for (const commitSha of commits) {
+              const associatedPulls = await github.paginate(
+                'GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls',
+                {
+                  owner,
+                  repo,
+                  commit_sha: commitSha,
+                }
+              );
+
+              for (const pr of associatedPulls) {
+                if (prs.has(pr.number)) {
+                  continue;
+                }
+
+                const labels = (pr.labels ?? [])
+                  .map((label) => (typeof label === 'string' ? label : label.name))
+                  .filter(Boolean);
+
+                prs.set(pr.number, {
+                  number: pr.number,
+                  title: pr.title,
+                  baseRef: pr.base?.ref ?? '',
+                  labels,
+                });
+              }
+            }
+
+            const releasePrs = [...prs.values()].filter((pr) => pr.baseRef === 'staging');
+
+            if (releasePrs.length === 0) {
+              core.setFailed(
+                `Could not resolve any merged pull requests into staging in ${commitRange}.`
+              );
+              return;
+            }
+
+            const invalidPrs = [];
+
+            for (const pr of releasePrs) {
+              const matchedLabels = pr.labels.filter((label) => Object.hasOwn(releaseLevels, label));
+
+              if (matchedLabels.length !== 1) {
+                invalidPrs.push(
+                  `PR #${pr.number} (${pr.title}) must have exactly one release:* label, found ${matchedLabels.length}.`
+                );
+              }
+            }
+
+            if (invalidPrs.length > 0) {
+              core.setFailed(invalidPrs.join('\n'));
+              return;
+            }
+
+            core.info(
+              `Validated ${releasePrs.length} staged PR(s) since ${previousTag}; all have exactly one release:* label.`
+            );
