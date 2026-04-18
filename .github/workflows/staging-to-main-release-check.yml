@@ -28,17 +28,25 @@ jobs:
       - name: Validate release labels for staged PRs
         uses: actions/github-script@v7
         env:
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         with:
           script: |
             const { execFileSync } = require('node:child_process');
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const headSha = process.env.GITHUB_SHA;
+            const expectedHeadSha = process.env.EXPECTED_HEAD_SHA;
 
             const execGit = (...args) =>
               execFileSync('git', args, { encoding: 'utf8' }).trim();
+
+            const headSha = execGit('rev-parse', 'HEAD');
+
+            if (expectedHeadSha && expectedHeadSha !== headSha) {
+              core.warning(
+                `Expected to validate ${expectedHeadSha}, but checkout resolved to ${headSha}. Continuing with checked out HEAD.`
+              );
+            }
 
             const releaseLevels = {
               'release:none': 0,
