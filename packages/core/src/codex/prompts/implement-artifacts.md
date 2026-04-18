@@ -20,8 +20,8 @@ Constraints:
 - mrTitle must be at most 255 characters
 - commitTitle must be at most 50 characters
 - commitBody should clearly explain why the change was made and any important implementation notes
-- Build artifacts/summary.md from the full set of coding-agent changes on this thread: include the cumulative changes represented by all commits already created by the coding agent on the current thread/lineage, plus the current uncommitted changes for this job
-- Use the actual repo state and git history to determine that cumulative summary; do not limit artifacts/summary.md to only the latest implement job
-- Keep artifacts/change-metadata.json scoped to the commit that will be created for this implementation job
+- Build artifacts/summary.md from the full set of coding-agent changes on this thread: include the cumulative changes applied by the coding agent on the current thread/lineage, plus the current uncommitted changes for this job (as they will be committed automatically right after)
+- do not limit artifacts/summary.md to only the latest implement job
+- Keep artifacts/change-metadata.json scoped to the commit that will be created for this implementation job (meaning the currently uncommitted changes)
 - Base the metadata on the changes that were actually implemented, not just the raw request text
 - Do not include markdown code fences in the JSON file
