@@ -16,6 +16,7 @@ type DiscordMessageOptions = {
   channelId: string;
   text: string;
   threadId?: string;
+  channel?: SendableTextChannel;
   components?: unknown[];
   contextFiles?: JobContextFile[];
 };
@@ -58,8 +59,9 @@ async function resolveChannel(client: Client, channelId: string): Promise<Sendab
 }
 
 export async function postDiscordMessage(client: Client, options: DiscordMessageOptions) {
-  const targetId = options.threadId ?? options.channelId;
-  const channel = await resolveChannel(client, targetId);
+  const channel =
+    options.channel ??
+    (await resolveChannel(client, options.threadId ?? options.channelId));
   const message: MessageCreateOptions = options.components
     ? {
         content: options.text,

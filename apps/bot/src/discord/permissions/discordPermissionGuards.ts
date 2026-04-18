@@ -231,6 +231,7 @@ async function postDiscordJobRequestAndResolveThread(input: {
     }
     const requestMessage = await postDiscordMessage(input.client, {
       channelId: input.channelId,
+      channel,
       text,
       ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
     });
