@@ -6,6 +6,7 @@ import type { SlackHandlerContext } from '../context.js';
 import { loadSlackMentionContextFiles, postMessage } from '../../helpers.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
@@ -106,6 +107,7 @@ export async function queueSlackMentionJob(
     approvalPresentation: 'approval_only',
   });
   if (!authorized) {
+    auditJobRequest(config, baseJob, 'stopped');
     return false;
   }
 
@@ -139,6 +141,7 @@ export async function queueSlackMentionJob(
   try {
     await saveJobQueued(job);
   } catch (err) {
+    auditJobRequest(config, job, 'persist_failed');
     logger.error({ err, jobId: job.jobId }, 'Failed to persist mention job');
     await postMessage(app, {
       channel: channelId,
@@ -149,5 +152,6 @@ export async function queueSlackMentionJob(
   }
 
   await enqueueJob(queue, job);
+  auditJobRequest(config, job, 'accepted');
   return true;
 }

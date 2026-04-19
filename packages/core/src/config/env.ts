@@ -596,6 +596,7 @@ export function loadBotConfig(): BotConfig {
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(botToml?.bot_name);
+  const auditLogPath = resolvePathValue('BOT_AUDIT_LOG_PATH', botToml?.audit_log_path);
   const primaryAgent = resolvePrimaryAgent(botToml?.primary_agent);
   const debugJobSpecMessages = resolveOptionalFlagFromSources(
     'DEBUG_JOB_SPEC_MESSAGES',
@@ -668,6 +669,7 @@ export function loadBotConfig(): BotConfig {
   botConfigCache = {
     ...core,
     botName,
+    ...(auditLogPath ? { auditLogPath } : {}),
     primaryAgent,
     bootstrapServices,
     debugJobSpecMessages,

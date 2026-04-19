@@ -5,6 +5,7 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
 export function registerReviewFromJobAction({
@@ -86,12 +87,14 @@ export function registerReviewFromJobAction({
       },
     });
     if (!authorized) {
+      auditJobRequest(config, job, 'stopped');
       return;
     }
 
     try {
       await saveJobQueued(job);
     } catch (err) {
+      auditJobRequest(config, job, 'persist_failed');
       logger.error({ err, jobId: job.jobId }, 'Failed to persist review job');
       await postMessage(app, {
         channel: channelId,
@@ -102,6 +105,7 @@ export function registerReviewFromJobAction({
     }
 
     await enqueueJob(queue, job);
+    auditJobRequest(config, job, 'accepted');
 
     const ackResponse = await postMessage(app, {
       channel: channelId,
