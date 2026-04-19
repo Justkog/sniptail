@@ -29,6 +29,7 @@ import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import { resolvePermissionsProviderCapabilities } from './permissionsProviderCapabilities.js';
+import { auditJobRequest } from '../lib/requestAudit.js';
 
 type RuntimeDeps = {
   config: BotConfig;
@@ -314,8 +315,14 @@ export class PermissionsRuntimeService {
   async executeDeferredOperation(operation: DeferredPermissionOperation): Promise<void> {
     switch (operation.kind) {
       case 'enqueueJob':
-        await saveJobQueued(operation.job);
-        await enqueueJob(this.#queue, operation.job);
+        try {
+          await saveJobQueued(operation.job);
+          await enqueueJob(this.#queue, operation.job);
+        } catch (err) {
+          auditJobRequest(this.#config, operation.job, 'persist_failed');
+          throw err;
+        }
+        auditJobRequest(this.#config, operation.job, 'accepted');
         return;
       case 'enqueueBootstrap':
         await enqueueBootstrap(this.#bootstrapQueue, operation.request);

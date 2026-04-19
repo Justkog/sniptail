@@ -28,6 +28,10 @@ job_registry_db = "redis"
 # Optional. Default: "Sniptail". Example: "Sniptail Staging"
 bot_name = "Sniptail"
 
+# Append-only JSONL audit log path for inbound bot requests.
+# Optional. No default. Example: "$HOME/.sniptail/logs/request-audit.jsonl"
+# audit_log_path = "$HOME/.sniptail/logs/request-audit.jsonl"
+
 # Primary agent for jobs: "codex" or "copilot".
 # Optional. Default: "codex". Example: "copilot"
 primary_agent = "codex"

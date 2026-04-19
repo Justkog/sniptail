@@ -41,6 +41,7 @@ export type CoreConfig = {
 
 export type BotConfig = CoreConfig & {
   botName: string;
+  auditLogPath?: string;
   debugJobSpecMessages: boolean;
   primaryAgent: AgentId;
   bootstrapServices: string[];
