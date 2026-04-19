@@ -110,7 +110,11 @@ function writeAuditRecord(config: BotConfig, record: RequestAuditRecord): void {
     return;
   }
 
-  auditLogger.info(record);
+  try {
+    auditLogger.info(record);
+  } catch (err) {
+    logger.warn({ err, event: record.event, outcome: record.outcome }, 'Failed to write request audit record');
+  }
 }
 
 export function auditNormalizedJobRequest(
