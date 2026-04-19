@@ -317,11 +317,11 @@ export class PermissionsRuntimeService {
       case 'enqueueJob':
         try {
           await saveJobQueued(operation.job);
-          await enqueueJob(this.#queue, operation.job);
         } catch (err) {
           auditJobRequest(this.#config, operation.job, 'persist_failed');
           throw err;
         }
+        await enqueueJob(this.#queue, operation.job);
         auditJobRequest(this.#config, operation.job, 'accepted');
         return;
       case 'enqueueBootstrap':
