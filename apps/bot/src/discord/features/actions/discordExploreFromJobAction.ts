@@ -20,6 +20,8 @@ import {
   exploreFromJobSelectionByToken,
   exploreSelectionByUser,
   setFromJobSelectionWithCap,
+  storeDiscordScopedSelectionReplyId,
+  storeDiscordSelectionReplyId,
 } from '../../state.js';
 
 async function openExploreModalFromSelection(
@@ -41,6 +43,7 @@ async function openExploreModalFromSelection(
     repoKeys: selection.repoKeys,
     requestedAt: Date.now(),
     ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+    ...(selection.selectorMessageId ? { selectorMessageId: selection.selectorMessageId } : {}),
   };
   exploreSelectionByUser.set(interaction.user.id, baseSelection);
 
@@ -101,27 +104,41 @@ export async function handleDiscordExploreFromJobButton(
   exploreSelectionByUser.set(interaction.user.id, baseSelection);
 
   const allowlistRepoKeys = Object.keys(config.repoAllowlist);
-  const continueButton = new ButtonBuilder()
-    .setCustomId(buildExploreFromJobContinueButtonCustomId(selectionToken))
-    .setStyle(ButtonStyle.Primary)
-    .setLabel('Use same repos');
-  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
-  ];
-
-  let content = 'Use the same repositories for this explore job, or choose a different repo set.';
+  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [];
+  let content = 'Select repositories for this explore job.';
   if (allowlistRepoKeys.length <= 25) {
-    components.unshift(buildExploreRepoSelect(allowlistRepoKeys, repoKeys));
+    components.push(buildExploreRepoSelect(allowlistRepoKeys, repoKeys));
+    if (allowlistRepoKeys.length > 1) {
+      const continueButton = new ButtonBuilder()
+        .setCustomId(buildExploreFromJobContinueButtonCustomId(selectionToken))
+        .setStyle(ButtonStyle.Primary)
+        .setLabel('Use same repos');
+      components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
+      content = 'Use the same repositories for this explore job, or choose a different repo set.';
+    }
   } else {
     content =
       'Use the same repositories for this explore job. Changing repos is unavailable in Discord because the allowlist exceeds 25 repositories.';
+    const continueButton = new ButtonBuilder()
+      .setCustomId(buildExploreFromJobContinueButtonCustomId(selectionToken))
+      .setStyle(ButtonStyle.Primary)
+      .setLabel('Use same repos');
+    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
   }
 
-  await interaction.reply({
+  const response = await interaction.reply({
     content,
     components,
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, exploreSelectionByUser, 'explore', response);
+  storeDiscordScopedSelectionReplyId(
+    exploreFromJobSelectionByToken,
+    selectionToken,
+    'explore',
+    response,
+  );
 }
 
 export async function handleDiscordExploreFromJobContinueButton(

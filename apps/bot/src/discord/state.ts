@@ -142,6 +142,39 @@ export function storeDiscordSelectionReplyId(
   }
 }
 
+export function storeDiscordScopedSelectionReplyId(
+  selectionMap: Map<string, DiscordScopedJobSelectionState>,
+  selectionToken: string,
+  flow: string,
+  response: Pick<InteractionCallbackResponse, 'resource'>,
+): void {
+  const selection = selectionMap.get(selectionToken);
+  if (!selection) {
+    return;
+  }
+
+  const selectorMessageId = response.resource?.message?.id;
+  if (!selectorMessageId) {
+    logger.warn(
+      { flow, userId: selection.userId },
+      'Discord selector reply response did not include a message id',
+    );
+    return;
+  }
+
+  try {
+    selectionMap.set(selectionToken, {
+      ...selection,
+      selectorMessageId,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, flow, userId: selection.userId },
+      'Failed to capture Discord scoped selector reply',
+    );
+  }
+}
+
 export async function disableDiscordSelectionReply(
   interaction: StringSelectMenuInteraction | ModalSubmitInteraction,
   selection: DiscordJobSelectionState | undefined,
