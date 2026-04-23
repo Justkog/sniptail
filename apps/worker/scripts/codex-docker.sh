@@ -5,6 +5,7 @@ image="${CODEX_DOCKER_IMAGE:-snatch-codex:local}"
 dockerfile="${CODEX_DOCKERFILE_PATH:-}"
 build_context="${CODEX_DOCKER_BUILD_CONTEXT:-}"
 host_home="${CODEX_DOCKER_HOST_HOME:-${HOME:-}}"
+filesystem_mode="${CODEX_DOCKER_FILESYSTEM_MODE:-writable}"
 stamp_dir="${host_home}/.codex/docker-build"
 stamp_file=""
 
@@ -66,7 +67,11 @@ while [[ $idx -lt ${#args[@]} ]]; do
   case "${args[$idx]}" in
     --cd)
       idx=$((idx + 1))
-      add_mount "${args[$idx]}" "rw"
+      if [[ "$filesystem_mode" == "readonly" ]]; then
+        add_mount "${args[$idx]}" "ro"
+      else
+        add_mount "${args[$idx]}" "rw"
+      fi
       ;;
     --add-dir)
       idx=$((idx + 1))
@@ -96,6 +101,14 @@ docker_args=(
   --user "$(id -u):$(id -g)"
   -e "HOME=/home/codex"
 )
+
+if [[ "$filesystem_mode" == "readonly" ]]; then
+  docker_args+=(
+    --read-only
+    --tmpfs /tmp
+    --tmpfs /home/codex/.cache
+  )
+fi
 
 for key in "${!mount_modes[@]}"; do
   mode="${mount_modes[$key]}"

@@ -20,6 +20,8 @@ export type CodexRunResult = {
   threadId?: string;
 };
 
+type DockerFilesystemMode = 'readonly' | 'writable';
+
 export type CodexRunOptions = {
   onEvent?: (event: ThreadEvent) => void | Promise<void>;
   sandboxMode?: SandboxMode;
@@ -89,6 +91,10 @@ export async function runCodex(
 ): Promise<CodexRunResult> {
   const codexEnv = toEnvRecord(env);
   const useDocker = options.docker?.enabled;
+  const requestedSandboxMode = options.sandboxMode ?? 'workspace-write';
+  const dockerFilesystemMode: DockerFilesystemMode =
+    requestedSandboxMode === 'read-only' ? 'readonly' : 'writable';
+  const sandboxMode = useDocker ? 'danger-full-access' : requestedSandboxMode;
   if (useDocker) {
     if (options.docker?.dockerfilePath) {
       codexEnv.CODEX_DOCKERFILE_PATH = resolve(options.docker.dockerfilePath);
@@ -100,6 +106,7 @@ export async function runCodex(
       codexEnv.CODEX_DOCKER_BUILD_CONTEXT = resolve(options.docker.buildContext);
     }
     codexEnv.CODEX_DOCKER_HOST_HOME = codexEnv.CODEX_DOCKER_HOST_HOME || os.homedir();
+    codexEnv.CODEX_DOCKER_FILESYSTEM_MODE = dockerFilesystemMode;
   }
   const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : 'codex';
 
@@ -110,7 +117,7 @@ export async function runCodex(
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
-    sandboxMode: options.sandboxMode ?? 'workspace-write',
+    sandboxMode,
     approvalPolicy: options.approvalPolicy ?? 'never',
     ...(options.additionalDirectories
       ? { additionalDirectories: options.additionalDirectories }
