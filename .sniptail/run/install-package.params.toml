@@ -1,0 +1,23 @@
+schema_version = 1
+
+[[parameters]]
+id = "package_name"
+label = "Package name"
+type = "string"
+ui_mode = "text"
+required = true
+description = "Package specifier to install, optionally including a version or range."
+
+[[parameters]]
+id = "dev_dependency"
+label = "Dev dependency"
+type = "boolean"
+ui_mode = "boolean"
+required = false
+default = false
+description = "Install as a devDependency."
+
+[[steps]]
+id = "basic"
+title = "Package"
+fields = ["package_name", "dev_dependency"]

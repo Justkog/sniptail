@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required to run install-package." >&2
+  exit 1
+fi
+
+package_name="${SNIPTAIL_RUN_PARAM_PACKAGE_NAME:-}"
+dev_dependency="${SNIPTAIL_RUN_PARAM_DEV_DEPENDENCY:-false}"
+
+if [[ -z "${package_name}" ]]; then
+  echo "SNIPTAIL_RUN_PARAM_PACKAGE_NAME is required." >&2
+  exit 1
+fi
+
+if [[ "${dev_dependency}" == "true" ]]; then
+  echo "[install-package] Adding dev dependency ${package_name}"
+  pnpm add -Dw "${package_name}"
+else
+  echo "[install-package] Adding dependency ${package_name}"
+  pnpm add -w "${package_name}"
+fi

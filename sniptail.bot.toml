@@ -114,6 +114,10 @@ description = "Run repository CI checks from worker fallback command."
 label = "Promote staging to main"
 description = "Create or reuse the GitHub PR that promotes staging into main."
 
+[run.actions."install-package"]
+label = "Install package"
+description = "Add a package with pnpm and publish the resulting changes through the standard PR flow."
+
 [run.actions.deploy-preview]
 label = "Deploy Preview"
 description = "Test action that prints typed run parameters"
