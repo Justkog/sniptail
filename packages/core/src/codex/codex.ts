@@ -89,6 +89,9 @@ export async function runCodex(
 ): Promise<CodexRunResult> {
   const codexEnv = toEnvRecord(env);
   const useDocker = options.docker?.enabled;
+  const baseSandboxMode = options.sandboxMode ?? 'workspace-write';
+  const sandboxMode =
+    useDocker && baseSandboxMode === 'workspace-write' ? 'danger-full-access' : baseSandboxMode;
   if (useDocker) {
     if (options.docker?.dockerfilePath) {
       codexEnv.CODEX_DOCKERFILE_PATH = resolve(options.docker.dockerfilePath);
@@ -110,7 +113,7 @@ export async function runCodex(
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
-    sandboxMode: options.sandboxMode ?? 'workspace-write',
+    sandboxMode,
     approvalPolicy: options.approvalPolicy ?? 'never',
     ...(options.additionalDirectories
       ? { additionalDirectories: options.additionalDirectories }

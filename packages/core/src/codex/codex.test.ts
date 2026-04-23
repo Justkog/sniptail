@@ -98,6 +98,11 @@ describe('runCodex', () => {
         codexPathOverride: 'codex',
       }),
     );
+    expect(hoisted.startThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sandboxMode: 'workspace-write',
+      }),
+    );
     expect(hoisted.runStreamed).toHaveBeenCalledWith('mock prompt');
     expect(hoisted.resolveWorkerAgentScriptPath).not.toHaveBeenCalled();
   });
@@ -109,6 +114,29 @@ describe('runCodex', () => {
     expect(hoisted.codexCtor).toHaveBeenCalledWith(
       expect.objectContaining({
         codexPathOverride: '/tmp/codex-docker.sh',
+      }),
+    );
+    expect(hoisted.startThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sandboxMode: 'danger-full-access',
+      }),
+    );
+  });
+
+  it('preserves explicit sandbox mode overrides in docker mode', async () => {
+    await runCodex(
+      buildJob('MENTION'),
+      '/tmp/work',
+      {},
+      {
+        docker: { enabled: true },
+        sandboxMode: 'read-only',
+      },
+    );
+
+    expect(hoisted.startThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sandboxMode: 'read-only',
       }),
     );
   });
