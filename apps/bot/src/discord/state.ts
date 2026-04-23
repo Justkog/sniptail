@@ -135,7 +135,10 @@ export function storeDiscordSelectionReplyId(
       selectorMessageId,
     });
   } catch (err) {
-    logger.warn({ err, flow, userId: interaction.user.id }, 'Failed to capture Discord selector reply');
+    logger.warn(
+      { err, flow, userId: interaction.user.id },
+      'Failed to capture Discord selector reply',
+    );
   }
 }
 

@@ -1221,6 +1221,7 @@ describe('worker/pipeline runJob', () => {
         threadId: 'thread-implement-artifacts',
         finalResponse: 'Artifacts done',
       });
+    // eslint-disable-next-line @typescript-eslint/require-await
     resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
       if (ref === 'refs/remotes/origin/sniptail/explore-job') {
         return undefined;
@@ -1395,6 +1396,7 @@ describe('worker/pipeline runJob', () => {
         threadId: 'thread-implement-artifacts',
         finalResponse: 'Artifacts done',
       });
+    // eslint-disable-next-line @typescript-eslint/require-await
     resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
       if (ref === 'refs/remotes/origin/sniptail/explore-job') {
         return undefined;

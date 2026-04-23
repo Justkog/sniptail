@@ -1,7 +1,7 @@
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { createFileTransportLogger, logger, type Logger } from '@sniptail/core/logger.js';
 import type { ChannelContext } from '@sniptail/core/types/channel.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
+import type { JobSpec, JobType } from '@sniptail/core/types/job.js';
 import type { NormalizedJobRequestInput } from '../job-requests/types.js';
 
 type RequestAuditOutcome = 'invalid' | 'stopped' | 'persist_failed' | 'accepted';
@@ -10,7 +10,7 @@ type RequestAuditRecord = {
   event: 'job.request';
   outcome: RequestAuditOutcome;
   jobId?: string;
-  jobType: JobSpec['type'] | NormalizedJobRequestInput['type'];
+  jobType: JobType;
   provider: ChannelContext['provider'];
   channelId: string;
   threadId?: string;
@@ -52,10 +52,7 @@ function resolveAuditLogger(config: BotConfig): Logger | null {
   }
 }
 
-function toAuditRecordFromJob(
-  job: JobSpec,
-  outcome: RequestAuditOutcome,
-): RequestAuditRecord {
+function toAuditRecordFromJob(job: JobSpec, outcome: RequestAuditOutcome): RequestAuditRecord {
   return {
     event: 'job.request',
     outcome,
@@ -100,7 +97,9 @@ function toAuditRecordFromInput(
     contextFileCount: input.contextFiles?.length ?? 0,
     ...(input.run?.actionId ? { runActionId: input.run.actionId } : {}),
     ...(input.channel.metadata ? { metadata: input.channel.metadata } : {}),
-    ...('guildId' in input.channel && input.channel.guildId ? { guildId: input.channel.guildId } : {}),
+    ...('guildId' in input.channel && input.channel.guildId
+      ? { guildId: input.channel.guildId }
+      : {}),
   };
 }
 
@@ -113,7 +112,10 @@ function writeAuditRecord(config: BotConfig, record: RequestAuditRecord): void {
   try {
     auditLogger.info(record);
   } catch (err) {
-    logger.warn({ err, event: record.event, outcome: record.outcome }, 'Failed to write request audit record');
+    logger.warn(
+      { err, event: record.event, outcome: record.outcome },
+      'Failed to write request audit record',
+    );
   }
 }
 
