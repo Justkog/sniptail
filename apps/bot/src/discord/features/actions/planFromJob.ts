@@ -91,6 +91,19 @@ export async function handlePlanFromJobButton(
     return;
   }
 
+  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
+  if (allowlistRepoKeys.length === 1) {
+    planSelectionByUser.set(interaction.user.id, {
+      repoKeys,
+      requestedAt: Date.now(),
+      resumeFromJobId: jobId,
+    });
+    const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+    const modal = buildPlanModal(config.botName, repoKeys, baseBranch, jobId);
+    await interaction.showModal(modal);
+    return;
+  }
+
   const selectionToken = createDiscordSelectionToken();
   const baseSelection = {
     repoKeys,
@@ -103,7 +116,6 @@ export async function handlePlanFromJobButton(
   });
   planSelectionByUser.set(interaction.user.id, baseSelection);
 
-  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
   const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [];
   let content = 'Select repositories for this plan job.';
   if (allowlistRepoKeys.length <= 25) {
