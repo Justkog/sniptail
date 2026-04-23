@@ -3,9 +3,8 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildPlanModal, buildPlanRepoSelect } from '../../modals.js';
-import { planSelectionByUser } from '../../state.js';
+import { planSelectionByUser, storeDiscordSelectionReplyId } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
-import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handlePlanStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -46,16 +45,11 @@ export async function handlePlanStart(interaction: ChatInputCommandInteraction, 
   });
 
   const row = buildPlanRepoSelect(repoKeys);
-  await interaction.reply({
+  const response = await interaction.reply({
     content: 'Select repositories for your plan.',
     components: [row],
     ephemeral: true,
+    withResponse: true,
   });
-  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
-  planSelectionByUser.set(interaction.user.id, {
-    repoKeys: [],
-    requestedAt: Date.now(),
-    ...(contextAttachments.length ? { contextAttachments } : {}),
-    selectorReply,
-  });
+  storeDiscordSelectionReplyId(interaction, planSelectionByUser, 'plan', response);
 }

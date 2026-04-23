@@ -3,9 +3,8 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildAskModal, buildAskRepoSelect } from '../../modals.js';
-import { askSelectionByUser } from '../../state.js';
+import { askSelectionByUser, storeDiscordSelectionReplyId } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
-import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handleAskStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -46,16 +45,11 @@ export async function handleAskStart(interaction: ChatInputCommandInteraction, c
   });
 
   const row = buildAskRepoSelect(repoKeys);
-  await interaction.reply({
+  const response = await interaction.reply({
     content: 'Select repositories for your question.',
     components: [row],
     ephemeral: true,
+    withResponse: true,
   });
-  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
-  askSelectionByUser.set(interaction.user.id, {
-    repoKeys: [],
-    requestedAt: Date.now(),
-    ...(contextAttachments.length ? { contextAttachments } : {}),
-    selectorReply,
-  });
+  storeDiscordSelectionReplyId(interaction, askSelectionByUser, 'ask', response);
 }

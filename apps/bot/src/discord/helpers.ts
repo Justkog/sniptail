@@ -2,7 +2,6 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { PartialGroupDMChannel } from 'discord.js';
 import {
-  type RepliableInteraction,
   type Client,
   type MessageCreateOptions,
   type TextBasedChannel,
@@ -30,12 +29,6 @@ type DiscordInteractionReplyOptions = {
   interactionToken: string;
   interactionApplicationId: string;
   text: string;
-};
-
-export type DiscordInteractionReplyRef = {
-  interactionToken: string;
-  interactionApplicationId: string;
-  messageId: string;
 };
 
 type DiscordReactionOptions = {
@@ -67,8 +60,7 @@ async function resolveChannel(client: Client, channelId: string): Promise<Sendab
 
 export async function postDiscordMessage(client: Client, options: DiscordMessageOptions) {
   const channel =
-    options.channel ??
-    (await resolveChannel(client, options.threadId ?? options.channelId));
+    options.channel ?? (await resolveChannel(client, options.threadId ?? options.channelId));
   const message: MessageCreateOptions = options.components
     ? {
         content: options.text,
@@ -140,29 +132,6 @@ export async function editDiscordInteractionReply(
     Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
     { body: { content: options.text } },
   );
-}
-
-export async function deleteDiscordInteractionReply(
-  client: Client,
-  options: DiscordInteractionReplyRef,
-) {
-  await client.rest.delete(
-    Routes.webhookMessage(
-      options.interactionApplicationId,
-      options.interactionToken,
-      options.messageId,
-    ),
-  );
-}
-
-export async function captureDiscordInteractionReplyRef(
-  interaction: RepliableInteraction,
-): Promise<DiscordInteractionReplyRef> {
-  return {
-    interactionToken: interaction.token,
-    interactionApplicationId: interaction.applicationId,
-    messageId: '@original',
-  };
 }
 
 function normalizeReactionName(name: string): string {

@@ -3,8 +3,12 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildExploreModal } from '../../modals.js';
-import { exploreSelectionByUser } from '../../state.js';
-import { tryDeleteDiscordSelectorReply } from '../../lib/selectorReplyCleanup.js';
+import {
+  disableDiscordSelectionReply,
+  DISCORD_SELECTION_CAPTURED_MESSAGE,
+  exploreSelectionByUser,
+  getActiveDiscordSelection,
+} from '../../state.js';
 
 export async function handleDiscordExploreSelection(
   interaction: StringSelectMenuInteraction,
@@ -18,19 +22,37 @@ export async function handleDiscordExploreSelection(
     return;
   }
 
-  const currentSelection = exploreSelectionByUser.get(interaction.user.id);
-  const nextSelection = {
+  const { selection: currentSelection, expiredSelection } = getActiveDiscordSelection(
+    exploreSelectionByUser,
+    interaction.user.id,
+  );
+  if (expiredSelection) {
+    await disableDiscordSelectionReply(
+      interaction,
+      expiredSelection,
+      'Repository selection expired. Please rerun the explore command.',
+      'explore',
+    );
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the explore command again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  exploreSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.selectorMessageId
+      ? { selectorMessageId: currentSelection.selectorMessageId }
+      : {}),
     ...(currentSelection?.resumeFromJobId
       ? { resumeFromJobId: currentSelection.resumeFromJobId }
       : {}),
     ...(currentSelection?.contextAttachments?.length
       ? { contextAttachments: currentSelection.contextAttachments }
       : {}),
-    ...(currentSelection?.selectorReply ? { selectorReply: currentSelection.selectorReply } : {}),
-  };
-  exploreSelectionByUser.set(interaction.user.id, nextSelection);
+  });
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
   const modal = buildExploreModal(
@@ -40,14 +62,10 @@ export async function handleDiscordExploreSelection(
     currentSelection?.resumeFromJobId,
   );
   await interaction.showModal(modal);
-  if (
-    await tryDeleteDiscordSelectorReply(interaction.client, currentSelection?.selectorReply, {
-      action: 'explore',
-      userId: interaction.user.id,
-    })
-  ) {
-    const selectionWithoutReply = { ...nextSelection };
-    delete selectionWithoutReply.selectorReply;
-    exploreSelectionByUser.set(interaction.user.id, selectionWithoutReply);
-  }
+  await disableDiscordSelectionReply(
+    interaction,
+    currentSelection,
+    DISCORD_SELECTION_CAPTURED_MESSAGE,
+    'explore',
+  );
 }

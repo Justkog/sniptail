@@ -4,7 +4,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { exploreSelectionByUser } from '../../state.js';
+import { deleteDiscordSelectionReply, exploreSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
@@ -12,6 +12,7 @@ import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import { disableDiscordSelectionReply, getActiveDiscordSelection } from '../../state.js';
 
 export async function handleDiscordExploreModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -21,7 +22,24 @@ export async function handleDiscordExploreModalSubmit(
 ) {
   await refreshRepoAllowlist(config);
 
-  const selection = exploreSelectionByUser.get(interaction.user.id);
+  const { selection, expiredSelection } = getActiveDiscordSelection(
+    exploreSelectionByUser,
+    interaction.user.id,
+  );
+  if (expiredSelection) {
+    await disableDiscordSelectionReply(
+      interaction,
+      expiredSelection,
+      'Repository selection expired. Please rerun the explore command.',
+      'explore',
+    );
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the explore command again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   const repoKeys = selection?.repoKeys ?? [];
   if (!repoKeys.length) {
     await interaction.reply({
@@ -126,6 +144,7 @@ export async function handleDiscordExploreModalSubmit(
   if (acceptance.acceptancePosted) {
     try {
       await interaction.deleteReply();
+      await deleteDiscordSelectionReply(interaction, selection, 'explore');
     } catch (err) {
       logger.warn(
         { err, jobId: job.jobId },

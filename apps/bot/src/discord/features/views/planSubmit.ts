@@ -4,7 +4,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { planSelectionByUser } from '../../state.js';
+import { deleteDiscordSelectionReply, planSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
@@ -12,6 +12,7 @@ import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import { disableDiscordSelectionReply, getActiveDiscordSelection } from '../../state.js';
 
 export async function handlePlanModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -21,7 +22,24 @@ export async function handlePlanModalSubmit(
 ) {
   await refreshRepoAllowlist(config);
 
-  const selection = planSelectionByUser.get(interaction.user.id);
+  const { selection, expiredSelection } = getActiveDiscordSelection(
+    planSelectionByUser,
+    interaction.user.id,
+  );
+  if (expiredSelection) {
+    await disableDiscordSelectionReply(
+      interaction,
+      expiredSelection,
+      'Repository selection expired. Please rerun the plan command.',
+      'plan',
+    );
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the plan command again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   const repoKeys = selection?.repoKeys ?? [];
   if (!repoKeys.length) {
     await interaction.reply({
@@ -127,6 +145,7 @@ export async function handlePlanModalSubmit(
     await interaction.deleteReply().catch((err) => {
       logger.warn({ err, jobId: job.jobId }, 'Failed to delete interaction reply');
     });
+    await deleteDiscordSelectionReply(interaction, selection, 'plan');
     return;
   }
   await interaction.editReply(`Thanks! I've accepted job ${job.jobId}.`);

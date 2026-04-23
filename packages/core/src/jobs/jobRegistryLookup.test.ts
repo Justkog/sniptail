@@ -5,6 +5,7 @@ import type { JobRegistryStore } from './registryTypes.js';
 const loadAllRecordsByPrefixMock = vi.fn<JobRegistryStore['loadAllRecordsByPrefix']>();
 
 vi.mock('./registryStore.js', () => ({
+  // eslint-disable-next-line @typescript-eslint/require-await
   getJobRegistryStore: vi.fn(async () => ({
     loadAllRecordsByPrefix: loadAllRecordsByPrefixMock,
     loadRecordByKey: vi.fn(),

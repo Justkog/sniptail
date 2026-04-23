@@ -7,13 +7,13 @@ import { computeAvailableRunActions } from '../../../lib/botRunActionAvailabilit
 import { buildRunActionSelect } from '../../modals.js';
 import { runSelectionByUser } from '../../state.js';
 import { buildRunStepModal } from '../../lib/runStepper.js';
-import { tryDeleteDiscordSelectorReply } from '../../lib/selectorReplyCleanup.js';
 
 export async function handleRunRepoSelection(
   interaction: StringSelectMenuInteraction,
   config: BotConfig,
 ) {
   await refreshRepoAllowlist(config);
+  const currentSelection = runSelectionByUser.get(interaction.user.id);
 
   const repoKeys = interaction.values ?? [];
   if (!repoKeys.length) {
@@ -30,14 +30,14 @@ export async function handleRunRepoSelection(
     return;
   }
 
-  const currentSelection = runSelectionByUser.get(interaction.user.id);
-  const nextSelection = {
+  runSelectionByUser.set(interaction.user.id, {
     repoKeys,
     ...(actions.length === 1 ? { actionId: normalizeRunActionId(actions[0]!.id) } : {}),
     requestedAt: Date.now(),
-    ...(currentSelection?.selectorReply ? { selectorReply: currentSelection.selectorReply } : {}),
-  };
-  runSelectionByUser.set(interaction.user.id, nextSelection);
+    ...(currentSelection?.selectorMessageId
+      ? { selectorMessageId: currentSelection.selectorMessageId }
+      : {}),
+  });
 
   if (actions.length === 1) {
     const actionId = normalizeRunActionId(actions[0]!.id);
@@ -52,20 +52,11 @@ export async function handleRunRepoSelection(
     runSelectionByUser.set(interaction.user.id, {
       ...selection,
       requestedAt: Date.now(),
-      ...(currentSelection?.selectorReply ? { selectorReply: currentSelection.selectorReply } : {}),
+      ...(currentSelection?.selectorMessageId
+        ? { selectorMessageId: currentSelection.selectorMessageId }
+        : {}),
     });
     await interaction.showModal(modal);
-    if (
-      await tryDeleteDiscordSelectorReply(interaction.client, currentSelection?.selectorReply, {
-        action: 'run-repo',
-        userId: interaction.user.id,
-      })
-    ) {
-      runSelectionByUser.set(interaction.user.id, {
-        ...selection,
-        requestedAt: Date.now(),
-      });
-    }
     return;
   }
 

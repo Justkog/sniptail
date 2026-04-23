@@ -167,4 +167,51 @@ describe('handleAskModalSubmit', () => {
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
     expect(editReply.mock.calls[0]?.[0]).toContain("I've accepted job");
   });
+
+  it('expires stale modal selections before queueing the job', async () => {
+    askSelectionByUser.set('U1', {
+      repoKeys: ['repo-a'],
+      requestedAt: Date.now() - 16 * 60 * 1000,
+      selectorMessageId: 'M1',
+    });
+
+    const reply = vi.fn<(payload: { content: string; ephemeral: boolean }) => Promise<void>>();
+    reply.mockResolvedValue(undefined);
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      user: { id: 'U1' },
+      channelId: 'C1',
+      guildId: 'G1',
+      member: { id: 'U1' },
+      client: {},
+      fields: {
+        getTextInputValue: vi.fn().mockReturnValue(''),
+      },
+      webhook: {
+        editMessage,
+      },
+      reply,
+    } as never;
+
+    const config = {
+      botName: 'Sniptail',
+      primaryAgent: 'codex',
+      repoAllowlist: {
+        'repo-a': { baseBranch: 'main' },
+      },
+    } as never;
+
+    await handleAskModalSubmit(interaction, config, {} as never, {} as never);
+
+    expect(reply).toHaveBeenCalledWith({
+      content: 'Repository selection expired. Please run the ask command again.',
+      ephemeral: true,
+    });
+    expect(editMessage).toHaveBeenCalledWith('M1', {
+      content: 'Repository selection expired. Please rerun the ask command.',
+      components: [],
+    });
+    expect(askSelectionByUser.has('U1')).toBe(false);
+    expect(enqueueJobMock).not.toHaveBeenCalled();
+  });
 });
