@@ -37,7 +37,7 @@ async function createWrapperFixture(): Promise<WrapperFixture> {
   const fakeDockerPath = join(fakeBinDir, 'docker');
   await writeFile(
     fakeDockerPath,
-    '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' \"$@\"\n',
+    '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$@"\n',
   );
   await chmod(fakeDockerPath, 0o755);
 
@@ -91,9 +91,9 @@ describe('codex-docker wrapper', () => {
 
   afterEach(async () => {
     await Promise.all(
-      cleanupPaths.splice(0, cleanupPaths.length).map((path) =>
-        rm(path, { recursive: true, force: true }),
-      ),
+      cleanupPaths
+        .splice(0, cleanupPaths.length)
+        .map((path) => rm(path, { recursive: true, force: true })),
     );
   });
 
