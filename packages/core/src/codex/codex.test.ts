@@ -96,6 +96,7 @@ describe('runCodex', () => {
     expect(hoisted.codexCtor).toHaveBeenCalledWith(
       expect.objectContaining({
         codexPathOverride: 'codex',
+        env: {},
       }),
     );
     expect(hoisted.startThread).toHaveBeenCalledWith(
@@ -114,6 +115,9 @@ describe('runCodex', () => {
     expect(hoisted.codexCtor).toHaveBeenCalledWith(
       expect.objectContaining({
         codexPathOverride: '/tmp/codex-docker.sh',
+        env: expect.objectContaining({
+          CODEX_DOCKER_FILESYSTEM_MODE: 'writable',
+        }),
       }),
     );
     expect(hoisted.startThread).toHaveBeenCalledWith(
@@ -123,7 +127,7 @@ describe('runCodex', () => {
     );
   });
 
-  it('preserves explicit sandbox mode overrides in docker mode', async () => {
+  it('maps explicit read-only sandbox requests to docker readonly mode', async () => {
     await runCodex(
       buildJob('MENTION'),
       '/tmp/work',
@@ -134,9 +138,16 @@ describe('runCodex', () => {
       },
     );
 
+    expect(hoisted.codexCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: expect.objectContaining({
+          CODEX_DOCKER_FILESYSTEM_MODE: 'readonly',
+        }),
+      }),
+    );
     expect(hoisted.startThread).toHaveBeenCalledWith(
       expect.objectContaining({
-        sandboxMode: 'read-only',
+        sandboxMode: 'danger-full-access',
       }),
     );
   });
