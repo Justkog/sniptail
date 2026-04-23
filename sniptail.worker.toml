@@ -214,6 +214,11 @@ timeout_ms = 300000
 allow_failure = false
 git_mode = "execution-only"
 
+[run.actions."install-package"]
+timeout_ms = 300000
+allow_failure = false
+git_mode = "implement"
+
 [run.actions.deploy-preview]
 timeout_ms = 120000
 git_mode = "execution-only"
