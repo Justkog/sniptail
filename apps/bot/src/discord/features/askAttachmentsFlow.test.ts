@@ -34,6 +34,8 @@ describe('Discord ask attachment flow', () => {
 
     const commandInteraction = {
       user: { id: 'U1' },
+      token: 'token-1',
+      applicationId: 'app-1',
       options: {
         getAttachment: vi.fn((optionName: string) => {
           if (optionName === 'context_file_1') {
