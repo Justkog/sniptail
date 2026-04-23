@@ -7,7 +7,7 @@ import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
 import { buildPromptForJobWithLineageWarnings } from '@sniptail/core/agents/buildPrompt.js';
-import { buildImplementArtifactsPrompt } from '@sniptail/core/codex/prompts.js';
+import { buildImplementArtifactsPrompt } from '@sniptail/core/agents/prompts/index.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
 import { buildMergeRequestDescription } from '../merge-requests/description.js';

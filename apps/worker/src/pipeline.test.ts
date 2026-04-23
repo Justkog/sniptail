@@ -269,7 +269,7 @@ vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
   ),
 }));
 
-vi.mock('@sniptail/core/codex/prompts.js', () => ({
+vi.mock('@sniptail/core/agents/prompts/index.js', () => ({
   buildImplementArtifactsPrompt: vi.fn(() => 'implement artifacts prompt'),
 }));
 

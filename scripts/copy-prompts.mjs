@@ -23,6 +23,6 @@ async function copyMarkdownPrompts(sourceDirParts, targetDirParts) {
 }
 
 await Promise.all([
-  copyMarkdownPrompts(['src', 'codex', 'prompts'], ['dist', 'codex', 'prompts']),
+  copyMarkdownPrompts(['src', 'agents', 'prompts'], ['dist', 'agents', 'prompts']),
   copyMarkdownPrompts(['src', 'copilot', 'prompts'], ['dist', 'copilot', 'prompts']),
 ]);
