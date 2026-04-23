@@ -89,7 +89,7 @@ describe('Discord ask attachment flow', () => {
       }),
     );
 
-    const selectorEdit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const webhookEditMessage = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const selectionInteraction = {
       user: { id: 'U1' },
       values: ['repo-a'],
@@ -97,17 +97,17 @@ describe('Discord ask attachment flow', () => {
       showModal: vi.fn().mockResolvedValue(undefined),
       message: {
         id: 'M1',
-        edit: selectorEdit,
+        edit: vi.fn(),
       },
       webhook: {
-        editMessage: vi.fn(),
+        editMessage: webhookEditMessage,
       },
     } as never;
 
     await handleAskSelection(selectionInteraction, config);
 
     expect(selectionInteraction.showModal).toHaveBeenCalledTimes(1);
-    expect(selectorEdit).toHaveBeenCalledWith({
+    expect(webhookEditMessage).toHaveBeenCalledWith('M1', {
       content: DISCORD_SELECTION_CAPTURED_MESSAGE,
       components: [],
     });
@@ -172,7 +172,7 @@ describe('Discord ask attachment flow', () => {
       },
     } as never;
 
-    const selectorEdit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const webhookEditMessage = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const reply = vi.fn().mockResolvedValue(undefined);
     askSelectionByUser.set('U1', {
       repoKeys: [],
@@ -187,10 +187,10 @@ describe('Discord ask attachment flow', () => {
       showModal: vi.fn().mockResolvedValue(undefined),
       message: {
         id: 'M1',
-        edit: selectorEdit,
+        edit: vi.fn(),
       },
       webhook: {
-        editMessage: vi.fn(),
+        editMessage: webhookEditMessage,
       },
     } as never;
 
@@ -201,7 +201,7 @@ describe('Discord ask attachment flow', () => {
       content: 'Repository selection expired. Please run the ask command again.',
       ephemeral: true,
     });
-    expect(selectorEdit).toHaveBeenCalledWith({
+    expect(webhookEditMessage).toHaveBeenCalledWith('M1', {
       content: 'Repository selection expired. Please rerun the ask command.',
       components: [],
     });
