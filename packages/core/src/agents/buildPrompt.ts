@@ -5,7 +5,7 @@ import {
   buildMentionPrompt,
   buildPlanPrompt,
   buildReviewPrompt,
-} from '../codex/prompts.js';
+} from './prompts/index.js';
 import type { JobSpec } from '../types/job.js';
 
 export type LineagePromptWarning =

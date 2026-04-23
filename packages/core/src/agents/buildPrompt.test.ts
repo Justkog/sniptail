@@ -5,7 +5,7 @@ import {
   type LineagePromptWarning,
 } from './buildPrompt.js';
 
-vi.mock('../codex/prompts.js', () => ({
+vi.mock('./prompts/index.js', () => ({
   buildAskPrompt: vi.fn(() => 'ask prompt'),
   buildExplorePrompt: vi.fn(() => 'explore prompt'),
   buildImplementPrompt: vi.fn(() => 'implement prompt'),
