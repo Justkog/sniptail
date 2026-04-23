@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { PartialGroupDMChannel } from 'discord.js';
 import {
+  type RepliableInteraction,
   type Client,
   type MessageCreateOptions,
   type TextBasedChannel,
@@ -29,6 +30,12 @@ type DiscordInteractionReplyOptions = {
   interactionToken: string;
   interactionApplicationId: string;
   text: string;
+};
+
+export type DiscordInteractionReplyRef = {
+  interactionToken: string;
+  interactionApplicationId: string;
+  messageId: string;
 };
 
 type DiscordReactionOptions = {
@@ -133,6 +140,29 @@ export async function editDiscordInteractionReply(
     Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
     { body: { content: options.text } },
   );
+}
+
+export async function deleteDiscordInteractionReply(
+  client: Client,
+  options: DiscordInteractionReplyRef,
+) {
+  await client.rest.delete(
+    Routes.webhookMessage(
+      options.interactionApplicationId,
+      options.interactionToken,
+      options.messageId,
+    ),
+  );
+}
+
+export async function captureDiscordInteractionReplyRef(
+  interaction: RepliableInteraction,
+): Promise<DiscordInteractionReplyRef> {
+  return {
+    interactionToken: interaction.token,
+    interactionApplicationId: interaction.applicationId,
+    messageId: '@original',
+  };
 }
 
 function normalizeReactionName(name: string): string {

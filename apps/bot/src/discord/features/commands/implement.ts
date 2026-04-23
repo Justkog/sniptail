@@ -5,6 +5,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildImplementModal, buildImplementRepoSelect } from '../../modals.js';
 import { implementSelectionByUser } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
+import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handleImplementStart(
   interaction: ChatInputCommandInteraction,
@@ -52,5 +53,12 @@ export async function handleImplementStart(
     content: 'Select repositories for your change request.',
     components: [row],
     ephemeral: true,
+  });
+  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+  implementSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+    selectorReply,
   });
 }

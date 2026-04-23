@@ -5,6 +5,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildExploreModal, buildExploreRepoSelect } from '../../modals.js';
 import { exploreSelectionByUser } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
+import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handleDiscordExploreStart(
   interaction: ChatInputCommandInteraction,
@@ -52,5 +53,12 @@ export async function handleDiscordExploreStart(
     content: 'Select repositories for your exploration.',
     components: [row],
     ephemeral: true,
+  });
+  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+  exploreSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+    selectorReply,
   });
 }
