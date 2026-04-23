@@ -109,13 +109,14 @@ export function getActiveDiscordSelection(
   return { selection };
 }
 
-export function storeDiscordSelectionReplyId(
-  interaction: { user: { id: string } },
-  selectionMap: Map<string, DiscordJobSelectionState>,
+function captureSelectionReplyId<T extends DiscordJobSelectionState>(
+  selectionMap: Map<string, T>,
+  key: string,
+  loggingUserId: string,
   flow: string,
   response: Pick<InteractionCallbackResponse, 'resource'>,
 ): void {
-  const selection = selectionMap.get(interaction.user.id);
+  const selection = selectionMap.get(key);
   if (!selection) {
     return;
   }
@@ -123,23 +124,45 @@ export function storeDiscordSelectionReplyId(
   const selectorMessageId = response.resource?.message?.id;
   if (!selectorMessageId) {
     logger.warn(
-      { flow, userId: interaction.user.id },
+      { flow, userId: loggingUserId },
       'Discord selector reply response did not include a message id',
     );
     return;
   }
 
   try {
-    selectionMap.set(interaction.user.id, {
+    selectionMap.set(key, {
       ...selection,
       selectorMessageId,
-    });
+    } as T);
   } catch (err) {
     logger.warn(
-      { err, flow, userId: interaction.user.id },
+      { err, flow, userId: loggingUserId },
       'Failed to capture Discord selector reply',
     );
   }
+}
+
+export function storeDiscordSelectionReplyId(
+  interaction: { user: { id: string } },
+  selectionMap: Map<string, DiscordJobSelectionState>,
+  flow: string,
+  response: Pick<InteractionCallbackResponse, 'resource'>,
+): void {
+  captureSelectionReplyId(selectionMap, interaction.user.id, interaction.user.id, flow, response);
+}
+
+export function storeDiscordScopedSelectionReplyId(
+  selectionMap: Map<string, DiscordScopedJobSelectionState>,
+  selectionToken: string,
+  flow: string,
+  response: Pick<InteractionCallbackResponse, 'resource'>,
+): void {
+  const selection = selectionMap.get(selectionToken);
+  if (!selection) {
+    return;
+  }
+  captureSelectionReplyId(selectionMap, selectionToken, selection.userId, flow, response);
 }
 
 export async function disableDiscordSelectionReply(

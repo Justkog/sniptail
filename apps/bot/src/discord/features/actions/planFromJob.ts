@@ -20,6 +20,8 @@ import {
   planFromJobSelectionByToken,
   planSelectionByUser,
   setFromJobSelectionWithCap,
+  storeDiscordScopedSelectionReplyId,
+  storeDiscordSelectionReplyId,
 } from '../../state.js';
 
 async function openPlanModalFromSelection(
@@ -41,6 +43,7 @@ async function openPlanModalFromSelection(
     repoKeys: selection.repoKeys,
     requestedAt: Date.now(),
     ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+    ...(selection.selectorMessageId ? { selectorMessageId: selection.selectorMessageId } : {}),
   };
   planSelectionByUser.set(interaction.user.id, baseSelection);
 
@@ -88,6 +91,19 @@ export async function handlePlanFromJobButton(
     return;
   }
 
+  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
+  if (allowlistRepoKeys.length === 1) {
+    planSelectionByUser.set(interaction.user.id, {
+      repoKeys,
+      requestedAt: Date.now(),
+      resumeFromJobId: jobId,
+    });
+    const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+    const modal = buildPlanModal(config.botName, repoKeys, baseBranch, jobId);
+    await interaction.showModal(modal);
+    return;
+  }
+
   const selectionToken = createDiscordSelectionToken();
   const baseSelection = {
     repoKeys,
@@ -100,28 +116,36 @@ export async function handlePlanFromJobButton(
   });
   planSelectionByUser.set(interaction.user.id, baseSelection);
 
-  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
-  const continueButton = new ButtonBuilder()
-    .setCustomId(buildPlanFromJobContinueButtonCustomId(selectionToken))
-    .setStyle(ButtonStyle.Primary)
-    .setLabel('Use same repos');
-  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
-  ];
-
-  let content = 'Use the same repositories for this plan job, or choose a different repo set.';
+  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [];
+  let content = 'Select repositories for this plan job.';
   if (allowlistRepoKeys.length <= 25) {
-    components.unshift(buildPlanRepoSelect(allowlistRepoKeys, repoKeys));
+    components.push(buildPlanRepoSelect(allowlistRepoKeys, repoKeys));
+    if (allowlistRepoKeys.length > 1) {
+      const continueButton = new ButtonBuilder()
+        .setCustomId(buildPlanFromJobContinueButtonCustomId(selectionToken))
+        .setStyle(ButtonStyle.Primary)
+        .setLabel('Use same repos');
+      components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
+      content = 'Use the same repositories for this plan job, or choose a different repo set.';
+    }
   } else {
     content =
       'Use the same repositories for this plan job. Changing repos is unavailable in Discord because the allowlist exceeds 25 repositories.';
+    const continueButton = new ButtonBuilder()
+      .setCustomId(buildPlanFromJobContinueButtonCustomId(selectionToken))
+      .setStyle(ButtonStyle.Primary)
+      .setLabel('Use same repos');
+    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
   }
 
-  await interaction.reply({
+  const response = await interaction.reply({
     content,
     components,
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, planSelectionByUser, 'plan', response);
+  storeDiscordScopedSelectionReplyId(planFromJobSelectionByToken, selectionToken, 'plan', response);
 }
 
 export async function handlePlanFromJobContinueButton(

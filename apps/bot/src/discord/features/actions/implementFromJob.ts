@@ -20,6 +20,8 @@ import {
   implementFromJobSelectionByToken,
   implementSelectionByUser,
   setFromJobSelectionWithCap,
+  storeDiscordScopedSelectionReplyId,
+  storeDiscordSelectionReplyId,
 } from '../../state.js';
 
 async function openImplementModalFromSelection(
@@ -41,6 +43,7 @@ async function openImplementModalFromSelection(
     repoKeys: selection.repoKeys,
     requestedAt: Date.now(),
     ...(selection.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
+    ...(selection.selectorMessageId ? { selectorMessageId: selection.selectorMessageId } : {}),
   };
   implementSelectionByUser.set(interaction.user.id, baseSelection);
 
@@ -93,6 +96,19 @@ export async function handleImplementFromJobButton(
     return;
   }
 
+  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
+  if (allowlistRepoKeys.length === 1) {
+    implementSelectionByUser.set(interaction.user.id, {
+      repoKeys,
+      requestedAt: Date.now(),
+      resumeFromJobId: jobId,
+    });
+    const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
+    const modal = buildImplementModal(config.botName, repoKeys, baseBranch, jobId);
+    await interaction.showModal(modal);
+    return;
+  }
+
   const selectionToken = createDiscordSelectionToken();
   const baseSelection = {
     repoKeys,
@@ -105,28 +121,41 @@ export async function handleImplementFromJobButton(
   });
   implementSelectionByUser.set(interaction.user.id, baseSelection);
 
-  const allowlistRepoKeys = Object.keys(config.repoAllowlist);
-  const continueButton = new ButtonBuilder()
-    .setCustomId(buildImplementFromJobContinueButtonCustomId(selectionToken))
-    .setStyle(ButtonStyle.Primary)
-    .setLabel('Use same repos');
-  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton),
-  ];
-
-  let content = 'Use the same repositories for this implement job, or choose a different repo set.';
+  const components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = [];
+  let content = 'Select repositories for this implement job.';
   if (allowlistRepoKeys.length <= 25) {
-    components.unshift(buildImplementRepoSelect(allowlistRepoKeys, repoKeys));
+    components.push(buildImplementRepoSelect(allowlistRepoKeys, repoKeys));
+    if (allowlistRepoKeys.length > 1) {
+      const continueButton = new ButtonBuilder()
+        .setCustomId(buildImplementFromJobContinueButtonCustomId(selectionToken))
+        .setStyle(ButtonStyle.Primary)
+        .setLabel('Use same repos');
+      components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
+      content = 'Use the same repositories for this implement job, or choose a different repo set.';
+    }
   } else {
     content =
       'Use the same repositories for this implement job. Changing repos is unavailable in Discord because the allowlist exceeds 25 repositories.';
+    const continueButton = new ButtonBuilder()
+      .setCustomId(buildImplementFromJobContinueButtonCustomId(selectionToken))
+      .setStyle(ButtonStyle.Primary)
+      .setLabel('Use same repos');
+    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton));
   }
 
-  await interaction.reply({
+  const response = await interaction.reply({
     content,
     components,
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, implementSelectionByUser, 'implement', response);
+  storeDiscordScopedSelectionReplyId(
+    implementFromJobSelectionByToken,
+    selectionToken,
+    'implement',
+    response,
+  );
 }
 
 export async function handleImplementFromJobContinueButton(
