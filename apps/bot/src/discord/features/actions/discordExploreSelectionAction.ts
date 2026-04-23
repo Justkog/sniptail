@@ -4,6 +4,7 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildExploreModal } from '../../modals.js';
 import { exploreSelectionByUser } from '../../state.js';
+import { tryDeleteDiscordSelectorReply } from '../../lib/selectorReplyCleanup.js';
 
 export async function handleDiscordExploreSelection(
   interaction: StringSelectMenuInteraction,
@@ -18,7 +19,7 @@ export async function handleDiscordExploreSelection(
   }
 
   const currentSelection = exploreSelectionByUser.get(interaction.user.id);
-  exploreSelectionByUser.set(interaction.user.id, {
+  const nextSelection = {
     repoKeys,
     requestedAt: Date.now(),
     ...(currentSelection?.resumeFromJobId
@@ -27,7 +28,9 @@ export async function handleDiscordExploreSelection(
     ...(currentSelection?.contextAttachments?.length
       ? { contextAttachments: currentSelection.contextAttachments }
       : {}),
-  });
+    ...(currentSelection?.selectorReply ? { selectorReply: currentSelection.selectorReply } : {}),
+  };
+  exploreSelectionByUser.set(interaction.user.id, nextSelection);
 
   const baseBranch = resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]);
   const modal = buildExploreModal(
@@ -37,4 +40,14 @@ export async function handleDiscordExploreSelection(
     currentSelection?.resumeFromJobId,
   );
   await interaction.showModal(modal);
+  if (
+    await tryDeleteDiscordSelectorReply(interaction.client, currentSelection?.selectorReply, {
+      action: 'explore',
+      userId: interaction.user.id,
+    })
+  ) {
+    const selectionWithoutReply = { ...nextSelection };
+    delete selectionWithoutReply.selectorReply;
+    exploreSelectionByUser.set(interaction.user.id, selectionWithoutReply);
+  }
 }

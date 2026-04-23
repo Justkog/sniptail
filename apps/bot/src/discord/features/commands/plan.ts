@@ -5,6 +5,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildPlanModal, buildPlanRepoSelect } from '../../modals.js';
 import { planSelectionByUser } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
+import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handlePlanStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -49,5 +50,12 @@ export async function handlePlanStart(interaction: ChatInputCommandInteraction, 
     content: 'Select repositories for your plan.',
     components: [row],
     ephemeral: true,
+  });
+  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+  planSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+    selectorReply,
   });
 }

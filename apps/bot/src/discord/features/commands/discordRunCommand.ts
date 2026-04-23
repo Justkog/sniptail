@@ -7,6 +7,7 @@ import { computeAvailableRunActions } from '../../../lib/botRunActionAvailabilit
 import { buildRunActionSelect, buildRunRepoSelect } from '../../modals.js';
 import { runSelectionByUser } from '../../state.js';
 import { buildRunStepModal } from '../../lib/runStepper.js';
+import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handleRunStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -82,6 +83,12 @@ export async function handleRunStart(interaction: ChatInputCommandInteraction, c
       components: [row],
       ephemeral: true,
     });
+    const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+    runSelectionByUser.set(interaction.user.id, {
+      repoKeys: selectedRepoKeys,
+      requestedAt: Date.now(),
+      selectorReply,
+    });
     return;
   }
 
@@ -90,5 +97,11 @@ export async function handleRunStart(interaction: ChatInputCommandInteraction, c
     content: 'Select repositories for your run action.',
     components: [row],
     ephemeral: true,
+  });
+  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+  runSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    selectorReply,
   });
 }

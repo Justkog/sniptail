@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { DiscordContextAttachmentRef } from './lib/discordContextFiles.js';
+import type { DiscordInteractionReplyRef } from './helpers.js';
 
 type DiscordJobSelectionState = {
   repoKeys: string[];
   requestedAt: number;
   contextAttachments?: DiscordContextAttachmentRef[];
   resumeFromJobId?: string;
+  selectorReply?: DiscordInteractionReplyRef;
 };
 
 type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
@@ -35,6 +37,7 @@ export const runSelectionByUser = new Map<
     runStepIndex?: number;
     collectedParams?: Record<string, unknown>;
     gitRef?: string;
+    selectorReply?: DiscordInteractionReplyRef;
   }
 >();
 export const bootstrapExtrasByUser = new Map<

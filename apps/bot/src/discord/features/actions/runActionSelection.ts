@@ -6,6 +6,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
 import { runSelectionByUser } from '../../state.js';
 import { buildRunStepModal } from '../../lib/runStepper.js';
+import { tryDeleteDiscordSelectorReply } from '../../lib/selectorReplyCleanup.js';
 
 export async function handleRunActionSelection(
   interaction: StringSelectMenuInteraction,
@@ -41,14 +42,16 @@ export async function handleRunActionSelection(
     return;
   }
 
-  runSelectionByUser.set(interaction.user.id, {
+  const nextSelection = {
     repoKeys,
     actionId,
     runStepIndex: 0,
     collectedParams: {},
     gitRef: resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]),
     requestedAt: Date.now(),
-  });
+    ...(selection?.selectorReply ? { selectorReply: selection.selectorReply } : {}),
+  };
+  runSelectionByUser.set(interaction.user.id, nextSelection);
 
   const modal = buildRunStepModal({
     config,
@@ -61,4 +64,14 @@ export async function handleRunActionSelection(
     },
   }).modal;
   await interaction.showModal(modal);
+  if (
+    await tryDeleteDiscordSelectorReply(interaction.client, selection?.selectorReply, {
+      action: 'run-action',
+      userId: interaction.user.id,
+    })
+  ) {
+    const selectionWithoutReply = { ...nextSelection };
+    delete selectionWithoutReply.selectorReply;
+    runSelectionByUser.set(interaction.user.id, selectionWithoutReply);
+  }
 }

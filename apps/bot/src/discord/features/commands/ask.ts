@@ -5,6 +5,7 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildAskModal, buildAskRepoSelect } from '../../modals.js';
 import { askSelectionByUser } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
+import { captureDiscordInteractionReplyRef } from '../../helpers.js';
 
 export async function handleAskStart(interaction: ChatInputCommandInteraction, config: BotConfig) {
   await refreshRepoAllowlist(config);
@@ -49,5 +50,12 @@ export async function handleAskStart(interaction: ChatInputCommandInteraction, c
     content: 'Select repositories for your question.',
     components: [row],
     ephemeral: true,
+  });
+  const selectorReply = await captureDiscordInteractionReplyRef(interaction);
+  askSelectionByUser.set(interaction.user.id, {
+    repoKeys: [],
+    requestedAt: Date.now(),
+    ...(contextAttachments.length ? { contextAttachments } : {}),
+    selectorReply,
   });
 }
