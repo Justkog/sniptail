@@ -49,6 +49,7 @@ describe('Discord ask attachment flow', () => {
         }),
       },
       reply,
+      fetchReply: vi.fn().mockResolvedValue({ id: 'selector-reply-1' }),
       showModal,
     } as never;
 
