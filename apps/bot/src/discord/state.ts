@@ -160,7 +160,6 @@ export async function disableDiscordSelectionReply(
 
   try {
     await interaction.webhook.editMessage(selectorMessageId, payload);
-    console.debug('Successfully edited Discord selector message via webhook');
   } catch (err) {
     logger.warn(
       { err, flow, userId: interaction.user.id, selectorMessageId },
