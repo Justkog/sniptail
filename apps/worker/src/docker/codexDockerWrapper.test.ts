@@ -1,12 +1,15 @@
 import { execFile } from 'node:child_process';
 import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const execFileAsync = promisify(execFile);
-const wrapperPath = resolve(process.cwd(), 'apps/worker/scripts/codex-docker.sh');
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirPath = dirname(currentFilePath);
+const wrapperPath = resolve(currentDirPath, '../../scripts/codex-docker.sh');
 
 type WrapperFixture = {
   rootDir: string;
