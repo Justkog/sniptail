@@ -158,11 +158,10 @@ export async function deleteDiscordInteractionReply(
 export async function captureDiscordInteractionReplyRef(
   interaction: RepliableInteraction,
 ): Promise<DiscordInteractionReplyRef> {
-  const reply = await interaction.fetchReply();
   return {
     interactionToken: interaction.token,
     interactionApplicationId: interaction.applicationId,
-    messageId: reply.id,
+    messageId: '@original',
   };
 }
 
