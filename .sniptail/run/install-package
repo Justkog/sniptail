@@ -8,16 +8,53 @@ fi
 
 package_name="${SNIPTAIL_RUN_PARAM_PACKAGE_NAME:-}"
 dev_dependency="${SNIPTAIL_RUN_PARAM_DEV_DEPENDENCY:-false}"
+target_path="${SNIPTAIL_RUN_PARAM_TARGET_PATH:-}"
 
 if [[ -z "${package_name}" ]]; then
   echo "SNIPTAIL_RUN_PARAM_PACKAGE_NAME is required." >&2
   exit 1
 fi
 
+case "${target_path}" in
+  root)
+    install_dir="."
+    ;;
+  bot)
+    install_dir="apps/bot"
+    ;;
+  worker)
+    install_dir="apps/worker"
+    ;;
+  core)
+    install_dir="packages/core"
+    ;;
+  cli)
+    install_dir="packages/cli"
+    ;;
+  *)
+    echo "SNIPTAIL_RUN_PARAM_TARGET_PATH must be one of: root, bot, worker, core, cli." >&2
+    exit 1
+    ;;
+esac
+
 if [[ "${dev_dependency}" == "true" ]]; then
-  echo "[install-package] Adding dev dependency ${package_name}"
-  pnpm add -Dw "${package_name}"
+  echo "[install-package] Adding dev dependency ${package_name} to ${target_path}"
+  if [[ "${target_path}" == "root" ]]; then
+    pnpm add -Dw "${package_name}"
+  else
+    (
+      cd "${install_dir}"
+      pnpm add -D "${package_name}"
+    )
+  fi
 else
-  echo "[install-package] Adding dependency ${package_name}"
-  pnpm add -w "${package_name}"
+  echo "[install-package] Adding dependency ${package_name} to ${target_path}"
+  if [[ "${target_path}" == "root" ]]; then
+    pnpm add -w "${package_name}"
+  else
+    (
+      cd "${install_dir}"
+      pnpm add "${package_name}"
+    )
+  fi
 fi

@@ -9,6 +9,15 @@ required = true
 description = "Package specifier to install, optionally including a version or range."
 
 [[parameters]]
+id = "target_path"
+label = "Target path"
+type = "string"
+ui_mode = "select"
+required = true
+options = ["root", "bot", "worker", "core", "cli"]
+description = "Workspace package to update."
+
+[[parameters]]
 id = "dev_dependency"
 label = "Dev dependency"
 type = "boolean"
@@ -20,4 +29,4 @@ description = "Install as a devDependency."
 [[steps]]
 id = "basic"
 title = "Package"
-fields = ["package_name", "dev_dependency"]
+fields = ["package_name", "target_path", "dev_dependency"]
