@@ -4,7 +4,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
-import { implementSelectionByUser } from '../../state.js';
+import { deleteDiscordSelectionReply, implementSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
@@ -13,6 +13,7 @@ import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import { disableDiscordSelectionReply, getActiveDiscordSelection } from '../../state.js';
 
 export async function handleImplementModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -22,7 +23,24 @@ export async function handleImplementModalSubmit(
 ) {
   await refreshRepoAllowlist(config);
 
-  const selection = implementSelectionByUser.get(interaction.user.id);
+  const { selection, expiredSelection } = getActiveDiscordSelection(
+    implementSelectionByUser,
+    interaction.user.id,
+  );
+  if (expiredSelection) {
+    await disableDiscordSelectionReply(
+      interaction,
+      expiredSelection,
+      'Repository selection expired. Please rerun the implement command.',
+      'implement',
+    );
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the implement command again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   const repoKeys = selection?.repoKeys ?? [];
   if (!repoKeys.length) {
     await interaction.reply({
@@ -129,6 +147,7 @@ export async function handleImplementModalSubmit(
   if (acceptance.acceptancePosted) {
     try {
       await interaction.deleteReply();
+      await deleteDiscordSelectionReply(interaction, selection, 'implement');
     } catch (err) {
       logger.warn({ err, jobId: job.jobId }, 'Failed to delete ephemeral interaction reply');
     }

@@ -3,7 +3,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildImplementModal, buildImplementRepoSelect } from '../../modals.js';
-import { implementSelectionByUser } from '../../state.js';
+import { implementSelectionByUser, storeDiscordSelectionReplyId } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
 
 export async function handleImplementStart(
@@ -48,9 +48,11 @@ export async function handleImplementStart(
   });
 
   const row = buildImplementRepoSelect(repoKeys);
-  await interaction.reply({
+  const response = await interaction.reply({
     content: 'Select repositories for your change request.',
     components: [row],
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, implementSelectionByUser, 'implement', response);
 }

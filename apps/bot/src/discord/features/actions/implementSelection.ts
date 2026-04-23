@@ -3,7 +3,12 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildImplementModal } from '../../modals.js';
-import { implementSelectionByUser } from '../../state.js';
+import {
+  disableDiscordSelectionReply,
+  DISCORD_SELECTION_CAPTURED_MESSAGE,
+  getActiveDiscordSelection,
+  implementSelectionByUser,
+} from '../../state.js';
 
 export async function handleImplementSelection(
   interaction: StringSelectMenuInteraction,
@@ -17,10 +22,30 @@ export async function handleImplementSelection(
     return;
   }
 
-  const currentSelection = implementSelectionByUser.get(interaction.user.id);
+  const { selection: currentSelection, expiredSelection } = getActiveDiscordSelection(
+    implementSelectionByUser,
+    interaction.user.id,
+  );
+  if (expiredSelection) {
+    await disableDiscordSelectionReply(
+      interaction,
+      expiredSelection,
+      'Repository selection expired. Please rerun the implement command.',
+      'implement',
+    );
+    await interaction.reply({
+      content: 'Repository selection expired. Please run the implement command again.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   implementSelectionByUser.set(interaction.user.id, {
     repoKeys,
     requestedAt: Date.now(),
+    ...(currentSelection?.selectorMessageId
+      ? { selectorMessageId: currentSelection.selectorMessageId }
+      : {}),
     ...(currentSelection?.resumeFromJobId
       ? { resumeFromJobId: currentSelection.resumeFromJobId }
       : {}),
@@ -37,4 +62,10 @@ export async function handleImplementSelection(
     currentSelection?.resumeFromJobId,
   );
   await interaction.showModal(modal);
+  await disableDiscordSelectionReply(
+    interaction,
+    currentSelection,
+    DISCORD_SELECTION_CAPTURED_MESSAGE,
+    'implement',
+  );
 }

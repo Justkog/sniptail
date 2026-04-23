@@ -7,7 +7,7 @@ import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { computeAvailableRunActions } from '../../../lib/botRunActionAvailability.js';
 import { buildRunActionSelect } from '../../modals.js';
-import { runSelectionByUser } from '../../state.js';
+import { runSelectionByUser, storeDiscordSelectionReplyId } from '../../state.js';
 import { buildRunStepModal } from '../../lib/runStepper.js';
 
 export async function handleRunFromJobButton(
@@ -84,9 +84,11 @@ export async function handleRunFromJobButton(
   const row = buildRunActionSelect(
     actions.map((action) => ({ id: action.id, label: action.label })),
   );
-  await interaction.reply({
+  const response = await interaction.reply({
     content: 'Select a run action.',
     components: [row],
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, runSelectionByUser, 'run', response);
 }

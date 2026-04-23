@@ -6,7 +6,7 @@ import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { runSelectionByUser } from '../../state.js';
+import { deleteDiscordSelectionReply, runSelectionByUser } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
@@ -94,6 +94,7 @@ export async function handleRunModalSubmit(
       runStepIndex: stepIndex + 1,
       collectedParams,
       gitRef,
+      ...(selection?.selectorMessageId ? { selectorMessageId: selection.selectorMessageId } : {}),
     };
     runSelectionByUser.set(interaction.user.id, nextSelection);
 
@@ -180,6 +181,7 @@ export async function handleRunModalSubmit(
   if (acceptance.acceptancePosted) {
     try {
       await interaction.deleteReply();
+      await deleteDiscordSelectionReply(interaction, selection, 'run');
     } catch (err) {
       logger.warn(
         { err, jobId: job.jobId, userId: interaction.user.id },

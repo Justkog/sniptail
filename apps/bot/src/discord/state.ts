@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import type {
+  InteractionCallbackResponse,
+  ModalSubmitInteraction,
+  StringSelectMenuInteraction,
+} from 'discord.js';
+import { logger } from '@sniptail/core/logger.js';
 import type { DiscordContextAttachmentRef } from './lib/discordContextFiles.js';
 
 type DiscordJobSelectionState = {
@@ -6,6 +12,7 @@ type DiscordJobSelectionState = {
   requestedAt: number;
   contextAttachments?: DiscordContextAttachmentRef[];
   resumeFromJobId?: string;
+  selectorMessageId?: string;
 };
 
 type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
@@ -13,6 +20,9 @@ type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
 };
 
 const FROM_JOB_SELECTION_MAX_ENTRIES = 50;
+export const DISCORD_SELECTION_TTL_MS = 15 * 60 * 1000;
+export const DISCORD_SELECTION_CAPTURED_MESSAGE =
+  'Repository selection captured. Complete the modal or rerun the command.';
 
 export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
@@ -35,6 +45,7 @@ export const runSelectionByUser = new Map<
     runStepIndex?: number;
     collectedParams?: Record<string, unknown>;
     gitRef?: string;
+    selectorMessageId?: string;
   }
 >();
 export const bootstrapExtrasByUser = new Map<
@@ -64,4 +75,113 @@ export function setFromJobSelectionWithCap(
   }
 
   selectionMap.set(selectionToken, selection);
+}
+
+export function isSelectionExpired(
+  selection: Pick<DiscordJobSelectionState, 'requestedAt'> | undefined,
+  now = Date.now(),
+): boolean {
+  if (!selection) {
+    return false;
+  }
+
+  return now - selection.requestedAt > DISCORD_SELECTION_TTL_MS;
+}
+
+export function getActiveDiscordSelection(
+  selectionMap: Map<string, DiscordJobSelectionState>,
+  userId: string,
+  now = Date.now(),
+): {
+  selection?: DiscordJobSelectionState;
+  expiredSelection?: DiscordJobSelectionState;
+} {
+  const selection = selectionMap.get(userId);
+  if (!selection) {
+    return {};
+  }
+
+  if (isSelectionExpired(selection, now)) {
+    selectionMap.delete(userId);
+    return { expiredSelection: selection };
+  }
+
+  return { selection };
+}
+
+export function storeDiscordSelectionReplyId(
+  interaction: { user: { id: string } },
+  selectionMap: Map<string, DiscordJobSelectionState>,
+  flow: string,
+  response: Pick<InteractionCallbackResponse, 'resource'>,
+): void {
+  const selection = selectionMap.get(interaction.user.id);
+  if (!selection) {
+    return;
+  }
+
+  const selectorMessageId = response.resource?.message?.id;
+  if (!selectorMessageId) {
+    logger.warn(
+      { flow, userId: interaction.user.id },
+      'Discord selector reply response did not include a message id',
+    );
+    return;
+  }
+
+  try {
+    selectionMap.set(interaction.user.id, {
+      ...selection,
+      selectorMessageId,
+    });
+  } catch (err) {
+    logger.warn({ err, flow, userId: interaction.user.id }, 'Failed to capture Discord selector reply');
+  }
+}
+
+export async function disableDiscordSelectionReply(
+  interaction: StringSelectMenuInteraction | ModalSubmitInteraction,
+  selection: DiscordJobSelectionState | undefined,
+  content: string,
+  flow: string,
+): Promise<void> {
+  const selectorMessageId = selection?.selectorMessageId;
+  if (!selectorMessageId) {
+    return;
+  }
+
+  const payload = {
+    content,
+    components: [],
+  };
+
+  try {
+    await interaction.webhook.editMessage(selectorMessageId, payload);
+    console.debug('Successfully edited Discord selector message via webhook');
+  } catch (err) {
+    logger.warn(
+      { err, flow, userId: interaction.user.id, selectorMessageId },
+      'Failed to disable Discord selector reply',
+    );
+  }
+}
+
+export async function deleteDiscordSelectionReply(
+  interaction: StringSelectMenuInteraction | ModalSubmitInteraction,
+  selection: DiscordJobSelectionState | undefined,
+  flow: string,
+): Promise<void> {
+  const selectorMessageId = selection?.selectorMessageId;
+  if (!selectorMessageId) {
+    return;
+  }
+
+  try {
+    await interaction.webhook.deleteMessage(selectorMessageId);
+  } catch (err) {
+    logger.warn(
+      { err, flow, userId: interaction.user.id, selectorMessageId },
+      'Failed to delete Discord selector reply',
+    );
+  }
 }

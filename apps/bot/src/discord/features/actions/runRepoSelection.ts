@@ -13,6 +13,7 @@ export async function handleRunRepoSelection(
   config: BotConfig,
 ) {
   await refreshRepoAllowlist(config);
+  const currentSelection = runSelectionByUser.get(interaction.user.id);
 
   const repoKeys = interaction.values ?? [];
   if (!repoKeys.length) {
@@ -33,6 +34,9 @@ export async function handleRunRepoSelection(
     repoKeys,
     ...(actions.length === 1 ? { actionId: normalizeRunActionId(actions[0]!.id) } : {}),
     requestedAt: Date.now(),
+    ...(currentSelection?.selectorMessageId
+      ? { selectorMessageId: currentSelection.selectorMessageId }
+      : {}),
   });
 
   if (actions.length === 1) {
@@ -48,6 +52,9 @@ export async function handleRunRepoSelection(
     runSelectionByUser.set(interaction.user.id, {
       ...selection,
       requestedAt: Date.now(),
+      ...(currentSelection?.selectorMessageId
+        ? { selectorMessageId: currentSelection.selectorMessageId }
+        : {}),
     });
     await interaction.showModal(modal);
     return;
