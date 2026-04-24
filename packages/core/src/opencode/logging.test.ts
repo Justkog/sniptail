@@ -72,4 +72,89 @@ describe('OpenCode logging', () => {
       }),
     ).toEqual({ text: 'OpenCode assistant message completed', isError: false });
   });
+
+  it('summarizes tool part updates', () => {
+    expect(
+      summarizeOpenCodeEvent({
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'session-1',
+          time: 1,
+          part: {
+            id: 'part-1',
+            sessionID: 'session-1',
+            messageID: 'message-1',
+            type: 'tool',
+            callID: 'call-1',
+            tool: 'bash',
+            state: {
+              status: 'running',
+              input: { command: 'rg opencode README.md' },
+              raw: '',
+              time: { start: 1 },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      text: 'OpenCode tool running: bash {"command":"rg opencode README.md"}',
+      isError: false,
+    });
+
+    expect(
+      summarizeOpenCodeEvent({
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'session-1',
+          time: 1,
+          part: {
+            id: 'part-1',
+            sessionID: 'session-1',
+            messageID: 'message-1',
+            type: 'tool',
+            callID: 'call-1',
+            tool: 'glob',
+            state: {
+              status: 'completed',
+              input: { pattern: 'README*' },
+              output: 'README.md',
+              title: 'README*',
+              metadata: {},
+              time: { start: 1, end: 2 },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      text: 'OpenCode tool complete: glob {"pattern":"README*"}',
+      isError: false,
+    });
+
+    expect(
+      summarizeOpenCodeEvent({
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'session-1',
+          time: 1,
+          part: {
+            id: 'part-1',
+            sessionID: 'session-1',
+            messageID: 'message-1',
+            type: 'tool',
+            callID: 'call-1',
+            tool: 'read',
+            state: {
+              status: 'error',
+              input: { filePath: 'missing.md' },
+              error: 'not found',
+              time: { start: 1, end: 2 },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      text: 'OpenCode tool error: read {"filePath":"missing.md"}: not found',
+      isError: true,
+    });
+  });
 });
