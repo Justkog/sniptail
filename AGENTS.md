@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project overview
-- Sniptail is a Slack bot that queues and runs Codex-backed jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
+- Sniptail is an omnichannel bot that queues and runs configurable coding-agent jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
 - Entry points: `apps/bot/src/index.ts` starts the Slack app (Socket Mode) and `apps/worker/src/index.ts` starts the worker.
 - CLI entrypoint: `packages/cli/src/index.ts` provides the `sniptail` command and delegates runtime commands to bot/worker dist entrypoints.
 - Deployment model: `apps/bot` and `apps/worker` are intended to run on different machines and must not rely on any shared filesystem between them.
@@ -9,7 +9,7 @@
 ## Stack
 - Node.js + TypeScript (ESM), PNPM workspaces
 - Slack Bolt, BullMQ, Redis
-- OpenAI Codex SDK
+- OpenAI Codex SDK, GitHub Copilot CLI, OpenCode
 
 ## TypeScript guideline
 - Prefer optional properties/parameters when something may be absent; avoid explicit nullable types like `foo: string | null` unless null has a distinct meaning.
@@ -46,11 +46,13 @@
 - `packages/core/src/queue/`: BullMQ queue wiring
 - `packages/core/src/git/`: Git operations and repo management
 - `packages/core/src/codex/`: Codex SDK integration and execution
+- `packages/core/src/copilot/`: Copilot CLI integration and execution
+- `packages/core/src/opencode/`: OpenCode integration and execution
 - `packages/core/src/config/env.ts`: env var schema + validation
 - `packages/cli/src/index.ts`: top-level CLI registration (`bot`, `worker`, `run-job`, `repos`, `slack-manifest`)
 - `packages/cli/src/lib/runtime.ts`: shared runtime launcher used by CLI commands to invoke app entrypoints
 - `packages/cli/src/commands/repos.ts`: operator-facing repository catalog management command surface
-- `scripts/`: helper scripts (notably `scripts/codex-docker.sh`)
+- `apps/worker/scripts/`: helper scripts for Docker-backed agent execution
 
 For multi-machine deployments, use Postgres for shared state (`JOB_REGISTRY_DB=pg` + `JOB_REGISTRY_PG_URL`).
 
@@ -65,7 +67,11 @@ Notable variables:
 - `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `JOB_REGISTRY_PATH`, `JOB_REGISTRY_DB`
 - `LOCAL_REPO_ROOT` (optional; restricts local bootstrap paths)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
+- `GH_COPILOT_EXECUTION_MODE` (`local` or `docker`)
+- `OPENCODE_EXECUTION_MODE` (`local`, `server`, or `docker`)
 - `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`
+- `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, `GH_COPILOT_DOCKER_BUILD_CONTEXT`
+- `OPENCODE_DOCKERFILE_PATH`, `OPENCODE_DOCKER_IMAGE`, `OPENCODE_DOCKER_BUILD_CONTEXT`
 
 `REPO_ALLOWLIST_PATH` JSON shape (used to seed the DB-backed repo catalog on worker startup when the catalog is empty):
 ```json
@@ -99,6 +105,8 @@ pnpm run format
 pnpm run check
 ```
 
-## Docker/Codex execution
-- `scripts/codex-docker.sh` wraps Codex in Docker and mounts requested paths.
-- Configure `CODEX_EXECUTION_MODE=docker` and the Docker vars in `.env` to run Codex jobs in a container.
+## Docker/agent execution
+- `apps/worker/scripts/codex-docker.sh` wraps Codex in Docker and mounts requested paths.
+- `apps/worker/scripts/copilot-docker.sh` wraps Copilot in Docker.
+- `apps/worker/scripts/opencode-docker-server.sh` starts an OpenCode server in Docker.
+- Configure the relevant execution mode (`CODEX_EXECUTION_MODE`, `GH_COPILOT_EXECUTION_MODE`, or `OPENCODE_EXECUTION_MODE`) and Docker vars in `.env` to run agent jobs in a container.

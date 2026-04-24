@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | 
 - Default to `sniptail local --migrate-if-needed` unless the user clearly needs bot and worker on different machines.
 - Use the CLI for repository catalog management. Do not tell the user to hand-edit allowlist data unless they explicitly want that workflow.
 - Ask the user which chat provider they want enabled: Slack, Discord, or both.
-- Ask which coding agent runtime they want available on the worker: Codex, Copilot, or both.
+- Ask which coding agent runtime they want available on the worker: Codex, Copilot, OpenCode, or a combination.
 
 ## Minimum Inputs To Collect
 
@@ -60,6 +60,8 @@ Then apply the path-specific rules:
   - require `codex --version` to succeed
 - local Copilot worker:
   - require `copilot --version` to succeed
+- local OpenCode worker:
+  - require `opencode --version` to succeed
 - Docker worker:
   - require `docker --version` to succeed
 - split deployment:
@@ -73,7 +75,7 @@ Then apply the path-specific rules:
 - Discord bot:
   - require `DISCORD_BOT_TOKEN`
 
-Important runtime fact: prebuilt Sniptail releases do not bundle fallback `codex` or `copilot` binaries. Local agent execution requires system-installed CLIs.
+Important runtime fact: prebuilt Sniptail releases do not bundle fallback `codex`, `copilot`, or `opencode` binaries. Local agent execution requires system-installed CLIs.
 
 ### 2. Install Sniptail
 
@@ -132,12 +134,18 @@ If the user wants both, configure both channel blocks and collect both sets of c
 
 ### 6. Configure the worker runtime
 
-Use `~/.sniptail/current/sniptail.worker.toml` to choose local versus Docker execution for Codex or Copilot.
+Use `~/.sniptail/current/sniptail.worker.toml` to choose local, server, or Docker execution for Codex, Copilot, or OpenCode.
 
 Local execution:
 
 - `[codex].execution_mode = "local"`
 - `[copilot].execution_mode = "local"`
+- `[opencode].execution_mode = "local"`
+
+OpenCode server execution:
+
+- `[opencode].execution_mode = "server"`
+- set `[opencode].server_url`
 
 Docker execution:
 
