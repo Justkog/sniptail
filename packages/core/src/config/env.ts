@@ -957,8 +957,6 @@ export function loadWorkerConfig(): WorkerConfig {
       executionMode: opencodeExecutionMode,
       ...(opencodeServerUrl && { serverUrl: opencodeServerUrl }),
       ...(opencodeServerAuthHeaderEnv && { serverAuthHeaderEnv: opencodeServerAuthHeaderEnv }),
-      ...(opencodeDefaultModel && { provider: opencodeDefaultModel.provider }),
-      ...(opencodeDefaultModel && { model: opencodeDefaultModel.model }),
       ...(opencodeAgent && { agent: opencodeAgent }),
       startupTimeoutMs: opencodeStartupTimeoutMs,
       dockerStreamLogs: opencodeDockerStreamLogs,

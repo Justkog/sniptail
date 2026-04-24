@@ -103,8 +103,6 @@ export type WorkerConfig = CoreConfig & {
     executionMode: OpenCodeExecutionMode;
     serverUrl?: string;
     serverAuthHeaderEnv?: string;
-    provider?: string;
-    model?: string;
     agent?: string;
     startupTimeoutMs: number;
     dockerStreamLogs: boolean;
