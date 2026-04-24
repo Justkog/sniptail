@@ -34,6 +34,14 @@ vi.mock('@sniptail/core/config/config.js', () => ({
       dockerImage: undefined,
       dockerBuildContext: undefined,
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
+      dockerfilePath: undefined,
+      dockerImage: undefined,
+      dockerBuildContext: undefined,
+    },
     run: {
       actions: {
         'refresh-docs': {

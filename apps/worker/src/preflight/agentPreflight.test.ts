@@ -4,6 +4,7 @@ import type { WorkerConfig } from '@sniptail/core/config/types.js';
 const hoisted = vi.hoisted(() => ({
   assertLocalCopilotPreflight: vi.fn(() => Promise.resolve(undefined)),
   assertLocalCodexPreflight: vi.fn(() => Promise.resolve(undefined)),
+  assertOpenCodePreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('../copilot/copilotPreflight.js', () => ({
@@ -12,6 +13,10 @@ vi.mock('../copilot/copilotPreflight.js', () => ({
 
 vi.mock('../codex/codexPreflight.js', () => ({
   assertLocalCodexPreflight: hoisted.assertLocalCodexPreflight,
+}));
+
+vi.mock('../opencode/opencodePreflight.js', () => ({
+  assertOpenCodePreflight: hoisted.assertOpenCodePreflight,
 }));
 
 import { assertLocalAgentPreflight } from './agentPreflight.js';
@@ -38,6 +43,11 @@ function buildConfig(primaryAgent: WorkerConfig['primaryAgent']): WorkerConfig {
     codex: {
       executionMode: 'local',
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
+    },
   };
 }
 
@@ -52,6 +62,7 @@ describe('agent preflight dispatcher', () => {
     expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledWith(config);
     expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
   });
 
   it('runs copilot preflight when selected agent is copilot', async () => {
@@ -59,6 +70,16 @@ describe('agent preflight dispatcher', () => {
     await assertLocalAgentPreflight(config, 'copilot');
     expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
+  });
+
+  it('runs opencode preflight when selected agent is opencode', async () => {
+    const config = buildConfig('opencode');
+    await assertLocalAgentPreflight(config, 'opencode');
+    expect(hoisted.assertOpenCodePreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertOpenCodePreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
   });
 });

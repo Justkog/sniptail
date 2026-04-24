@@ -24,6 +24,11 @@ function buildConfig(): WorkerConfig {
     codex: {
       executionMode: 'local',
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
+    },
   };
 }
 
@@ -46,6 +51,7 @@ describe('docker preflight', () => {
     const config = buildConfig();
     config.codex.executionMode = 'docker';
     config.copilot.executionMode = 'docker';
+    config.opencode.executionMode = 'docker';
     const runExec = vi.fn().mockRejectedValue(
       Object.assign(new Error('failed to run docker'), {
         stderr:
@@ -59,6 +65,9 @@ describe('docker preflight', () => {
     );
     await expect(assertDockerPreflight(config, runExec)).rejects.toThrow(
       '[copilot].execution_mode="docker"',
+    );
+    await expect(assertDockerPreflight(config, runExec)).rejects.toThrow(
+      '[opencode].execution_mode="docker"',
     );
     await expect(assertDockerPreflight(config, runExec)).rejects.toThrow('docker ps');
     await expect(assertDockerPreflight(config, runExec)).rejects.toThrow(

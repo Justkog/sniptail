@@ -192,3 +192,15 @@ export function resolveCodexExecutionMode(tomlValue: unknown): 'local' | 'docker
   }
   return raw;
 }
+
+export function resolveOpenCodeExecutionMode(tomlValue: unknown): 'local' | 'server' | 'docker' {
+  const raw = (
+    resolveStringValue('OPENCODE_EXECUTION_MODE', tomlValue, { defaultValue: 'local' }) || 'local'
+  )
+    .trim()
+    .toLowerCase();
+  if (raw !== 'local' && raw !== 'server' && raw !== 'docker') {
+    throw new Error(`Invalid OPENCODE_EXECUTION_MODE: ${raw}`);
+  }
+  return raw;
+}

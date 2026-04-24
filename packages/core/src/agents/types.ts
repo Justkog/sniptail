@@ -27,6 +27,7 @@ export type AgentRunOptions = {
   promptOverride?: string;
   currentTurnAttachments?: AgentAttachment[];
   model?: string;
+  modelProvider?: string;
   modelReasoningEffort?: ModelReasoningEffort;
   copilotIdleRetries?: number;
   copilot?: {
@@ -43,6 +44,20 @@ export type AgentRunOptions = {
     dockerfilePath?: string;
     image?: string;
     buildContext?: string;
+  };
+  opencode?: {
+    executionMode?: 'local' | 'server' | 'docker';
+    serverUrl?: string;
+    serverAuthHeaderEnv?: string;
+    agent?: string;
+    startupTimeoutMs?: number;
+    dockerStreamLogs?: boolean;
+    docker?: {
+      enabled?: boolean;
+      dockerfilePath?: string;
+      image?: string;
+      buildContext?: string;
+    };
   };
 };
 

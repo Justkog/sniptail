@@ -17,10 +17,12 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `sniptail.worker.toml` sets `[codex].execution_mode = "local"`, e.g. `npm install -g @openai/codex`)
 - Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"`, e.g. `npm install -g @github/copilot`)
-- Docker (required when `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`)
+- OpenCode CLI in `PATH` (required when `sniptail.worker.toml` sets `[opencode].execution_mode = "local"`, e.g. `npm install -g opencode-ai`)
+- Docker (required when `[codex].execution_mode = "docker"`, `[copilot].execution_mode = "docker"`, or `[opencode].execution_mode = "docker"`)
 
 When Codex runs in local mode, Sniptail always resolves `codex` from the worker process `PATH`. There is no fallback to the bundled `@openai/codex-sdk` vendor binary.
 When Copilot runs in local mode, Sniptail always resolves `copilot` from the worker process `PATH`. There is no fallback to bundled `@github/copilot*` package binaries.
+When OpenCode runs in local mode, Sniptail starts a per-job OpenCode server by resolving `opencode` from the worker process `PATH`. There is no fallback to bundled OpenCode CLI binaries.
 
 ## Installation
 
@@ -34,7 +36,8 @@ This path is intended for people who want to run Sniptail, not hack on it locall
 - Redis (required only when using `queue_driver = "redis"`)
 - Git + SSH access to your repos (worker needs this)
 - One of:
-  - Codex/Copilot CLI in `PATH` (when using `execution_mode = "local"`), or
+  - Codex/Copilot/OpenCode CLI in `PATH` (when using `execution_mode = "local"`), or
+  - an already-running OpenCode server (when `[opencode].execution_mode = "server"`), or
   - Docker (when using `execution_mode = "docker"`)
 
 #### 1) Install Sniptail (`install.sh`)
@@ -102,10 +105,13 @@ In `sniptail.worker.toml`, configure:
 
 - `[codex].execution_mode = "local"` or `"docker"`
 - `[copilot].execution_mode = "local"` or `"docker"`
+- `[opencode].execution_mode = "local"`, `"server"`, or `"docker"`
 
-When using `"local"`, install the corresponding CLI (`codex` / `copilot`) so it's available in `PATH`. When using `"docker"`, ensure Docker is available and configure the relevant docker settings in the TOML.
+When using `"local"`, install the corresponding CLI (`codex` / `copilot` / `opencode`) so it's available in `PATH`. When using `"server"` for OpenCode, set `[opencode].server_url` and make sure the OpenCode server can access the job work directories by the same absolute paths the worker uses. When using `"docker"`, ensure Docker is available and configure the relevant docker settings in the TOML.
 
-Prebuilt release artifacts prune `@openai/codex-sdk/vendor` and bundled `@github/copilot*` packages during packaging, so local Codex and Copilot execution require system-installed `codex` and `copilot` CLIs.
+OpenCode model selection uses `[opencode].provider` plus `[opencode].model`, with optional `[opencode.models.<JOB_TYPE>]` overrides using the same fields. If the persistent server requires authentication, set `[opencode].server_auth_header_env` to the name of an env var containing the complete `Authorization` header value.
+
+Prebuilt release artifacts prune `@openai/codex-sdk/vendor`, bundled `@github/copilot*` packages, and known OpenCode CLI packages during packaging, so local Codex, Copilot, and OpenCode execution require system-installed CLIs.
 
 #### 5) Slack / Discord / Telegram setup
 
@@ -262,10 +268,10 @@ pnpm run start
 
 #### 6) Custom Dockerfiles (optional)
 
-When `[codex].execution_mode = "docker"` or `[copilot].execution_mode = "docker"`, you can point the worker at non-default Dockerfiles (instead of the defaults `../../Dockerfile.codex` and `../../Dockerfile.copilot`, resolved from the worker app directory) by setting:
+When `[codex].execution_mode = "docker"`, `[copilot].execution_mode = "docker"`, or `[opencode].execution_mode = "docker"`, you can point the worker at non-default Dockerfiles (instead of the defaults `../../Dockerfile.codex`, `../../Dockerfile.copilot`, and `../../Dockerfile.opencode`, resolved from the worker app directory) by setting:
 
-- `sniptail.worker.toml`: `[codex].dockerfile_path` / `[copilot].dockerfile_path` (plus optional `docker_image` and `docker_build_context`), or
-- env vars (override TOML): `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`, `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, `GH_COPILOT_DOCKER_BUILD_CONTEXT`
+- `sniptail.worker.toml`: `[codex].dockerfile_path` / `[copilot].dockerfile_path` / `[opencode].dockerfile_path` (plus optional `docker_image` and `docker_build_context`), or
+- env vars (override TOML): `CODEX_DOCKERFILE_PATH`, `CODEX_DOCKER_IMAGE`, `CODEX_DOCKER_BUILD_CONTEXT`, `GH_COPILOT_DOCKERFILE_PATH`, `GH_COPILOT_DOCKER_IMAGE`, `GH_COPILOT_DOCKER_BUILD_CONTEXT`, `OPENCODE_DOCKERFILE_PATH`, `OPENCODE_DOCKER_IMAGE`, `OPENCODE_DOCKER_BUILD_CONTEXT`
 
 #### 7) Use installed CLI against a local checkout (optional)
 

@@ -339,6 +339,79 @@ main() {
     log "Pruned ${#copilot_package_dirs[@]} Copilot CLI package director$( [[ ${#copilot_package_dirs[@]} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
   fi
 
+  log "Pruning bundled OpenCode CLI packages from staged release"
+  opencode_package_dirs=()
+  for package_name in \
+    'opencode-ai' \
+    '@opencode-ai/opencode' \
+    '@opencode-ai/cli' \
+    '@opencode-ai/opencode-linux-x64' \
+    '@opencode-ai/opencode-linux-arm64' \
+    '@opencode-ai/opencode-darwin-x64' \
+    '@opencode-ai/opencode-darwin-arm64' \
+    '@opencode-ai/opencode-win32-x64' \
+    '@opencode-ai/opencode-win32-arm64'
+  do
+    while IFS= read -r package_dir; do
+      if [[ -n "${package_dir}" ]]; then
+        opencode_package_dirs+=("${package_dir}")
+      fi
+    done < <(
+      find "${stage_root}/node_modules/.pnpm" \
+        -type d \
+        -path "*/node_modules/${package_name}" 2>/dev/null || true
+    )
+  done
+
+  if [[ ${#opencode_package_dirs[@]} -eq 0 ]]; then
+    log "No bundled OpenCode CLI package directories found."
+  else
+    size_before_kb=0
+    size_after_kb=0
+    if command -v du >/dev/null 2>&1; then
+      size_before_kb="$(
+        du -sk "${opencode_package_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    rm -rf "${opencode_package_dirs[@]}"
+
+    remaining_opencode_package_dirs=()
+    for package_name in \
+      'opencode-ai' \
+      '@opencode-ai/opencode' \
+      '@opencode-ai/cli' \
+      '@opencode-ai/opencode-linux-x64' \
+      '@opencode-ai/opencode-linux-arm64' \
+      '@opencode-ai/opencode-darwin-x64' \
+      '@opencode-ai/opencode-darwin-arm64' \
+      '@opencode-ai/opencode-win32-x64' \
+      '@opencode-ai/opencode-win32-arm64'
+    do
+      while IFS= read -r package_dir; do
+        if [[ -n "${package_dir}" ]]; then
+          remaining_opencode_package_dirs+=("${package_dir}")
+        fi
+      done < <(
+        find "${stage_root}/node_modules/.pnpm" \
+          -type d \
+          -path "*/node_modules/${package_name}" 2>/dev/null || true
+      )
+    done
+
+    if [[ ${#remaining_opencode_package_dirs[@]} -gt 0 ]] && command -v du >/dev/null 2>&1; then
+      size_after_kb="$(
+        du -sk "${remaining_opencode_package_dirs[@]}" 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+      )"
+    fi
+
+    reclaimed_kb=$((size_before_kb - size_after_kb))
+    if [[ ${reclaimed_kb} -lt 0 ]]; then
+      reclaimed_kb=0
+    fi
+    log "Pruned ${#opencode_package_dirs[@]} OpenCode CLI package director$( [[ ${#opencode_package_dirs[@]} -eq 1 ]] && echo 'y' || echo 'ies' ) (reclaimed ~${reclaimed_kb} KiB)."
+  fi
+
   log "Pruning non-runtime files from staged node_modules"
   size_before_kb=0
   size_after_kb=0
@@ -464,7 +537,7 @@ main() {
   cp sniptail.bot.toml sniptail.worker.toml "${stage_root}/"
   cp .env.example "${stage_root}/"
   cp README.md LICENSE "${stage_root}/"
-  cp Dockerfile.codex Dockerfile.copilot "${stage_root}/"
+  cp Dockerfile.codex Dockerfile.copilot Dockerfile.opencode "${stage_root}/"
   mkdir -p "${stage_root}/docs"
   cp docs/slack-bot-setup.md docs/discord-bot-setup.md "${stage_root}/docs/"
 

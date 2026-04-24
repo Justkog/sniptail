@@ -5,7 +5,18 @@ import { resolveWorkerAgentScriptPath } from './resolveWorkerAgentScriptPath.js'
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
 import { runCopilot } from '../copilot/copilot.js';
 import { formatCopilotEvent, summarizeCopilotEvent } from '../copilot/logging.js';
+import { runOpenCode } from '../opencode/opencode.js';
+import { formatOpenCodeEvent, summarizeOpenCodeEvent } from '../opencode/logging.js';
 import type { AgentId, JobType } from '../types/job.js';
+import type { Event as OpenCodeEvent } from '@opencode-ai/sdk/v2';
+
+function formatOpenCodeUnknownEvent(event: unknown): string {
+  return formatOpenCodeEvent(event as OpenCodeEvent);
+}
+
+function summarizeOpenCodeUnknownEvent(event: unknown): { text: string; isError: boolean } | null {
+  return summarizeOpenCodeEvent(event as OpenCodeEvent);
+}
 
 export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
   codex: {
@@ -69,6 +80,46 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
           : {
               cliPath: 'copilot',
             },
+    }),
+  },
+  opencode: {
+    id: 'opencode',
+    adapter: {
+      run: runOpenCode,
+      formatEvent: formatOpenCodeUnknownEvent,
+      summarizeEvent: summarizeOpenCodeUnknownEvent,
+    },
+    isDockerMode: (config: WorkerConfig) => config.opencode.executionMode === 'docker',
+    resolveModelConfig: (config: WorkerConfig, jobType: JobType) => {
+      const model = config.opencode.models?.[jobType] ?? config.opencode.defaultModel;
+      return model ? { model: model.model, modelProvider: model.provider } : undefined;
+    },
+    shouldIncludeRepoCache: (_config: WorkerConfig, jobType: JobType) => jobType !== 'MENTION',
+    buildRunOptions: (config: WorkerConfig) => ({
+      opencode: {
+        executionMode: config.opencode.executionMode,
+        ...(config.opencode.serverUrl && { serverUrl: config.opencode.serverUrl }),
+        ...(config.opencode.serverAuthHeaderEnv && {
+          serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv,
+        }),
+        ...(config.opencode.agent && { agent: config.opencode.agent }),
+        startupTimeoutMs: config.opencode.startupTimeoutMs,
+        dockerStreamLogs: config.opencode.dockerStreamLogs,
+        ...(config.opencode.executionMode === 'docker'
+          ? {
+              docker: {
+                enabled: true,
+                ...(config.opencode.dockerfilePath && {
+                  dockerfilePath: config.opencode.dockerfilePath,
+                }),
+                ...(config.opencode.dockerImage && { image: config.opencode.dockerImage }),
+                ...(config.opencode.dockerBuildContext && {
+                  buildContext: config.opencode.dockerBuildContext,
+                }),
+              },
+            }
+          : {}),
+      },
     }),
   },
 };

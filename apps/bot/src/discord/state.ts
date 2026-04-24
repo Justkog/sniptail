@@ -136,10 +136,7 @@ function captureSelectionReplyId<T extends DiscordJobSelectionState>(
       selectorMessageId,
     } as T);
   } catch (err) {
-    logger.warn(
-      { err, flow, userId: loggingUserId },
-      'Failed to capture Discord selector reply',
-    );
+    logger.warn({ err, flow, userId: loggingUserId }, 'Failed to capture Discord selector reply');
   }
 }
 

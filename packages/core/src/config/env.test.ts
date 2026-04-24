@@ -628,6 +628,133 @@ describe('config loaders', () => {
     expect(config.copilot.dockerImage).toBe('snatch-copilot:local');
     expect(config.codex.dockerfilePath).toBe('../../Dockerfile.codex');
     expect(config.codex.dockerImage).toBe('snatch-codex:local');
+    expect(config.opencode.dockerfilePath).toBe('../../Dockerfile.opencode');
+    expect(config.opencode.dockerImage).toBe('snatch-opencode:local');
+  });
+
+  it('accepts opencode as the primary agent', () => {
+    applyRequiredEnv({ PRIMARY_AGENT: 'opencode' });
+
+    const config = loadWorkerConfig();
+    expect(config.primaryAgent).toBe('opencode');
+  });
+
+  it('rejects invalid opencode execution mode', () => {
+    applyRequiredEnv({ OPENCODE_EXECUTION_MODE: 'remote' });
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid OPENCODE_EXECUTION_MODE: remote');
+  });
+
+  it('requires opencode server_url in server mode', () => {
+    applyRequiredEnv({ OPENCODE_EXECUTION_MODE: 'server', OPENCODE_SERVER_URL: undefined });
+
+    expect(() => loadWorkerConfig()).toThrow('Missing required config: OPENCODE_SERVER_URL');
+  });
+
+  it('loads opencode server mode settings', () => {
+    applyRequiredEnv({
+      OPENCODE_EXECUTION_MODE: 'server',
+      OPENCODE_SERVER_URL: 'http://127.0.0.1:4096',
+      OPENCODE_SERVER_AUTH_HEADER_ENV: 'OPENCODE_AUTH_HEADER',
+      OPENCODE_AGENT: 'build',
+      OPENCODE_STARTUP_TIMEOUT_MS: '15000',
+      OPENCODE_DOCKER_STREAM_LOGS: 'true',
+    });
+
+    const config = loadWorkerConfig();
+    expect(config.opencode).toMatchObject({
+      executionMode: 'server',
+      serverUrl: 'http://127.0.0.1:4096',
+      serverAuthHeaderEnv: 'OPENCODE_AUTH_HEADER',
+      agent: 'build',
+      startupTimeoutMs: 15_000,
+      dockerStreamLogs: true,
+    });
+  });
+
+  it('requires opencode provider and model as a pair', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "opencode"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[opencode]',
+      'execution_mode = "local"',
+      'provider = "anthropic"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    expect(() => loadWorkerConfig()).toThrow('opencode.model is required');
+  });
+
+  it('accepts opencode provider/model overrides from worker TOML', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      'job_registry_path = "/tmp/sniptail/registry"',
+      'job_registry_db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "opencode"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+      '',
+      '[opencode]',
+      'execution_mode = "local"',
+      'provider = "anthropic"',
+      'model = "claude-sonnet"',
+      '',
+      '[opencode.models.EXPLORE]',
+      'provider = "openai"',
+      'model = "gpt-5"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.opencode.defaultModel).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet',
+    });
+    expect(config.opencode.models?.EXPLORE).toEqual({
+      provider: 'openai',
+      model: 'gpt-5',
+    });
   });
 
   it('loads optional worktree setup hook settings', () => {

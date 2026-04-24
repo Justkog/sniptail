@@ -2,20 +2,11 @@ import { CopilotClient, type SessionConfig, type SessionEvent } from '@github/co
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
+import { toEnvRecord } from '../agents/envRecord.js';
 import { logger } from '../logger.js';
 import type { JobSpec } from '../types/job.js';
 import type { AgentRunOptions, AgentRunResult } from '../agents/types.js';
 import continuationPromptSource from './prompts/continue.md?raw';
-
-function toEnvRecord(env: NodeJS.ProcessEnv): Record<string, string> {
-  const record: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === 'string') {
-      record[key] = value;
-    }
-  }
-  return record;
-}
 
 const continuationPrompt = continuationPromptSource.trimEnd();
 

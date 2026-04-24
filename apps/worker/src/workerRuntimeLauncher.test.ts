@@ -21,6 +21,11 @@ const hoisted = vi.hoisted(() => ({
     codex: {
       executionMode: 'local',
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
+    },
   },
   seedRepoCatalogFromAllowlistFile: vi.fn(),
   syncRunActionMetadata: vi.fn(),
