@@ -16,8 +16,8 @@
 | --- | --- | --- |
 | OpenAI Codex | Supported | SDK-backed CLI execution |
 | GitHub Copilot CLI | Supported | SDK-backed CLI execution |
+| OpenCode | Supported | Local, server, and Docker execution |
 | Claude Code | Planned | |
-| OpenCode | Planned | |
 | Gemini CLI | Planned | |
 | Aider | Planned | |
 

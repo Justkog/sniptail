@@ -29,6 +29,7 @@ Run these on the worker host:
 ```bash
 codex --version >/dev/null 2>&1 || true
 copilot --version >/dev/null 2>&1 || true
+opencode --version >/dev/null 2>&1 || true
 docker --version >/dev/null 2>&1 || true
 ```
 
@@ -36,6 +37,7 @@ Interpretation:
 
 - use local Codex execution only when `codex --version` succeeds
 - use local Copilot execution only when `copilot --version` succeeds
+- use local OpenCode execution only when `opencode --version` succeeds
 - use Docker execution only when `docker --version` succeeds
 
 ## Repository Access Checks
@@ -94,6 +96,6 @@ Interpretation:
 - If a required check fails, stop and fix that dependency before continuing.
 - Do not continue on a guessed-good setup.
 - Prefer switching execution mode over hand-waving a missing dependency:
-  - missing local `codex` or `copilot` -> switch to Docker or install the CLI
+  - missing local `codex`, `copilot`, or `opencode` -> switch to Docker or install the CLI
   - missing `REDIS_URL` in a simple single-machine setup -> prefer `sniptail local`
   - missing GitLab API variables for clone-only use -> continue without merge request support

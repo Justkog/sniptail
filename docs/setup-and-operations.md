@@ -36,7 +36,7 @@ This path is intended for people who want to run Sniptail, not hack on it locall
 - Redis (required only when using `queue_driver = "redis"`)
 - Git + SSH access to your repos (worker needs this)
 - One of:
-  - Codex/Copilot/OpenCode CLI in `PATH` (when using `execution_mode = "local"`), or
+  - Codex, Copilot, or OpenCode CLI in `PATH` (when using `execution_mode = "local"`), or
   - an already-running OpenCode server (when `[opencode].execution_mode = "server"`), or
   - Docker (when using `execution_mode = "docker"`)
 
