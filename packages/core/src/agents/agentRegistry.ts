@@ -104,6 +104,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
         }),
         ...(config.opencode.agent && { agent: config.opencode.agent }),
         startupTimeoutMs: config.opencode.startupTimeoutMs,
+        dockerStreamLogs: config.opencode.dockerStreamLogs,
         ...(config.opencode.executionMode === 'docker'
           ? {
               docker: {

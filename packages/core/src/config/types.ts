@@ -107,6 +107,7 @@ export type WorkerConfig = CoreConfig & {
     model?: string;
     agent?: string;
     startupTimeoutMs: number;
+    dockerStreamLogs: boolean;
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;

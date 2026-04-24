@@ -851,6 +851,11 @@ export function loadWorkerConfig(): WorkerConfig {
     'opencode.startup_timeout_ms',
     10_000,
   );
+  const opencodeDockerStreamLogs = resolveOptionalFlagFromSources(
+    'OPENCODE_DOCKER_STREAM_LOGS',
+    opencodeToml?.docker_stream_logs,
+    false,
+  );
   const opencodeDefaultModel = parseOpenCodeModelPair(opencodeToml, 'opencode');
   const opencodeModels = parseOpenCodeModelMap(
     getTomlTable(opencodeToml?.models, 'opencode.models'),
@@ -956,6 +961,7 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(opencodeDefaultModel && { model: opencodeDefaultModel.model }),
       ...(opencodeAgent && { agent: opencodeAgent }),
       startupTimeoutMs: opencodeStartupTimeoutMs,
+      dockerStreamLogs: opencodeDockerStreamLogs,
       ...(opencodeDockerfilePath && { dockerfilePath: opencodeDockerfilePath }),
       ...(opencodeDockerImage && { dockerImage: opencodeDockerImage }),
       ...(opencodeDockerBuildContext && { dockerBuildContext: opencodeDockerBuildContext }),

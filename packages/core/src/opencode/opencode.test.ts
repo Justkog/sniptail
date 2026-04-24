@@ -193,6 +193,8 @@ describe('runOpenCode', () => {
   it('starts docker wrapper and cleans it up', async () => {
     const proc = buildChildProcess();
     hoisted.spawn.mockReturnValue(proc);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     const result = await runOpenCode(
       buildJob(),
@@ -202,6 +204,7 @@ describe('runOpenCode', () => {
         opencode: {
           executionMode: 'docker',
           startupTimeoutMs: 1_000,
+          dockerStreamLogs: true,
           docker: {
             enabled: true,
             dockerfilePath: './Dockerfile.opencode',
@@ -229,5 +232,11 @@ describe('runOpenCode', () => {
       }),
     );
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+    proc.stdout.emit('data', 'stdout line\n');
+    proc.stderr.emit('data', 'stderr line\n');
+    expect(stdoutSpy).toHaveBeenCalledWith('stdout line\n');
+    expect(stderrSpy).toHaveBeenCalledWith('stderr line\n');
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
   });
 });

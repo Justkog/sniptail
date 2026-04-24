@@ -658,6 +658,7 @@ describe('config loaders', () => {
       OPENCODE_SERVER_AUTH_HEADER_ENV: 'OPENCODE_AUTH_HEADER',
       OPENCODE_AGENT: 'build',
       OPENCODE_STARTUP_TIMEOUT_MS: '15000',
+      OPENCODE_DOCKER_STREAM_LOGS: 'true',
     });
 
     const config = loadWorkerConfig();
@@ -667,6 +668,7 @@ describe('config loaders', () => {
       serverAuthHeaderEnv: 'OPENCODE_AUTH_HEADER',
       agent: 'build',
       startupTimeoutMs: 15_000,
+      dockerStreamLogs: true,
     });
   });
 

@@ -212,6 +212,11 @@ execution_mode = "local"
 # Optional. Default: 10000. Example: 15000
 startup_timeout_ms = 10000
 
+# Stream raw opencode-docker-server.sh stdout/stderr to the worker process logs.
+# Useful while debugging Docker image builds or OpenCode server startup.
+# Optional. Default: false. Example: true
+# docker_stream_logs = true
+
 # Dockerfile path for OpenCode execution (if execution_mode = "docker").
 # Optional. Default: "../../Dockerfile.opencode". Example: "../../Dockerfile.opencode"
 # dockerfile_path = "../../Dockerfile.opencode"

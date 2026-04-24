@@ -39,6 +39,7 @@ function buildConfig(): WorkerConfig {
     opencode: {
       executionMode: 'local',
       startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
       dockerfilePath: './Dockerfile.opencode',
       dockerImage: 'snatch-opencode:local',
       dockerBuildContext: '.',
@@ -114,6 +115,7 @@ describe('AGENT_DESCRIPTORS.opencode', () => {
         serverAuthHeaderEnv: 'OPENCODE_AUTH_HEADER',
         agent: 'build',
         startupTimeoutMs: 10_000,
+        dockerStreamLogs: false,
       },
     });
   });
@@ -127,6 +129,7 @@ describe('AGENT_DESCRIPTORS.opencode', () => {
       opencode: {
         executionMode: 'docker',
         startupTimeoutMs: 10_000,
+        dockerStreamLogs: false,
         docker: {
           enabled: true,
           dockerfilePath: './Dockerfile.opencode',

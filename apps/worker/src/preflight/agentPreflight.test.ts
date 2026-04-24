@@ -46,6 +46,7 @@ function buildConfig(primaryAgent: WorkerConfig['primaryAgent']): WorkerConfig {
     opencode: {
       executionMode: 'local',
       startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
     },
   };
 }

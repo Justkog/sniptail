@@ -231,10 +231,18 @@ async function createDockerRuntime(
   let output = '';
 
   proc.stdout?.on('data', (chunk: Buffer | string) => {
-    output += chunk.toString();
+    const text = chunk.toString();
+    output += text;
+    if (options.opencode?.dockerStreamLogs) {
+      process.stdout.write(text);
+    }
   });
   proc.stderr?.on('data', (chunk: Buffer | string) => {
-    output += chunk.toString();
+    const text = chunk.toString();
+    output += text;
+    if (options.opencode?.dockerStreamLogs) {
+      process.stderr.write(text);
+    }
   });
   proc.once('exit', (code) => {
     exited = true;

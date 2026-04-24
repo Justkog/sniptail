@@ -51,6 +51,7 @@ export type AgentRunOptions = {
     serverAuthHeaderEnv?: string;
     agent?: string;
     startupTimeoutMs?: number;
+    dockerStreamLogs?: boolean;
     docker?: {
       enabled?: boolean;
       dockerfilePath?: string;

@@ -37,6 +37,7 @@ vi.mock('@sniptail/core/config/config.js', () => ({
     opencode: {
       executionMode: 'local',
       startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
       dockerfilePath: undefined,
       dockerImage: undefined,
       dockerBuildContext: undefined,
