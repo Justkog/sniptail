@@ -37,7 +37,7 @@ job_registry_db = "redis"
 # Optional. Default: "Sniptail". Example: "Sniptail Worker"
 bot_name = "Sniptail"
 
-# Primary agent for jobs: "codex" or "copilot".
+# Primary agent for jobs: "codex", "copilot" or "opencode".
 # Optional. Default: "codex". Example: "copilot"
 primary_agent = "codex"
 
@@ -179,6 +179,63 @@ execution_mode = "local"
 #
 # [codex.models.IMPLEMENT]
 # model = "gpt-5"
+#
+# Note: RUN jobs execute run contracts/fallback commands; model settings do not
+# affect that command execution path.
+
+[opencode]
+# Execution mode for OpenCode agent.
+# local starts an OpenCode server from the host `opencode` CLI for each job.
+# server connects to an existing OpenCode server.
+# docker starts an OpenCode server in an optional Docker runtime image.
+# Optional. Default: "local". Example: "docker"
+execution_mode = "local"
+
+# Persistent OpenCode server URL (required if execution_mode = "server").
+# Optional unless server mode. Example: "http://127.0.0.1:4096"
+# server_url = "http://127.0.0.1:4096"
+
+# Env var name containing a complete Authorization header for server mode.
+# Optional. Example: "OPENCODE_AUTH_HEADER" with value "Bearer ..."
+# server_auth_header_env = "OPENCODE_AUTH_HEADER"
+
+# Default provider/model for OpenCode jobs when no per-command override is configured.
+# Optional. If one is set, both are required.
+# provider = "anthropic"
+# model = "claude-sonnet-4-20250514"
+
+# OpenCode agent/mode name to use for prompts.
+# Optional. Example: "build"
+# agent = "build"
+
+# Startup timeout for local/docker OpenCode server startup, in milliseconds.
+# Optional. Default: 10000. Example: 15000
+startup_timeout_ms = 10000
+
+# Dockerfile path for OpenCode execution (if execution_mode = "docker").
+# Optional. Default: "../../Dockerfile.opencode". Example: "../../Dockerfile.opencode"
+# dockerfile_path = "../../Dockerfile.opencode"
+
+# Docker image name for OpenCode execution (if execution_mode = "docker").
+# Optional. Default: "snatch-opencode:local". Example: "snatch-opencode:local"
+# docker_image = "snatch-opencode:local"
+
+# Docker build context for OpenCode execution (if execution_mode = "docker").
+# Optional. No default. Example: "."
+# docker_build_context = "."
+
+[opencode.models]
+# Optional per-command OpenCode provider/model overrides.
+# Precedence: opencode.models.<JOB_TYPE> overrides [opencode] provider/model defaults.
+# Keys: ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.
+#
+# [opencode.models.ASK]
+# provider = "anthropic"
+# model = "claude-3-5-haiku-20241022"
+#
+# [opencode.models.IMPLEMENT]
+# provider = "anthropic"
+# model = "claude-sonnet-4-20250514"
 #
 # Note: RUN jobs execute run contracts/fallback commands; model settings do not
 # affect that command execution path.

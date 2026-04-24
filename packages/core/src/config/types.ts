@@ -7,7 +7,15 @@ import type { PermissionsConfig } from '../permissions/permissionsPolicyTypes.js
 
 export type JobModelConfig = {
   model: string;
+  modelProvider?: string;
   modelReasoningEffort?: ModelReasoningEffort;
+};
+
+export type OpenCodeExecutionMode = 'local' | 'server' | 'docker';
+
+export type OpenCodeModelConfig = {
+  provider: string;
+  model: string;
 };
 
 export type BotRunActionReference = {
@@ -90,6 +98,20 @@ export type WorkerConfig = CoreConfig & {
     dockerBuildContext?: string;
     defaultModel?: JobModelConfig;
     models?: Partial<Record<JobType, JobModelConfig>>;
+  };
+  opencode: {
+    executionMode: OpenCodeExecutionMode;
+    serverUrl?: string;
+    serverAuthHeaderEnv?: string;
+    provider?: string;
+    model?: string;
+    agent?: string;
+    startupTimeoutMs: number;
+    dockerfilePath?: string;
+    dockerImage?: string;
+    dockerBuildContext?: string;
+    defaultModel?: OpenCodeModelConfig;
+    models?: Partial<Record<JobType, OpenCodeModelConfig>>;
   };
   gitlab?: GitLabConfig;
   github?: GitHubConfig;

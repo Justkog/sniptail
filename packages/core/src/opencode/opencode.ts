@@ -1,0 +1,356 @@
+import {
+  createOpencodeClient,
+  createOpencodeServer,
+  type Event as OpenCodeEvent,
+  type Part,
+} from '@opencode-ai/sdk/v2';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:net';
+import { basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import os from 'node:os';
+import { buildPromptForJob } from '../agents/buildPrompt.js';
+import { toEnvRecord } from '../agents/envRecord.js';
+import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScriptPath.js';
+import type { AgentAttachment, AgentRunOptions, AgentRunResult } from '../agents/types.js';
+import type { JobSpec } from '../types/job.js';
+
+type OpenCodeClient = ReturnType<typeof createOpencodeClient>;
+
+type OpenCodeRuntime = {
+  client: OpenCodeClient;
+  baseUrl: string;
+  close(): Promise<void> | void;
+};
+
+async function getFreePort(): Promise<number> {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Failed to allocate OpenCode server port')));
+        return;
+      }
+      const port = address.port;
+      server.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolvePort(port);
+      });
+    });
+  });
+}
+
+function buildHeaders(env: NodeJS.ProcessEnv, options: AgentRunOptions): Record<string, string> {
+  const headerEnv = options.opencode?.serverAuthHeaderEnv;
+  if (!headerEnv) return {};
+  const authHeader = env[headerEnv]?.trim();
+  return authHeader ? { Authorization: authHeader } : {};
+}
+
+function buildPrompt(job: JobSpec, workDir: string, options: AgentRunOptions): string {
+  const botName = options.botName?.trim() || 'Sniptail';
+  const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
+  if (!options.resumeThreadId) return basePrompt;
+  return `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`;
+}
+
+function buildPromptParts(prompt: string, attachments?: AgentAttachment[]) {
+  return [
+    { type: 'text' as const, text: prompt },
+    ...(attachments ?? []).map((attachment) => ({
+      type: 'file' as const,
+      mime: attachment.mediaType,
+      filename: attachment.displayName || basename(attachment.path),
+      url: pathToFileURL(resolve(attachment.path)).href,
+    })),
+  ];
+}
+
+function extractText(parts: Part[] | undefined): string {
+  return (parts ?? [])
+    .filter((part): part is Part & { type: 'text'; text: string } => part.type === 'text')
+    .map((part) => part.text)
+    .join('')
+    .trim();
+}
+
+async function fallbackFinalResponse(
+  client: OpenCodeClient,
+  sessionID: string,
+  workDir: string,
+): Promise<string> {
+  const messages = await client.session.messages({ sessionID, directory: workDir, limit: 20 });
+  if (messages.error) {
+    throw new Error(`OpenCode messages failed: ${JSON.stringify(messages.error)}`);
+  }
+  const latestAssistant = [...(messages.data ?? [])]
+    .reverse()
+    .find((message) => message.info.role === 'assistant');
+  return extractText(latestAssistant?.parts);
+}
+
+function getEventSessionId(event: unknown): string | undefined {
+  if (!event || typeof event !== 'object') return undefined;
+  const typed = event as { properties?: Record<string, unknown> };
+  const properties = typed.properties;
+  if (!properties) return undefined;
+  if (typeof properties.sessionID === 'string') return properties.sessionID;
+  const info = properties.info;
+  if (
+    info &&
+    typeof info === 'object' &&
+    typeof (info as { sessionID?: unknown }).sessionID === 'string'
+  ) {
+    return (info as { sessionID: string }).sessionID;
+  }
+  const part = properties.part;
+  if (
+    part &&
+    typeof part === 'object' &&
+    typeof (part as { sessionID?: unknown }).sessionID === 'string'
+  ) {
+    return (part as { sessionID: string }).sessionID;
+  }
+  return undefined;
+}
+
+async function streamEvents(
+  client: OpenCodeClient,
+  sessionID: string,
+  workDir: string,
+  signal: AbortSignal,
+  onEvent: ((event: unknown) => void | Promise<void>) | undefined,
+): Promise<void> {
+  if (!onEvent) return;
+  try {
+    const subscription = await client.event.subscribe({ directory: workDir }, { signal });
+    for await (const event of subscription.stream as AsyncGenerator<OpenCodeEvent>) {
+      if (signal.aborted) return;
+      const eventSessionId = getEventSessionId(event);
+      if (eventSessionId && eventSessionId !== sessionID) continue;
+      await onEvent(event);
+    }
+  } catch (err) {
+    if (!signal.aborted) {
+      await onEvent({
+        type: 'session.error',
+        properties: { sessionID, error: String((err as { message?: unknown })?.message ?? err) },
+      });
+    }
+  }
+}
+
+async function createLocalRuntime(
+  workDir: string,
+  options: AgentRunOptions,
+): Promise<OpenCodeRuntime> {
+  const port = await getFreePort();
+  const server = await createOpencodeServer({
+    hostname: '127.0.0.1',
+    port,
+    timeout: options.opencode?.startupTimeoutMs ?? 10_000,
+  });
+  return {
+    baseUrl: server.url,
+    client: createOpencodeClient({ baseUrl: server.url, directory: workDir }),
+    close: () => server.close(),
+  };
+}
+
+function spawnDockerServer(
+  job: JobSpec,
+  workDir: string,
+  port: number,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions,
+): ChildProcess {
+  const opencodeEnv = toEnvRecord(env);
+  const docker = options.opencode?.docker;
+  if (docker?.dockerfilePath) {
+    opencodeEnv.OPENCODE_DOCKERFILE_PATH = resolve(docker.dockerfilePath);
+  }
+  if (docker?.image) {
+    opencodeEnv.OPENCODE_DOCKER_IMAGE = docker.image;
+  }
+  if (docker?.buildContext) {
+    opencodeEnv.OPENCODE_DOCKER_BUILD_CONTEXT = resolve(docker.buildContext);
+  }
+  const sanitizedJobId = job.jobId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+  opencodeEnv.OPENCODE_DOCKER_CONTAINER_NAME =
+    opencodeEnv.OPENCODE_DOCKER_CONTAINER_NAME ||
+    `snatch-opencode-${sanitizedJobId}-${process.pid}-${Date.now()}`;
+  opencodeEnv.OPENCODE_DOCKER_HOST_PORT = String(port);
+  opencodeEnv.OPENCODE_DOCKER_WORKDIR = workDir;
+  opencodeEnv.OPENCODE_DOCKER_WORKDIR_MODE =
+    options.sandboxMode === 'read-only' ? 'readonly' : 'writable';
+  opencodeEnv.OPENCODE_DOCKER_ADDITIONAL_DIRS = (options.additionalDirectories ?? []).join('\n');
+  opencodeEnv.OPENCODE_DOCKER_HOST_HOME = opencodeEnv.OPENCODE_DOCKER_HOST_HOME || os.homedir();
+
+  return spawn(resolveWorkerAgentScriptPath('opencode-docker-server.sh'), [], {
+    env: opencodeEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+async function waitForServer(
+  client: OpenCodeClient,
+  workDir: string,
+  timeoutMs: number,
+): Promise<void> {
+  const startedAt = Date.now();
+  let lastError: unknown;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await client.config.get({ directory: workDir });
+      if (!response.error) return;
+      lastError = response.error;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+  }
+  throw new Error(`Timed out waiting for OpenCode server: ${String(lastError)}`);
+}
+
+async function createDockerRuntime(
+  job: JobSpec,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions,
+): Promise<OpenCodeRuntime> {
+  const port = await getFreePort();
+  const proc = spawnDockerServer(job, workDir, port, env, options);
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const client = createOpencodeClient({ baseUrl, directory: workDir });
+  let exited = false;
+  let output = '';
+
+  proc.stdout?.on('data', (chunk: Buffer | string) => {
+    output += chunk.toString();
+  });
+  proc.stderr?.on('data', (chunk: Buffer | string) => {
+    output += chunk.toString();
+  });
+  proc.once('exit', (code) => {
+    exited = true;
+    if (code !== 0) {
+      output += `\nOpenCode docker server exited with code ${code}`;
+    }
+  });
+
+  await waitForServer(client, workDir, options.opencode?.startupTimeoutMs ?? 10_000).catch(
+    (err) => {
+      proc.kill('SIGTERM');
+      throw new Error(`${(err as Error).message}\n${output.trim()}`);
+    },
+  );
+
+  return {
+    baseUrl,
+    client,
+    close: () => {
+      if (!exited) {
+        proc.kill('SIGTERM');
+      }
+    },
+  };
+}
+
+function createServerRuntime(
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions,
+): OpenCodeRuntime {
+  const baseUrl = options.opencode?.serverUrl;
+  if (!baseUrl) {
+    throw new Error('[opencode].server_url is required when execution_mode="server".');
+  }
+  const client = createOpencodeClient({
+    baseUrl,
+    directory: workDir,
+    headers: buildHeaders(env, options),
+  });
+  return { baseUrl, client, close: () => undefined };
+}
+
+async function createRuntime(
+  job: JobSpec,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions,
+): Promise<OpenCodeRuntime> {
+  switch (options.opencode?.executionMode ?? 'local') {
+    case 'server':
+      return createServerRuntime(workDir, env, options);
+    case 'docker':
+      return createDockerRuntime(job, workDir, env, options);
+    case 'local':
+    default:
+      return createLocalRuntime(workDir, options);
+  }
+}
+
+export async function runOpenCode(
+  job: JobSpec,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions = {},
+): Promise<AgentRunResult> {
+  const runtime = await createRuntime(job, workDir, env, options);
+  const abortController = new AbortController();
+  let eventStream: Promise<void> | undefined;
+
+  try {
+    const session = options.resumeThreadId
+      ? { id: options.resumeThreadId }
+      : await runtime.client.session.create({ directory: workDir }).then((response) => {
+          if (response.error) {
+            throw new Error(`OpenCode session create failed: ${JSON.stringify(response.error)}`);
+          }
+          if (!response.data?.id) {
+            throw new Error('OpenCode session create failed: missing session id');
+          }
+          return response.data;
+        });
+
+    eventStream = streamEvents(
+      runtime.client,
+      session.id,
+      workDir,
+      abortController.signal,
+      options.onEvent,
+    );
+
+    const prompt = buildPrompt(job, workDir, options);
+    const promptResponse = await runtime.client.session.prompt({
+      sessionID: session.id,
+      directory: workDir,
+      ...(options.modelProvider && options.model
+        ? { model: { providerID: options.modelProvider, modelID: options.model } }
+        : {}),
+      ...(options.opencode?.agent ? { agent: options.opencode.agent } : {}),
+      parts: buildPromptParts(prompt, options.currentTurnAttachments),
+    });
+    if (promptResponse.error) {
+      throw new Error(`OpenCode prompt failed: ${JSON.stringify(promptResponse.error)}`);
+    }
+
+    const finalResponse =
+      extractText(promptResponse.data?.parts) ||
+      (await fallbackFinalResponse(runtime.client, session.id, workDir));
+
+    return {
+      finalResponse,
+      threadId: session.id,
+    };
+  } finally {
+    abortController.abort();
+    await eventStream?.catch(() => undefined);
+    await runtime.close();
+  }
+}

@@ -24,6 +24,10 @@ function buildConfig(): WorkerConfig {
     codex: {
       executionMode: 'local',
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+    },
   };
 }
 

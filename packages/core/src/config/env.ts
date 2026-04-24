@@ -12,6 +12,7 @@ import type {
   BotConfig,
   WorkerConfig,
   JobModelConfig,
+  OpenCodeModelConfig,
   BotRunActionReference,
   WorkerRunActionConfig,
 } from './types.js';
@@ -45,6 +46,7 @@ import {
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
   resolveCodexExecutionMode,
+  resolveOpenCodeExecutionMode,
   resolveOptionalFlagFromSources,
   resolveStringArrayFromSources,
   resolvePathValue,
@@ -162,6 +164,71 @@ function parseModelMap(modelsToml: TomlTable | undefined, label: string) {
       ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
     };
   }
+  return Object.keys(models).length ? models : undefined;
+}
+
+const ALLOWED_JOB_TYPES = new Set<JobType>([
+  'ASK',
+  'EXPLORE',
+  'IMPLEMENT',
+  'PLAN',
+  'REVIEW',
+  'RUN',
+  'MENTION',
+]);
+
+function parseOpenCodeModelPair(
+  value: TomlTable | undefined,
+  label: string,
+): OpenCodeModelConfig | undefined {
+  if (!value) return undefined;
+  const rawProvider = getTomlString(value.provider, `${label}.provider`);
+  const rawModel = getTomlString(value.model, `${label}.model`);
+  const provider = rawProvider?.trim();
+  const model = rawModel?.trim();
+
+  if (rawProvider !== undefined && !provider) {
+    throw new Error(`Invalid ${label}.provider in TOML. Expected a non-empty string.`);
+  }
+  if (rawModel !== undefined && !model) {
+    throw new Error(`Invalid ${label}.model in TOML. Expected a non-empty string.`);
+  }
+  if (provider && !model) {
+    throw new Error(`Invalid ${label}.provider in TOML. ${label}.model is required.`);
+  }
+  if (model && !provider) {
+    throw new Error(`Invalid ${label}.model in TOML. ${label}.provider is required.`);
+  }
+  if (!provider || !model) return undefined;
+
+  return { provider, model };
+}
+
+function parseOpenCodeModelMap(modelsToml: TomlTable | undefined, label: string) {
+  if (!modelsToml) return undefined;
+  const entries = Object.entries(modelsToml);
+  if (!entries.length) return undefined;
+  const models: Partial<Record<JobType, OpenCodeModelConfig>> = {};
+
+  for (const [key, value] of entries) {
+    if (!ALLOWED_JOB_TYPES.has(key as JobType)) {
+      throw new Error(
+        `Invalid ${label} key: ${key}. Expected ASK, EXPLORE, IMPLEMENT, PLAN, REVIEW, RUN, MENTION.`,
+      );
+    }
+    const modelToml = getTomlTable(value, `${label}.${key}`);
+    if (!modelToml) {
+      throw new Error(`Invalid ${label}.${key} in TOML. Expected a table.`);
+    }
+    const parsed = parseOpenCodeModelPair(modelToml, `${label}.${key}`);
+    if (!parsed) {
+      throw new Error(
+        `Invalid ${label}.${key} in TOML. Expected provider and model non-empty strings.`,
+      );
+    }
+    models[key as JobType] = parsed;
+  }
+
   return Object.keys(models).length ? models : undefined;
 }
 
@@ -713,6 +780,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const workerToml = getTomlTable(toml.worker, 'worker');
   const copilotToml = getTomlTable(toml.copilot, 'copilot');
   const codexToml = getTomlTable(toml.codex, 'codex');
+  const opencodeToml = getTomlTable(toml.opencode, 'opencode');
   const githubToml = getTomlTable(toml.github, 'github');
   const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
   const runToml = getTomlTable(toml.run, 'run');
@@ -767,6 +835,40 @@ export function loadWorkerConfig(): WorkerConfig {
   const codexModels = parseModelMap(
     getTomlTable(codexToml?.models, 'codex.models'),
     'codex.models',
+  );
+  const opencodeExecutionMode = resolveOpenCodeExecutionMode(opencodeToml?.execution_mode);
+  const opencodeServerUrl = resolveStringValue('OPENCODE_SERVER_URL', opencodeToml?.server_url, {
+    required: opencodeExecutionMode === 'server',
+  });
+  const opencodeServerAuthHeaderEnv = resolveStringValue(
+    'OPENCODE_SERVER_AUTH_HEADER_ENV',
+    opencodeToml?.server_auth_header_env,
+  );
+  const opencodeAgent = resolveStringValue('OPENCODE_AGENT', opencodeToml?.agent);
+  const opencodeStartupTimeoutMs = resolvePositiveIntegerFromSources(
+    'OPENCODE_STARTUP_TIMEOUT_MS',
+    opencodeToml?.startup_timeout_ms,
+    'opencode.startup_timeout_ms',
+    10_000,
+  );
+  const opencodeDefaultModel = parseOpenCodeModelPair(opencodeToml, 'opencode');
+  const opencodeModels = parseOpenCodeModelMap(
+    getTomlTable(opencodeToml?.models, 'opencode.models'),
+    'opencode.models',
+  );
+  const opencodeDockerfilePath = resolveStringValue(
+    'OPENCODE_DOCKERFILE_PATH',
+    opencodeToml?.dockerfile_path,
+    { defaultValue: '../../Dockerfile.opencode' },
+  );
+  const opencodeDockerImage = resolveStringValue(
+    'OPENCODE_DOCKER_IMAGE',
+    opencodeToml?.docker_image,
+    { defaultValue: 'snatch-opencode:local' },
+  );
+  const opencodeDockerBuildContext = resolveStringValue(
+    'OPENCODE_DOCKER_BUILD_CONTEXT',
+    opencodeToml?.docker_build_context,
   );
   const runActions = parseWorkerRunActions(runToml);
 
@@ -845,6 +947,20 @@ export function loadWorkerConfig(): WorkerConfig {
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
       ...(copilotDefaultModel && { defaultModel: copilotDefaultModel }),
       ...(copilotModels && { models: copilotModels }),
+    },
+    opencode: {
+      executionMode: opencodeExecutionMode,
+      ...(opencodeServerUrl && { serverUrl: opencodeServerUrl }),
+      ...(opencodeServerAuthHeaderEnv && { serverAuthHeaderEnv: opencodeServerAuthHeaderEnv }),
+      ...(opencodeDefaultModel && { provider: opencodeDefaultModel.provider }),
+      ...(opencodeDefaultModel && { model: opencodeDefaultModel.model }),
+      ...(opencodeAgent && { agent: opencodeAgent }),
+      startupTimeoutMs: opencodeStartupTimeoutMs,
+      ...(opencodeDockerfilePath && { dockerfilePath: opencodeDockerfilePath }),
+      ...(opencodeDockerImage && { dockerImage: opencodeDockerImage }),
+      ...(opencodeDockerBuildContext && { dockerBuildContext: opencodeDockerBuildContext }),
+      ...(opencodeDefaultModel && { defaultModel: opencodeDefaultModel }),
+      ...(opencodeModels && { models: opencodeModels }),
     },
     ...(openAiKey && { openAiKey }),
     ...(gitlab && { gitlab }),
