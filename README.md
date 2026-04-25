@@ -5,6 +5,11 @@
   <strong>Bring your codebase into the conversation.</strong><br />
   <em>Or any codebase, really.</em>
 </p>
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/d9b662c1-9dbf-4e20-818d-2f4cf2b611e1" controls width="720">
+    Your browser does not support the video tag.
+  </video>
+</p>
 
 Sniptail is an omnichannel bot that accepts slash commands or chat commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. Slack, Discord, and Telegram are supported channels. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
