@@ -797,6 +797,7 @@ export function loadWorkerConfig(): WorkerConfig {
   }
 
   const botName = resolveBotName(workerToml?.bot_name);
+  const mentionPersonality = resolveStringValue('MENTION_PERSONALITY', workerToml?.mention_personality);
   const primaryAgent = resolvePrimaryAgent(workerToml?.primary_agent);
   const copilotExecutionMode = resolveCopilotExecutionMode(copilotToml?.execution_mode);
   const copilotIdleRetries = resolveCopilotIdleRetries(copilotToml?.idle_retries);
@@ -938,6 +939,7 @@ export function loadWorkerConfig(): WorkerConfig {
     ...core,
     jobWorkRoot,
     botName,
+    ...(mentionPersonality ? { mentionPersonality } : {}),
     ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,
     jobConcurrency,
