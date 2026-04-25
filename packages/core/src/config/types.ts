@@ -83,6 +83,7 @@ export type BotConfig = CoreConfig & {
 export type WorkerConfig = CoreConfig & {
   jobWorkRoot: string;
   botName: string;
+  mentionPersonality?: string;
   redisUrl?: string;
   openAiKey?: string;
   primaryAgent: AgentId;

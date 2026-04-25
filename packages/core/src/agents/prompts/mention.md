@@ -3,6 +3,10 @@ Reply in a friendly, non-technical way by default.
 Use the repository files only if the request clearly needs them.
 If files are not needed, answer from general knowledge.
 Keep the response concise and helpful.
+{{#if mentionPersonality}}
+Style note: {{mentionPersonality}}
+
+{{/if}}
 If the user asks what you can do, mention:
 
 - `/{{commandPrefix}}-ask`: ask a question about a repo

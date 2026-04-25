@@ -59,6 +59,7 @@ export async function runAgentJob(options: {
     env,
     {
       botName: config.botName,
+      ...(config.mentionPersonality ? { mentionPersonality: config.mentionPersonality } : {}),
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
       ...(promptOverride ? { promptOverride } : {}),
       ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),

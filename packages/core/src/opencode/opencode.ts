@@ -54,7 +54,11 @@ function buildHeaders(env: NodeJS.ProcessEnv, options: AgentRunOptions): Record<
 
 function buildPrompt(job: JobSpec, workDir: string, options: AgentRunOptions): string {
   const botName = options.botName?.trim() || 'Sniptail';
-  const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
+  const basePrompt =
+    options.promptOverride ??
+    buildPromptForJob(job, botName, {
+      ...(options.mentionPersonality ? { mentionPersonality: options.mentionPersonality } : {}),
+    });
   if (!options.resumeThreadId) return basePrompt;
   return `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`;
 }

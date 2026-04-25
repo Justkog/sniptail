@@ -23,6 +23,7 @@ export type AgentRunOptions = {
   networkAccessEnabled?: boolean;
   webSearchEnabled?: boolean;
   botName?: string;
+  mentionPersonality?: string;
   resumeThreadId?: string;
   promptOverride?: string;
   currentTurnAttachments?: AgentAttachment[];

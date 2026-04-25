@@ -37,6 +37,10 @@ job_registry_db = "redis"
 # Optional. Default: "Sniptail". Example: "Sniptail Worker"
 bot_name = "Sniptail"
 
+# Optional mention-only personality guidance appended to MENTION prompts.
+# Optional. No default. Example: "Be warm, calm, and lightly playful."
+# mention_personality = "Be warm, calm, and lightly playful."
+
 # Primary agent for jobs: "codex", "copilot" or "opencode".
 # Optional. Default: "codex". Example: "copilot"
 primary_agent = "codex"

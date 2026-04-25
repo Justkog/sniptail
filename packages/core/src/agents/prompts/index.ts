@@ -72,10 +72,11 @@ export function buildReviewPrompt(job: JobSpec, botName: string): string {
   });
 }
 
-export function buildMentionPrompt(job: JobSpec, botName: string): string {
+export function buildMentionPrompt(job: JobSpec, botName: string, mentionPersonality?: string): string {
   return mentionPromptTemplate({
     botName,
     commandPrefix: toSlackCommandPrefix(botName),
+    ...(mentionPersonality ? { mentionPersonality } : {}),
     requestText: job.requestText,
     threadContext: job.threadContext,
   });

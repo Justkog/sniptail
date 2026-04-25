@@ -8,6 +8,10 @@ import {
 } from './prompts/index.js';
 import type { JobSpec } from '../types/job.js';
 
+type PromptBuildOptions = {
+  mentionPersonality?: string;
+};
+
 export type LineagePromptWarning =
   | {
       kind?: 'drift';
@@ -29,7 +33,7 @@ function assertNeverJobType(jobType: never): never {
   throw new Error(`Unsupported job type: ${String(jobType)}`);
 }
 
-export function buildPromptForJob(job: JobSpec, botName: string): string {
+export function buildPromptForJob(job: JobSpec, botName: string, options: PromptBuildOptions = {}): string {
   switch (job.type) {
     case 'ASK':
       return buildAskPrompt(job, botName);
@@ -42,7 +46,7 @@ export function buildPromptForJob(job: JobSpec, botName: string): string {
     case 'REVIEW':
       return buildReviewPrompt(job, botName);
     case 'MENTION':
-      return buildMentionPrompt(job, botName);
+      return buildMentionPrompt(job, botName, options.mentionPersonality);
     default:
       return assertNeverJobType(job.type as never);
   }
