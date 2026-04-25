@@ -1,4 +1,5 @@
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
+import { buildMentionPrompt } from '@sniptail/core/agents/prompts/index.js';
 import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
@@ -52,6 +53,11 @@ export async function runAgentJob(options: {
     displayName: contextFile.originalName,
     mediaType: contextFile.mediaType,
   }));
+  const effectivePromptOverride =
+    promptOverride ??
+    (job.type === 'MENTION' && config.mentionPersonalityHint
+      ? buildMentionPrompt(job, config.botName, config.mentionPersonalityHint)
+      : undefined);
 
   const agentResult = await agent.run(
     job,
@@ -60,7 +66,7 @@ export async function runAgentJob(options: {
     {
       botName: config.botName,
       ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
-      ...(promptOverride ? { promptOverride } : {}),
+      ...(effectivePromptOverride ? { promptOverride: effectivePromptOverride } : {}),
       ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
       ...(modelOverride ? { model: modelOverride.model } : {}),
       ...(modelOverride?.modelProvider ? { modelProvider: modelOverride.modelProvider } : {}),
