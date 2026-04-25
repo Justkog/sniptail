@@ -3,7 +3,7 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { buildExploreModal, buildExploreRepoSelect } from '../../modals.js';
-import { exploreSelectionByUser } from '../../state.js';
+import { exploreSelectionByUser, storeDiscordSelectionReplyId } from '../../state.js';
 import { getDiscordCommandContextAttachments } from '../../lib/discordContextFiles.js';
 
 export async function handleDiscordExploreStart(
@@ -48,9 +48,11 @@ export async function handleDiscordExploreStart(
   });
 
   const row = buildExploreRepoSelect(repoKeys);
-  await interaction.reply({
+  const response = await interaction.reply({
     content: 'Select repositories for your exploration.',
     components: [row],
     ephemeral: true,
+    withResponse: true,
   });
+  storeDiscordSelectionReplyId(interaction, exploreSelectionByUser, 'explore', response);
 }

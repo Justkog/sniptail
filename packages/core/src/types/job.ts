@@ -4,7 +4,7 @@ import type { RunActionParamValue } from '../repos/runActions.js';
 export type { RunActionParamValue as RunParamValue };
 
 export type JobType = 'ASK' | 'EXPLORE' | 'IMPLEMENT' | 'PLAN' | 'REVIEW' | 'RUN' | 'MENTION';
-export const AGENT_IDS = ['codex', 'copilot'] as const;
+export const AGENT_IDS = ['codex', 'copilot', 'opencode'] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 export type RepoConfig = {

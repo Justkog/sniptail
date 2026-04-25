@@ -23,6 +23,7 @@ For the local runtime, interpret them conservatively:
 
 - local Codex execution requires `codex --version` to succeed
 - local Copilot execution requires `copilot --version` to succeed
+- local OpenCode execution requires `opencode --version` to succeed
 - Docker execution requires `docker --version` to succeed
 - repository linking requires `git ls-remote <ssh-url> HEAD` to succeed for each remote repository
 
@@ -75,13 +76,18 @@ Typical first edits:
 
 - enable Slack and or Discord under `[channels.*]`
 - set Discord `app_id` when Discord is enabled
-- choose `[codex].execution_mode` and `[copilot].execution_mode`
+- choose `[codex].execution_mode`, `[copilot].execution_mode`, and `[opencode].execution_mode`
 
 ## Worker Execution Modes
 
 Local mode:
 
-- requires system `codex` or `copilot` binaries in `PATH`
+- requires system `codex`, `copilot`, or `opencode` binaries in `PATH`
+
+OpenCode server mode:
+
+- requires `[opencode].execution_mode = "server"`
+- requires `[opencode].server_url` to point at a reachable OpenCode server
 
 Docker mode:
 

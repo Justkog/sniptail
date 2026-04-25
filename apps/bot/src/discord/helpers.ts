@@ -60,8 +60,7 @@ async function resolveChannel(client: Client, channelId: string): Promise<Sendab
 
 export async function postDiscordMessage(client: Client, options: DiscordMessageOptions) {
   const channel =
-    options.channel ??
-    (await resolveChannel(client, options.threadId ?? options.channelId));
+    options.channel ?? (await resolveChannel(client, options.threadId ?? options.channelId));
   const message: MessageCreateOptions = options.components
     ? {
         content: options.text,

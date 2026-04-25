@@ -48,6 +48,7 @@ export async function handleRunActionSelection(
     collectedParams: {},
     gitRef: resolveDefaultBaseBranch(config.repoAllowlist, repoKeys[0]),
     requestedAt: Date.now(),
+    ...(selection?.selectorMessageId ? { selectorMessageId: selection.selectorMessageId } : {}),
   });
 
   const modal = buildRunStepModal({

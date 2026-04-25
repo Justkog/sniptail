@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleAskStart } from './commands/ask.js';
 import { handleAskSelection } from './actions/askSelection.js';
-import { askSelectionByUser } from '../state.js';
+import { askSelectionByUser, DISCORD_SELECTION_CAPTURED_MESSAGE } from '../state.js';
 
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
+const loggerWarnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/repoAllowlist.js', () => ({
   refreshRepoAllowlist: refreshRepoAllowlistMock,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 describe('Discord ask attachment flow', () => {
@@ -16,7 +23,7 @@ describe('Discord ask attachment flow', () => {
     refreshRepoAllowlistMock.mockResolvedValue(undefined);
   });
 
-  it('preserves command attachments through repo selection before opening the modal', async () => {
+  it('preserves command attachments through repo selection and disables the selector reply', async () => {
     const config = {
       botName: 'Sniptail',
       repoAllowlist: {
@@ -27,9 +34,14 @@ describe('Discord ask attachment flow', () => {
 
     const reply = vi
       .fn<
-        (payload: { content: string; components: unknown[]; ephemeral: boolean }) => Promise<void>
+        (payload: {
+          content: string;
+          components: unknown[];
+          ephemeral: boolean;
+          withResponse?: boolean;
+        }) => Promise<{ resource: { message: { id: string } } }>
       >()
-      .mockResolvedValue(undefined);
+      .mockResolvedValue({ resource: { message: { id: 'M1' } } });
     const showModal = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
     const commandInteraction = {
@@ -58,6 +70,7 @@ describe('Discord ask attachment flow', () => {
     expect(replyPayload).toMatchObject({
       content: 'Select repositories for your question.',
       ephemeral: true,
+      withResponse: true,
     });
     expect(replyPayload?.components).toBeInstanceOf(Array);
     expect(askSelectionByUser.get('U1')).toEqual(
@@ -72,22 +85,36 @@ describe('Discord ask attachment flow', () => {
             byteSize: 7,
           },
         ],
+        selectorMessageId: 'M1',
       }),
     );
 
+    const webhookEditMessage = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const selectionInteraction = {
       user: { id: 'U1' },
       values: ['repo-a'],
       reply: vi.fn().mockResolvedValue(undefined),
       showModal: vi.fn().mockResolvedValue(undefined),
+      message: {
+        id: 'M1',
+        edit: vi.fn(),
+      },
+      webhook: {
+        editMessage: webhookEditMessage,
+      },
     } as never;
 
     await handleAskSelection(selectionInteraction, config);
 
     expect(selectionInteraction.showModal).toHaveBeenCalledTimes(1);
+    expect(webhookEditMessage).toHaveBeenCalledWith('M1', {
+      content: DISCORD_SELECTION_CAPTURED_MESSAGE,
+      components: [],
+    });
     expect(askSelectionByUser.get('U1')).toEqual(
       expect.objectContaining({
         repoKeys: ['repo-a'],
+        selectorMessageId: 'M1',
         contextAttachments: [
           {
             id: 'A1',
@@ -99,5 +126,114 @@ describe('Discord ask attachment flow', () => {
         ],
       }),
     );
+  });
+
+  it('logs a warning and still opens the modal when selector cleanup fails', async () => {
+    const config = {
+      botName: 'Sniptail',
+      repoAllowlist: {
+        'repo-a': { baseBranch: 'main' },
+        'repo-b': { baseBranch: 'develop' },
+      },
+    } as never;
+
+    askSelectionByUser.set('U1', {
+      repoKeys: [],
+      requestedAt: Date.now(),
+      selectorMessageId: 'M1',
+    });
+
+    const selectionInteraction = {
+      user: { id: 'U1' },
+      values: ['repo-a'],
+      reply: vi.fn().mockResolvedValue(undefined),
+      showModal: vi.fn().mockResolvedValue(undefined),
+      message: {
+        id: 'M1',
+        edit: vi.fn().mockRejectedValue(new Error('nope')),
+      },
+      webhook: {
+        editMessage: vi.fn().mockRejectedValue(new Error('still nope')),
+      },
+    } as never;
+
+    await handleAskSelection(selectionInteraction, config);
+
+    expect(selectionInteraction.showModal).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalled();
+  });
+
+  it('expires stale repo selections before opening the modal', async () => {
+    const config = {
+      botName: 'Sniptail',
+      repoAllowlist: {
+        'repo-a': { baseBranch: 'main' },
+        'repo-b': { baseBranch: 'develop' },
+      },
+    } as never;
+
+    const webhookEditMessage = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    askSelectionByUser.set('U1', {
+      repoKeys: [],
+      requestedAt: Date.now() - 16 * 60 * 1000,
+      selectorMessageId: 'M1',
+    });
+
+    const selectionInteraction = {
+      user: { id: 'U1' },
+      values: ['repo-a'],
+      reply,
+      showModal: vi.fn().mockResolvedValue(undefined),
+      message: {
+        id: 'M1',
+        edit: vi.fn(),
+      },
+      webhook: {
+        editMessage: webhookEditMessage,
+      },
+    } as never;
+
+    await handleAskSelection(selectionInteraction, config);
+
+    expect(selectionInteraction.showModal).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith({
+      content: 'Repository selection expired. Please run the ask command again.',
+      ephemeral: true,
+    });
+    expect(webhookEditMessage).toHaveBeenCalledWith('M1', {
+      content: 'Repository selection expired. Please rerun the ask command.',
+      components: [],
+    });
+    expect(askSelectionByUser.has('U1')).toBe(false);
+  });
+
+  it('does not capture selector metadata when only one repo is allowlisted', async () => {
+    const config = {
+      botName: 'Sniptail',
+      repoAllowlist: {
+        'repo-a': { baseBranch: 'main' },
+      },
+    } as never;
+
+    const commandInteraction = {
+      user: { id: 'U1' },
+      options: {
+        getAttachment: vi.fn().mockReturnValue(null),
+      },
+      reply: vi.fn().mockResolvedValue({ resource: { message: { id: 'M1' } } }),
+      showModal: vi.fn().mockResolvedValue(undefined),
+    } as never;
+
+    await handleAskStart(commandInteraction, config);
+
+    expect(commandInteraction.showModal).toHaveBeenCalledTimes(1);
+    expect(commandInteraction.reply).not.toHaveBeenCalled();
+    expect(askSelectionByUser.get('U1')).toEqual(
+      expect.objectContaining({
+        repoKeys: ['repo-a'],
+      }),
+    );
+    expect(askSelectionByUser.get('U1')?.selectorMessageId).toBeUndefined();
   });
 });

@@ -7,6 +7,7 @@ import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadContext.js';
 import { buildChannelContext } from '../../lib/channel.js';
@@ -142,6 +143,7 @@ export async function handleMention(
     },
   });
   if (!authorized) {
+    auditJobRequest(config, baseJob, 'stopped');
     return;
   }
 
@@ -166,10 +168,12 @@ export async function handleMention(
   try {
     await saveJobQueued(job);
   } catch (err) {
+    auditJobRequest(config, job, 'persist_failed');
     logger.error({ err, jobId: job.jobId }, 'Failed to persist mention job');
     await message.reply('I could not start that request. Please try again.');
     return;
   }
 
   await enqueueJob(queue, job);
+  auditJobRequest(config, job, 'accepted');
 }

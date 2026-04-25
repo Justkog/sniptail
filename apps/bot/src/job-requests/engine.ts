@@ -5,6 +5,7 @@ import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { createJobId } from '../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../lib/repoBaseBranch.js';
+import { auditJobRequest, auditNormalizedJobRequest } from '../lib/requestAudit.js';
 import type { NormalizedJobRequestInput, NormalizedJobRequestResult } from './types.js';
 
 type SubmitNormalizedJobRequestInput = {
@@ -46,6 +47,7 @@ export async function submitNormalizedJobRequest({
   authorize,
 }: SubmitNormalizedJobRequestInput): Promise<NormalizedJobRequestResult> {
   if (input.type !== 'MENTION' && !input.repoKeys.length) {
+    auditNormalizedJobRequest(config, input, 'invalid');
     return {
       status: 'invalid',
       message: 'Select at least one repository before submitting the request.',
@@ -55,6 +57,7 @@ export async function submitNormalizedJobRequest({
   const job = buildNormalizedJobRequest(config, input);
   const authorized = await authorize(job);
   if (!authorized) {
+    auditJobRequest(config, job, 'stopped');
     return {
       status: 'stopped',
       job,
@@ -64,6 +67,7 @@ export async function submitNormalizedJobRequest({
   try {
     await saveJobQueued(job);
   } catch (error) {
+    auditJobRequest(config, job, 'persist_failed');
     return {
       status: 'persist_failed',
       job,
@@ -72,6 +76,7 @@ export async function submitNormalizedJobRequest({
   }
 
   await enqueueJob(queue, job);
+  auditJobRequest(config, job, 'accepted');
   return {
     status: 'accepted',
     job,

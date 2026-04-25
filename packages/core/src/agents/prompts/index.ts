@@ -1,13 +1,13 @@
 import Handlebars from 'handlebars';
-import type { JobSpec } from '../types/job.js';
-import { toSlackCommandPrefix } from '../utils/slack.js';
-import askPromptTemplateSource from './prompts/ask.md?raw';
-import explorePromptTemplateSource from './prompts/explore.md?raw';
-import planPromptTemplateSource from './prompts/plan.md?raw';
-import implementPromptTemplateSource from './prompts/implement.md?raw';
-import implementArtifactsPromptTemplateSource from './prompts/implement-artifacts.md?raw';
-import mentionPromptTemplateSource from './prompts/mention.md?raw';
-import reviewPromptTemplateSource from './prompts/review.md?raw';
+import type { JobSpec } from '../../types/job.js';
+import { toSlackCommandPrefix } from '../../utils/slack.js';
+import askPromptTemplateSource from './ask.md?raw';
+import explorePromptTemplateSource from './explore.md?raw';
+import planPromptTemplateSource from './plan.md?raw';
+import implementPromptTemplateSource from './implement.md?raw';
+import implementArtifactsPromptTemplateSource from './implement-artifacts.md?raw';
+import mentionPromptTemplateSource from './mention.md?raw';
+import reviewPromptTemplateSource from './review.md?raw';
 
 const askPromptTemplate = Handlebars.compile(askPromptTemplateSource.trimEnd());
 const explorePromptTemplate = Handlebars.compile(explorePromptTemplateSource.trimEnd());

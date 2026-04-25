@@ -5,6 +5,11 @@
   <strong>Bring your codebase into the conversation.</strong><br />
   <em>Or any codebase, really.</em>
 </p>
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/d9b662c1-9dbf-4e20-818d-2f4cf2b611e1" controls width="720">
+    Your browser does not support the video tag.
+  </video>
+</p>
 
 Sniptail is an omnichannel bot that accepts slash commands or chat commands, runs coding agent jobs against approved repos, and posts back reports or merge requests. Slack, Discord, and Telegram are supported channels. It is designed for teams that want a lightweight, self-hosted automation loop for repo analysis and changes.
 
@@ -18,10 +23,10 @@ This quickstart assumes:
 
 - bot and worker run on the same machine
 - one shared `.env` file is used for both
-- Codex CLI is installed, configured, and authenticated on your machine (`codex` works in your shell)
+- the CLI for your configured primary agent is installed, configured, and authenticated on your machine (`codex` for the default config, or `copilot` / `opencode` if you switch agents)
 - you want to test with this repository: `git@github.com:Justkog/sniptail.git`
 
-Sniptail local Codex and Copilot runs always execute system `codex` / `copilot` binaries from `PATH` (no bundled fallback).
+Sniptail local Codex, Copilot, and OpenCode runs always execute system `codex` / `copilot` / `opencode` binaries from `PATH` (no bundled fallback).
 
 ### 1) Install and prepare config
 
@@ -123,7 +128,7 @@ If your agent only supports single-file skills, fetch `SKILL.md` at minimum, but
 
 ## Project direction
 
-Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack, Discord, and Telegram, alongside Codex/GitHub_Copilot and GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
+Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack, Discord, and Telegram, alongside Codex, GitHub Copilot, and OpenCode agent runtimes plus GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
 > **Sniptail is source-available, self-hostable, and free to use and modify.**
 >
@@ -137,12 +142,12 @@ Roadmap detail tables are in `docs/project-roadmap.md`.
 
 1. A user triggers a slash command or mentions the bot in Slack or Discord, or sends a Telegram command/message to the bot.
 2. The bot queues a job via the configured transport (`redis` or in-process `inproc`) and records metadata in the configured job registry.
-3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex or Copilot).
+3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex, Copilot, or OpenCode).
 4. Results are posted back to Slack, Discord, or Telegram as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
 
-## Why not just use Copilot or Codex?
+## Why not just use Copilot, Codex, or OpenCode?
 
-AI coding assistants like Copilot and Codex are excellent for deep, hands-on technical work. They live in the editor, helping engineers write, refactor, and reason about code.
+AI coding assistants like Copilot, Codex, and OpenCode are excellent for deep, hands-on technical work. They live in the editor or terminal, helping engineers write, refactor, and reason about code.
 
 Sniptail doesn't replace them - it runs them on your behalf.
 
@@ -154,7 +159,7 @@ Instead of being tied to one developer's IDE, Sniptail turns those same agents i
 - Generate reports, plans, or lightweight PRs
 - Do it all without installing or configuring anything locally
 
-Copilot and Codex empower individual engineers to go deep.
+Copilot, Codex, and OpenCode empower individual engineers to go deep.
 Sniptail empowers the whole team to understand and safely interact with the codebase - using those same agents under the hood.
 
 ## License

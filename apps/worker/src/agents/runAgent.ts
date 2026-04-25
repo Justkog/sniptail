@@ -63,6 +63,7 @@ export async function runAgentJob(options: {
       ...(promptOverride ? { promptOverride } : {}),
       ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
       ...(modelOverride ? { model: modelOverride.model } : {}),
+      ...(modelOverride?.modelProvider ? { modelProvider: modelOverride.modelProvider } : {}),
       ...(modelOverride?.modelReasoningEffort
         ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
         : {}),

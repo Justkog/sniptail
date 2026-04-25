@@ -34,6 +34,14 @@ vi.mock('@sniptail/core/config/config.js', () => ({
       dockerImage: undefined,
       dockerBuildContext: undefined,
     },
+    opencode: {
+      executionMode: 'local',
+      startupTimeoutMs: 10_000,
+      dockerStreamLogs: false,
+      dockerfilePath: undefined,
+      dockerImage: undefined,
+      dockerBuildContext: undefined,
+    },
     run: {
       actions: {
         'refresh-docs': {
@@ -269,7 +277,7 @@ vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
   ),
 }));
 
-vi.mock('@sniptail/core/codex/prompts.js', () => ({
+vi.mock('@sniptail/core/agents/prompts/index.js', () => ({
   buildImplementArtifactsPrompt: vi.fn(() => 'implement artifacts prompt'),
 }));
 
@@ -1221,6 +1229,7 @@ describe('worker/pipeline runJob', () => {
         threadId: 'thread-implement-artifacts',
         finalResponse: 'Artifacts done',
       });
+    // eslint-disable-next-line @typescript-eslint/require-await
     resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
       if (ref === 'refs/remotes/origin/sniptail/explore-job') {
         return undefined;
@@ -1395,6 +1404,7 @@ describe('worker/pipeline runJob', () => {
         threadId: 'thread-implement-artifacts',
         finalResponse: 'Artifacts done',
       });
+    // eslint-disable-next-line @typescript-eslint/require-await
     resolveGitRefMock.mockImplementation(async (_repoPath, ref) => {
       if (ref === 'refs/remotes/origin/sniptail/explore-job') {
         return undefined;

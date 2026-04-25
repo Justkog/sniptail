@@ -12,6 +12,7 @@ import { resolve } from 'node:path';
 import os from 'node:os';
 import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScriptPath.js';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
+import { toEnvRecord } from '../agents/envRecord.js';
 import type { JobSpec } from '../types/job.js';
 import type { AgentAttachment } from '../agents/types.js';
 
@@ -19,6 +20,8 @@ export type CodexRunResult = {
   finalResponse: string;
   threadId?: string;
 };
+
+type DockerFilesystemMode = 'readonly' | 'writable';
 
 export type CodexRunOptions = {
   onEvent?: (event: ThreadEvent) => void | Promise<void>;
@@ -41,16 +44,6 @@ export type CodexRunOptions = {
     buildContext?: string;
   };
 };
-
-function toEnvRecord(env: NodeJS.ProcessEnv): Record<string, string> {
-  const record: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === 'string') {
-      record[key] = value;
-    }
-  }
-  return record;
-}
 
 function extractFinalResponse(item: ThreadItem | undefined, current: string): string {
   if (!item) return current;
@@ -89,6 +82,10 @@ export async function runCodex(
 ): Promise<CodexRunResult> {
   const codexEnv = toEnvRecord(env);
   const useDocker = options.docker?.enabled;
+  const requestedSandboxMode = options.sandboxMode ?? 'workspace-write';
+  const dockerFilesystemMode: DockerFilesystemMode =
+    requestedSandboxMode === 'read-only' ? 'readonly' : 'writable';
+  const sandboxMode = useDocker ? 'danger-full-access' : requestedSandboxMode;
   if (useDocker) {
     if (options.docker?.dockerfilePath) {
       codexEnv.CODEX_DOCKERFILE_PATH = resolve(options.docker.dockerfilePath);
@@ -100,6 +97,7 @@ export async function runCodex(
       codexEnv.CODEX_DOCKER_BUILD_CONTEXT = resolve(options.docker.buildContext);
     }
     codexEnv.CODEX_DOCKER_HOST_HOME = codexEnv.CODEX_DOCKER_HOST_HOME || os.homedir();
+    codexEnv.CODEX_DOCKER_FILESYSTEM_MODE = dockerFilesystemMode;
   }
   const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : 'codex';
 
@@ -110,7 +108,7 @@ export async function runCodex(
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
-    sandboxMode: options.sandboxMode ?? 'workspace-write',
+    sandboxMode,
     approvalPolicy: options.approvalPolicy ?? 'never',
     ...(options.additionalDirectories
       ? { additionalDirectories: options.additionalDirectories }

@@ -6,6 +6,7 @@ import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { createJobId } from '../../../lib/jobs.js';
+import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
@@ -86,12 +87,14 @@ export async function handleReviewFromJobButton(
     },
   });
   if (!authorized) {
+    auditJobRequest(config, job, 'stopped');
     return;
   }
 
   try {
     await saveJobQueued(job);
   } catch (err) {
+    auditJobRequest(config, job, 'persist_failed');
     logger.error({ err, jobId: job.jobId }, 'Failed to persist review job');
     await interaction.reply({
       content: `I couldn't persist review job ${job.jobId}. Please try again.`,
@@ -101,6 +104,7 @@ export async function handleReviewFromJobButton(
   }
 
   await enqueueJob(queue, job);
+  auditJobRequest(config, job, 'accepted');
   await interaction.reply({
     content: `Thanks! I've queued review job ${job.jobId}. I'll report back here.`,
     ephemeral: true,

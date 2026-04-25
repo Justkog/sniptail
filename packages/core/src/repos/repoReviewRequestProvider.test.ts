@@ -198,6 +198,7 @@ describe('repo review request provider', () => {
         description: 'MR description',
       }),
     );
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const updateInput = hoisted.updateMergeRequest.mock.calls[0]?.[0];
     expect(updateInput).not.toHaveProperty('labels');
     expect(updateInput).not.toHaveProperty('reviewerIds');

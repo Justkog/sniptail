@@ -1,15 +1,21 @@
 import pino, { type Logger, type LoggerOptions, type TransportSingleOptions } from 'pino';
 
+export type { Logger } from 'pino';
+
+const redact = {
+  paths: [
+    'SLACK_BOT_TOKEN',
+    'SLACK_APP_TOKEN',
+    'SLACK_SIGNING_SECRET',
+    'OPENAI_API_KEY',
+    'GITLAB_TOKEN',
+  ],
+  remove: true,
+} satisfies NonNullable<LoggerOptions['redact']>;
+
 const options: LoggerOptions = {
   redact: {
-    paths: [
-      'SLACK_BOT_TOKEN',
-      'SLACK_APP_TOKEN',
-      'SLACK_SIGNING_SECRET',
-      'OPENAI_API_KEY',
-      'GITLAB_TOKEN',
-    ],
-    remove: true,
+    ...redact,
   },
 };
 
@@ -19,6 +25,23 @@ options.transport = {
 } satisfies TransportSingleOptions;
 
 export const logger = pino(options);
+
+export function createFileTransportLogger(destination: string): Logger {
+  return pino(
+    {
+      redact,
+      base: null,
+      timestamp: pino.stdTimeFunctions.isoTime,
+    },
+    pino.transport({
+      target: 'pino/file',
+      options: {
+        destination,
+        mkdir: true,
+      },
+    }),
+  );
+}
 
 const enabledDebugNamespaces = new Set(
   (process.env.SNIPTAIL_DEBUG ?? '')
