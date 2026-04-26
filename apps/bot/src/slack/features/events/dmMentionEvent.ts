@@ -70,7 +70,7 @@ export function registerDmMentionEvent({
     await addReaction(app, {
       channel: channelId,
       name: 'eyes',
-      timestamp: eventTs,
+      messageId: eventTs,
     });
 
     logger.info(

@@ -54,4 +54,68 @@ describe('worker channel adapters', () => {
 
     expect(rendered).toEqual({ text: 'done' });
   });
+
+  it('builds Slack reaction events with message ids', () => {
+    const adapter = resolveWorkerChannelAdapter('slack');
+    const event = adapter.buildAddReactionEvent(
+      { provider: 'slack', channelId: 'C1', threadId: 'thread-1' },
+      'eyes',
+      { messageId: '1712345678.000100' },
+      'job-4',
+    );
+
+    expect(adapter.capabilities.reactions).toBe(true);
+    expect(event).toEqual({
+      schemaVersion: 1,
+      provider: 'slack',
+      type: 'reaction.add',
+      jobId: 'job-4',
+      payload: {
+        channelId: 'C1',
+        threadId: 'thread-1',
+        messageId: '1712345678.000100',
+        name: 'eyes',
+      },
+    });
+  });
+
+  it('builds Discord reaction events with message ids', () => {
+    const adapter = resolveWorkerChannelAdapter('discord');
+    const event = adapter.buildAddReactionEvent(
+      { provider: 'discord', channelId: 'D1', threadId: 'thread-9' },
+      'eyes',
+      { messageId: 'M1' },
+      'job-5',
+    );
+
+    expect(adapter.capabilities.reactions).toBe(true);
+    expect(event).toEqual({
+      schemaVersion: 1,
+      provider: 'discord',
+      type: 'reaction.add',
+      jobId: 'job-5',
+      payload: {
+        channelId: 'D1',
+        threadId: 'thread-9',
+        messageId: 'M1',
+        name: 'eyes',
+      },
+    });
+  });
+
+  it('returns no reaction event for unsupported providers', () => {
+    const telegramAdapter = resolveWorkerChannelAdapter('telegram');
+    const genericAdapter = resolveWorkerChannelAdapter('http');
+
+    expect(
+      telegramAdapter.buildAddReactionEvent({ provider: 'telegram', channelId: 'T1' }, 'eyes', {
+        messageId: '10',
+      }),
+    ).toBeUndefined();
+    expect(
+      genericAdapter.buildAddReactionEvent({ provider: 'http', channelId: 'H1' }, 'eyes', {
+        messageId: '10',
+      }),
+    ).toBeUndefined();
+  });
 });

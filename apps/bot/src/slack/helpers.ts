@@ -585,15 +585,15 @@ export async function addReaction(
   app: App,
   options: {
     channel: string;
+    messageId: string;
     name: string;
-    timestamp: string;
   },
 ) {
   debugSlack(
     {
       api: 'reactions.add',
       channel: options.channel,
-      timestamp: options.timestamp,
+      messageId: options.messageId,
       name: options.name,
     },
     'Slack API request',
@@ -602,13 +602,13 @@ export async function addReaction(
     const response = await app.client.reactions.add({
       channel: options.channel,
       name: options.name,
-      timestamp: options.timestamp,
+      timestamp: options.messageId,
     });
     debugSlack(
       {
         api: 'reactions.add',
         channel: options.channel,
-        timestamp: options.timestamp,
+        messageId: options.messageId,
         name: options.name,
         ok: response.ok,
       },
@@ -620,7 +620,7 @@ export async function addReaction(
       {
         api: 'reactions.add',
         channel: options.channel,
-        timestamp: options.timestamp,
+        messageId: options.messageId,
         name: options.name,
         ...getSlackErrorDetails(err),
         err,

@@ -411,6 +411,7 @@ export async function runJob(
       paths,
       env,
       registry,
+      notifier,
       currentTurnContextFiles,
       ...(promptOverride ? { promptOverride } : {}),
     });
@@ -532,7 +533,9 @@ export async function runJob(
           paths,
           env,
           registry,
+          notifier,
           promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+          addRequestReaction: false,
         });
         followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
         if (followupRun.result.threadId) {

@@ -1,6 +1,6 @@
 import { BOT_EVENT_SCHEMA_VERSION, type CoreBotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
-import type { FileUpload, MessageOptions } from '../channels/notifier.js';
+import type { FileUpload, MessageOptions, ReactionOptions } from '../channels/notifier.js';
 import {
   type BootstrapSuccessRenderInput,
   type CodexUsageRenderInput,
@@ -52,6 +52,20 @@ export class TelegramWorkerChannelAdapter implements WorkerChannelAdapter {
       },
       jobId,
     );
+  }
+
+  // Telegram bot adapter does not support reaction.add events yet.
+  buildAddReactionEvent(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _ref: ChannelRef,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _name: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options: ReactionOptions,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _jobId?: string,
+  ): CoreBotEvent<'reaction.add'> | undefined {
+    return undefined;
   }
 
   buildCodexUsageReplyEvent({

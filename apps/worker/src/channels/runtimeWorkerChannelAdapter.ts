@@ -2,7 +2,7 @@ import type { ChannelAdapterBase } from '@sniptail/core/channels/adapter.js';
 import type { CoreBotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { WorkerCodexUsagePayload } from '@sniptail/core/types/worker-event.js';
-import type { FileUpload, MessageOptions } from './notifier.js';
+import type { FileUpload, MessageOptions, ReactionOptions } from './notifier.js';
 
 export type CompletionRenderInput = {
   botName: string;
@@ -42,6 +42,12 @@ export interface WorkerChannelAdapter extends ChannelAdapterBase {
     file: FileUpload,
     jobId?: string,
   ): CoreBotEvent<'file.upload'>;
+  buildAddReactionEvent(
+    ref: ChannelRef,
+    name: string,
+    options: ReactionOptions,
+    jobId?: string,
+  ): CoreBotEvent<'reaction.add'> | undefined;
   buildCodexUsageReplyEvent(input: CodexUsageRenderInput): CoreBotEvent | undefined;
   renderCompletionMessage(input: CompletionRenderInput): RenderedMessage;
   renderBootstrapSuccessMessage(input: BootstrapSuccessRenderInput): RenderedMessage;

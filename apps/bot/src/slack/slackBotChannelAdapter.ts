@@ -1,5 +1,9 @@
 import { debugFor, logger } from '@sniptail/core/logger.js';
-import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
+import type {
+  BotEventPayloadMap,
+  CoreBotEvent,
+  CoreBotEventType,
+} from '@sniptail/core/types/bot-event.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './helpers.js';
 import type {
   RuntimeBotChannelAdapter,
@@ -13,6 +17,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     richTextBlocks: true,
     ephemeralMessages: true,
     fileUploads: true,
+    reactions: true,
   } as const;
   supportedEventTypes = [
     'message.post',
@@ -63,13 +68,18 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
         await uploadFile(app, options);
         return true;
       }
-      case 'reaction.add':
+      case 'reaction.add': {
+        const payload = toReactionAddPayload(event.payload);
+        if (!payload) {
+          return false;
+        }
         await addReaction(app, {
-          channel: event.payload.channelId,
-          name: event.payload.name,
-          timestamp: event.payload.timestamp,
+          channel: payload.channelId,
+          messageId: String(payload.messageId),
+          name: payload.name,
         });
         return true;
+      }
       case 'message.ephemeral':
         await postEphemeral(app, {
           channel: event.payload.channelId,
@@ -86,3 +96,22 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
 }
 
 const debugSlack = debugFor('slack');
+
+function toReactionAddPayload(
+  payload: CoreBotEvent['payload'],
+): BotEventPayloadMap['reaction.add'] | undefined {
+  const candidate = payload as Record<string, unknown>;
+  const channelId = candidate.channelId;
+  const messageId = candidate.messageId;
+  const name = candidate.name;
+  const threadId = candidate.threadId;
+  if (typeof channelId !== 'string' || typeof messageId !== 'string' || typeof name !== 'string') {
+    return undefined;
+  }
+  return {
+    channelId,
+    messageId,
+    name,
+    ...(typeof threadId === 'string' ? { threadId } : {}),
+  };
+}

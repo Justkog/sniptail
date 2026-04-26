@@ -35,8 +35,9 @@ export type BotEventPayloadMap = {
   'file.upload': FileUploadPayload;
   'reaction.add': {
     channelId: string;
+    messageId: string;
+    threadId?: string;
     name: string;
-    timestamp: string;
   };
   'interaction.reply.edit': {
     interactionToken: string;

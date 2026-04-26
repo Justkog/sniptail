@@ -256,20 +256,24 @@ describe('permissionsApprovalStore', () => {
     const reassigned = await assignApprovalContextIfPending(request.id, {
       channelId: 'thread-123',
       threadId: 'thread-123',
+      requestMessageId: 'message-123',
     });
     expect(reassigned.changed).toBe(true);
     expect(reassigned.reason).toBe('updated');
     expect(reassigned.request?.context.channelId).toBe('thread-123');
     expect(reassigned.request?.context.threadId).toBe('thread-123');
+    expect(reassigned.request?.context.requestMessageId).toBe('message-123');
     expect(reassigned.request?.operation.kind).toBe('enqueueJob');
     if (reassigned.request?.operation.kind === 'enqueueJob') {
       expect(reassigned.request.operation.job.channel.channelId).toBe('thread-123');
       expect(reassigned.request.operation.job.channel.threadId).toBe('thread-123');
+      expect(reassigned.request.operation.job.channel.requestMessageId).toBe('message-123');
     }
 
     const unchanged = await assignApprovalContextIfPending(request.id, {
       channelId: 'thread-123',
       threadId: 'thread-123',
+      requestMessageId: 'message-123',
     });
     expect(unchanged.changed).toBe(false);
     expect(unchanged.reason).toBe('unchanged');
@@ -322,6 +326,7 @@ describe('permissionsApprovalStore', () => {
       {
         channelId: 'thread-123',
         threadId: 'thread-123',
+        requestMessageId: 'message-123',
       },
       {
         updateOperationRouting: false,
@@ -331,10 +336,12 @@ describe('permissionsApprovalStore', () => {
     expect(reassigned.reason).toBe('updated');
     expect(reassigned.request?.context.channelId).toBe('thread-123');
     expect(reassigned.request?.context.threadId).toBe('thread-123');
+    expect(reassigned.request?.context.requestMessageId).toBe('message-123');
     expect(reassigned.request?.operation.kind).toBe('enqueueJob');
     if (reassigned.request?.operation.kind === 'enqueueJob') {
       expect(reassigned.request.operation.job.channel.channelId).toBe('D1');
       expect(reassigned.request.operation.job.channel.threadId).toBeUndefined();
+      expect(reassigned.request.operation.job.channel.requestMessageId).toBeUndefined();
     }
   });
 });
