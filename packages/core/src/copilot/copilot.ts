@@ -1,4 +1,9 @@
-import { CopilotClient, type SessionConfig, type SessionEvent, approveAll } from '@github/copilot-sdk';
+import {
+  CopilotClient,
+  type SessionConfig,
+  type SessionEvent,
+  approveAll,
+} from '@github/copilot-sdk';
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
@@ -79,11 +84,14 @@ export async function runCopilot(
       options.resumeThreadId ? 'Resuming Copilot session' : 'Creating new Copilot session',
     );
 
-    const sessionConfig: SessionConfig = { 
+    const sessionConfig: SessionConfig = {
       onPermissionRequest: approveAll,
-      ...options.model && { model: options.model },
-      ...options.modelReasoningEffort && options.modelReasoningEffort !== 'minimal' && { reasoningEffort: options.modelReasoningEffort },
-     };
+      ...(options.model && { model: options.model }),
+      ...(options.modelReasoningEffort &&
+        options.modelReasoningEffort !== 'minimal' && {
+          reasoningEffort: options.modelReasoningEffort,
+        }),
+    };
     let session = options.resumeThreadId
       ? await client.resumeSession(options.resumeThreadId, sessionConfig)
       : await client.createSession(sessionConfig);
@@ -116,10 +124,13 @@ export async function runCopilot(
 
     while (true) {
       try {
-        response = await session.sendAndWait({
-          prompt: attempt === 0 ? prompt : continuationPrompt,
-          ...(attachments ? { attachments } : {}),
-        }, 60000 * 5);
+        response = await session.sendAndWait(
+          {
+            prompt: attempt === 0 ? prompt : continuationPrompt,
+            ...(attachments ? { attachments } : {}),
+          },
+          60000 * 5,
+        );
         if (fatalError) {
           throw fatalError;
         }
