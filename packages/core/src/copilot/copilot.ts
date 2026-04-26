@@ -82,6 +82,7 @@ export async function runCopilot(
     const sessionConfig: SessionConfig = { 
       onPermissionRequest: approveAll,
       ...options.model && { model: options.model },
+      ...options.modelReasoningEffort && options.modelReasoningEffort !== 'minimal' && { reasoningEffort: options.modelReasoningEffort },
      };
     let session = options.resumeThreadId
       ? await client.resumeSession(options.resumeThreadId, sessionConfig)
