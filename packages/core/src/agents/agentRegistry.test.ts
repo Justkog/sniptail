@@ -56,9 +56,7 @@ describe('AGENT_DESCRIPTORS.copilot.buildRunOptions', () => {
 
     expect(options).toEqual({
       copilotIdleRetries: 2,
-      copilot: {
-        cliPath: 'copilot',
-      },
+      copilot: {},
     });
     expect(hoisted.resolveWorkerAgentScriptPath).not.toHaveBeenCalled();
   });

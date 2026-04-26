@@ -26,6 +26,7 @@ export type ApprovalRequestContext = {
   provider: ChannelProvider;
   channelId: string;
   threadId?: string;
+  requestMessageId?: string;
   workspaceId?: string;
   guildId?: string;
 };

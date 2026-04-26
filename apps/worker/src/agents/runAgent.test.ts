@@ -6,6 +6,8 @@ const hoisted = vi.hoisted(() => ({
   resolveAgentThreadId: vi.fn(),
   resolveMentionWorkingDirectory: vi.fn(),
   appendAgentEventLog: vi.fn(),
+  addReaction: vi.fn(),
+  loadJobRecord: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agents/agentRegistry.js', () => ({
@@ -67,6 +69,7 @@ describe('runAgentJob', () => {
     hoisted.run.mockResolvedValue({ finalResponse: 'done' });
     hoisted.resolveAgentThreadId.mockResolvedValue(undefined);
     hoisted.resolveMentionWorkingDirectory.mockResolvedValue('/tmp/mention-workdir');
+    hoisted.loadJobRecord.mockResolvedValue(undefined);
   });
 
   it('passes only current-turn context files as native attachments', async () => {
@@ -86,7 +89,12 @@ describe('runAgentJob', () => {
         logFile: '/tmp/job-root/job-1/logs/runner.log',
       },
       env: {},
-      registry: {} as never,
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
       currentTurnContextFiles: [
         {
           path: 'context/new-diagram.png',
@@ -135,7 +143,12 @@ describe('runAgentJob', () => {
         logFile: '/tmp/job-root/job-mention/logs/runner.log',
       },
       env: {},
-      registry: {} as never,
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
       currentTurnContextFiles: [
         {
           path: 'context/raccoon_kayaking.png',
@@ -162,5 +175,99 @@ describe('runAgentJob', () => {
         ],
       }),
     );
+  });
+
+  it('adds a provider-aware reaction on the latest request message before running the agent', async () => {
+    hoisted.loadJobRecord.mockResolvedValue({
+      job: {
+        ...buildJob(),
+        channel: {
+          provider: 'slack',
+          channelId: 'C999',
+          threadId: 'thread-9',
+          userId: 'U123',
+          requestMessageId: '1712345678.000100',
+        },
+      },
+    });
+
+    await runAgentJob({
+      job: buildJob(),
+      config: {
+        primaryAgent: 'codex',
+        botName: 'Sniptail',
+        repoCacheRoot: '/tmp/repo-cache',
+        jobWorkRoot: '/tmp/job-root',
+      } as never,
+      paths: {
+        root: '/tmp/job-root/job-1',
+        reposRoot: '/tmp/job-root/job-1/repos',
+        artifactsRoot: '/tmp/job-root/job-1/artifacts',
+        logsRoot: '/tmp/job-root/job-1/logs',
+        logFile: '/tmp/job-root/job-1/logs/runner.log',
+      },
+      env: {},
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
+    });
+
+    expect(hoisted.addReaction).toHaveBeenCalledWith(
+      {
+        provider: 'slack',
+        channelId: 'C999',
+        threadId: 'thread-9',
+      },
+      'thought_balloon',
+      { messageId: '1712345678.000100' },
+    );
+    expect(hoisted.addReaction.mock.invocationCallOrder[0]).toBeLessThan(
+      hoisted.run.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('can skip the request reaction for followup runs', async () => {
+    hoisted.loadJobRecord.mockResolvedValue({
+      job: {
+        ...buildJob(),
+        channel: {
+          provider: 'discord',
+          channelId: 'D1',
+          threadId: 'thread-1',
+          userId: 'U123',
+          requestMessageId: 'message-1',
+        },
+      },
+    });
+
+    await runAgentJob({
+      job: buildJob(),
+      config: {
+        primaryAgent: 'codex',
+        botName: 'Sniptail',
+        repoCacheRoot: '/tmp/repo-cache',
+        jobWorkRoot: '/tmp/job-root',
+      } as never,
+      paths: {
+        root: '/tmp/job-root/job-1',
+        reposRoot: '/tmp/job-root/job-1/repos',
+        artifactsRoot: '/tmp/job-root/job-1/artifacts',
+        logsRoot: '/tmp/job-root/job-1/logs',
+        logFile: '/tmp/job-root/job-1/logs/runner.log',
+      },
+      env: {},
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
+      addRequestReaction: false,
+    });
+
+    expect(hoisted.addReaction).not.toHaveBeenCalled();
   });
 });

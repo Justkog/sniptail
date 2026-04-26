@@ -36,6 +36,7 @@ describe('discord/lib postDiscordJobAcceptance', () => {
       send: vi.fn(),
     };
     const rootMessage = {
+      id: 'request-message-1',
       channel: rootChannel,
       startThread: vi.fn(() => Promise.resolve(threadChannel)),
     };
@@ -74,6 +75,7 @@ describe('discord/lib postDiscordJobAcceptance', () => {
           ...job.channel,
           channelId: 'thread-1',
           threadId: 'thread-1',
+          requestMessageId: 'request-message-1',
         },
       },
     });

@@ -166,17 +166,18 @@ export function registerPlanSubmitView({
       }
     }
 
-    if (!metadata?.threadId && ackResponse?.ts) {
+    if (ackResponse?.ts) {
       await updateJobRecord(job.jobId, {
         job: {
           ...job,
           channel: {
             ...job.channel,
-            threadId: ackResponse.ts,
+            ...(!metadata?.threadId ? { threadId: ackResponse.ts } : {}),
+            requestMessageId: ackResponse.ts,
           },
         },
       }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record job thread timestamp');
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record job request message context');
       });
     }
   });

@@ -33,8 +33,9 @@ type DiscordInteractionReplyOptions = {
 
 type DiscordReactionOptions = {
   channelId: string;
+  messageId: string;
   name: string;
-  timestamp: string;
+  threadId?: string;
 };
 
 type DiscordEphemeralOptions = {
@@ -140,15 +141,19 @@ function normalizeReactionName(name: string): string {
 
 export async function addDiscordReaction(client: Client, options: DiscordReactionOptions) {
   try {
-    const channel = await resolveChannel(client, options.channelId);
-    const message = await channel.messages.fetch(options.timestamp);
+    let channel = await resolveChannel(client, options.threadId ?? options.channelId);
+    if (channel.isThread() && options.messageId === options.threadId) {
+      channel = await resolveChannel(client, channel.parentId ?? options.channelId);
+    }
+    const message = await channel.messages.fetch(options.messageId);
     await message.react(normalizeReactionName(options.name));
   } catch (err) {
     logger.warn(
       {
         err,
         channelId: options.channelId,
-        timestamp: options.timestamp,
+        messageId: options.messageId,
+        threadId: options.threadId,
         name: options.name,
       },
       'Failed to add Discord reaction',

@@ -12,5 +12,13 @@ export function createNotifier(events: BotEventSink): Notifier {
       const adapter = resolveWorkerChannelAdapter(ref.provider);
       await events.publish(adapter.buildUploadFileEvent(ref, file));
     },
+    async addReaction(ref, name, options) {
+      const adapter = resolveWorkerChannelAdapter(ref.provider);
+      const event = adapter.buildAddReactionEvent(ref, name, options);
+      if (!event) {
+        return;
+      }
+      await events.publish(event);
+    },
   };
 }

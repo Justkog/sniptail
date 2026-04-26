@@ -159,7 +159,7 @@ describe('Slack DM mention event flow', () => {
       expect.objectContaining({
         channel: 'D1',
         name: 'eyes',
-        timestamp: '111.222',
+        messageId: '111.222',
       }),
     );
     expect(authorizeSlackOperationAndRespondMock).toHaveBeenCalledWith(
@@ -307,7 +307,7 @@ describe('Slack DM mention event flow', () => {
       expect.objectContaining({
         channel: 'G1',
         name: 'eyes',
-        timestamp: '222.111',
+        messageId: '222.111',
       }),
     );
   });
@@ -491,7 +491,7 @@ describe('Slack DM mention event flow', () => {
     expect(addReactionMock).toHaveBeenCalledWith(expect.anything(), {
       channel: 'C1',
       name: 'eyes',
-      timestamp: '333.111',
+      messageId: '333.111',
     });
     const savedJob = saveJobQueuedMock.mock.calls[0]?.[0];
     expect(savedJob?.channel).toMatchObject({

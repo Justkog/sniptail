@@ -6,7 +6,8 @@ export type ChannelCapability =
   | 'richComponents'
   | 'ephemeralMessages'
   | 'interactionReplies'
-  | 'fileUploads';
+  | 'fileUploads'
+  | 'reactions';
 
 export type ChannelCapabilities = Readonly<Partial<Record<ChannelCapability, boolean>>>;
 

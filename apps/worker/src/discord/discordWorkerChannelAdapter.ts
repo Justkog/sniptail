@@ -1,7 +1,7 @@
 import { buildDiscordCompletionComponents } from '@sniptail/core/discord/components.js';
 import { BOT_EVENT_SCHEMA_VERSION, type CoreBotEvent } from '@sniptail/core/types/bot-event.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
-import type { FileUpload, MessageOptions } from '../channels/notifier.js';
+import type { FileUpload, MessageOptions, ReactionOptions } from '../channels/notifier.js';
 import {
   type BootstrapSuccessRenderInput,
   type CodexUsageRenderInput,
@@ -19,6 +19,7 @@ export class DiscordWorkerChannelAdapter implements WorkerChannelAdapter {
     richComponents: true,
     interactionReplies: true,
     fileUploads: true,
+    reactions: true,
   } as const;
 
   buildPostMessageEvent(
@@ -54,6 +55,28 @@ export class DiscordWorkerChannelAdapter implements WorkerChannelAdapter {
         provider: this.providerId,
         type: 'file.upload',
         payload: buildUploadPayload(ref, file),
+      },
+      jobId,
+    );
+  }
+
+  buildAddReactionEvent(
+    ref: ChannelRef,
+    name: string,
+    options: ReactionOptions,
+    jobId?: string,
+  ): CoreBotEvent<'reaction.add'> {
+    return withJobId(
+      {
+        schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+        provider: this.providerId,
+        type: 'reaction.add',
+        payload: {
+          channelId: ref.channelId,
+          messageId: options.messageId,
+          name,
+          ...(ref.threadId ? { threadId: ref.threadId } : {}),
+        },
       },
       jobId,
     );

@@ -180,6 +180,7 @@ export async function assignApprovalContextIfPending(
   contextPatch: {
     channelId?: ApprovalRequestContext['channelId'];
     threadId?: ApprovalRequestContext['threadId'];
+    requestMessageId?: ApprovalRequestContext['requestMessageId'];
   },
   options?: {
     updateOperationRouting?: boolean;
@@ -193,10 +194,14 @@ export async function assignApprovalContextIfPending(
     return makeTransitionResult(request, false, 'not_pending');
   }
 
+  const requestMessageId =
+    typeof contextPatch.requestMessageId === 'string' ? contextPatch.requestMessageId : undefined;
+
   const nextContext: ApprovalRequestContext = {
     ...request.context,
     ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
     ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+    ...(requestMessageId ? { requestMessageId } : {}),
   };
   const updateOperationRouting = options?.updateOperationRouting ?? true;
   const nextOperation = updateOperationRouting
@@ -209,6 +214,7 @@ export async function assignApprovalContextIfPending(
               ...request.operation.job.channel,
               ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
               ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+              ...(requestMessageId ? { requestMessageId } : {}),
             },
           },
         }
@@ -221,6 +227,7 @@ export async function assignApprovalContextIfPending(
                 ...request.operation.request.channel,
                 ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
                 ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+                ...(requestMessageId ? { requestMessageId } : {}),
               },
             },
           }
@@ -229,17 +236,22 @@ export async function assignApprovalContextIfPending(
 
   const contextUnchanged =
     nextContext.channelId === request.context.channelId &&
-    nextContext.threadId === request.context.threadId;
+    nextContext.threadId === request.context.threadId &&
+    nextContext.requestMessageId === request.context.requestMessageId;
   const operationRoutingUnchanged = updateOperationRouting
     ? request.operation.kind === 'enqueueJob'
       ? (!contextPatch.channelId ||
           request.operation.job.channel.channelId === contextPatch.channelId) &&
-        (!contextPatch.threadId || request.operation.job.channel.threadId === contextPatch.threadId)
+        (!contextPatch.threadId ||
+          request.operation.job.channel.threadId === contextPatch.threadId) &&
+        (!requestMessageId || request.operation.job.channel.requestMessageId === requestMessageId)
       : request.operation.kind === 'enqueueBootstrap'
         ? (!contextPatch.channelId ||
             request.operation.request.channel.channelId === contextPatch.channelId) &&
           (!contextPatch.threadId ||
-            request.operation.request.channel.threadId === contextPatch.threadId)
+            request.operation.request.channel.threadId === contextPatch.threadId) &&
+          (!requestMessageId ||
+            request.operation.request.channel.requestMessageId === requestMessageId)
         : true
     : true;
   if (contextUnchanged && operationRoutingUnchanged) {

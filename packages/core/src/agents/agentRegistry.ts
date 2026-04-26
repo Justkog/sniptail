@@ -78,7 +78,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
               },
             }
           : {
-              cliPath: 'copilot',
+              // cliPath: 'copilot',
             },
     }),
   },

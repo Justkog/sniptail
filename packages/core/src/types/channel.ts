@@ -14,6 +14,7 @@ export type ChannelContextBase = {
   threadId?: string;
   userId?: string;
   requestId?: string;
+  requestMessageId?: string;
   metadata?: Record<string, unknown>;
 };
 

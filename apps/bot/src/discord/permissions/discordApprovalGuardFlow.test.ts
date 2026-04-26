@@ -28,6 +28,10 @@ describe('Discord approval guard flow', () => {
     });
     permissions.buildApprovalMessage.mockReturnValue('Approval required for `jobs.plan`.');
 
+    vi.mocked(postDiscordMessage)
+      .mockResolvedValueOnce({ id: 'request-message-1' } as never)
+      .mockResolvedValueOnce({} as never);
+
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
       botName: 'sniptail',
@@ -78,7 +82,10 @@ describe('Discord approval guard flow', () => {
         text: 'Approval required for `jobs.plan`.',
       }),
     );
-    expect(permissions.assignApprovalContextIfPending).not.toHaveBeenCalled();
+    expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
+      approvalId: 'approval-1',
+      requestMessageId: 'request-message-1',
+    });
   });
 
   it('posts top-level request, creates thread, then posts approval in that thread', async () => {
@@ -99,7 +106,9 @@ describe('Discord approval guard flow', () => {
         fetch,
       },
     };
-    vi.mocked(postDiscordMessage).mockResolvedValueOnce({ startThread } as never);
+    vi.mocked(postDiscordMessage)
+      .mockResolvedValueOnce({ id: 'request-message-2', startThread } as never)
+      .mockResolvedValueOnce({} as never);
 
     const authorized = await authorizeDiscordOperationAndRespond({
       permissions: permissions as never,
@@ -140,6 +149,7 @@ describe('Discord approval guard flow', () => {
       approvalId: 'approval-2',
       channelId: 'thread-created',
       threadId: 'thread-created',
+      requestMessageId: 'request-message-2',
     });
     expect(postDiscordMessage).toHaveBeenCalledTimes(2);
     expect(postDiscordMessage).toHaveBeenNthCalledWith(

@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
 import type { JobRegistry } from '../job/jobRegistry.js';
 import { appendAgentEventLog, type MaterializedJobContextFile } from '../job/artifacts.js';
+import type { Notifier } from '../channels/notifier.js';
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
 type JobPaths = ReturnType<typeof buildJobPaths>;
@@ -22,10 +23,22 @@ export async function runAgentJob(options: {
   paths: JobPaths;
   env: NodeJS.ProcessEnv;
   registry: JobRegistry;
+  notifier: Notifier;
   currentTurnContextFiles?: MaterializedJobContextFile[];
   promptOverride?: string;
+  addRequestReaction?: boolean;
 }): Promise<RunAgentResult> {
-  const { job, config, paths, env, registry, currentTurnContextFiles, promptOverride } = options;
+  const {
+    job,
+    config,
+    paths,
+    env,
+    registry,
+    notifier,
+    currentTurnContextFiles,
+    promptOverride,
+    addRequestReaction = true,
+  } = options;
 
   const agentId = job.agent ?? config.primaryAgent;
   const descriptor = AGENT_DESCRIPTORS[agentId];
@@ -52,6 +65,30 @@ export async function runAgentJob(options: {
     displayName: contextFile.originalName,
     mediaType: contextFile.mediaType,
   }));
+
+  if (addRequestReaction) {
+    const latestRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to load job record before agent run');
+      return undefined;
+    });
+    const latestChannel = latestRecord?.job?.channel ?? job.channel;
+    if (latestChannel.requestMessageId) {
+      const reactionName = latestChannel.provider === 'discord' ? '💭' : 'thought_balloon';
+      try {
+        await notifier.addReaction(
+          {
+            provider: latestChannel.provider,
+            channelId: latestChannel.channelId,
+            ...(latestChannel.threadId ? { threadId: latestChannel.threadId } : {}),
+          },
+          reactionName,
+          { messageId: latestChannel.requestMessageId },
+        );
+      } catch (err) {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to add request reaction before agent run');
+      }
+    }
+  }
 
   const agentResult = await agent.run(
     job,

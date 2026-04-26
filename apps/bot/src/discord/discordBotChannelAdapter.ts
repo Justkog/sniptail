@@ -1,5 +1,9 @@
 import { logger } from '@sniptail/core/logger.js';
-import type { CoreBotEvent, CoreBotEventType } from '@sniptail/core/types/bot-event.js';
+import type {
+  BotEventPayloadMap,
+  CoreBotEvent,
+  CoreBotEventType,
+} from '@sniptail/core/types/bot-event.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
@@ -22,6 +26,7 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     ephemeralMessages: true,
     interactionReplies: true,
     fileUploads: true,
+    reactions: true,
   } as const;
   supportedEventTypes = [
     'message.post',
@@ -64,13 +69,19 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
           text: event.payload.text,
         });
         return true;
-      case 'reaction.add':
+      case 'reaction.add': {
+        const payload = toReactionAddPayload(event.payload);
+        if (!payload) {
+          return false;
+        }
         await addDiscordReaction(client, {
-          channelId: event.payload.channelId,
-          name: event.payload.name,
-          timestamp: event.payload.timestamp,
+          channelId: payload.channelId,
+          messageId: String(payload.messageId),
+          name: payload.name,
+          ...(payload.threadId ? { threadId: String(payload.threadId) } : {}),
         });
         return true;
+      }
       case 'message.ephemeral':
         await postDiscordEphemeral(client, {
           channelId: event.payload.channelId,
@@ -141,6 +152,25 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
       text: buildOverflowStubText(event.jobId, title),
     });
   }
+}
+
+function toReactionAddPayload(
+  payload: CoreBotEvent['payload'],
+): BotEventPayloadMap['reaction.add'] | undefined {
+  const candidate = payload as Record<string, unknown>;
+  const channelId = candidate.channelId;
+  const messageId = candidate.messageId;
+  const name = candidate.name;
+  const threadId = candidate.threadId;
+  if (typeof channelId !== 'string' || typeof messageId !== 'string' || typeof name !== 'string') {
+    return undefined;
+  }
+  return {
+    channelId,
+    messageId,
+    name,
+    ...(typeof threadId === 'string' ? { threadId } : {}),
+  };
 }
 
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
