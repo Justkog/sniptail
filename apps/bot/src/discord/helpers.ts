@@ -141,7 +141,7 @@ function normalizeReactionName(name: string): string {
 
 export async function addDiscordReaction(client: Client, options: DiscordReactionOptions) {
   try {
-    let channel =  await resolveChannel(client, options.threadId ?? options.channelId);
+    let channel = await resolveChannel(client, options.threadId ?? options.channelId);
     if (channel.isThread() && options.messageId === options.threadId) {
       channel = await resolveChannel(client, channel.parentId ?? options.channelId);
     }
