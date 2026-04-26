@@ -7,6 +7,7 @@ type MockSession = {
   on: ReturnType<typeof vi.fn>;
   sendAndWait: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
 };
 
 const hoisted = vi.hoisted(() => {
@@ -58,6 +59,7 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock('@github/copilot-sdk', () => ({
   CopilotClient: hoisted.CopilotClientMock,
+  approveAll: () => true,
 }));
 
 vi.mock('../agents/buildPrompt.js', () => ({
@@ -98,6 +100,7 @@ function createSessionMock(
     on: vi.fn(() => () => undefined),
     sendAndWait,
     destroy: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -136,13 +139,16 @@ describe('runCopilot', () => {
       },
     );
 
-    expect(sendAndWait).toHaveBeenCalledWith({
-      prompt: 'mock prompt',
-      attachments: [
-        { type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' },
-        { type: 'file', path: 'context/notes.md', displayName: 'notes.md' },
-      ],
-    });
+    expect(sendAndWait).toHaveBeenCalledWith(
+      {
+        prompt: 'mock prompt',
+        attachments: [
+          { type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' },
+          { type: 'file', path: 'context/notes.md', displayName: 'notes.md' },
+        ],
+      },
+      300000,
+    );
   });
 
   it('reuses the same current-turn attachments on idle-timeout retry', async () => {
@@ -170,13 +176,19 @@ describe('runCopilot', () => {
       },
     );
 
-    expect(firstSendAndWait).toHaveBeenCalledWith({
-      prompt: 'mock prompt',
-      attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
-    });
-    expect(secondSendAndWait).toHaveBeenCalledWith({
-      prompt: 'continue prompt',
-      attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
-    });
+    expect(firstSendAndWait).toHaveBeenCalledWith(
+      {
+        prompt: 'mock prompt',
+        attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
+      },
+      300000,
+    );
+    expect(secondSendAndWait).toHaveBeenCalledWith(
+      {
+        prompt: 'continue prompt',
+        attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
+      },
+      300000,
+    );
   });
 });
