@@ -1,4 +1,3 @@
-import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobContextFile, JobSettings } from '@sniptail/core/types/job.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
@@ -10,7 +9,10 @@ import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { parseCommaList } from '../../lib/parsing.js';
 import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
-import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import {
+  authorizeNormalizedJobRequest,
+  persistAuthorizedJobRequest,
+} from '../../../job-requests/engine.js';
 
 export function registerImplementSubmitView({
   app,
@@ -72,9 +74,8 @@ export function registerImplementSubmitView({
       metadata?.threadId && metadata?.channelId
         ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadId)
         : undefined;
-    const result = await submitNormalizedJobRequest({
+    const authorizationResult = await authorizeNormalizedJobRequest({
       config,
-      queue,
       input: {
         type: 'IMPLEMENT',
         repoKeys,
@@ -116,28 +117,18 @@ export function registerImplementSubmitView({
         }),
     });
 
-    if (result.status === 'invalid') {
+    if (authorizationResult.status === 'invalid') {
       await postMessage(app, {
         channel: metadata?.channelId ?? body.user.id,
-        text: result.message,
+        text: authorizationResult.message,
       });
       return;
     }
 
-    if (result.status === 'stopped') {
+    if (authorizationResult.status === 'stopped') {
       return;
     }
-
-    if (result.status === 'persist_failed') {
-      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist job');
-      await postMessage(app, {
-        channel: metadata?.channelId ?? body.user.id,
-        text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
-      });
-      return;
-    }
-
-    const job = result.job;
+    const job = authorizationResult.job;
 
     const requestSummary = truncateRequestSummary(requestText);
     const ackResponse = await postMessage(app, {
@@ -146,18 +137,47 @@ export function registerImplementSubmitView({
       ...(job.contextFiles?.length ? { contextFiles: job.contextFiles } : {}),
       ...(metadata?.threadId ? { threadTs: metadata.threadId } : {}),
     });
+    const queuedJob = {
+      ...job,
+      channel: {
+        ...job.channel,
+        ...(metadata?.threadId ?? ackResponse?.ts
+          ? { threadId: metadata?.threadId ?? ackResponse?.ts }
+          : {}),
+        ...(ackResponse?.ts ? { requestMessageId: ackResponse.ts } : {}),
+      },
+    };
+    const result = await persistAuthorizedJobRequest({
+      config,
+      queue,
+      job: queuedJob,
+    });
+    if (result.status === 'persist_failed') {
+      logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist job');
+      await postMessage(app, {
+        channel: metadata?.channelId ?? body.user.id,
+        text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
+        ...(metadata?.threadId ?? ackResponse?.ts
+          ? { threadTs: metadata?.threadId ?? ackResponse?.ts }
+          : {}),
+      });
+      return;
+    }
 
     const ackThreadId = metadata?.threadId ?? ackResponse?.ts;
     if (config.debugJobSpecMessages) {
       const botNamePrefix = toSlackCommandPrefix(config.botName);
-      const uploadSpecPath = await persistUploadSpec(job);
+      const uploadSpecPath = await persistUploadSpec(queuedJob);
       if (!uploadSpecPath) {
-        logger.warn({ jobId: job.jobId }, 'Skipping job spec upload without sanitized artifact');
+        logger.warn(
+          { jobId: queuedJob.jobId },
+          'Skipping job spec upload without sanitized artifact',
+        );
       } else {
         const jobSpecOptions = {
           channel: metadata?.channelId ?? body.user.id,
           filePath: uploadSpecPath,
-          title: `${botNamePrefix}-${job.jobId}-job-spec.json`,
+          title: `${botNamePrefix}-${queuedJob.jobId}-job-spec.json`,
         };
         try {
           await uploadFile(
@@ -165,27 +185,16 @@ export function registerImplementSubmitView({
             ackThreadId ? { ...jobSpecOptions, threadTs: ackThreadId } : jobSpecOptions,
           );
         } catch (err) {
-          logger.warn({ err, jobId: job.jobId }, 'Failed to upload job spec artifact');
+          logger.warn({ err, jobId: queuedJob.jobId }, 'Failed to upload job spec artifact');
         } finally {
           await rm(uploadSpecPath, { force: true }).catch((err) => {
-            logger.warn({ err, jobId: job.jobId }, 'Failed to remove job spec upload artifact');
+            logger.warn(
+              { err, jobId: queuedJob.jobId },
+              'Failed to remove job spec upload artifact',
+            );
           });
         }
       }
-    }
-
-    if (!metadata?.threadId && ackResponse?.ts) {
-      await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
-          channel: {
-            ...job.channel,
-            threadId: ackResponse.ts,
-          },
-        },
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record job thread timestamp');
-      });
     }
   });
 }

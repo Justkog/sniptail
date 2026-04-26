@@ -1,18 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { postDiscordJobAcceptance } from './threads.js';
 
-const { updateJobRecordMock } = vi.hoisted(() => ({
-  updateJobRecordMock: vi.fn(),
-}));
-
-vi.mock('@sniptail/core/jobs/registry.js', () => ({
-  updateJobRecord: updateJobRecordMock,
-}));
-
 describe('discord/lib postDiscordJobAcceptance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    updateJobRecordMock.mockResolvedValue({});
   });
 
   it('normalizes Discord channel context to the created thread id', async () => {
@@ -36,6 +27,7 @@ describe('discord/lib postDiscordJobAcceptance', () => {
       send: vi.fn(),
     };
     const rootMessage = {
+      id: 'message-1',
       channel: rootChannel,
       startThread: vi.fn(() => Promise.resolve(threadChannel)),
     };
@@ -64,18 +56,9 @@ describe('discord/lib postDiscordJobAcceptance', () => {
       }),
     ).resolves.toMatchObject({
       acceptancePosted: true,
+      requestMessageId: 'message-1',
+      channelId: 'thread-1',
       threadId: 'thread-1',
-    });
-
-    expect(updateJobRecordMock).toHaveBeenCalledWith('explore-1', {
-      job: {
-        ...job,
-        channel: {
-          ...job.channel,
-          channelId: 'thread-1',
-          threadId: 'thread-1',
-        },
-      },
     });
   });
 });

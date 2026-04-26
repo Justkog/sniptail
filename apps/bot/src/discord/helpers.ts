@@ -135,7 +135,11 @@ export async function editDiscordInteractionReply(
 }
 
 function normalizeReactionName(name: string): string {
-  return name.replace(/^:|:$/g, '');
+  const normalized = name.replace(/^:|:$/g, '');
+  if (normalized === 'gear') {
+    return '⚙️';
+  }
+  return normalized;
 }
 
 export async function addDiscordReaction(client: Client, options: DiscordReactionOptions) {

@@ -274,6 +274,26 @@ export async function runJob(
   await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
   });
+  const persistedRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to load job record after marking running');
+    return undefined;
+  });
+  const persistedChannel = persistedRecord?.job?.channel;
+  const requestMessageId = persistedChannel?.requestMessageId;
+  if (requestMessageId) {
+    await notifier
+      .addReaction(
+        {
+          provider: persistedChannel.provider,
+          channelId: persistedChannel.channelId,
+        },
+        'gear',
+        requestMessageId,
+      )
+      .catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to publish start reaction');
+      });
+  }
 
   const paths = buildJobPaths(config.jobWorkRoot, job.jobId);
   await ensureJobDirectories(paths);

@@ -60,6 +60,27 @@ export class SlackWorkerChannelAdapter implements WorkerChannelAdapter {
     );
   }
 
+  buildAddReactionEvent(
+    ref: ChannelRef,
+    name: string,
+    timestamp: string,
+    jobId?: string,
+  ): CoreBotEvent<'reaction.add'> {
+    return withJobId(
+      {
+        schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+        provider: this.providerId,
+        type: 'reaction.add',
+        payload: {
+          channelId: ref.channelId,
+          name,
+          timestamp,
+        },
+      },
+      jobId,
+    );
+  }
+
   buildCodexUsageReplyEvent({
     requestId,
     payload,

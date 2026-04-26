@@ -12,7 +12,10 @@ import { parseCommaList } from '../../../slack/lib/parsing.js';
 import { fetchDiscordThreadContext } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
-import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import {
+  authorizeNormalizedJobRequest,
+  persistAuthorizedJobRequest,
+} from '../../../job-requests/engine.js';
 import { disableDiscordSelectionReply, getActiveDiscordSelection } from '../../state.js';
 
 export async function handleImplementModalSubmit(
@@ -78,9 +81,8 @@ export async function handleImplementModalSubmit(
     true,
   );
 
-  const result = await submitNormalizedJobRequest({
+  const authorizationResult = await authorizeNormalizedJobRequest({
     config,
-    queue,
     input: {
       type: 'IMPLEMENT',
       repoKeys,
@@ -124,25 +126,41 @@ export async function handleImplementModalSubmit(
       }),
   });
 
-  if (result.status === 'invalid') {
-    await interaction.editReply(result.message);
+  if (authorizationResult.status === 'invalid') {
+    await interaction.editReply(authorizationResult.message);
     return;
   }
 
-  if (result.status === 'stopped') {
+  if (authorizationResult.status === 'stopped') {
     return;
   }
-
+  const job = authorizationResult.job;
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    requestAsPrimaryMessage: true,
+  });
+  if (!acceptance.acceptancePosted || !acceptance.requestMessageId) {
+    await interaction.editReply(`I couldn't post the request for job ${job.jobId}. Please try again.`);
+    return;
+  }
+  const queuedJob = {
+    ...job,
+    channel: {
+      ...job.channel,
+      ...(acceptance.channelId ? { channelId: acceptance.channelId } : {}),
+      ...(acceptance.threadId ? { threadId: acceptance.threadId } : {}),
+      requestMessageId: acceptance.requestMessageId,
+    },
+  };
+  const result = await persistAuthorizedJobRequest({
+    config,
+    queue,
+    job: queuedJob,
+  });
   if (result.status === 'persist_failed') {
     logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist job');
     await interaction.editReply(`I couldn't persist job ${result.job.jobId}. Please try again.`);
     return;
   }
-
-  const job = result.job;
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
-    requestAsPrimaryMessage: true,
-  });
   implementSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     try {

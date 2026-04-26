@@ -4,7 +4,10 @@ import type { JobContextFile } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
-import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import {
+  authorizeNormalizedJobRequest,
+  persistAuthorizedJobRequest,
+} from '../../../job-requests/engine.js';
 
 export function registerAnswerQuestionsSubmitView({
   app,
@@ -74,9 +77,8 @@ export function registerAnswerQuestionsSubmitView({
     const userId = metadata?.userId ?? record.job.channel.userId ?? body.user.id;
     const threadId = metadata?.threadId ?? record.job.channel.threadId;
 
-    const result = await submitNormalizedJobRequest({
+    const authorizationResult = await authorizeNormalizedJobRequest({
       config,
-      queue,
       input: {
         type: 'PLAN',
         repoKeys: record.job.repoKeys,
@@ -118,19 +120,37 @@ export function registerAnswerQuestionsSubmitView({
         }),
     });
 
-    if (result.status === 'invalid') {
+    if (authorizationResult.status === 'invalid') {
       await postMessage(app, {
         channel: channelId,
-        text: result.message,
+        text: authorizationResult.message,
         ...(threadId ? { threadTs: threadId } : {}),
       });
       return;
     }
 
-    if (result.status === 'stopped') {
+    if (authorizationResult.status === 'stopped') {
       return;
     }
-
+    const job = authorizationResult.job;
+    const ackResponse = await postMessage(app, {
+      channel: channelId,
+      text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
+      ...(threadId ? { threadTs: threadId } : {}),
+    });
+    const queuedJob = {
+      ...job,
+      channel: {
+        ...job.channel,
+        ...(threadId ?? ackResponse?.ts ? { threadId: threadId ?? ackResponse?.ts } : {}),
+        ...(ackResponse?.ts ? { requestMessageId: ackResponse.ts } : {}),
+      },
+    };
+    const result = await persistAuthorizedJobRequest({
+      config,
+      queue,
+      job: queuedJob,
+    });
     if (result.status === 'persist_failed') {
       logger.error(
         { err: result.error, jobId: result.job.jobId },
@@ -139,17 +159,8 @@ export function registerAnswerQuestionsSubmitView({
       await postMessage(app, {
         channel: channelId,
         text: `I couldn't persist job ${result.job.jobId}. Please try again.`,
-        ...(threadId ? { threadTs: threadId } : {}),
+        ...(threadId ?? ackResponse?.ts ? { threadTs: threadId ?? ackResponse?.ts } : {}),
       });
-      return;
     }
-
-    const job = result.job;
-
-    await postMessage(app, {
-      channel: channelId,
-      text: `Thanks! I've accepted job ${job.jobId}. I'll report back here.`,
-      ...(threadId ? { threadTs: threadId } : {}),
-    });
   });
 }

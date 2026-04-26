@@ -9,6 +9,7 @@ import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
+import { postDiscordJobAcceptance } from '../../lib/threads.js';
 
 export async function handleReviewFromJobButton(
   interaction: ButtonInteraction,
@@ -91,20 +92,47 @@ export async function handleReviewFromJobButton(
     return;
   }
 
-  try {
-    await saveJobQueued(job);
-  } catch (err) {
-    auditJobRequest(config, job, 'persist_failed');
-    logger.error({ err, jobId: job.jobId }, 'Failed to persist review job');
+  const acceptance = await postDiscordJobAcceptance(
+    interaction as never,
+    job,
+    job.requestText,
+    config.botName,
+    {
+      acceptanceMessage: `Thanks! I've accepted review job ${job.jobId}. I'll report back here.`,
+    },
+  );
+  if (!acceptance.acceptancePosted || !acceptance.requestMessageId) {
     await interaction.reply({
-      content: `I couldn't persist review job ${job.jobId}. Please try again.`,
+      content: `I couldn't post the request for review job ${job.jobId}. Please try again.`,
       ephemeral: true,
     });
     return;
   }
 
-  await enqueueJob(queue, job);
-  auditJobRequest(config, job, 'accepted');
+  const queuedJob: JobSpec = {
+    ...job,
+    channel: {
+      ...job.channel,
+      ...(acceptance.channelId ? { channelId: acceptance.channelId } : {}),
+      ...(acceptance.threadId ? { threadId: acceptance.threadId } : {}),
+      requestMessageId: acceptance.requestMessageId,
+    },
+  };
+
+  try {
+    await saveJobQueued(queuedJob);
+  } catch (err) {
+    auditJobRequest(config, queuedJob, 'persist_failed');
+    logger.error({ err, jobId: queuedJob.jobId }, 'Failed to persist review job');
+    await interaction.reply({
+      content: `I couldn't persist review job ${queuedJob.jobId}. Please try again.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await enqueueJob(queue, queuedJob);
+  auditJobRequest(config, queuedJob, 'accepted');
   await interaction.reply({
     content: `Thanks! I've queued review job ${job.jobId}. I'll report back here.`,
     ephemeral: true,

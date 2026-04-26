@@ -1,5 +1,5 @@
 import { enqueueJob } from '@sniptail/core/queue/queue.js';
-import { loadJobRecord, saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
+import { loadJobRecord, saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
@@ -91,40 +91,38 @@ export function registerReviewFromJobAction({
       return;
     }
 
-    try {
-      await saveJobQueued(job);
-    } catch (err) {
-      auditJobRequest(config, job, 'persist_failed');
-      logger.error({ err, jobId: job.jobId }, 'Failed to persist review job');
-      await postMessage(app, {
-        channel: channelId,
-        text: `I couldn't persist review job ${job.jobId}. Please try again.`,
-        ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
-      });
-      return;
-    }
-
-    await enqueueJob(queue, job);
-    auditJobRequest(config, job, 'accepted');
-
     const ackResponse = await postMessage(app, {
       channel: channelId,
       text: `Thanks! I've queued review job ${job.jobId}. I'll report back here.`,
       ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
     });
+    const queuedJob: JobSpec = {
+      ...job,
+      channel: {
+        ...job.channel,
+        ...(effectiveThreadId ?? ackResponse?.ts
+          ? { threadId: effectiveThreadId ?? ackResponse?.ts }
+          : {}),
+        ...(ackResponse?.ts ? { requestMessageId: ackResponse.ts } : {}),
+      },
+    };
 
-    if (!effectiveThreadId && ackResponse?.ts) {
-      await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
-          channel: {
-            ...job.channel,
-            threadId: ackResponse.ts,
-          },
-        },
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record review job thread timestamp');
+    try {
+      await saveJobQueued(queuedJob);
+    } catch (err) {
+      auditJobRequest(config, queuedJob, 'persist_failed');
+      logger.error({ err, jobId: queuedJob.jobId }, 'Failed to persist review job');
+      await postMessage(app, {
+        channel: channelId,
+        text: `I couldn't persist review job ${queuedJob.jobId}. Please try again.`,
+        ...(effectiveThreadId ?? ackResponse?.ts
+          ? { threadTs: effectiveThreadId ?? ackResponse?.ts }
+          : {}),
       });
+      return;
     }
+
+    await enqueueJob(queue, queuedJob);
+    auditJobRequest(config, queuedJob, 'accepted');
   });
 }

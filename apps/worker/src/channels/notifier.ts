@@ -12,4 +12,5 @@ export type MessageOptions = {
 export interface Notifier {
   postMessage(ref: ChannelRef, text: string, options?: MessageOptions): Promise<void>;
   uploadFile(ref: ChannelRef, file: FileUpload): Promise<void>;
+  addReaction(ref: ChannelRef, name: string, timestamp: string): Promise<void>;
 }

@@ -42,6 +42,12 @@ export interface WorkerChannelAdapter extends ChannelAdapterBase {
     file: FileUpload,
     jobId?: string,
   ): CoreBotEvent<'file.upload'>;
+  buildAddReactionEvent(
+    ref: ChannelRef,
+    name: string,
+    timestamp: string,
+    jobId?: string,
+  ): CoreBotEvent<'reaction.add'> | undefined;
   buildCodexUsageReplyEvent(input: CodexUsageRenderInput): CoreBotEvent | undefined;
   renderCompletionMessage(input: CompletionRenderInput): RenderedMessage;
   renderBootstrapSuccessMessage(input: BootstrapSuccessRenderInput): RenderedMessage;

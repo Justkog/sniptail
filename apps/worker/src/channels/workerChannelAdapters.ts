@@ -67,6 +67,15 @@ class GenericWorkerChannelAdapter implements WorkerChannelAdapter {
     );
   }
 
+  buildAddReactionEvent(
+    _ref: ChannelRef,
+    _name: string,
+    _timestamp: string,
+    _jobId?: string,
+  ): CoreBotEvent<'reaction.add'> | undefined {
+    return undefined;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   buildCodexUsageReplyEvent(_input: CodexUsageRenderInput): CoreBotEvent | undefined {
     return undefined;

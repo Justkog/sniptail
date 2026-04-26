@@ -162,6 +162,10 @@ export async function handleMention(
 
   const job: JobSpec = {
     ...baseJob,
+    channel: {
+      ...baseJob.channel,
+      requestMessageId: message.id,
+    },
     ...(contextFiles ? { contextFiles } : {}),
   };
 

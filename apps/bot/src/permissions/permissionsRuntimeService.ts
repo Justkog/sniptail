@@ -411,6 +411,7 @@ export class PermissionsRuntimeService {
     approvalId: string;
     channelId?: string;
     threadId?: string;
+    requestMessageId?: string;
     updateOperationRouting?: boolean;
   }): Promise<boolean> {
     const reassigned = await assignApprovalContextIfPending(
@@ -418,6 +419,7 @@ export class PermissionsRuntimeService {
       {
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.threadId ? { threadId: input.threadId } : {}),
+        ...(input.requestMessageId ? { requestMessageId: input.requestMessageId } : {}),
       },
       {
         ...(typeof input.updateOperationRouting === 'boolean'

@@ -20,7 +20,10 @@ import {
   resolveRunSelectionSchema,
   toRunParamPayload,
 } from '../../lib/runStepper.js';
-import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
+import {
+  authorizeNormalizedJobRequest,
+  persistAuthorizedJobRequest,
+} from '../../../job-requests/engine.js';
 
 export async function handleRunModalSubmit(
   interaction: ModalSubmitInteraction,
@@ -116,9 +119,8 @@ export async function handleRunModalSubmit(
     true,
   );
 
-  const result = await submitNormalizedJobRequest({
+  const authorizationResult = await authorizeNormalizedJobRequest({
     config,
-    queue,
     input: {
       type: 'RUN',
       repoKeys,
@@ -158,25 +160,41 @@ export async function handleRunModalSubmit(
       }),
   });
 
-  if (result.status === 'invalid') {
-    await interaction.editReply(result.message);
+  if (authorizationResult.status === 'invalid') {
+    await interaction.editReply(authorizationResult.message);
     return;
   }
 
-  if (result.status === 'stopped') {
+  if (authorizationResult.status === 'stopped') {
     return;
   }
-
+  const job = authorizationResult.job;
+  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
+    acceptanceMessage: `Thanks! I've accepted run job ${job.jobId} (action: ${actionId}). I'll report back here.`,
+  });
+  if (!acceptance.acceptancePosted || !acceptance.requestMessageId) {
+    await interaction.editReply(`I couldn't post the request for job ${job.jobId}. Please try again.`);
+    return;
+  }
+  const queuedJob = {
+    ...job,
+    channel: {
+      ...job.channel,
+      ...(acceptance.channelId ? { channelId: acceptance.channelId } : {}),
+      ...(acceptance.threadId ? { threadId: acceptance.threadId } : {}),
+      requestMessageId: acceptance.requestMessageId,
+    },
+  };
+  const result = await persistAuthorizedJobRequest({
+    config,
+    queue,
+    job: queuedJob,
+  });
   if (result.status === 'persist_failed') {
     logger.error({ err: result.error, jobId: result.job.jobId }, 'Failed to persist run job');
     await interaction.editReply(`I couldn't persist job ${result.job.jobId}. Please try again.`);
     return;
   }
-
-  const job = result.job;
-  const acceptance = await postDiscordJobAcceptance(interaction, job, requestText, config.botName, {
-    acceptanceMessage: `Thanks! I've accepted run job ${job.jobId} (action: ${actionId}). I'll report back here.`,
-  });
   runSelectionByUser.delete(interaction.user.id);
   if (acceptance.acceptancePosted) {
     try {

@@ -180,6 +180,7 @@ export async function assignApprovalContextIfPending(
   contextPatch: {
     channelId?: ApprovalRequestContext['channelId'];
     threadId?: ApprovalRequestContext['threadId'];
+    requestMessageId?: string;
   },
   options?: {
     updateOperationRouting?: boolean;
@@ -209,6 +210,9 @@ export async function assignApprovalContextIfPending(
               ...request.operation.job.channel,
               ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
               ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+              ...(contextPatch.requestMessageId
+                ? { requestMessageId: contextPatch.requestMessageId }
+                : {}),
             },
           },
         }
@@ -234,7 +238,9 @@ export async function assignApprovalContextIfPending(
     ? request.operation.kind === 'enqueueJob'
       ? (!contextPatch.channelId ||
           request.operation.job.channel.channelId === contextPatch.channelId) &&
-        (!contextPatch.threadId || request.operation.job.channel.threadId === contextPatch.threadId)
+        (!contextPatch.threadId || request.operation.job.channel.threadId === contextPatch.threadId) &&
+        (!contextPatch.requestMessageId ||
+          request.operation.job.channel.requestMessageId === contextPatch.requestMessageId)
       : request.operation.kind === 'enqueueBootstrap'
         ? (!contextPatch.channelId ||
             request.operation.request.channel.channelId === contextPatch.channelId) &&

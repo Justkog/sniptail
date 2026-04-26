@@ -15,6 +15,8 @@ type SubmitNormalizedJobRequestInput = {
   authorize: (job: JobSpec) => Promise<boolean>;
 };
 
+type AuthorizeNormalizedJobRequestInput = Omit<SubmitNormalizedJobRequestInput, 'queue'>;
+
 function toJobIdPrefix(type: NormalizedJobRequestInput['type']): string {
   return type.toLowerCase();
 }
@@ -46,6 +48,28 @@ export async function submitNormalizedJobRequest({
   input,
   authorize,
 }: SubmitNormalizedJobRequestInput): Promise<NormalizedJobRequestResult> {
+  const authorizationResult = await authorizeNormalizedJobRequest({
+    config,
+    input,
+    authorize,
+  });
+  if (authorizationResult.status !== 'ready') {
+    return authorizationResult;
+  }
+  return persistAuthorizedJobRequest({
+    config,
+    queue,
+    job: authorizationResult.job,
+  });
+}
+
+export async function authorizeNormalizedJobRequest({
+  config,
+  input,
+  authorize,
+}: AuthorizeNormalizedJobRequestInput): Promise<
+  Extract<NormalizedJobRequestResult, { status: 'invalid' | 'stopped' }> | { status: 'ready'; job: JobSpec }
+> {
   if (input.type !== 'MENTION' && !input.repoKeys.length) {
     auditNormalizedJobRequest(config, input, 'invalid');
     return {
@@ -64,6 +88,18 @@ export async function submitNormalizedJobRequest({
     };
   }
 
+  return {
+    status: 'ready',
+    job,
+  };
+}
+
+export async function persistAuthorizedJobRequest(input: {
+  config: BotConfig;
+  queue: QueuePublisher<JobSpec>;
+  job: JobSpec;
+}): Promise<Extract<NormalizedJobRequestResult, { status: 'accepted' | 'persist_failed' }>> {
+  const { config, queue, job } = input;
   try {
     await saveJobQueued(job);
   } catch (error) {

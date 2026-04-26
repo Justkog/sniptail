@@ -1,5 +1,4 @@
 import type { ModalSubmitInteraction, Message } from 'discord.js';
-import { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { isSendableTextChannel, postDiscordMessage, type SendableTextChannel } from '../helpers.js';
@@ -7,6 +6,8 @@ import { truncateRequestSummary } from '../../lib/jobs.js';
 
 export type DiscordJobAcceptanceResult = {
   acceptancePosted: boolean;
+  requestMessageId?: string;
+  channelId?: string;
   threadId?: string;
 };
 
@@ -40,10 +41,10 @@ async function postDiscordJobRequest(
   requestText: string,
   jobId: string,
   contextFiles?: JobSpec['contextFiles'],
-) {
+): Promise<Message | undefined> {
   const requestSummary = truncateRequestSummary(requestText);
   try {
-    await postDiscordMessage(channel.client, {
+    return await postDiscordMessage(channel.client, {
       channelId: channel.id,
       channel,
       text: `**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``,
@@ -51,6 +52,7 @@ async function postDiscordJobRequest(
     });
   } catch (err) {
     logger.warn({ err, jobId }, 'Failed to post Discord job request');
+    return undefined;
   }
 }
 
@@ -82,27 +84,14 @@ export async function postDiscordJobAcceptance(
         : {}),
     });
     const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
-    if (!options?.requestAsPrimaryMessage) {
-      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId, job.contextFiles);
-    }
-
-    if (threadTarget.threadId) {
-      await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
-          channel: {
-            ...job.channel,
-            channelId: threadTarget.channel.id,
-            threadId: threadTarget.threadId,
-          },
-        },
-      }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record Discord thread id');
-      });
-    }
+    const requestMessage = options?.requestAsPrimaryMessage
+      ? rootMessage
+      : await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId, job.contextFiles);
 
     return {
       acceptancePosted: true,
+      ...(requestMessage?.id ? { requestMessageId: requestMessage.id } : {}),
+      ...(threadTarget.threadId ? { channelId: threadTarget.channel.id } : {}),
       ...(threadTarget.threadId ? { threadId: threadTarget.threadId } : {}),
     };
   } catch (err) {

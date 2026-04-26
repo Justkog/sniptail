@@ -66,7 +66,10 @@ describe('handleAskModalSubmit', () => {
     enqueueJobMock.mockResolvedValue(undefined);
     saveJobQueuedMock.mockResolvedValue(undefined);
     refreshRepoAllowlistMock.mockResolvedValue(undefined);
-    postDiscordJobAcceptanceMock.mockResolvedValue({ acceptancePosted: false });
+    postDiscordJobAcceptanceMock.mockResolvedValue({
+      acceptancePosted: true,
+      requestMessageId: 'message-1',
+    });
     fetchDiscordThreadContextMock.mockResolvedValue(undefined);
     authorizeDiscordOperationAndRespondMock.mockResolvedValue(true);
     loadDiscordContextFilesMock.mockResolvedValue([
@@ -165,7 +168,7 @@ describe('handleAskModalSubmit', () => {
       guildId: 'G1',
     });
     expect(enqueueJobMock).toHaveBeenCalledTimes(1);
-    expect(editReply.mock.calls[0]?.[0]).toContain("I've accepted job");
+    expect(interaction.deleteReply).toHaveBeenCalled();
   });
 
   it('expires stale modal selections before queueing the job', async () => {

@@ -11,7 +11,7 @@ function createPermissionsMock() {
   return {
     authorizeOrCreateApproval: vi.fn(),
     buildApprovalMessage: vi.fn(),
-    assignApprovalThreadIfPending: vi.fn(),
+    assignApprovalContextIfPending: vi.fn(),
     getGroupCacheTtlMs: vi.fn(() => 10_000),
   };
 }
@@ -91,7 +91,7 @@ describe('Slack approval guard flow', () => {
         text: 'Approval required for `jobs.explore`.',
       }),
     );
-    expect(permissions.assignApprovalThreadIfPending).not.toHaveBeenCalled();
+    expect(permissions.assignApprovalContextIfPending).not.toHaveBeenCalled();
   });
 
   it('posts job request first and threads approval when command is not in a thread', async () => {
@@ -101,7 +101,7 @@ describe('Slack approval guard flow', () => {
       request: { id: 'approval-2' },
     });
     permissions.buildApprovalMessage.mockReturnValue('Approval required for `jobs.ask`.');
-    permissions.assignApprovalThreadIfPending.mockResolvedValue(true);
+    permissions.assignApprovalContextIfPending.mockResolvedValue(true);
     const postMessage = vi
       .fn()
       .mockResolvedValueOnce({ ts: 'request-root-ts' })
@@ -149,9 +149,11 @@ describe('Slack approval guard flow', () => {
         text: '*Job request: ask-1*\n```\nHow does this work?\n```',
       }),
     );
-    expect(permissions.assignApprovalThreadIfPending).toHaveBeenCalledWith({
+    expect(permissions.assignApprovalContextIfPending).toHaveBeenCalledWith({
       approvalId: 'approval-2',
+      channelId: 'request-root-ts',
       threadId: 'request-root-ts',
+      requestMessageId: 'request-root-ts',
     });
     expect(postMessage).toHaveBeenNthCalledWith(
       2,
@@ -268,6 +270,6 @@ describe('Slack approval guard flow', () => {
         text: 'Approval required for `jobs.mention`.',
       }),
     );
-    expect(permissions.assignApprovalThreadIfPending).not.toHaveBeenCalled();
+    expect(permissions.assignApprovalContextIfPending).not.toHaveBeenCalled();
   });
 });

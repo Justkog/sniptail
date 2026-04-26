@@ -158,6 +158,7 @@ vi.mock('../src/channels/workerChannelAdapters.js', () => ({
         ...(ref.threadId ? { threadId: ref.threadId } : {}),
       },
     }),
+    buildAddReactionEvent: () => undefined,
     renderCompletionMessage: ({
       text,
       openQuestions,
@@ -197,6 +198,7 @@ vi.mock('../channels/workerChannelAdapters.js', () => ({
         ...(ref.threadId ? { threadId: ref.threadId } : {}),
       },
     }),
+    buildAddReactionEvent: () => undefined,
     renderCompletionMessage: ({
       text,
       openQuestions,
