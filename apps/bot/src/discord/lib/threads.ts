@@ -40,17 +40,19 @@ async function postDiscordJobRequest(
   requestText: string,
   jobId: string,
   contextFiles?: JobSpec['contextFiles'],
-) {
+): Promise<string | undefined> {
   const requestSummary = truncateRequestSummary(requestText);
   try {
-    await postDiscordMessage(channel.client, {
+    const requestMessage = await postDiscordMessage(channel.client, {
       channelId: channel.id,
       channel,
       text: `**Job request: ${jobId}**\n\`\`\`\n${requestSummary}\n\`\`\``,
       ...(contextFiles?.length ? { contextFiles } : {}),
     });
+    return requestMessage.id;
   } catch (err) {
     logger.warn({ err, jobId }, 'Failed to post Discord job request');
+    return undefined;
   }
 }
 
@@ -82,22 +84,27 @@ export async function postDiscordJobAcceptance(
         : {}),
     });
     const threadTarget = await resolveDiscordThreadChannel(rootMessage, botName, job.jobId);
-    if (!options?.requestAsPrimaryMessage) {
-      await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId, job.contextFiles);
-    }
+    const requestMessageId = options?.requestAsPrimaryMessage
+      ? rootMessage.id
+      : await postDiscordJobRequest(threadTarget.channel, requestText, job.jobId, job.contextFiles);
 
-    if (threadTarget.threadId) {
+    if (threadTarget.threadId || requestMessageId) {
       await updateJobRecord(job.jobId, {
         job: {
           ...job,
           channel: {
             ...job.channel,
-            channelId: threadTarget.channel.id,
-            threadId: threadTarget.threadId,
+            ...(threadTarget.threadId
+              ? {
+                  channelId: threadTarget.channel.id,
+                  threadId: threadTarget.threadId,
+                }
+              : {}),
+            ...(requestMessageId ? { requestMessageId } : {}),
           },
         },
       }).catch((err) => {
-        logger.warn({ err, jobId: job.jobId }, 'Failed to record Discord thread id');
+        logger.warn({ err, jobId: job.jobId }, 'Failed to record Discord request message context');
       });
     }
 

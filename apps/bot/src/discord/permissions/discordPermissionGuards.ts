@@ -203,31 +203,40 @@ async function postDiscordJobRequestAndResolveThread(input: {
   approvalId: string;
   jobId?: string;
   contextFiles?: JobContextFile[];
-}): Promise<string | undefined> {
+}): Promise<{
+  threadId?: string;
+  requestMessageId?: string;
+}> {
   const text = buildDiscordJobRequestText(input.requestSummary, input.jobId);
   const botNamePrefix = toSlackCommandPrefix(input.botName);
   if (input.existingThreadId) {
     try {
-      await postDiscordMessage(input.client, {
+      const requestMessage = await postDiscordMessage(input.client, {
         channelId: input.channelId,
         threadId: input.existingThreadId,
         text,
         ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
       });
+      return {
+        threadId: input.existingThreadId,
+        requestMessageId: requestMessage.id,
+      };
     } catch (err) {
       logger.warn(
         { err, channelId: input.channelId, threadId: input.existingThreadId },
         'Failed to post Discord job request in existing thread',
       );
     }
-    return input.existingThreadId;
+    return {
+      threadId: input.existingThreadId,
+    };
   }
 
   try {
     const channel = await input.client.channels.fetch(input.channelId);
     if (!channel?.isTextBased() || !isSendableTextChannel(channel)) {
       logger.warn({ channelId: input.channelId }, 'Discord channel is not sendable for approvals');
-      return undefined;
+      return {};
     }
     const requestMessage = await postDiscordMessage(input.client, {
       channelId: input.channelId,
@@ -241,14 +250,19 @@ async function postDiscordJobRequestAndResolveThread(input: {
         name: threadName,
         autoArchiveDuration: 1440,
       });
-      return thread.id;
+      return {
+        threadId: thread.id,
+        requestMessageId: requestMessage.id,
+      };
     } catch (err) {
       logger.warn({ err, channelId: input.channelId }, 'Failed to create Discord approval thread');
-      return undefined;
+      return {
+        requestMessageId: requestMessage.id,
+      };
     }
   } catch (err) {
     logger.warn({ err, channelId: input.channelId }, 'Failed to post Discord job request');
-    return undefined;
+    return {};
   }
 }
 
@@ -321,7 +335,7 @@ export async function authorizeDiscordOperationAndRespond(input: {
       await input.onRequireApprovalNotice(input.pendingApprovalText ?? defaultPendingApprovalText);
     }
     const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
-    const requestThreadId = await postDiscordJobRequestAndResolveThread({
+    const requestPost = await postDiscordJobRequestAndResolveThread({
       client: input.client,
       botName: input.botName,
       channelId: input.actor.channelId,
@@ -333,23 +347,44 @@ export async function authorizeDiscordOperationAndRespond(input: {
         ? { contextFiles: input.operation.job.contextFiles }
         : {}),
     });
-    let approvalThreadId = requestThreadId;
-    if (!input.actor.threadId && requestThreadId) {
+    let approvalThreadId = requestPost.threadId;
+    const needsApprovalContextUpdate =
+      Boolean(requestPost.requestMessageId) ||
+      (!input.actor.threadId && Boolean(requestPost.threadId));
+    if (needsApprovalContextUpdate) {
       const reassigned = await input.permissions.assignApprovalContextIfPending({
         approvalId: authorization.approval.id,
-        channelId: requestThreadId,
-        threadId: requestThreadId,
+        ...(!input.actor.threadId && requestPost.threadId
+          ? {
+              channelId: requestPost.threadId,
+              threadId: requestPost.threadId,
+            }
+          : {}),
+        ...(requestPost.requestMessageId ? { requestMessageId: requestPost.requestMessageId } : {}),
       });
       if (!reassigned) {
-        logger.warn(
-          {
-            approvalId: authorization.approval.id,
-            channelId: input.actor.channelId,
-            threadId: requestThreadId,
-          },
-          'Failed to reassign Discord approval thread context; posting approval without thread',
-        );
-        approvalThreadId = undefined;
+        if (!input.actor.threadId && requestPost.threadId) {
+          logger.warn(
+            {
+              approvalId: authorization.approval.id,
+              channelId: input.actor.channelId,
+              threadId: requestPost.threadId,
+              requestMessageId: requestPost.requestMessageId,
+            },
+            'Failed to reassign Discord approval thread context; posting approval without thread',
+          );
+          approvalThreadId = undefined;
+        } else if (requestPost.requestMessageId) {
+          logger.warn(
+            {
+              approvalId: authorization.approval.id,
+              channelId: input.actor.channelId,
+              threadId: input.actor.threadId,
+              requestMessageId: requestPost.requestMessageId,
+            },
+            'Failed to record Discord approval request message id',
+          );
+        }
       }
     }
     await postDiscordApprovalMessage({

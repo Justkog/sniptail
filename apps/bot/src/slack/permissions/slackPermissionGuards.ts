@@ -253,7 +253,10 @@ async function postSlackJobRequestAndResolveThread(input: {
   requestSummary: string;
   jobId?: string;
   contextFiles?: JobContextFile[];
-}): Promise<string | undefined> {
+}): Promise<{
+  threadId?: string;
+  requestMessageId?: string;
+}> {
   try {
     const response = await postMessage(input.client, {
       channel: input.channelId,
@@ -261,10 +264,16 @@ async function postSlackJobRequestAndResolveThread(input: {
       text: buildSlackJobRequestText(input.requestSummary, input.jobId),
       ...(input.contextFiles?.length ? { contextFiles: input.contextFiles } : {}),
     });
-    return input.existingThreadId ?? response.ts;
+    return {
+      ...(input.existingThreadId ? { threadId: input.existingThreadId } : {}),
+      ...(response.ts ? { requestMessageId: response.ts } : {}),
+      ...(!input.existingThreadId && response.ts ? { threadId: response.ts } : {}),
+    };
   } catch (err) {
     logger.warn({ err, channelId: input.channelId }, 'Failed to post Slack job request');
-    return input.existingThreadId;
+    return {
+      ...(input.existingThreadId ? { threadId: input.existingThreadId } : {}),
+    };
   }
 }
 
@@ -312,7 +321,7 @@ export async function authorizeSlackOperationAndRespond(input: {
       await input.onRequireApprovalNotice(input.pendingApprovalText ?? defaultPendingApprovalText);
     }
     const requestSummary = resolveRequestSummaryFromOperation(input.operation, input.summary);
-    const requestThreadId = await postSlackJobRequestAndResolveThread({
+    const requestPost = await postSlackJobRequestAndResolveThread({
       client: input.client,
       channelId: input.actor.channelId,
       ...(input.actor.threadId ? { existingThreadId: input.actor.threadId } : {}),
@@ -322,22 +331,41 @@ export async function authorizeSlackOperationAndRespond(input: {
         ? { contextFiles: input.operation.job.contextFiles }
         : {}),
     });
-    let approvalThreadId = requestThreadId;
-    if (!input.actor.threadId && requestThreadId) {
-      const reassigned = await input.permissions.assignApprovalThreadIfPending({
+    let approvalThreadId = requestPost.threadId;
+    const needsApprovalContextUpdate =
+      Boolean(requestPost.requestMessageId) ||
+      (!input.actor.threadId && Boolean(requestPost.threadId));
+    if (needsApprovalContextUpdate) {
+      const reassigned = await input.permissions.assignApprovalContextIfPending({
         approvalId: authorization.approval.id,
-        threadId: requestThreadId,
+        ...(!input.actor.threadId && requestPost.threadId
+          ? { threadId: requestPost.threadId }
+          : {}),
+        ...(requestPost.requestMessageId ? { requestMessageId: requestPost.requestMessageId } : {}),
       });
       if (!reassigned) {
-        logger.warn(
-          {
-            approvalId: authorization.approval.id,
-            channelId: input.actor.channelId,
-            threadId: requestThreadId,
-          },
-          'Failed to reassign Slack approval thread context; posting approval without thread',
-        );
-        approvalThreadId = undefined;
+        if (!input.actor.threadId && requestPost.threadId) {
+          logger.warn(
+            {
+              approvalId: authorization.approval.id,
+              channelId: input.actor.channelId,
+              threadId: requestPost.threadId,
+              requestMessageId: requestPost.requestMessageId,
+            },
+            'Failed to reassign Slack approval thread context; posting approval without thread',
+          );
+          approvalThreadId = undefined;
+        } else if (requestPost.requestMessageId) {
+          logger.warn(
+            {
+              approvalId: authorization.approval.id,
+              channelId: input.actor.channelId,
+              threadId: input.actor.threadId,
+              requestMessageId: requestPost.requestMessageId,
+            },
+            'Failed to record Slack approval request message id',
+          );
+        }
       }
     }
     await postSlackApprovalMessage({

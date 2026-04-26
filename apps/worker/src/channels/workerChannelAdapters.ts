@@ -4,7 +4,7 @@ import type { ChannelProvider, ChannelRef } from '@sniptail/core/types/channel.j
 import { DiscordWorkerChannelAdapter } from '../discord/discordWorkerChannelAdapter.js';
 import { SlackWorkerChannelAdapter } from '../slack/slackWorkerChannelAdapter.js';
 import { TelegramWorkerChannelAdapter } from '../telegram/telegramWorkerChannelAdapter.js';
-import type { FileUpload, MessageOptions } from './notifier.js';
+import type { FileUpload, MessageOptions, ReactionOptions } from './notifier.js';
 import {
   type BootstrapSuccessRenderInput,
   type CodexUsageRenderInput,
@@ -65,6 +65,19 @@ class GenericWorkerChannelAdapter implements WorkerChannelAdapter {
       },
       jobId,
     );
+  }
+
+  buildAddReactionEvent(
+    ref: ChannelRef,
+    name: string,
+    options: ReactionOptions,
+    jobId?: string,
+  ): CoreBotEvent<'reaction.add'> | undefined {
+    void ref;
+    void name;
+    void options;
+    void jobId;
+    return undefined;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

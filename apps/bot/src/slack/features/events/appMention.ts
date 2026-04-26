@@ -30,7 +30,7 @@ export function registerAppMentionEvent({
       await addReaction(app, {
         channel: channelId,
         name: 'eyes',
-        timestamp: eventTs,
+        messageId: eventTs,
       });
     }
     await queueSlackMentionJob(
