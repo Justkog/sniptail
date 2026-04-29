@@ -33,6 +33,29 @@ export type WorkerRunActionConfig = {
   checks?: string[];
 };
 
+export type WorkerAgentCommandWorkspaceConfig = {
+  path: string;
+  label?: string;
+  description?: string;
+};
+
+export type WorkerAgentCommandProfileConfig = {
+  provider: 'opencode';
+  name: string;
+  label?: string;
+  description?: string;
+};
+
+export type WorkerAgentCommandConfig = {
+  enabled: boolean;
+  defaultWorkspace?: string;
+  defaultAgentProfile?: string;
+  interactionTimeoutMs: number;
+  outputDebounceMs: number;
+  workspaces: Record<string, WorkerAgentCommandWorkspaceConfig>;
+  profiles: Record<string, WorkerAgentCommandProfileConfig>;
+};
+
 export type QueueDriver = 'redis' | 'inproc';
 export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
 
@@ -121,6 +144,7 @@ export type WorkerConfig = CoreConfig & {
   cleanupMaxAge?: string;
   cleanupMaxEntries?: number;
   includeRawRequestInMr: boolean;
+  agent: WorkerAgentCommandConfig;
   run?: {
     actions: Record<string, WorkerRunActionConfig>;
   };

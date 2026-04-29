@@ -91,6 +91,44 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # Optional. Default: false. Example: true
 # worktree_setup_allow_failure = false
 
+[agent]
+# Enable the future Discord /agent command.
+# Optional. Default: false. Example: true
+# enabled = false
+
+# Default workspace key for /agent sessions. Required when enabled=true.
+# Optional. No default. Example: "snatch"
+# default_workspace = "snatch"
+
+# Default coding-agent profile key for /agent sessions. Required when enabled=true.
+# Optional. No default. Example: "build"
+# default_agent_profile = "build"
+
+# Timeout for pending agent permission/question interactions, in milliseconds.
+# Optional. Default: 1800000 (30 minutes). Example: 1800000
+# interaction_timeout_ms = 1800000
+
+# Debounce interval for posting streamed agent output to Discord, in milliseconds.
+# Optional. Default: 15000. Example: 15000
+# output_debounce_ms = 15000
+
+# /agent workspaces are worker-local directories. Paths must be absolute after
+# $HOME/~ expansion.
+#
+# [agent.workspaces.snatch]
+# path = "$HOME/Perso/snatch"
+# label = "snatch"
+# description = "Main Sniptail checkout"
+
+# /agent coding-agent profiles are underlying agent profiles/personas.
+# Only OpenCode profiles are supported for v1.
+#
+# [agent.profiles.build]
+# provider = "opencode"
+# name = "build"
+# label = "Build"
+# description = "OpenCode Build primary agent"
+
 [copilot]
 # Execution mode for GitHub Copilot agent.
 # Optional. Default: "local". Example: "docker"

@@ -13,6 +13,28 @@ describe('config loaders', () => {
     vi.restoreAllMocks();
   });
 
+  function writeWorkerConfig(extraLines: string[]) {
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      `job_work_root = "${join(configDir, 'jobs')}"`,
+      'queue_driver = "inproc"',
+      `job_registry_path = "${join(configDir, 'job-registry')}"`,
+      'job_registry_db = "sqlite"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "opencode"',
+      `repo_cache_root = "${join(configDir, 'repos')}"`,
+      '',
+      ...extraLines,
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+    return configDir;
+  }
+
   it('throws when required bot env vars are missing', () => {
     applyRequiredEnv({ SNIPTAIL_CHANNELS: 'slack', SLACK_BOT_TOKEN: undefined });
 
@@ -755,6 +777,193 @@ describe('config loaders', () => {
       provider: 'openai',
       model: 'gpt-5',
     });
+  });
+
+  it('defaults agent command config when omitted', () => {
+    applyRequiredEnv();
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent).toEqual({
+      enabled: false,
+      interactionTimeoutMs: 1_800_000,
+      outputDebounceMs: 15_000,
+      workspaces: {},
+      profiles: {},
+    });
+  });
+
+  it('parses enabled agent command config from worker TOML', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+      'interaction_timeout_ms = 120000',
+      'output_debounce_ms = 5000',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      'label = "Snatch"',
+      'description = "Main repository"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'name = "build"',
+      'label = "Build"',
+      'description = "OpenCode build agent"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent).toEqual({
+      enabled: true,
+      defaultWorkspace: 'snatch',
+      defaultAgentProfile: 'build',
+      interactionTimeoutMs: 120_000,
+      outputDebounceMs: 5_000,
+      workspaces: {
+        snatch: {
+          path: '/tmp/snatch',
+          label: 'Snatch',
+          description: 'Main repository',
+        },
+      },
+      profiles: {
+        build: {
+          provider: 'opencode',
+          name: 'build',
+          label: 'Build',
+          description: 'OpenCode build agent',
+        },
+      },
+    });
+  });
+
+  it('applies agent command scalar env overrides', () => {
+    applyRequiredEnv({
+      AGENT_COMMAND_ENABLED: 'true',
+      AGENT_COMMAND_DEFAULT_WORKSPACE: 'two',
+      AGENT_COMMAND_DEFAULT_AGENT_PROFILE: 'plan',
+      AGENT_COMMAND_INTERACTION_TIMEOUT_MS: '300000',
+      AGENT_COMMAND_OUTPUT_DEBOUNCE_MS: '7000',
+    });
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = false',
+      'default_workspace = "one"',
+      'default_agent_profile = "build"',
+      'interaction_timeout_ms = 120000',
+      'output_debounce_ms = 5000',
+      '',
+      '[agent.workspaces.one]',
+      `path = "${join('/tmp', 'one')}"`,
+      '',
+      '[agent.workspaces.two]',
+      `path = "${join('/tmp', 'two')}"`,
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'name = "build"',
+      '',
+      '[agent.profiles.plan]',
+      'provider = "opencode"',
+      'name = "plan"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.enabled).toBe(true);
+    expect(config.agent.defaultWorkspace).toBe('two');
+    expect(config.agent.defaultAgentProfile).toBe('plan');
+    expect(config.agent.interactionTimeoutMs).toBe(300_000);
+    expect(config.agent.outputDebounceMs).toBe(7_000);
+  });
+
+  it('rejects enabled agent command config without workspaces or profiles', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('enabled=true requires at least one workspace');
+  });
+
+  it('rejects unknown agent command default keys', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "missing"',
+      'default_agent_profile = "build"',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'name = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.default_workspace');
+  });
+
+  it('rejects relative agent command workspace paths', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "relative/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'name = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected an absolute path');
+  });
+
+  it('rejects invalid agent command workspace and profile keys', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.workspaces."bad/key"]', 'path = "/tmp/snatch"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.workspaces key');
+
+    resetConfigCaches();
+    writeWorkerConfig(['[agent.profiles.""]', 'provider = "opencode"', 'name = "build"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.profiles key');
+  });
+
+  it('rejects unsupported agent command profile provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'name = "build"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected opencode');
+  });
+
+  it('rejects invalid agent command timeout and debounce values', () => {
+    applyRequiredEnv({ AGENT_COMMAND_INTERACTION_TIMEOUT_MS: '0' });
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Invalid AGENT_COMMAND_INTERACTION_TIMEOUT_MS. Expected a positive integer.',
+    );
+
+    resetConfigCaches();
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent]', 'output_debounce_ms = 0']);
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Invalid agent.output_debounce_ms in TOML. Expected a positive integer.',
+    );
   });
 
   it('loads optional worktree setup hook settings', () => {
