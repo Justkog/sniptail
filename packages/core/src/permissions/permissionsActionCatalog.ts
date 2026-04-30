@@ -14,6 +14,7 @@ export const PERMISSION_ACTIONS = [
   'jobs.worktreeCommands',
   'status.codexUsage',
   'jobs.mention',
+  'agent.start',
   'approval.grant',
   'approval.deny',
   'approval.cancel',

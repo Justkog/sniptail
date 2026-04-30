@@ -42,6 +42,15 @@ export type WorkerRepoRemovePayload = {
   repoKey: string;
 };
 
+export type WorkerAgentSessionStartPayload = {
+  sessionId: string;
+  response: WorkerReplyTarget;
+  prompt: string;
+  workspaceKey: string;
+  agentProfileKey: string;
+  cwd?: string;
+};
+
 export type WorkerEventPayloadMap = {
   'jobs.clear': {
     jobId: string;
@@ -53,6 +62,10 @@ export type WorkerEventPayloadMap = {
   'repos.add': WorkerRepoAddPayload;
   'repos.remove': WorkerRepoRemovePayload;
   'status.codexUsage': WorkerCodexUsagePayload;
+  'agent.metadata.request': {
+    provider: ChannelProvider;
+  };
+  'agent.session.start': WorkerAgentSessionStartPayload;
 };
 
 export type CoreWorkerEventType = keyof WorkerEventPayloadMap;

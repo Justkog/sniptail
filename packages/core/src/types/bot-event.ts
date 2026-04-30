@@ -16,6 +16,20 @@ export type FileUploadPayload =
   | (FileUploadPayloadBase & { filePath: string; fileContent?: never })
   | (FileUploadPayloadBase & { filePath?: never; fileContent: string });
 
+export type BotAgentWorkspaceMetadata = {
+  key: string;
+  label?: string;
+  description?: string;
+};
+
+export type BotAgentProfileMetadata = {
+  key: string;
+  provider: 'opencode';
+  name: string;
+  label?: string;
+  description?: string;
+};
+
 export type BotEventPayloadMap = {
   'message.post': {
     channelId: string;
@@ -43,6 +57,14 @@ export type BotEventPayloadMap = {
     interactionToken: string;
     interactionApplicationId: string;
     text: string;
+  };
+  'agent.metadata.update': {
+    enabled: boolean;
+    defaultWorkspace?: string;
+    defaultAgentProfile?: string;
+    workspaces: BotAgentWorkspaceMetadata[];
+    profiles: BotAgentProfileMetadata[];
+    receivedAt: string;
   };
 };
 

@@ -23,6 +23,7 @@ import { handleClearBefore } from './features/commands/clearBefore.js';
 import { handleRepoAddAdmin } from './features/commands/repoAddAdmin.js';
 import { handleRepoRemoveAdmin } from './features/commands/repoRemoveAdmin.js';
 import { handleUsage } from './features/commands/usage.js';
+import { handleAgentAutocomplete, handleAgentStart } from './features/commands/agent.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
 import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
@@ -120,6 +121,19 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
   client.once(Events.ClientReady, () => {
     logger.info(`🤖 ${config.botName} Discord bot is running`);
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isAutocomplete()) return;
+    if (interaction.commandName !== commandNames.agent) return;
+
+    try {
+      await handleAgentAutocomplete(interaction);
+    } catch (err) {
+      logger.error({ err, command: interaction.commandName }, 'Discord autocomplete failed');
+      await interaction.respond([]);
+    }
   });
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -349,6 +363,23 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
+      }
+      return;
+    }
+
+    if (interaction.commandName === commandNames.agent) {
+      try {
+        await handleAgentStart(interaction, config, workerEventQueue, permissions);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply('Something went wrong handling that command.');
+        } else {
+          await interaction.reply({
+            content: 'Something went wrong handling that command.',
+            ephemeral: true,
+          });
+        }
       }
       return;
     }

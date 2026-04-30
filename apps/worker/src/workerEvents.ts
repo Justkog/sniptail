@@ -2,6 +2,8 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
+import { resolveAgentWorkspace } from './agent-command/workspaceResolver.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
@@ -127,6 +129,60 @@ export async function handleWorkerEvent(
           event,
           'Failed to fetch Codex usage status. Please try again shortly.',
           botEvents,
+        );
+      }
+      return;
+    }
+    case 'agent.metadata.request': {
+      try {
+        await publishAgentMetadataUpdate(botEvents);
+      } catch (err) {
+        logger.error({ err, event }, 'Failed to publish agent metadata update');
+      }
+      return;
+    }
+    case 'agent.session.start': {
+      if (!config.agent.enabled) {
+        logger.warn(
+          {
+            sessionId: event.payload.sessionId,
+            workspaceKey: event.payload.workspaceKey,
+            profileKey: event.payload.agentProfileKey,
+          },
+          'Ignoring agent session start because agent command is disabled in worker config',
+        );
+        return;
+      }
+      try {
+        const resolved = await resolveAgentWorkspace(
+          config.agent.workspaces,
+          {
+            workspaceKey: event.payload.workspaceKey,
+            ...(event.payload.cwd ? { cwd: event.payload.cwd } : {}),
+          },
+          { requireExists: false },
+        );
+        logger.info(
+          {
+            sessionId: event.payload.sessionId,
+            workspaceKey: event.payload.workspaceKey,
+            profileKey: event.payload.agentProfileKey,
+            threadId: event.payload.response.threadId,
+            userId: event.payload.response.userId,
+            resolvedCwd: resolved.resolvedCwd,
+            promptLength: event.payload.prompt.length,
+          },
+          'Received agent session start event (stub)',
+        );
+      } catch (err) {
+        logger.warn(
+          {
+            err,
+            sessionId: event.payload.sessionId,
+            workspaceKey: event.payload.workspaceKey,
+            profileKey: event.payload.agentProfileKey,
+          },
+          'Invalid agent session start payload',
         );
       }
       return;

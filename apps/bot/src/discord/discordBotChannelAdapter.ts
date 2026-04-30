@@ -13,6 +13,7 @@ import {
   postDiscordMessage,
   uploadDiscordFile,
 } from './helpers.js';
+import { setDiscordAgentCommandMetadata } from './agentCommandMetadataCache.js';
 import type {
   RuntimeBotChannelAdapter,
   BotEventRuntime,
@@ -34,11 +35,24 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     'reaction.add',
     'message.ephemeral',
     'interaction.reply.edit',
+    'agent.metadata.update',
   ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
     if (event.provider !== this.providerId) {
       return false;
+    }
+    if (event.type === 'agent.metadata.update') {
+      setDiscordAgentCommandMetadata(event.payload);
+      logger.info(
+        {
+          enabled: event.payload.enabled,
+          workspaces: event.payload.workspaces.length,
+          profiles: event.payload.profiles.length,
+        },
+        'Updated cached Discord agent command metadata',
+      );
+      return true;
     }
     const client = runtime.discordClient;
     if (!client) {
