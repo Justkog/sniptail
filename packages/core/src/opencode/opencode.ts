@@ -23,6 +23,15 @@ type OpenCodeRuntime = {
   close(): Promise<void> | void;
 };
 
+export type OpenCodePromptRunOptions = Omit<
+  AgentRunOptions,
+  'promptOverride' | 'resumeThreadId'
+> & {
+  sessionId?: string;
+  runtimeId?: string;
+  onSessionId?: (sessionId: string) => void | Promise<void>;
+};
+
 async function getFreePort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
     const server = createServer();
@@ -163,7 +172,7 @@ async function createLocalRuntime(
 }
 
 function spawnDockerServer(
-  job: JobSpec,
+  runtimeId: string,
   workDir: string,
   port: number,
   env: NodeJS.ProcessEnv,
@@ -180,7 +189,7 @@ function spawnDockerServer(
   if (docker?.buildContext) {
     opencodeEnv.OPENCODE_DOCKER_BUILD_CONTEXT = resolve(docker.buildContext);
   }
-  const sanitizedJobId = job.jobId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+  const sanitizedJobId = runtimeId.replace(/[^a-zA-Z0-9_.-]/g, '-');
   opencodeEnv.OPENCODE_DOCKER_CONTAINER_NAME =
     opencodeEnv.OPENCODE_DOCKER_CONTAINER_NAME ||
     `snatch-opencode-${sanitizedJobId}-${process.pid}-${Date.now()}`;
@@ -218,13 +227,13 @@ async function waitForServer(
 }
 
 async function createDockerRuntime(
-  job: JobSpec,
+  runtimeId: string,
   workDir: string,
   env: NodeJS.ProcessEnv,
   options: AgentRunOptions,
 ): Promise<OpenCodeRuntime> {
   const port = await getFreePort();
-  const proc = spawnDockerServer(job, workDir, port, env, options);
+  const proc = spawnDockerServer(runtimeId, workDir, port, env, options);
   const baseUrl = `http://127.0.0.1:${port}`;
   const client = createOpencodeClient({ baseUrl, directory: workDir });
   let exited = false;
@@ -287,7 +296,7 @@ function createServerRuntime(
 }
 
 async function createRuntime(
-  job: JobSpec,
+  runtimeId: string,
   workDir: string,
   env: NodeJS.ProcessEnv,
   options: AgentRunOptions,
@@ -296,26 +305,31 @@ async function createRuntime(
     case 'server':
       return createServerRuntime(workDir, env, options);
     case 'docker':
-      return createDockerRuntime(job, workDir, env, options);
+      return createDockerRuntime(runtimeId, workDir, env, options);
     case 'local':
     default:
       return createLocalRuntime(workDir, options);
   }
 }
 
-export async function runOpenCode(
-  job: JobSpec,
+export async function runOpenCodePrompt(
+  prompt: string,
   workDir: string,
   env: NodeJS.ProcessEnv,
-  options: AgentRunOptions = {},
+  options: OpenCodePromptRunOptions = {},
 ): Promise<AgentRunResult> {
-  const runtime = await createRuntime(job, workDir, env, options);
+  const runtime = await createRuntime(
+    options.runtimeId ?? 'opencode-prompt',
+    workDir,
+    env,
+    options,
+  );
   const abortController = new AbortController();
   let eventStream: Promise<void> | undefined;
 
   try {
-    const session = options.resumeThreadId
-      ? { id: options.resumeThreadId }
+    const session = options.sessionId
+      ? { id: options.sessionId }
       : await runtime.client.session.create({ directory: workDir }).then((response) => {
           if (response.error) {
             throw new Error(`OpenCode session create failed: ${JSON.stringify(response.error)}`);
@@ -325,6 +339,7 @@ export async function runOpenCode(
           }
           return response.data;
         });
+    await options.onSessionId?.(session.id);
 
     eventStream = streamEvents(
       runtime.client,
@@ -334,7 +349,6 @@ export async function runOpenCode(
       options.onEvent,
     );
 
-    const prompt = buildPrompt(job, workDir, options);
     const promptResponse = await runtime.client.session.prompt({
       sessionID: session.id,
       directory: workDir,
@@ -361,4 +375,17 @@ export async function runOpenCode(
     await eventStream?.catch(() => undefined);
     await runtime.close();
   }
+}
+
+export async function runOpenCode(
+  job: JobSpec,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: AgentRunOptions = {},
+): Promise<AgentRunResult> {
+  return runOpenCodePrompt(buildPrompt(job, workDir, options), workDir, env, {
+    ...options,
+    runtimeId: job.jobId,
+    ...(options.resumeThreadId ? { sessionId: options.resumeThreadId } : {}),
+  });
 }

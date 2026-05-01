@@ -48,6 +48,7 @@ import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
+import { handleAgentThreadMessage } from './features/events/agentThreadMessage.js';
 import {
   handleAskFromJobButton,
   handleAskFromJobContinueButton,
@@ -820,6 +821,15 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
     }
 
     try {
+      const handledAgentThreadMessage = await handleAgentThreadMessage(
+        message,
+        config,
+        workerEventQueue,
+        permissions,
+      );
+      if (handledAgentThreadMessage) {
+        return;
+      }
       await handleMention(message, config, queue, permissions);
     } catch (err) {
       logger.error({ err }, 'Discord mention handling failed');

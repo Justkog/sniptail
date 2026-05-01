@@ -3,7 +3,7 @@ import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
-import { resolveAgentWorkspace } from './agent-command/workspaceResolver.js';
+import { runAgentSessionStart } from './agent-command/openCodePromptRunner.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
@@ -142,49 +142,80 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.start': {
+      await runAgentSessionStart({ event, config, notifier });
+      return;
+    }
+    case 'agent.session.message': {
       if (!config.agent.enabled) {
         logger.warn(
           {
             sessionId: event.payload.sessionId,
-            workspaceKey: event.payload.workspaceKey,
-            profileKey: event.payload.agentProfileKey,
+            threadId: event.payload.response.threadId,
+            userId: event.payload.response.userId,
           },
-          'Ignoring agent session start because agent command is disabled in worker config',
+          'Ignoring agent session message because agent command is disabled in worker config',
         );
         return;
       }
-      try {
-        const resolved = await resolveAgentWorkspace(
-          config.agent.workspaces,
-          {
-            workspaceKey: event.payload.workspaceKey,
-            ...(event.payload.cwd ? { cwd: event.payload.cwd } : {}),
-          },
-          { requireExists: false },
-        );
-        logger.info(
-          {
-            sessionId: event.payload.sessionId,
-            workspaceKey: event.payload.workspaceKey,
-            profileKey: event.payload.agentProfileKey,
-            threadId: event.payload.response.threadId,
-            userId: event.payload.response.userId,
-            resolvedCwd: resolved.resolvedCwd,
-            promptLength: event.payload.prompt.length,
-          },
-          'Received agent session start event (stub)',
-        );
-      } catch (err) {
+      logger.info(
+        {
+          sessionId: event.payload.sessionId,
+          threadId: event.payload.response.threadId,
+          userId: event.payload.response.userId,
+          messageId: event.payload.messageId,
+          messageLength: event.payload.message.length,
+        },
+        'Received agent session message event (stub)',
+      );
+      return;
+    }
+    case 'agent.prompt.stop': {
+      if (!config.agent.enabled) {
         logger.warn(
           {
-            err,
             sessionId: event.payload.sessionId,
-            workspaceKey: event.payload.workspaceKey,
-            profileKey: event.payload.agentProfileKey,
+            threadId: event.payload.response.threadId,
+            userId: event.payload.response.userId,
           },
-          'Invalid agent session start payload',
+          'Ignoring agent prompt stop because agent command is disabled in worker config',
         );
+        return;
       }
+      logger.info(
+        {
+          sessionId: event.payload.sessionId,
+          threadId: event.payload.response.threadId,
+          userId: event.payload.response.userId,
+          messageId: event.payload.messageId,
+          reason: event.payload.reason,
+        },
+        'Received agent prompt stop event (stub)',
+      );
+      return;
+    }
+    case 'agent.interaction.resolve': {
+      if (!config.agent.enabled) {
+        logger.warn(
+          {
+            sessionId: event.payload.sessionId,
+            interactionId: event.payload.interactionId,
+            threadId: event.payload.response.threadId,
+            userId: event.payload.response.userId,
+          },
+          'Ignoring agent interaction resolution because agent command is disabled in worker config',
+        );
+        return;
+      }
+      logger.info(
+        {
+          sessionId: event.payload.sessionId,
+          interactionId: event.payload.interactionId,
+          interactionKind: event.payload.resolution.kind,
+          threadId: event.payload.response.threadId,
+          userId: event.payload.response.userId,
+        },
+        'Received agent interaction resolution event (stub)',
+      );
       return;
     }
     default:

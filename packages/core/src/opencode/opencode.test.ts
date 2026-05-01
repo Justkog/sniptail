@@ -41,7 +41,7 @@ vi.mock('../agents/resolveWorkerAgentScriptPath.js', () => ({
   resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
 }));
 
-import { runOpenCode } from './opencode.js';
+import { runOpenCode, runOpenCodePrompt } from './opencode.js';
 
 function buildJob(): JobSpec {
   return {
@@ -104,6 +104,47 @@ describe('runOpenCode', () => {
       directory: '/tmp/work',
     });
     expect(hoisted.serverClose).toHaveBeenCalled();
+  });
+
+  it('runs a freeform prompt and reports the OpenCode session id immediately', async () => {
+    const onSessionId = vi.fn();
+
+    const result = await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onSessionId });
+
+    expect(result).toEqual({ finalResponse: 'done', threadId: 'session-1' });
+    expect(onSessionId).toHaveBeenCalledWith('session-1');
+    expect(hoisted.client.session.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: 'session-1',
+        directory: '/tmp/work',
+        parts: [{ type: 'text', text: 'inspect this repo' }],
+      }),
+    );
+  });
+
+  it('resumes a freeform prompt session and forwards the selected OpenCode agent', async () => {
+    const onSessionId = vi.fn();
+
+    const result = await runOpenCodePrompt(
+      'continue',
+      '/tmp/work',
+      {},
+      {
+        sessionId: 'session-old',
+        opencode: { agent: 'plan' },
+        onSessionId,
+      },
+    );
+
+    expect(result.threadId).toBe('session-old');
+    expect(hoisted.client.session.create).not.toHaveBeenCalled();
+    expect(onSessionId).toHaveBeenCalledWith('session-old');
+    expect(hoisted.client.session.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: 'session-old',
+        agent: 'plan',
+      }),
+    );
   });
 
   it('connects to a configured server with auth header env', async () => {

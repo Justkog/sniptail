@@ -17,6 +17,18 @@
       "when": 1760000100000,
       "tag": "0002_add_provider_data",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "when": 1760000200000,
+      "tag": "0003_create_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "when": 1760000300000,
+      "tag": "0004_add_agent_session_runtime_id",
+      "breakpoints": true
     }
   ]
 }

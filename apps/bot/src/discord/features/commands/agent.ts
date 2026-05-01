@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import {
+  createAgentSession,
+  updateAgentSessionStatus,
+} from '@sniptail/core/agent-sessions/registry.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -215,6 +219,25 @@ export async function handleAgentStart(
     },
   };
 
+  try {
+    await createAgentSession({
+      sessionId,
+      provider: 'discord',
+      channelId: thread.channelId,
+      threadId: thread.threadId,
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      workspaceKey,
+      agentProfileKey: profileKey,
+      ...(cwd ? { cwd } : {}),
+      status: 'pending',
+    });
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to create Discord agent session record');
+    await interaction.editReply(`Failed to create the session record: ${(err as Error).message}`);
+    return;
+  }
+
   const summary = [
     `Start agent session in workspace ${workspaceKey}`,
     `profile ${profileKey}`,
@@ -245,6 +268,9 @@ export async function handleAgentStart(
     approvalPresentation: 'approval_only',
     onDeny: async () => {
       denied = true;
+      await updateAgentSessionStatus(sessionId, 'failed').catch((err) => {
+        logger.warn({ err, sessionId }, 'Failed to mark denied agent session as failed');
+      });
       await interaction.editReply('You are not authorized to start agent sessions.');
     },
   });
@@ -257,6 +283,7 @@ export async function handleAgentStart(
 
   try {
     await enqueueWorkerEvent(workerEventQueue, event);
+    await updateAgentSessionStatus(sessionId, 'active');
     await postDiscordMessage(interaction.client, {
       channelId: thread.channelId,
       threadId: thread.threadId,
@@ -265,6 +292,9 @@ export async function handleAgentStart(
     await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
   } catch (err) {
     logger.error({ err, sessionId }, 'Failed to enqueue agent session start event');
+    await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
+      logger.warn({ err: updateErr, sessionId }, 'Failed to mark agent session as failed');
+    });
     await interaction.editReply(`Failed to start the session: ${(err as Error).message}`);
   }
 }

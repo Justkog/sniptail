@@ -1,4 +1,5 @@
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import { updateAgentSessionStatus } from '@sniptail/core/agent-sessions/registry.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -329,6 +330,9 @@ export class PermissionsRuntimeService {
         return;
       case 'enqueueWorkerEvent':
         await enqueueWorkerEvent(this.#workerEventQueue, operation.event);
+        if (operation.event.type === 'agent.session.start') {
+          await updateAgentSessionStatus(operation.event.payload.sessionId, 'active');
+        }
         return;
       default: {
         const exhaustive: never = operation;
