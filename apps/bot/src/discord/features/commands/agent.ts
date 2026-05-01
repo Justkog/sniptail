@@ -13,6 +13,7 @@ import {
   WORKER_EVENT_SCHEMA_VERSION,
   type WorkerEvent,
 } from '@sniptail/core/types/worker-event.js';
+import { buildDiscordAgentStopComponents } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import {
   authorizeDiscordOperationAndRespond,
@@ -288,6 +289,7 @@ export async function handleAgentStart(
       channelId: thread.channelId,
       threadId: thread.threadId,
       text: `Session starting.\nWorkspace: \`${workspaceKey}\`\nProfile: \`${profileKey}\`${cwd ? `\nCWD: \`${cwd}\`` : ''}`,
+      components: buildDiscordAgentStopComponents(sessionId),
     });
     await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
   } catch (err) {

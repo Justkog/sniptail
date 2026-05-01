@@ -35,10 +35,7 @@ describe('debounced agent output buffer', () => {
 
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(notifier.postMessage).toHaveBeenCalledWith(
-      ref,
-      'OpenCode update\n\nOpenCode tool running: bash',
-    );
+    expect(notifier.postMessage).toHaveBeenCalledWith(ref, 'OpenCode tool running: bash');
   });
 
   it('groups multiple lines, prefixes errors, and dedupes consecutive identical lines', async () => {
@@ -53,12 +50,7 @@ describe('debounced agent output buffer', () => {
     expect(notifier.postMessage).toHaveBeenCalledTimes(1);
     expect(notifier.postMessage).toHaveBeenCalledWith(
       ref,
-      [
-        'OpenCode update',
-        '',
-        'OpenCode tool running: bash',
-        'Error: OpenCode tool error: bash: failed',
-      ].join('\n'),
+      ['OpenCode tool running: bash', 'Error: OpenCode tool error: bash: failed'].join('\n'),
     );
   });
 

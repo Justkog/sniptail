@@ -25,6 +25,7 @@ type DiscordActionRow = {
 
 const completionPrefix = 'sniptail:completion';
 const approvalPrefix = 'sniptail:approval';
+const agentPrefix = 'sniptail:agent';
 
 const actionTokens = {
   askFromJob: 'ask',
@@ -106,6 +107,33 @@ export function parseDiscordApprovalCustomId(
   const action = approvalTokenToAction[actionToken];
   if (!action) return undefined;
   return { action, approvalId };
+}
+
+export function buildDiscordAgentStopCustomId(sessionId: string) {
+  return `${agentPrefix}:stop:${sessionId}`;
+}
+
+export function parseDiscordAgentStopCustomId(customId: string): { sessionId: string } | undefined {
+  if (!customId.startsWith(`${agentPrefix}:stop:`)) return undefined;
+  const sessionId = customId.slice(`${agentPrefix}:stop:`.length).trim();
+  if (!sessionId) return undefined;
+  return { sessionId };
+}
+
+export function buildDiscordAgentStopComponents(sessionId: string): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 4,
+          label: 'Stop',
+          custom_id: buildDiscordAgentStopCustomId(sessionId),
+        },
+      ],
+    },
+  ];
 }
 
 export function buildDiscordCompletionComponents(

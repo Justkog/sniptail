@@ -4,6 +4,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
 import { runAgentSessionStart } from './agent-command/openCodePromptRunner.js';
+import { stopAgentPrompt } from './agent-command/stopOpenCodePrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
@@ -142,7 +143,12 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.start': {
-      await runAgentSessionStart({ event, config, notifier });
+      void runAgentSessionStart({ event, config, notifier }).catch((err) => {
+        logger.error(
+          { err, sessionId: event.payload.sessionId },
+          'Background agent session prompt failed',
+        );
+      });
       return;
     }
     case 'agent.session.message': {
@@ -170,27 +176,7 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.prompt.stop': {
-      if (!config.agent.enabled) {
-        logger.warn(
-          {
-            sessionId: event.payload.sessionId,
-            threadId: event.payload.response.threadId,
-            userId: event.payload.response.userId,
-          },
-          'Ignoring agent prompt stop because agent command is disabled in worker config',
-        );
-        return;
-      }
-      logger.info(
-        {
-          sessionId: event.payload.sessionId,
-          threadId: event.payload.response.threadId,
-          userId: event.payload.response.userId,
-          messageId: event.payload.messageId,
-          reason: event.payload.reason,
-        },
-        'Received agent prompt stop event (stub)',
-      );
+      await stopAgentPrompt({ event, config, notifier });
       return;
     }
     case 'agent.interaction.resolve': {

@@ -8,6 +8,7 @@ import { Events } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
+  parseDiscordAgentStopCustomId,
   parseDiscordApprovalCustomId,
   parseDiscordCompletionCustomId,
 } from '@sniptail/core/discord/components.js';
@@ -31,6 +32,7 @@ import { handleImplementSelection } from './features/actions/implementSelection.
 import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
 import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
+import { handleAgentStopButton } from './features/actions/agentStop.js';
 import {
   handleBootstrapExtrasContinue,
   handleBootstrapExtrasSelection,
@@ -400,6 +402,18 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
+      const parsedAgentStop = parseDiscordAgentStopCustomId(interaction.customId);
+      if (parsedAgentStop) {
+        await handleAgentStopButton(
+          interaction,
+          parsedAgentStop.sessionId,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
       const askFromJobToken = parseAskFromJobContinueButtonCustomId(interaction.customId);
       if (askFromJobToken) {
         await handleAskFromJobContinueButton(interaction, config, askFromJobToken);

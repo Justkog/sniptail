@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDiscordAgentStopComponents,
+  buildDiscordAgentStopCustomId,
   buildDiscordCompletionComponents,
   buildDiscordCompletionCustomId,
+  parseDiscordAgentStopCustomId,
   parseDiscordCompletionCustomId,
 } from './components.js';
 
@@ -61,5 +64,26 @@ describe('discord completion components', () => {
     const rows = buildDiscordCompletionComponents('job-run-default');
     const customIds = rows.flatMap((row) => row.components.map((component) => component.custom_id));
     expect(customIds.some((customId) => customId.includes(':run:'))).toBe(true);
+  });
+
+  it('round-trips agent stop custom ids', () => {
+    const customId = buildDiscordAgentStopCustomId('session-123');
+    expect(parseDiscordAgentStopCustomId(customId)).toEqual({ sessionId: 'session-123' });
+  });
+
+  it('builds an agent stop button', () => {
+    expect(buildDiscordAgentStopComponents('session-123')).toEqual([
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 4,
+            label: 'Stop',
+            custom_id: 'sniptail:agent:stop:session-123',
+          },
+        ],
+      },
+    ]);
   });
 });

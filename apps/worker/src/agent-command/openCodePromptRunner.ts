@@ -1,5 +1,6 @@
 import { runOpenCodePrompt } from '@sniptail/core/opencode/opencode.js';
 import {
+  loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
@@ -8,6 +9,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
 import type { Notifier } from '../channels/notifier.js';
+import { deleteActiveOpenCodeRuntime, setActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
 import { createDebouncedAgentOutputBuffer } from './debouncedAgentOutput.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
@@ -66,6 +68,14 @@ function formatFinalResponse(response: string): string {
 function formatFailure(err: unknown): string {
   const message = (err as Error).message || String(err);
   return `OpenCode agent session failed: ${message}`;
+}
+
+async function isSessionStopped(sessionId: string): Promise<boolean> {
+  const session = await loadAgentSession(sessionId).catch((err) => {
+    logger.warn({ err, sessionId }, 'Failed to load agent session status');
+    return undefined;
+  });
+  return session?.status === 'stopped';
 }
 
 export async function runAgentSessionStart({
@@ -143,6 +153,14 @@ export async function runAgentSessionStart({
           },
         );
       },
+      onRuntimeReady: (runtime) => {
+        setActiveOpenCodeRuntime(sessionId, {
+          codingAgentSessionId: runtime.sessionId,
+          baseUrl: runtime.baseUrl,
+          directory: runtime.directory,
+          executionMode: runtime.executionMode,
+        });
+      },
       onEvent: (opencodeEvent) => {
         const summary = summarizeEvent(opencodeEvent);
         if (!summary) return;
@@ -158,6 +176,9 @@ export async function runAgentSessionStart({
     });
 
     await outputBuffer.flush();
+    if (await isSessionStopped(sessionId)) {
+      return;
+    }
     await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
@@ -167,12 +188,17 @@ export async function runAgentSessionStart({
       { err, sessionId, workspaceKey, profileKey: agentProfileKey },
       'OpenCode agent session prompt failed',
     );
+    if (await isSessionStopped(sessionId)) {
+      await outputBuffer.flush();
+      return;
+    }
     await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
       logger.warn({ err: updateErr, sessionId }, 'Failed to mark agent session failed');
     });
     await outputBuffer.flush();
     await notifier.postMessage(ref, formatFailure(err));
   } finally {
+    deleteActiveOpenCodeRuntime(sessionId);
     outputBuffer.close();
   }
 }

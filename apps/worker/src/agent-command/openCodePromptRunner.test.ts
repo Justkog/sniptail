@@ -9,6 +9,7 @@ import type { Notifier } from '../channels/notifier.js';
 
 const hoisted = vi.hoisted(() => ({
   runOpenCodePrompt: vi.fn(),
+  loadAgentSession: vi.fn(),
   updateAgentSessionCodingAgentSessionId: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
 }));
@@ -18,10 +19,12 @@ vi.mock('@sniptail/core/opencode/opencode.js', () => ({
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
+  loadAgentSession: hoisted.loadAgentSession,
   updateAgentSessionCodingAgentSessionId: hoisted.updateAgentSessionCodingAgentSessionId,
   updateAgentSessionStatus: hoisted.updateAgentSessionStatus,
 }));
 
+import { clearActiveOpenCodeRuntimes, getActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
 import { runAgentSessionStart } from './openCodePromptRunner.js';
 
 function buildConfig(workspacePath: string): WorkerConfig {
@@ -152,6 +155,12 @@ describe('OpenCode agent prompt runner', () => {
         options: OpenCodePromptRunOptions,
       ) => {
         await options.onSessionId?.('opencode-session-1');
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
         await options.onEvent?.({
           type: 'message.updated',
           properties: { info: { role: 'assistant', time: { completed: Date.now() } } },
@@ -165,9 +174,11 @@ describe('OpenCode agent prompt runner', () => {
     );
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
+    hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
   });
 
   afterEach(async () => {
+    clearActiveOpenCodeRuntimes();
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -220,7 +231,7 @@ describe('OpenCode agent prompt runner', () => {
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'OpenCode update\n\nassistant progress text',
+      'assistant progress text',
     );
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
       3,
@@ -276,6 +287,45 @@ describe('OpenCode agent prompt runner', () => {
     );
   });
 
+  it('records and clears the active OpenCode runtime ref', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    let activeRefDuringRun: ReturnType<typeof getActiveOpenCodeRuntime>;
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onSessionId?.('opencode-session-1');
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        activeRefDuringRun = getActiveOpenCodeRuntime('session-1');
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(activeRefDuringRun!).toEqual({
+      codingAgentSessionId: 'opencode-session-1',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: tempRoot,
+      executionMode: 'local',
+    });
+    expect(getActiveOpenCodeRuntime('session-1')).toBeUndefined();
+  });
+
   it('flushes pending assistant text before failure messages', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
@@ -308,13 +358,30 @@ describe('OpenCode agent prompt runner', () => {
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'OpenCode update\n\nassistant text before failure',
+      'assistant text before failure',
     );
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'OpenCode agent session failed: prompt failed',
     );
+  });
+
+  it('does not overwrite stopped sessions after OpenCode aborts', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    hoisted.loadAgentSession.mockResolvedValueOnce({ status: 'stopped' });
+    hoisted.runOpenCodePrompt.mockRejectedValueOnce(new Error('OpenCode prompt aborted'));
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalledWith('session-1', 'failed');
+    expect(notifier.postMessage).toHaveBeenCalledTimes(1);
   });
 
   it('marks the session failed and reports errors when workspace resolution fails', async () => {

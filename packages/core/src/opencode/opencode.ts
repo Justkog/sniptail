@@ -23,6 +23,13 @@ type OpenCodeRuntime = {
   close(): Promise<void> | void;
 };
 
+export type OpenCodeRuntimeReady = {
+  baseUrl: string;
+  sessionId: string;
+  directory: string;
+  executionMode: 'local' | 'server' | 'docker';
+};
+
 export type OpenCodePromptRunOptions = Omit<
   AgentRunOptions,
   'promptOverride' | 'resumeThreadId'
@@ -30,7 +37,12 @@ export type OpenCodePromptRunOptions = Omit<
   sessionId?: string;
   runtimeId?: string;
   onSessionId?: (sessionId: string) => void | Promise<void>;
+  onRuntimeReady?: (runtime: OpenCodeRuntimeReady) => void | Promise<void>;
   onAssistantMessageCompleted?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
+};
+
+export type OpenCodeAbortOptions = Pick<AgentRunOptions, 'opencode'> & {
+  baseUrl?: string;
 };
 
 async function getFreePort(): Promise<number> {
@@ -107,7 +119,6 @@ async function fallbackFinalResponse(
 function getCompletedAssistantMessageInfo(
   event: OpenCodeEvent,
 ): { sessionID: string; messageID: string } | undefined {
-
   if (event.type !== 'message.updated') return undefined;
   const info = event.properties?.info;
   if (!info || typeof info !== 'object') return undefined;
@@ -336,6 +347,19 @@ function createServerRuntime(
   return { baseUrl, client, close: () => undefined };
 }
 
+function createClientForBaseUrl(
+  baseUrl: string,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: OpenCodeAbortOptions,
+): OpenCodeClient {
+  return createOpencodeClient({
+    baseUrl,
+    directory: workDir,
+    headers: buildHeaders(env, options),
+  });
+}
+
 async function createRuntime(
   runtimeId: string,
   workDir: string,
@@ -381,6 +405,12 @@ export async function runOpenCodePrompt(
           return response.data;
         });
     await options.onSessionId?.(session.id);
+    await options.onRuntimeReady?.({
+      baseUrl: runtime.baseUrl,
+      sessionId: session.id,
+      directory: workDir,
+      executionMode: options.opencode?.executionMode ?? 'local',
+    });
 
     eventStream = streamEvents(
       runtime.client,
@@ -430,4 +460,21 @@ export async function runOpenCode(
     runtimeId: job.jobId,
     ...(options.resumeThreadId ? { sessionId: options.resumeThreadId } : {}),
   });
+}
+
+export async function abortOpenCodeSession(
+  sessionID: string,
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: OpenCodeAbortOptions = {},
+): Promise<void> {
+  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
+  if (!baseUrl) {
+    throw new Error('OpenCode abort requires an active runtime URL or [opencode].server_url.');
+  }
+  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
+  const response = await client.session.abort({ sessionID, directory: workDir });
+  if (response.error) {
+    throw new Error(`OpenCode abort failed: ${JSON.stringify(response.error)}`);
+  }
 }
