@@ -45,7 +45,7 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
     client: {},
     message: {
       id: 'message-1',
-      content: 'Session starting.',
+      content: 'Agent session requested by <@user-1>.\n\n```\ninspect this\n```',
     },
     channel: {
       isThread: () => true,
@@ -98,7 +98,40 @@ describe('handleAgentStopButton', () => {
       expect.objectContaining({ type: 'agent.prompt.stop' }),
     );
     expect(interaction.update).toHaveBeenCalledWith({
-      content: 'Session starting.\n\nStop request sent by <@user-2>.',
+      content:
+        'Agent session requested by <@user-1>.\n\n```\ninspect this\n```\n\nStop request sent by <@user-2>.',
+      components: [],
+    });
+  });
+
+  it('accepts stop controls from the parent channel thread starter message', async () => {
+    const interaction = buildInteraction({
+      channelId: 'channel-1',
+      channel: {
+        isThread: () => false,
+      },
+      message: {
+        id: 'message-1',
+        content: 'Agent session requested by <@user-1>.\n\n```\ninspect this\n```',
+        thread: { id: 'thread-1' },
+      },
+    });
+
+    await handleAgentStopButton(
+      interaction as never,
+      'session-1',
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
+      queue,
+      expect.objectContaining({ type: 'agent.prompt.stop' }),
+    );
+    expect(interaction.update).toHaveBeenCalledWith({
+      content:
+        'Agent session requested by <@user-1>.\n\n```\ninspect this\n```\n\nStop request sent by <@user-2>.',
       components: [],
     });
   });

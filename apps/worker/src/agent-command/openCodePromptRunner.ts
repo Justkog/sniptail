@@ -123,10 +123,6 @@ export async function runAgentSessionStart({
     await updateAgentSessionStatus(sessionId, 'active').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session active');
     });
-    await notifier.postMessage(
-      ref,
-      `OpenCode running.\nWorkspace: \`${resolved.display.name}\`\nProfile: \`${agentProfileKey}\``,
-    );
 
     logger.info(
       {

@@ -15,6 +15,24 @@ function appendStopRequestedText(content: string, userId: string): string {
   return `${base}\n\nStop request sent by <@${userId}>.`;
 }
 
+function getMessageThreadId(message: ButtonInteraction['message']): string | undefined {
+  const thread = message.thread;
+  return typeof thread?.id === 'string' ? thread.id : undefined;
+}
+
+function isStopControlForSession(
+  interaction: ButtonInteraction,
+  session: NonNullable<Awaited<ReturnType<typeof loadAgentSession>>>,
+): boolean {
+  if (interaction.channel?.isThread() && interaction.channelId === session.threadId) {
+    return true;
+  }
+  if (interaction.channelId !== session.channelId) {
+    return false;
+  }
+  return getMessageThreadId(interaction.message) === session.threadId;
+}
+
 export async function handleAgentStopButton(
   interaction: ButtonInteraction,
   sessionId: string,
@@ -27,7 +45,7 @@ export async function handleAgentStopButton(
     await interaction.reply({ content: 'Agent session not found.', ephemeral: true });
     return;
   }
-  if (!interaction.channel?.isThread() || interaction.channelId !== session.threadId) {
+  if (!isStopControlForSession(interaction, session)) {
     await interaction.reply({
       content: 'This stop control does not belong to this agent session thread.',
       ephemeral: true,

@@ -229,12 +229,12 @@ describe('OpenCode agent prompt runner', () => {
     });
 
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant progress text',
     );
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      3,
+      2,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'final answer',
     );
@@ -279,9 +279,9 @@ describe('OpenCode agent prompt runner', () => {
       env: {},
     });
 
-    expect(notifier.postMessage).toHaveBeenCalledTimes(2);
+    expect(notifier.postMessage).toHaveBeenCalledTimes(1);
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'final answer',
     );
@@ -356,12 +356,12 @@ describe('OpenCode agent prompt runner', () => {
     });
 
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant text before failure',
     );
     expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      3,
+      2,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'OpenCode agent session failed: prompt failed',
     );
@@ -381,7 +381,7 @@ describe('OpenCode agent prompt runner', () => {
     });
 
     expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalledWith('session-1', 'failed');
-    expect(notifier.postMessage).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).not.toHaveBeenCalled();
   });
 
   it('marks the session failed and reports errors when workspace resolution fails', async () => {

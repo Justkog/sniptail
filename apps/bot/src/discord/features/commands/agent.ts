@@ -32,6 +32,14 @@ type ResolvedAgentThread = {
   threadId: string;
 };
 
+type AgentControlMessageInput = {
+  sessionId: string;
+  prompt: string;
+  workspaceKey: string;
+  agentProfileKey: string;
+  cwd?: string;
+};
+
 function normalizeOptionalString(value: string | null): string | undefined {
   if (value === null) return undefined;
   const trimmed = value.trim();
@@ -42,8 +50,27 @@ function buildAgentThreadName(botName: string, sessionId: string): string {
   return `${botName} agent ${sessionId}`.slice(0, 100);
 }
 
+function buildAgentControlText(
+  userId: string,
+  { prompt, workspaceKey, agentProfileKey, cwd }: AgentControlMessageInput,
+): string {
+  return [
+    `Agent session requested by <@${userId}>.`,
+    '',
+    '```',
+    truncateRequestSummary(prompt),
+    '```',
+    `Workspace: \`${workspaceKey}\``,
+    `Profile: \`${agentProfileKey}\``,
+    cwd ? `CWD: \`${cwd}\`` : undefined,
+  ]
+    .filter((line) => line !== undefined)
+    .join('\n');
+}
+
 async function resolveAgentThread(
   interaction: ChatInputCommandInteraction,
+  controlMessage: AgentControlMessageInput,
 ): Promise<ResolvedAgentThread> {
   const channel = interaction.channel;
   if (!channel || !channel.isTextBased() || !isSendableTextChannel(channel)) {
@@ -52,6 +79,12 @@ async function resolveAgentThread(
 
   if (channel.isThread()) {
     const parentChannelId = channel.parentId ?? interaction.channelId;
+    await postDiscordMessage(interaction.client, {
+      channelId: parentChannelId,
+      threadId: channel.id,
+      text: buildAgentControlText(interaction.user.id, controlMessage),
+      components: buildDiscordAgentStopComponents(controlMessage.sessionId),
+    });
     return {
       channelId: parentChannelId,
       threadId: channel.id,
@@ -60,7 +93,8 @@ async function resolveAgentThread(
 
   const seedMessage = await postDiscordMessage(interaction.client, {
     channelId: interaction.channelId,
-    text: `Agent session requested by <@${interaction.user.id}>.`,
+    text: buildAgentControlText(interaction.user.id, controlMessage),
+    components: buildDiscordAgentStopComponents(controlMessage.sessionId),
   });
   const thread = await seedMessage.startThread({
     name: buildAgentThreadName(interaction.client.user?.username ?? 'sniptail', seedMessage.id),
@@ -190,16 +224,22 @@ export async function handleAgentStart(
 
   await interaction.deferReply({ ephemeral: true });
 
+  const sessionId = randomUUID();
   let thread: ResolvedAgentThread;
   try {
-    thread = await resolveAgentThread(interaction);
+    thread = await resolveAgentThread(interaction, {
+      sessionId,
+      prompt,
+      workspaceKey,
+      agentProfileKey: profileKey,
+      ...(cwd ? { cwd } : {}),
+    });
   } catch (err) {
     logger.error({ err }, 'Failed to create or resolve Discord thread for /agent');
     await interaction.editReply('Failed to create a thread for this agent session.');
     return;
   }
 
-  const sessionId = randomUUID();
   const event: WorkerEvent = {
     schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
     type: 'agent.session.start',
@@ -285,12 +325,6 @@ export async function handleAgentStart(
   try {
     await enqueueWorkerEvent(workerEventQueue, event);
     await updateAgentSessionStatus(sessionId, 'active');
-    await postDiscordMessage(interaction.client, {
-      channelId: thread.channelId,
-      threadId: thread.threadId,
-      text: `Session starting.\nWorkspace: \`${workspaceKey}\`\nProfile: \`${profileKey}\`${cwd ? `\nCWD: \`${cwd}\`` : ''}`,
-      components: buildDiscordAgentStopComponents(sessionId),
-    });
     await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
   } catch (err) {
     logger.error({ err, sessionId }, 'Failed to enqueue agent session start event');
