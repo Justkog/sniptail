@@ -41,7 +41,7 @@ vi.mock('../agents/resolveWorkerAgentScriptPath.js', () => ({
   resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
 }));
 
-import { runOpenCode, runOpenCodePrompt } from './opencode.js';
+import { fetchCompletedAssistantMessageText, runOpenCode, runOpenCodePrompt } from './opencode.js';
 
 function buildJob(): JobSpec {
   return {
@@ -61,6 +61,11 @@ function buildJob(): JobSpec {
 async function* emptyEvents() {
   await Promise.resolve();
   if (Date.now() < 0) yield undefined as never;
+}
+
+async function* singleEvent(event: unknown) {
+  await Promise.resolve();
+  yield event;
 }
 
 function buildChildProcess() {
@@ -119,6 +124,143 @@ describe('runOpenCode', () => {
         directory: '/tmp/work',
         parts: [{ type: 'text', text: 'inspect this repo' }],
       }),
+    );
+  });
+
+  it('fetches completed assistant message text from message.updated events', async () => {
+    hoisted.client.session.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', role: 'assistant' },
+          parts: [{ type: 'text', text: 'completed assistant text' }],
+        },
+      ],
+    });
+
+    const text = await fetchCompletedAssistantMessageText(
+      hoisted.client,
+      {
+        type: 'message.updated',
+        properties: {
+          info: {
+            id: 'message-1',
+            sessionID: 'session-1',
+            role: 'assistant',
+            time: { completed: 123 },
+          },
+        },
+      },
+      '/tmp/work',
+    );
+
+    expect(text).toBe('completed assistant text');
+    expect(hoisted.client.session.messages).toHaveBeenCalledWith({
+      sessionID: 'session-1',
+      directory: '/tmp/work',
+      limit: 20,
+    });
+  });
+
+  it('ignores message updates that are not completed assistant messages', async () => {
+    await expect(
+      fetchCompletedAssistantMessageText(
+        hoisted.client,
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: {},
+            },
+          },
+        },
+        '/tmp/work',
+      ),
+    ).resolves.toBe('');
+    await expect(
+      fetchCompletedAssistantMessageText(
+        hoisted.client,
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'user',
+              time: { completed: 123 },
+            },
+          },
+        },
+        '/tmp/work',
+      ),
+    ).resolves.toBe('');
+    expect(hoisted.client.session.messages).not.toHaveBeenCalled();
+  });
+
+  it('returns empty text when the completed assistant message has no text parts', async () => {
+    hoisted.client.session.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', role: 'assistant' },
+          parts: [{ type: 'tool', tool: 'bash' }],
+        },
+      ],
+    });
+
+    await expect(
+      fetchCompletedAssistantMessageText(
+        hoisted.client,
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: { completed: 123 },
+            },
+          },
+        },
+        '/tmp/work',
+      ),
+    ).resolves.toBe('');
+  });
+
+  it('calls assistant completion callback with fetched message text', async () => {
+    const onAssistantMessageCompleted = vi.fn();
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: singleEvent({
+        type: 'message.updated',
+        properties: {
+          info: {
+            id: 'message-1',
+            sessionID: 'session-1',
+            role: 'assistant',
+            time: { completed: 123 },
+          },
+        },
+      }),
+    });
+    hoisted.client.session.messages.mockResolvedValue({
+      data: [
+        {
+          info: { id: 'message-1', role: 'assistant' },
+          parts: [{ type: 'text', text: 'completed assistant text' }],
+        },
+      ],
+    });
+
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessageCompleted });
+
+    expect(onAssistantMessageCompleted).toHaveBeenCalledWith(
+      'completed assistant text',
+      expect.objectContaining({ type: 'message.updated' }),
     );
   });
 

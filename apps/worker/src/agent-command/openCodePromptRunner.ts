@@ -8,6 +8,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
 import type { Notifier } from '../channels/notifier.js';
+import { createDebouncedAgentOutputBuffer } from './debouncedAgentOutput.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
 export type RunAgentSessionStartOptions = {
@@ -88,6 +89,11 @@ export async function runAgentSessionStart({
     channelId: response.channelId,
     ...(response.threadId ? { threadId: response.threadId } : {}),
   };
+  const outputBuffer = createDebouncedAgentOutputBuffer({
+    notifier,
+    ref,
+    debounceMs: config.agent.outputDebounceMs,
+  });
 
   try {
     const profile = config.agent.profiles[agentProfileKey];
@@ -146,8 +152,12 @@ export async function runAgentSessionStart({
           logger.info({ sessionId }, summary.text);
         }
       },
+      onAssistantMessageCompleted: (text) => {
+        outputBuffer.push(text);
+      },
     });
 
+    await outputBuffer.flush();
     await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
@@ -160,6 +170,9 @@ export async function runAgentSessionStart({
     await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
       logger.warn({ err: updateErr, sessionId }, 'Failed to mark agent session failed');
     });
+    await outputBuffer.flush();
     await notifier.postMessage(ref, formatFailure(err));
+  } finally {
+    outputBuffer.close();
   }
 }

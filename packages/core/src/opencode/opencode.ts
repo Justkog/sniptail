@@ -30,6 +30,7 @@ export type OpenCodePromptRunOptions = Omit<
   sessionId?: string;
   runtimeId?: string;
   onSessionId?: (sessionId: string) => void | Promise<void>;
+  onAssistantMessageCompleted?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
 };
 
 async function getFreePort(): Promise<number> {
@@ -103,6 +104,37 @@ async function fallbackFinalResponse(
   return extractText(latestAssistant?.parts);
 }
 
+function getCompletedAssistantMessageInfo(
+  event: OpenCodeEvent,
+): { sessionID: string; messageID: string } | undefined {
+
+  if (event.type !== 'message.updated') return undefined;
+  const info = event.properties?.info;
+  if (!info || typeof info !== 'object') return undefined;
+  if (info.role !== 'assistant') return undefined;
+  if (typeof info.id !== 'string' || typeof info.sessionID !== 'string') return undefined;
+  if (typeof info.time?.completed !== 'number') return undefined;
+  return { sessionID: info.sessionID, messageID: info.id };
+}
+
+export async function fetchCompletedAssistantMessageText(
+  client: OpenCodeClient,
+  event: OpenCodeEvent,
+): Promise<string> {
+  const completed = getCompletedAssistantMessageInfo(event);
+  if (!completed) return '';
+  const message = await client.session.message({
+    sessionID: completed.sessionID,
+    messageID: completed.messageID,
+  });
+  if (message.error) {
+    throw new Error(`OpenCode message failed: ${JSON.stringify(message.error)}`);
+  }
+  const assistantMessage = message.data;
+
+  return extractText(assistantMessage?.parts);
+}
+
 function getEventSessionId(event: unknown): string | undefined {
   if (!event || typeof event !== 'object') return undefined;
   const typed = event as { properties?: Record<string, unknown> };
@@ -134,19 +166,28 @@ async function streamEvents(
   workDir: string,
   signal: AbortSignal,
   onEvent: ((event: unknown) => void | Promise<void>) | undefined,
+  onAssistantMessageCompleted:
+    | ((text: string, event: OpenCodeEvent) => void | Promise<void>)
+    | undefined,
 ): Promise<void> {
-  if (!onEvent) return;
+  if (!onEvent && !onAssistantMessageCompleted) return;
   try {
     const subscription = await client.event.subscribe({ directory: workDir }, { signal });
     for await (const event of subscription.stream as AsyncGenerator<OpenCodeEvent>) {
       if (signal.aborted) return;
       const eventSessionId = getEventSessionId(event);
       if (eventSessionId && eventSessionId !== sessionID) continue;
-      await onEvent(event);
+      await onEvent?.(event);
+      if (onAssistantMessageCompleted) {
+        const assistantText = await fetchCompletedAssistantMessageText(client, event);
+        if (assistantText) {
+          await onAssistantMessageCompleted(assistantText, event);
+        }
+      }
     }
   } catch (err) {
     if (!signal.aborted) {
-      await onEvent({
+      await onEvent?.({
         type: 'session.error',
         properties: { sessionID, error: String((err as { message?: unknown })?.message ?? err) },
       });
@@ -347,6 +388,7 @@ export async function runOpenCodePrompt(
       workDir,
       abortController.signal,
       options.onEvent,
+      options.onAssistantMessageCompleted,
     );
 
     const promptResponse = await runtime.client.session.prompt({

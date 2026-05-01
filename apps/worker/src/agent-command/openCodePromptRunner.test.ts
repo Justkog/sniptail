@@ -108,6 +108,36 @@ function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
   };
 }
 
+type AssistantCompletedEvent = Parameters<
+  NonNullable<OpenCodePromptRunOptions['onAssistantMessageCompleted']>
+>[1];
+
+function buildAssistantCompletedEvent(): AssistantCompletedEvent {
+  return {
+    type: 'message.updated',
+    properties: {
+      info: {
+        id: 'message-1',
+        sessionID: 'opencode-session-1',
+        role: 'assistant',
+        time: { created: 1, completed: Date.now() },
+        parentID: 'parent-1',
+        modelID: 'claude-sonnet',
+        providerID: 'anthropic',
+        mode: 'build',
+        path: { cwd: '/tmp/work', root: '/tmp/work' },
+        cost: 0,
+        tokens: {
+          input: 1,
+          output: 1,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+      },
+    },
+  };
+}
+
 describe('OpenCode agent prompt runner', () => {
   let tempRoot: string;
 
@@ -126,6 +156,10 @@ describe('OpenCode agent prompt runner', () => {
           type: 'message.updated',
           properties: { info: { role: 'assistant', time: { completed: Date.now() } } },
         });
+        await options.onAssistantMessageCompleted?.(
+          'assistant progress text',
+          buildAssistantCompletedEvent(),
+        );
         return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
       },
     );
@@ -169,6 +203,117 @@ describe('OpenCode agent prompt runner', () => {
     expect(notifier.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'final answer',
+    );
+  });
+
+  it('flushes completed assistant text before the final response', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'OpenCode update\n\nassistant progress text',
+    );
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'final answer',
+    );
+  });
+
+  it('keeps tool summaries out of Discord output', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onEvent?.({
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'opencode-session-1',
+              messageID: 'message-1',
+              type: 'tool',
+              callID: 'call-1',
+              tool: 'bash',
+              state: {
+                status: 'running',
+                input: { command: 'pnpm test' },
+                time: { start: 1 },
+              },
+            },
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenCalledTimes(2);
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'final answer',
+    );
+  });
+
+  it('flushes pending assistant text before failure messages', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onEvent?.({
+          type: 'session.error',
+          properties: { error: { message: 'failed' } },
+        });
+        await options.onAssistantMessageCompleted?.(
+          'assistant text before failure',
+          buildAssistantCompletedEvent(),
+        );
+        throw new Error('prompt failed');
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'OpenCode update\n\nassistant text before failure',
+    );
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'OpenCode agent session failed: prompt failed',
     );
   });
 
