@@ -62,7 +62,7 @@ describe('handleAgentThreadMessage', () => {
     expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
   });
 
-  it('enqueues follow-up messages for active agent threads', async () => {
+  it('enqueues follow-up messages for completed agent threads', async () => {
     hoisted.findDiscordAgentSessionByThread.mockResolvedValue({
       sessionId: 'session-1',
       provider: 'discord',
@@ -71,7 +71,7 @@ describe('handleAgentThreadMessage', () => {
       userId: 'U_REQUESTER',
       workspaceKey: 'snatch',
       agentProfileKey: 'build',
-      status: 'active',
+      status: 'completed',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -93,11 +93,49 @@ describe('handleAgentThreadMessage', () => {
       sessionId: 'session-1',
       message: 'follow up',
       messageId: 'M1',
+      mode: 'run',
     });
     expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
       queue,
       expect.objectContaining({ type: 'agent.session.message' }),
     );
+  });
+
+  it('offers queue and steer controls while an agent thread is active', async () => {
+    hoisted.findDiscordAgentSessionByThread.mockResolvedValue({
+      sessionId: 'session-1',
+      provider: 'discord',
+      channelId: 'C1',
+      threadId: 'T1',
+      userId: 'U_REQUESTER',
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const message = buildMessage();
+
+    const handled = await handleAgentThreadMessage(
+      message as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(handled).toBe(true);
+    const replyInput = message.reply.mock.calls[0]?.[0] as
+      | {
+          content: string;
+          components: Array<{ components: Array<{ label: string }> }>;
+        }
+      | undefined;
+    expect(replyInput?.content).toContain('busy');
+    expect(replyInput?.components[0]?.components.map((component) => component.label)).toEqual([
+      'Queue',
+      'Steer',
+    ]);
+    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
   });
 
   it('does not enqueue messages while the session is pending', async () => {

@@ -14,6 +14,7 @@ export type DiscordCompletionAction =
 export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
 export type DiscordAgentPermissionDecision = 'once' | 'always' | 'reject';
 export type DiscordAgentQuestionAction = 'custom' | 'submit' | 'reject';
+export type DiscordAgentFollowUpAction = 'queue' | 'steer';
 
 type DiscordActionRow = {
   type: 1;
@@ -150,6 +151,57 @@ export function buildDiscordAgentStopComponents(sessionId: string): DiscordActio
           style: 4,
           label: 'Stop',
           custom_id: buildDiscordAgentStopCustomId(sessionId),
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDiscordAgentFollowUpCustomId(
+  action: DiscordAgentFollowUpAction,
+  sessionId: string,
+  messageId: string,
+) {
+  return `${agentPrefix}:follow:${action}:${sessionId}:${messageId}`;
+}
+
+export function parseDiscordAgentFollowUpCustomId(customId: string):
+  | {
+      action: DiscordAgentFollowUpAction;
+      sessionId: string;
+      messageId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:follow:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const action = parts[3] as DiscordAgentFollowUpAction;
+  if (action !== 'queue' && action !== 'steer') return undefined;
+  const sessionId = parts[4]?.trim();
+  const messageId = parts.slice(5).join(':').trim();
+  if (!sessionId || !messageId) return undefined;
+  return { action, sessionId, messageId };
+}
+
+export function buildDiscordAgentFollowUpBusyComponents(
+  sessionId: string,
+  messageId: string,
+): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 1,
+          label: 'Queue',
+          custom_id: buildDiscordAgentFollowUpCustomId('queue', sessionId, messageId),
+        },
+        {
+          type: 2,
+          style: 4,
+          label: 'Steer',
+          custom_id: buildDiscordAgentFollowUpCustomId('steer', sessionId, messageId),
         },
       ],
     },

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDiscordAgentFollowUpBusyComponents,
+  buildDiscordAgentFollowUpCustomId,
   buildDiscordAgentPermissionComponents,
   buildDiscordAgentPermissionCustomId,
   buildDiscordAgentQuestionActionCustomId,
@@ -10,6 +12,7 @@ import {
   buildDiscordAgentStopCustomId,
   buildDiscordCompletionComponents,
   buildDiscordCompletionCustomId,
+  parseDiscordAgentFollowUpCustomId,
   parseDiscordAgentPermissionCustomId,
   parseDiscordAgentQuestionActionCustomId,
   parseDiscordAgentQuestionModalCustomId,
@@ -95,6 +98,20 @@ describe('discord completion components', () => {
         ],
       },
     ]);
+  });
+
+  it('round-trips agent follow-up custom ids', () => {
+    const customId = buildDiscordAgentFollowUpCustomId('steer', 'session-123', 'message-456');
+    expect(parseDiscordAgentFollowUpCustomId(customId)).toEqual({
+      action: 'steer',
+      sessionId: 'session-123',
+      messageId: 'message-456',
+    });
+  });
+
+  it('builds agent follow-up busy buttons', () => {
+    const rows = buildDiscordAgentFollowUpBusyComponents('session-123', 'message-456');
+    expect(rows[0]?.components.map((component) => component.label)).toEqual(['Queue', 'Steer']);
   });
 
   it('round-trips agent permission custom ids', () => {

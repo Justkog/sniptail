@@ -56,6 +56,7 @@ export type WorkerAgentSessionMessagePayload = {
   response: WorkerReplyTarget;
   message: string;
   messageId?: string;
+  mode?: 'run' | 'queue' | 'steer';
 };
 
 export type WorkerAgentPromptStopPayload = {

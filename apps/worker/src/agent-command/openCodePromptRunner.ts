@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  abortOpenCodeSession,
   rejectOpenCodeQuestion,
   replyOpenCodePermission,
   runOpenCodePrompt,
@@ -19,15 +20,35 @@ import type { BotEventSink } from '../channels/botEventSink.js';
 import {
   clearPendingOpenCodePermissionsForSession,
   deleteActiveOpenCodeRuntime,
+  getActiveOpenCodeRuntime,
   setActiveOpenCodeRuntime,
   setPendingOpenCodePermission,
   takePendingOpenCodePermission,
 } from './activeOpenCodeRuntimes.js';
+import {
+  beginOpenCodePromptTurn,
+  cancelOpenCodeFollowUpSteer,
+  clearOpenCodePromptTurn,
+  enqueueOpenCodeFollowUp,
+  finishOpenCodePromptTurn,
+  isAbortingOpenCodePromptForSteer,
+  isOpenCodePromptTurnActive,
+  steerOpenCodeFollowUp,
+  type QueuedOpenCodeFollowUp,
+} from './activeOpenCodePromptTurns.js';
 import { createDebouncedAgentOutputBuffer } from './debouncedAgentOutput.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
 export type RunAgentSessionStartOptions = {
   event: CoreWorkerEvent<'agent.session.start'>;
+  config: WorkerConfig;
+  notifier: Notifier;
+  botEvents: BotEventSink;
+  env?: NodeJS.ProcessEnv;
+};
+
+export type RunAgentSessionMessageOptions = {
+  event: CoreWorkerEvent<'agent.session.message'>;
   config: WorkerConfig;
   notifier: Notifier;
   botEvents: BotEventSink;
@@ -429,23 +450,44 @@ async function rejectUnrenderableOpenCodeQuestion(input: {
   });
 }
 
-export async function runAgentSessionStart({
-  event,
+function buildOpenCodeAbortOptions(config: WorkerConfig, baseUrl?: string) {
+  return {
+    ...(baseUrl ? { baseUrl } : {}),
+    opencode: {
+      executionMode: config.opencode.executionMode,
+      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
+      ...(config.opencode.serverAuthHeaderEnv
+        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
+        : {}),
+    },
+  };
+}
+
+type OpenCodeTurnInput = {
+  sessionId: string;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  prompt: string;
+  workspaceKey: string;
+  agentProfileKey: string;
+  cwd?: string;
+  codingAgentSessionId?: string;
+};
+
+async function runOpenCodeTurn({
+  turn,
   config,
   notifier,
   botEvents,
-  env = process.env,
-}: RunAgentSessionStartOptions): Promise<void> {
-  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd } = event.payload;
-
-  if (!config.agent.enabled) {
-    logger.warn(
-      { sessionId, workspaceKey, profileKey: agentProfileKey },
-      'Ignoring agent session start because agent command is disabled in worker config',
-    );
-    return;
-  }
-
+  env,
+}: {
+  turn: OpenCodeTurnInput;
+  config: WorkerConfig;
+  notifier: Notifier;
+  botEvents: BotEventSink;
+  env: NodeJS.ProcessEnv;
+}): Promise<void> {
+  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd, codingAgentSessionId } =
+    turn;
   const ref = {
     provider: response.provider,
     channelId: response.channelId,
@@ -494,6 +536,7 @@ export async function runAgentSessionStart({
     const result = await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
       ...buildOpenCodeRunOptions(config, profile.name),
       runtimeId: sessionId,
+      ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
       onSessionId: async (codingAgentSessionId) => {
         await updateAgentSessionCodingAgentSessionId(sessionId, codingAgentSessionId).catch(
           (err) => {
@@ -634,6 +677,14 @@ export async function runAgentSessionStart({
     });
     await notifier.postMessage(ref, formatFinalResponse(result.finalResponse ?? ''));
   } catch (err) {
+    if (isAbortingOpenCodePromptForSteer(sessionId)) {
+      logger.info(
+        { err, sessionId, workspaceKey, profileKey: agentProfileKey },
+        'OpenCode agent prompt aborted for steer follow-up',
+      );
+      await outputBuffer.flush();
+      return;
+    }
     logger.error(
       { err, sessionId, workspaceKey, profileKey: agentProfileKey },
       'OpenCode agent session prompt failed',
@@ -652,4 +703,196 @@ export async function runAgentSessionStart({
     deleteActiveOpenCodeRuntime(sessionId);
     outputBuffer.close();
   }
+}
+
+async function runOpenCodeTurnLoop(input: {
+  initialTurn: OpenCodeTurnInput;
+  config: WorkerConfig;
+  notifier: Notifier;
+  botEvents: BotEventSink;
+  env: NodeJS.ProcessEnv;
+}) {
+  let nextTurn: OpenCodeTurnInput | undefined = input.initialTurn;
+  while (nextTurn) {
+    await runOpenCodeTurn({
+      turn: nextTurn,
+      config: input.config,
+      notifier: input.notifier,
+      botEvents: input.botEvents,
+      env: input.env,
+    });
+    const queued = finishOpenCodePromptTurn(nextTurn.sessionId);
+    if (!queued) {
+      nextTurn = undefined;
+      continue;
+    }
+    const session = await loadAgentSession(queued.sessionId);
+    if (!session || session.status === 'stopped' || session.status === 'failed') {
+      clearOpenCodePromptTurn(queued.sessionId);
+      nextTurn = undefined;
+      continue;
+    }
+    nextTurn = {
+      sessionId: queued.sessionId,
+      response: queued.response,
+      prompt: queued.message,
+      workspaceKey: session.workspaceKey,
+      agentProfileKey: session.agentProfileKey,
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+      ...(session.codingAgentSessionId
+        ? { codingAgentSessionId: session.codingAgentSessionId }
+        : {}),
+    };
+  }
+}
+
+export async function runAgentSessionStart({
+  event,
+  config,
+  notifier,
+  botEvents,
+  env = process.env,
+}: RunAgentSessionStartOptions): Promise<void> {
+  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd } = event.payload;
+
+  if (!config.agent.enabled) {
+    logger.warn(
+      { sessionId, workspaceKey, profileKey: agentProfileKey },
+      'Ignoring agent session start because agent command is disabled in worker config',
+    );
+    return;
+  }
+  if (!beginOpenCodePromptTurn(sessionId)) {
+    await notifier.postMessage(
+      {
+        provider: response.provider,
+        channelId: response.channelId,
+        ...(response.threadId ? { threadId: response.threadId } : {}),
+      },
+      'This agent session already has an active prompt.',
+    );
+    return;
+  }
+
+  await runOpenCodeTurnLoop({
+    initialTurn: {
+      sessionId,
+      response,
+      prompt,
+      workspaceKey,
+      agentProfileKey,
+      ...(cwd ? { cwd } : {}),
+    },
+    config,
+    notifier,
+    botEvents,
+    env,
+  });
+}
+
+export async function runAgentSessionMessage({
+  event,
+  config,
+  notifier,
+  botEvents,
+  env = process.env,
+}: RunAgentSessionMessageOptions): Promise<void> {
+  const { sessionId, response, message, messageId, mode = 'run' } = event.payload;
+  const ref = {
+    provider: response.provider,
+    channelId: response.channelId,
+    ...(response.threadId ? { threadId: response.threadId } : {}),
+  };
+
+  if (!config.agent.enabled) {
+    logger.warn(
+      { sessionId, threadId: response.threadId, userId: response.userId },
+      'Ignoring agent session message because agent command is disabled in worker config',
+    );
+    return;
+  }
+
+  const followUp: QueuedOpenCodeFollowUp = {
+    sessionId,
+    response,
+    message,
+    ...(messageId ? { messageId } : {}),
+  };
+
+  if (isOpenCodePromptTurnActive(sessionId)) {
+    if (mode === 'queue') {
+      enqueueOpenCodeFollowUp(followUp);
+      await notifier.postMessage(ref, 'Follow-up queued for the next agent turn.');
+      return;
+    }
+    if (mode === 'steer') {
+      steerOpenCodeFollowUp(followUp);
+      const activeRuntime = getActiveOpenCodeRuntime(sessionId);
+      if (!activeRuntime) {
+        cancelOpenCodeFollowUpSteer(sessionId);
+        await notifier.postMessage(
+          ref,
+          'Cannot steer this prompt: active runtime is no longer reachable.',
+        );
+        return;
+      }
+      try {
+        await abortOpenCodeSession(
+          activeRuntime.codingAgentSessionId,
+          activeRuntime.directory,
+          env,
+          buildOpenCodeAbortOptions(config, activeRuntime.baseUrl),
+        );
+        await notifier.postMessage(ref, 'Steering current prompt. Running this message next.');
+      } catch (err) {
+        cancelOpenCodeFollowUpSteer(sessionId);
+        logger.error({ err, sessionId }, 'Failed to abort OpenCode prompt for steer follow-up');
+        await notifier.postMessage(
+          ref,
+          `Failed to steer current prompt: ${(err as Error).message}`,
+        );
+      }
+      return;
+    }
+    await notifier.postMessage(ref, 'This agent session already has an active prompt.');
+    return;
+  }
+
+  const session = await loadAgentSession(sessionId);
+  if (!session) {
+    await notifier.postMessage(ref, 'Agent session not found.');
+    return;
+  }
+  if (session.status === 'pending') {
+    await notifier.postMessage(ref, 'This agent session is still waiting to start.');
+    return;
+  }
+  if (session.status !== 'completed' && session.status !== 'active') {
+    await notifier.postMessage(ref, `This agent session is ${session.status}.`);
+    return;
+  }
+  if (!session.codingAgentSessionId) {
+    await notifier.postMessage(ref, 'OpenCode session id is not available for this agent session.');
+    return;
+  }
+  if (!beginOpenCodePromptTurn(sessionId)) {
+    await notifier.postMessage(ref, 'This agent session already has an active prompt.');
+    return;
+  }
+
+  await runOpenCodeTurnLoop({
+    initialTurn: {
+      sessionId,
+      response,
+      prompt: message,
+      workspaceKey: session.workspaceKey,
+      agentProfileKey: session.agentProfileKey,
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+      codingAgentSessionId: session.codingAgentSessionId,
+    },
+    config,
+    notifier,
+    botEvents,
+    env,
+  });
 }

@@ -12,6 +12,7 @@ import {
   deleteActiveOpenCodeRuntime,
   getActiveOpenCodeRuntime,
 } from './activeOpenCodeRuntimes.js';
+import { clearOpenCodePromptTurn } from './activeOpenCodePromptTurns.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
 export type StopAgentPromptOptions = {
@@ -116,6 +117,7 @@ export async function stopAgentPrompt({
     );
     clearPendingOpenCodePermissionsForSession(sessionId);
     deleteActiveOpenCodeRuntime(sessionId);
+    clearOpenCodePromptTurn(sessionId);
     await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session stopped');
     });

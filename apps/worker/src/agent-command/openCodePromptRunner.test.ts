@@ -10,6 +10,7 @@ import type { Notifier } from '../channels/notifier.js';
 
 const hoisted = vi.hoisted(() => ({
   runOpenCodePrompt: vi.fn(),
+  abortOpenCodeSession: vi.fn(),
   replyOpenCodePermission: vi.fn(),
   rejectOpenCodeQuestion: vi.fn(),
   loadAgentSession: vi.fn(),
@@ -19,6 +20,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@sniptail/core/opencode/opencode.js', () => ({
   runOpenCodePrompt: hoisted.runOpenCodePrompt,
+  abortOpenCodeSession: hoisted.abortOpenCodeSession,
   replyOpenCodePermission: hoisted.replyOpenCodePermission,
   rejectOpenCodeQuestion: hoisted.rejectOpenCodeQuestion,
 }));
@@ -30,7 +32,8 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 import { clearActiveOpenCodeRuntimes, getActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
-import { runAgentSessionStart } from './openCodePromptRunner.js';
+import { clearOpenCodePromptTurns } from './activeOpenCodePromptTurns.js';
+import { runAgentSessionMessage, runAgentSessionStart } from './openCodePromptRunner.js';
 
 function buildConfig(workspacePath: string): WorkerConfig {
   return {
@@ -106,6 +109,45 @@ function buildEvent(overrides: Partial<CoreWorkerEvent<'agent.session.start'>['p
       ...overrides,
     },
   } satisfies CoreWorkerEvent<'agent.session.start'>;
+}
+
+function buildMessageEvent(
+  overrides: Partial<CoreWorkerEvent<'agent.session.message'>['payload']> = {},
+) {
+  return {
+    schemaVersion: 1,
+    type: 'agent.session.message',
+    payload: {
+      sessionId: 'session-1',
+      response: {
+        provider: 'discord',
+        channelId: 'thread-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+      },
+      message: 'follow up',
+      messageId: 'message-1',
+      mode: 'run',
+      ...overrides,
+    },
+  } satisfies CoreWorkerEvent<'agent.session.message'>;
+}
+
+function buildSession(overrides: Record<string, unknown> = {}) {
+  return {
+    sessionId: 'session-1',
+    provider: 'discord',
+    channelId: 'channel-1',
+    threadId: 'thread-1',
+    userId: 'user-1',
+    workspaceKey: 'snatch',
+    agentProfileKey: 'build',
+    codingAgentSessionId: 'opencode-session-1',
+    status: 'completed',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
 }
 
 function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
@@ -187,11 +229,13 @@ describe('OpenCode agent prompt runner', () => {
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
     hoisted.rejectOpenCodeQuestion.mockResolvedValue(undefined);
+    hoisted.abortOpenCodeSession.mockResolvedValue(undefined);
     hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
   });
 
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
+    clearOpenCodePromptTurns();
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -689,6 +733,170 @@ describe('OpenCode agent prompt runner', () => {
 
     expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalledWith('session-1', 'failed');
     expect(notifier.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('runs follow-up messages against the stored OpenCode session id', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    hoisted.loadAgentSession.mockResolvedValue(buildSession());
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runOpenCodePrompt).toHaveBeenCalledWith(
+      'follow up',
+      tempRoot,
+      {},
+      expect.objectContaining({
+        runtimeId: 'session-1',
+        sessionId: 'opencode-session-1',
+      }),
+    );
+    expect(notifier.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'final answer',
+    );
+  });
+
+  it('queues follow-up messages while a prompt is active', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    let releaseFirstPrompt!: () => void;
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+    hoisted.runOpenCodePrompt
+      .mockImplementationOnce(
+        async (
+          _prompt: string,
+          _workDir: string,
+          _env: NodeJS.ProcessEnv,
+          options: OpenCodePromptRunOptions,
+        ) => {
+          await options.onSessionId?.('opencode-session-1');
+          await options.onRuntimeReady?.({
+            baseUrl: 'http://127.0.0.1:4096',
+            directory: _workDir,
+            executionMode: 'local',
+            sessionId: 'opencode-session-1',
+          });
+          await new Promise<void>((resolve) => {
+            releaseFirstPrompt = resolve;
+          });
+          return { finalResponse: 'first done', threadId: 'opencode-session-1' };
+        },
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          finalResponse: 'queued done',
+          threadId: 'opencode-session-1',
+        }),
+      );
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(hoisted.runOpenCodePrompt).toHaveBeenCalledTimes(1));
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'queued', mode: 'queue' }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    releaseFirstPrompt();
+    await first;
+
+    expect(hoisted.runOpenCodePrompt).toHaveBeenNthCalledWith(
+      2,
+      'queued',
+      tempRoot,
+      {},
+      expect.objectContaining({ sessionId: 'opencode-session-1' }),
+    );
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'Follow-up queued for the next agent turn.',
+    );
+  });
+
+  it('steers by aborting the active prompt and running the steered message next', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    let rejectFirstPrompt!: (err: Error) => void;
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+    hoisted.runOpenCodePrompt
+      .mockImplementationOnce(
+        async (
+          _prompt: string,
+          _workDir: string,
+          _env: NodeJS.ProcessEnv,
+          options: OpenCodePromptRunOptions,
+        ) => {
+          await options.onSessionId?.('opencode-session-1');
+          await options.onRuntimeReady?.({
+            baseUrl: 'http://127.0.0.1:4096',
+            directory: _workDir,
+            executionMode: 'local',
+            sessionId: 'opencode-session-1',
+          });
+          return new Promise((_, reject) => {
+            rejectFirstPrompt = reject;
+          });
+        },
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          finalResponse: 'steered done',
+          threadId: 'opencode-session-1',
+        }),
+      );
+    hoisted.abortOpenCodeSession.mockImplementationOnce(() => {
+      rejectFirstPrompt(new Error('aborted'));
+      return Promise.resolve();
+    });
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(getActiveOpenCodeRuntime('session-1')).toBeDefined());
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'steered', mode: 'steer' }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await first;
+
+    expect(hoisted.abortOpenCodeSession).toHaveBeenCalledWith(
+      'opencode-session-1',
+      tempRoot,
+      {},
+      expect.objectContaining({ baseUrl: 'http://127.0.0.1:4096' }),
+    );
+    expect(hoisted.runOpenCodePrompt).toHaveBeenNthCalledWith(
+      2,
+      'steered',
+      tempRoot,
+      {},
+      expect.objectContaining({ sessionId: 'opencode-session-1' }),
+    );
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalledWith('session-1', 'failed');
   });
 
   it('marks the session failed and reports errors when workspace resolution fails', async () => {

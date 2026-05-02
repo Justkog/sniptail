@@ -3,7 +3,10 @@ import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
-import { runAgentSessionStart } from './agent-command/openCodePromptRunner.js';
+import {
+  runAgentSessionMessage,
+  runAgentSessionStart,
+} from './agent-command/openCodePromptRunner.js';
 import { resolveAgentInteraction } from './agent-command/resolveOpenCodeInteraction.js';
 import { stopAgentPrompt } from './agent-command/stopOpenCodePrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
@@ -153,27 +156,12 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.message': {
-      if (!config.agent.enabled) {
-        logger.warn(
-          {
-            sessionId: event.payload.sessionId,
-            threadId: event.payload.response.threadId,
-            userId: event.payload.response.userId,
-          },
-          'Ignoring agent session message because agent command is disabled in worker config',
+      void runAgentSessionMessage({ event, config, notifier, botEvents }).catch((err) => {
+        logger.error(
+          { err, sessionId: event.payload.sessionId },
+          'Background agent session follow-up failed',
         );
-        return;
-      }
-      logger.info(
-        {
-          sessionId: event.payload.sessionId,
-          threadId: event.payload.response.threadId,
-          userId: event.payload.response.userId,
-          messageId: event.payload.messageId,
-          messageLength: event.payload.message.length,
-        },
-        'Received agent session message event (stub)',
-      );
+      });
       return;
     }
     case 'agent.prompt.stop': {

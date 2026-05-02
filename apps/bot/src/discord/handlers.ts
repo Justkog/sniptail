@@ -9,6 +9,7 @@ import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
   parseDiscordAgentPermissionCustomId,
+  parseDiscordAgentFollowUpCustomId,
   parseDiscordAgentQuestionActionCustomId,
   parseDiscordAgentQuestionModalCustomId,
   parseDiscordAgentQuestionSelectCustomId,
@@ -37,6 +38,7 @@ import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
 import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
 import { handleAgentPermissionButton } from './features/actions/agentPermission.js';
+import { handleAgentFollowUpButton } from './features/actions/agentFollowUp.js';
 import {
   handleAgentQuestionButton,
   handleAgentQuestionModalSubmit,
@@ -417,6 +419,18 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         await handleAgentPermissionButton(
           interaction,
           parsedAgentPermission,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
+      const parsedAgentFollowUp = parseDiscordAgentFollowUpCustomId(interaction.customId);
+      if (parsedAgentFollowUp) {
+        await handleAgentFollowUpButton(
+          interaction,
+          parsedAgentFollowUp,
           config,
           workerEventQueue,
           permissions,

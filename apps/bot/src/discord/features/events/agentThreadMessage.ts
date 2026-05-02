@@ -3,6 +3,7 @@ import { findDiscordAgentSessionByThread } from '@sniptail/core/agent-sessions/r
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import { buildDiscordAgentFollowUpBusyComponents } from '@sniptail/core/discord/components.js';
 import {
   WORKER_EVENT_SCHEMA_VERSION,
   type WorkerEvent,
@@ -43,7 +44,15 @@ export async function handleAgentThreadMessage(
     await message.reply('This agent session is still waiting to start.');
     return true;
   }
-  if (session.status !== 'active') {
+  if (session.status === 'active') {
+    await message.reply({
+      content:
+        'This agent session is busy. Queue this message for the next turn, or steer by stopping the active prompt and running this message next.',
+      components: buildDiscordAgentFollowUpBusyComponents(session.sessionId, message.id),
+    });
+    return true;
+  }
+  if (session.status !== 'completed') {
     await message.reply(`This agent session is ${session.status}.`);
     return true;
   }
@@ -66,6 +75,7 @@ export async function handleAgentThreadMessage(
       },
       message: text,
       messageId: message.id,
+      mode: 'run',
     },
   };
 
