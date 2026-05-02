@@ -54,6 +54,40 @@ export type BotAgentPermissionUpdatePayload = {
   message?: string;
 };
 
+export type BotAgentQuestionOption = {
+  label: string;
+  description?: string;
+};
+
+export type BotAgentQuestion = {
+  header: string;
+  question: string;
+  options: BotAgentQuestionOption[];
+  multiple: boolean;
+  custom: boolean;
+};
+
+export type BotAgentQuestionRequestPayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  questions: BotAgentQuestion[];
+  expiresAt: string;
+};
+
+export type BotAgentQuestionUpdatePayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  status: 'answered' | 'rejected' | 'expired' | 'failed';
+  actorUserId?: string;
+  message?: string;
+};
+
 export type BotEventPayloadMap = {
   'message.post': {
     channelId: string;
@@ -92,6 +126,8 @@ export type BotEventPayloadMap = {
   };
   'agent.permission.requested': BotAgentPermissionRequestPayload;
   'agent.permission.updated': BotAgentPermissionUpdatePayload;
+  'agent.question.requested': BotAgentQuestionRequestPayload;
+  'agent.question.updated': BotAgentQuestionUpdatePayload;
 };
 
 export type CoreBotEventType = keyof BotEventPayloadMap;

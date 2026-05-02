@@ -11,6 +11,7 @@ import type { Notifier } from '../channels/notifier.js';
 const hoisted = vi.hoisted(() => ({
   runOpenCodePrompt: vi.fn(),
   replyOpenCodePermission: vi.fn(),
+  rejectOpenCodeQuestion: vi.fn(),
   loadAgentSession: vi.fn(),
   updateAgentSessionCodingAgentSessionId: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
@@ -19,6 +20,7 @@ const hoisted = vi.hoisted(() => ({
 vi.mock('@sniptail/core/opencode/opencode.js', () => ({
   runOpenCodePrompt: hoisted.runOpenCodePrompt,
   replyOpenCodePermission: hoisted.replyOpenCodePermission,
+  rejectOpenCodeQuestion: hoisted.rejectOpenCodeQuestion,
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -184,6 +186,7 @@ describe('OpenCode agent prompt runner', () => {
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
+    hoisted.rejectOpenCodeQuestion.mockResolvedValue(undefined);
     hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
   });
 
@@ -444,6 +447,188 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'I need to inspect README files before editing.',
     );
+  });
+
+  it('publishes Discord question requests for OpenCode question events', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'question.asked',
+          properties: {
+            id: 'question-request-1',
+            sessionID: 'opencode-session-1',
+            questions: [
+              {
+                header: 'Target',
+                question: 'Which package should I edit?',
+                options: [{ label: 'Worker', description: 'Worker package' }],
+                multiple: false,
+                custom: true,
+              },
+            ],
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    const published = botEvents.publish.mock.calls[0]?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.question.requested',
+      payload: {
+        sessionId: 'session-1',
+        questions: [
+          {
+            header: 'Target',
+            question: 'Which package should I edit?',
+            multiple: false,
+            custom: true,
+          },
+        ],
+      },
+    });
+  });
+
+  it('flushes buffered assistant output before publishing question requests', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const callOrder: string[] = [];
+    notifier.postMessage.mockImplementation(() => {
+      callOrder.push('message');
+    });
+    botEvents.publish.mockImplementation(() => {
+      callOrder.push('question');
+      return Promise.resolve();
+    });
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onAssistantMessageCompleted?.(
+          'I need your preference before continuing.',
+          buildAssistantCompletedEvent(),
+        );
+        await options.onEvent?.({
+          type: 'question.asked',
+          properties: {
+            id: 'question-request-1',
+            sessionID: 'opencode-session-1',
+            questions: [
+              {
+                header: 'Target',
+                question: 'Which package should I edit?',
+                options: [{ label: 'Worker' }],
+              },
+            ],
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    expect(callOrder.slice(0, 2)).toEqual(['message', 'question']);
+  });
+
+  it('rejects pending question requests after the interaction timeout', async () => {
+    vi.useFakeTimers();
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const config = buildConfig(tempRoot);
+    config.agent.interactionTimeoutMs = 100;
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'question.asked',
+          properties: {
+            id: 'question-request-1',
+            sessionID: 'opencode-session-1',
+            questions: [
+              {
+                header: 'Target',
+                question: 'Which package should I edit?',
+                options: [{ label: 'Worker' }],
+              },
+            ],
+          },
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    try {
+      await runAgentSessionStart({
+        event: buildEvent(),
+        config,
+        notifier,
+        botEvents,
+        env: {},
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(hoisted.rejectOpenCodeQuestion).toHaveBeenCalledWith(
+      tempRoot,
+      {},
+      expect.objectContaining({
+        requestID: 'question-request-1',
+        baseUrl: 'http://127.0.0.1:4096',
+      }),
+    );
+    const published = botEvents.publish.mock.calls.find(
+      (call) => (call[0] as BotEvent).type === 'agent.question.updated',
+    )?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.question.updated',
+      payload: { status: 'expired' },
+    });
   });
 
   it('flushes pending assistant text before failure messages', async () => {

@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { runOpenCodePrompt } from '@sniptail/core/opencode/opencode.js';
+import {
+  rejectOpenCodeQuestion,
+  replyOpenCodePermission,
+  runOpenCodePrompt,
+} from '@sniptail/core/opencode/opencode.js';
 import {
   loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
@@ -10,7 +14,6 @@ import { logger } from '@sniptail/core/logger.js';
 import { BOT_EVENT_SCHEMA_VERSION, type BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
-import { replyOpenCodePermission } from '@sniptail/core/opencode/opencode.js';
 import type { Notifier } from '../channels/notifier.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import {
@@ -100,6 +103,24 @@ type OpenCodePermissionAskedEvent = {
   };
 };
 
+type OpenCodeQuestionAskedEvent = {
+  type: 'question.asked';
+  properties: {
+    id: string;
+    sessionID: string;
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{
+        label: string;
+        description?: string;
+      }>;
+      multiple?: boolean;
+      custom?: boolean;
+    }>;
+  };
+};
+
 function isOpenCodePermissionAskedEvent(event: unknown): event is OpenCodePermissionAskedEvent {
   if (!event || typeof event !== 'object') return false;
   const candidate = event as { type?: unknown; properties?: unknown };
@@ -111,6 +132,20 @@ function isOpenCodePermissionAskedEvent(event: unknown): event is OpenCodePermis
     typeof typed.id === 'string' &&
     typeof typed.sessionID === 'string' &&
     typeof typed.permission === 'string'
+  );
+}
+
+function isOpenCodeQuestionAskedEvent(event: unknown): event is OpenCodeQuestionAskedEvent {
+  if (!event || typeof event !== 'object') return false;
+  const candidate = event as { type?: unknown; properties?: unknown };
+  if (candidate.type !== 'question.asked') return false;
+  const properties = candidate.properties;
+  if (!properties || typeof properties !== 'object') return false;
+  const typed = properties as { id?: unknown; sessionID?: unknown; questions?: unknown };
+  return (
+    typeof typed.id === 'string' &&
+    typeof typed.sessionID === 'string' &&
+    Array.isArray(typed.questions)
   );
 }
 
@@ -155,6 +190,58 @@ function buildPermissionRequestEvent(input: {
   };
 }
 
+function buildQuestionRequestEvent(input: {
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  question: OpenCodeQuestionAskedEvent['properties'];
+  expiresAt: string;
+}): BotEvent {
+  return {
+    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+    provider: 'discord',
+    type: 'agent.question.requested',
+    payload: {
+      channelId: input.response.threadId ?? input.response.channelId,
+      threadId: input.response.threadId ?? input.response.channelId,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      workspaceKey: input.workspaceKey,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      questions: input.question.questions.map((question) => ({
+        header: question.header,
+        question: question.question,
+        options: question.options.map((option) => ({
+          label: option.label,
+          ...(option.description ? { description: option.description } : {}),
+        })),
+        multiple: question.multiple ?? false,
+        custom: question.custom ?? true,
+      })),
+      expiresAt: input.expiresAt,
+    },
+  };
+}
+
+function questionRequestDiscordLimitIssue(
+  question: OpenCodeQuestionAskedEvent['properties'],
+): string | undefined {
+  if (question.questions.length === 0) {
+    return 'OpenCode question request did not include any questions.';
+  }
+  if (question.questions.length > 5) {
+    return 'OpenCode question request has more questions than Discord modals can support.';
+  }
+  if (
+    question.questions.slice(4).some((entry) => entry.options.length > 0 && entry.custom === false)
+  ) {
+    return 'OpenCode question request has too many non-custom choice questions for Discord controls.';
+  }
+  return undefined;
+}
+
 async function publishPermissionUpdated(input: {
   botEvents: BotEventSink;
   response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
@@ -178,7 +265,43 @@ async function publishPermissionUpdated(input: {
   });
 }
 
+async function publishQuestionUpdated(input: {
+  botEvents: BotEventSink;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  sessionId: string;
+  interactionId: string;
+  status: 'expired' | 'failed';
+  message?: string;
+}) {
+  await input.botEvents.publish({
+    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+    provider: 'discord',
+    type: 'agent.question.updated',
+    payload: {
+      channelId: input.response.threadId ?? input.response.channelId,
+      threadId: input.response.threadId ?? input.response.channelId,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: input.status,
+      ...(input.message ? { message: input.message } : {}),
+    },
+  });
+}
+
 function buildOpenCodePermissionReplyOptions(config: WorkerConfig, baseUrl: string) {
+  return {
+    baseUrl,
+    opencode: {
+      executionMode: config.opencode.executionMode,
+      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
+      ...(config.opencode.serverAuthHeaderEnv
+        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
+        : {}),
+    },
+  };
+}
+
+function buildOpenCodeQuestionOptions(config: WorkerConfig, baseUrl: string) {
   return {
     baseUrl,
     opencode: {
@@ -231,6 +354,79 @@ async function rejectOpenCodePermissionOnTimeout(input: {
       message: `Permission request expired, but rejecting it failed: ${(err as Error).message}`,
     });
   }
+}
+
+async function rejectOpenCodeQuestionOnTimeout(input: {
+  sessionId: string;
+  interactionId: string;
+  config: WorkerConfig;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  botEvents: BotEventSink;
+  env: NodeJS.ProcessEnv;
+}) {
+  const pending = takePendingOpenCodePermission(input.sessionId, input.interactionId);
+  if (!pending || pending.kind !== 'question') return;
+  try {
+    await rejectOpenCodeQuestion(pending.directory, input.env, {
+      ...buildOpenCodeQuestionOptions(input.config, pending.baseUrl),
+      requestID: pending.requestId,
+      ...(pending.workspace ? { workspace: pending.workspace } : {}),
+    });
+    await publishQuestionUpdated({
+      botEvents: input.botEvents,
+      response: input.response,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: 'expired',
+      message: 'Question request expired and was rejected.',
+    });
+  } catch (err) {
+    logger.error(
+      { err, sessionId: input.sessionId, interactionId: input.interactionId },
+      'Failed to reject expired OpenCode question request',
+    );
+    await publishQuestionUpdated({
+      botEvents: input.botEvents,
+      response: input.response,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: 'failed',
+      message: `Question request expired, but rejecting it failed: ${(err as Error).message}`,
+    });
+  }
+}
+
+async function rejectUnrenderableOpenCodeQuestion(input: {
+  sessionId: string;
+  interactionId: string;
+  requestId: string;
+  directory: string;
+  baseUrl: string;
+  config: WorkerConfig;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  botEvents: BotEventSink;
+  env: NodeJS.ProcessEnv;
+  message: string;
+}) {
+  try {
+    await rejectOpenCodeQuestion(input.directory, input.env, {
+      ...buildOpenCodeQuestionOptions(input.config, input.baseUrl),
+      requestID: input.requestId,
+    });
+  } catch (err) {
+    logger.error(
+      { err, sessionId: input.sessionId, interactionId: input.interactionId },
+      'Failed to reject unrenderable OpenCode question request',
+    );
+  }
+  await publishQuestionUpdated({
+    botEvents: input.botEvents,
+    response: input.response,
+    sessionId: input.sessionId,
+    interactionId: input.interactionId,
+    status: 'failed',
+    message: input.message,
+  });
 }
 
 export async function runAgentSessionStart({
@@ -336,6 +532,7 @@ export async function runAgentSessionStart({
           setPendingOpenCodePermission({
             sessionId,
             interactionId,
+            kind: 'permission',
             requestId: opencodeEvent.properties.id,
             baseUrl:
               activeRuntimeBaseUrl ??
@@ -355,6 +552,62 @@ export async function runAgentSessionStart({
               workspaceKey,
               ...(cwd ? { cwd } : {}),
               permission: opencodeEvent.properties,
+              expiresAt,
+            }),
+          );
+        }
+        if (isOpenCodeQuestionAskedEvent(opencodeEvent)) {
+          await outputBuffer.flush();
+          const interactionId = randomUUID();
+          const baseUrl =
+            activeRuntimeBaseUrl ??
+            (config.opencode.executionMode === 'server' ? config.opencode.serverUrl : undefined) ??
+            '';
+          const limitIssue = questionRequestDiscordLimitIssue(opencodeEvent.properties);
+          if (limitIssue) {
+            await rejectUnrenderableOpenCodeQuestion({
+              sessionId,
+              interactionId,
+              requestId: opencodeEvent.properties.id,
+              directory: activeRuntimeDirectory,
+              baseUrl,
+              config,
+              response,
+              botEvents,
+              env,
+              message: limitIssue,
+            });
+            return;
+          }
+          const expiresAt = new Date(Date.now() + config.agent.interactionTimeoutMs).toISOString();
+          const timeout = setTimeout(() => {
+            void rejectOpenCodeQuestionOnTimeout({
+              sessionId,
+              interactionId,
+              config,
+              response,
+              botEvents,
+              env,
+            });
+          }, config.agent.interactionTimeoutMs);
+          setPendingOpenCodePermission({
+            sessionId,
+            interactionId,
+            kind: 'question',
+            requestId: opencodeEvent.properties.id,
+            baseUrl,
+            directory: activeRuntimeDirectory,
+            expiresAt,
+            timeout,
+          });
+          await botEvents.publish(
+            buildQuestionRequestEvent({
+              response,
+              sessionId,
+              interactionId,
+              workspaceKey,
+              ...(cwd ? { cwd } : {}),
+              question: opencodeEvent.properties,
               expiresAt,
             }),
           );

@@ -5,9 +5,10 @@ export type ActiveOpenCodeRuntimeRef = {
   executionMode: 'local' | 'server' | 'docker';
 };
 
-export type PendingOpenCodePermission = {
+export type PendingOpenCodeInteraction = {
   sessionId: string;
   interactionId: string;
+  kind: 'permission' | 'question';
   requestId: string;
   baseUrl: string;
   directory: string;
@@ -16,10 +17,18 @@ export type PendingOpenCodePermission = {
   timeout?: NodeJS.Timeout;
 };
 
-const activeOpenCodeRuntimes = new Map<string, ActiveOpenCodeRuntimeRef>();
-const pendingOpenCodePermissions = new Map<string, PendingOpenCodePermission>();
+export type PendingOpenCodePermission = PendingOpenCodeInteraction & {
+  kind: 'permission';
+};
 
-function pendingPermissionKey(sessionId: string, interactionId: string): string {
+export type PendingOpenCodeQuestion = PendingOpenCodeInteraction & {
+  kind: 'question';
+};
+
+const activeOpenCodeRuntimes = new Map<string, ActiveOpenCodeRuntimeRef>();
+const pendingOpenCodeInteractions = new Map<string, PendingOpenCodeInteraction>();
+
+function pendingInteractionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
 }
 
@@ -37,52 +46,57 @@ export function deleteActiveOpenCodeRuntime(sessionId: string): void {
 
 export function clearActiveOpenCodeRuntimes(): void {
   activeOpenCodeRuntimes.clear();
-  clearAllPendingOpenCodePermissions();
+  clearAllPendingOpenCodeInteractions();
 }
 
-export function setPendingOpenCodePermission(permission: PendingOpenCodePermission): void {
-  pendingOpenCodePermissions.set(
-    pendingPermissionKey(permission.sessionId, permission.interactionId),
-    permission,
+export function setPendingOpenCodeInteraction(interaction: PendingOpenCodeInteraction): void {
+  pendingOpenCodeInteractions.set(
+    pendingInteractionKey(interaction.sessionId, interaction.interactionId),
+    interaction,
   );
 }
 
-export function getPendingOpenCodePermission(
+export function getPendingOpenCodeInteraction(
   sessionId: string,
   interactionId: string,
-): PendingOpenCodePermission | undefined {
-  return pendingOpenCodePermissions.get(pendingPermissionKey(sessionId, interactionId));
+): PendingOpenCodeInteraction | undefined {
+  return pendingOpenCodeInteractions.get(pendingInteractionKey(sessionId, interactionId));
 }
 
-export function takePendingOpenCodePermission(
+export function takePendingOpenCodeInteraction(
   sessionId: string,
   interactionId: string,
-): PendingOpenCodePermission | undefined {
-  const key = pendingPermissionKey(sessionId, interactionId);
-  const permission = pendingOpenCodePermissions.get(key);
-  if (!permission) return undefined;
-  pendingOpenCodePermissions.delete(key);
-  if (permission.timeout) {
-    clearTimeout(permission.timeout);
+): PendingOpenCodeInteraction | undefined {
+  const key = pendingInteractionKey(sessionId, interactionId);
+  const interaction = pendingOpenCodeInteractions.get(key);
+  if (!interaction) return undefined;
+  pendingOpenCodeInteractions.delete(key);
+  if (interaction.timeout) {
+    clearTimeout(interaction.timeout);
   }
-  return permission;
+  return interaction;
 }
 
-export function clearPendingOpenCodePermissionsForSession(sessionId: string): void {
-  for (const [key, permission] of pendingOpenCodePermissions) {
-    if (permission.sessionId !== sessionId) continue;
-    pendingOpenCodePermissions.delete(key);
-    if (permission.timeout) {
-      clearTimeout(permission.timeout);
+export function clearPendingOpenCodeInteractionsForSession(sessionId: string): void {
+  for (const [key, interaction] of pendingOpenCodeInteractions) {
+    if (interaction.sessionId !== sessionId) continue;
+    pendingOpenCodeInteractions.delete(key);
+    if (interaction.timeout) {
+      clearTimeout(interaction.timeout);
     }
   }
 }
 
-function clearAllPendingOpenCodePermissions(): void {
-  for (const permission of pendingOpenCodePermissions.values()) {
-    if (permission.timeout) {
-      clearTimeout(permission.timeout);
+function clearAllPendingOpenCodeInteractions(): void {
+  for (const interaction of pendingOpenCodeInteractions.values()) {
+    if (interaction.timeout) {
+      clearTimeout(interaction.timeout);
     }
   }
-  pendingOpenCodePermissions.clear();
+  pendingOpenCodeInteractions.clear();
 }
+
+export const setPendingOpenCodePermission = setPendingOpenCodeInteraction;
+export const getPendingOpenCodePermission = getPendingOpenCodeInteraction;
+export const takePendingOpenCodePermission = takePendingOpenCodeInteraction;
+export const clearPendingOpenCodePermissionsForSession = clearPendingOpenCodeInteractionsForSession;

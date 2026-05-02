@@ -13,6 +13,7 @@ export type DiscordCompletionAction =
 
 export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
 export type DiscordAgentPermissionDecision = 'once' | 'always' | 'reject';
+export type DiscordAgentQuestionAction = 'custom' | 'submit' | 'reject';
 
 type DiscordActionRow = {
   type: 1;
@@ -23,6 +24,24 @@ type DiscordActionRow = {
     custom_id: string;
   }>;
 };
+
+type DiscordSelectActionRow = {
+  type: 1;
+  components: Array<{
+    type: 3;
+    custom_id: string;
+    placeholder: string;
+    min_values: number;
+    max_values: number;
+    options: Array<{
+      label: string;
+      value: string;
+      description?: string;
+    }>;
+  }>;
+};
+
+type DiscordQuestionComponentRow = DiscordActionRow | DiscordSelectActionRow;
 
 const completionPrefix = 'sniptail:completion';
 const approvalPrefix = 'sniptail:approval';
@@ -199,6 +218,162 @@ export function buildDiscordAgentPermissionComponents(
     },
   );
   return [{ type: 1, components }];
+}
+
+export function buildDiscordAgentQuestionSelectCustomId(
+  questionIndex: number,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:qsel:${questionIndex}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionSelectCustomId(customId: string):
+  | {
+      questionIndex: number;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qsel:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const questionIndex = Number.parseInt(parts[3] ?? '', 10);
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!Number.isInteger(questionIndex) || questionIndex < 0 || !sessionId || !interactionId) {
+    return undefined;
+  }
+  return { questionIndex, sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionActionCustomId(
+  action: DiscordAgentQuestionAction,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:qact:${action}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionActionCustomId(customId: string):
+  | {
+      action: DiscordAgentQuestionAction;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qact:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const action = parts[3] as DiscordAgentQuestionAction;
+  if (action !== 'custom' && action !== 'submit' && action !== 'reject') return undefined;
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { action, sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionModalCustomId(sessionId: string, interactionId: string) {
+  return `${agentPrefix}:qmodal:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionModalCustomId(customId: string):
+  | {
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qmodal:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 5) return undefined;
+  const sessionId = parts[3]?.trim();
+  const interactionId = parts.slice(4).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionTextInputCustomId(questionIndex: number) {
+  return `qtext:${questionIndex}`;
+}
+
+export function parseDiscordAgentQuestionTextInputCustomId(customId: string): number | undefined {
+  if (!customId.startsWith('qtext:')) return undefined;
+  const questionIndex = Number.parseInt(customId.slice('qtext:'.length), 10);
+  if (!Number.isInteger(questionIndex) || questionIndex < 0) return undefined;
+  return questionIndex;
+}
+
+export function buildDiscordAgentQuestionComponents(
+  sessionId: string,
+  interactionId: string,
+  questions: Array<{
+    header: string;
+    options: Array<{ label: string; description?: string }>;
+    multiple: boolean;
+    custom: boolean;
+  }>,
+): DiscordQuestionComponentRow[] {
+  const rows: DiscordQuestionComponentRow[] = [];
+  const selectableQuestions = questions.slice(0, 4);
+  selectableQuestions.forEach((question, questionIndex) => {
+    if (!question.options.length) return;
+    const options = question.options.slice(0, 25).map((option, optionIndex) => ({
+      label: option.label.slice(0, 100),
+      value: String(optionIndex),
+      ...(option.description ? { description: option.description.slice(0, 100) } : {}),
+    }));
+    rows.push({
+      type: 1,
+      components: [
+        {
+          type: 3,
+          custom_id: buildDiscordAgentQuestionSelectCustomId(
+            questionIndex,
+            sessionId,
+            interactionId,
+          ),
+          placeholder: question.header.slice(0, 100),
+          min_values: question.multiple ? 0 : 1,
+          max_values: question.multiple ? Math.max(1, options.length) : 1,
+          options,
+        },
+      ],
+    });
+  });
+
+  const controls: DiscordActionRow['components'] = [];
+  if (questions.some((question) => question.custom)) {
+    controls.push({
+      type: 2,
+      style: 1,
+      label: 'Answer with text',
+      custom_id: buildDiscordAgentQuestionActionCustomId('custom', sessionId, interactionId),
+    });
+  }
+  if (questions.length > 1) {
+    controls.push({
+      type: 2,
+      style: 1,
+      label: 'Submit answers',
+      custom_id: buildDiscordAgentQuestionActionCustomId('submit', sessionId, interactionId),
+    });
+  }
+  controls.push(
+    {
+      type: 2,
+      style: 4,
+      label: 'Reject',
+      custom_id: buildDiscordAgentQuestionActionCustomId('reject', sessionId, interactionId),
+    },
+    {
+      type: 2,
+      style: 4,
+      label: 'Stop session',
+      custom_id: buildDiscordAgentStopCustomId(sessionId),
+    },
+  );
+  rows.push({ type: 1, components: controls });
+  return rows;
 }
 
 export function buildDiscordCompletionComponents(

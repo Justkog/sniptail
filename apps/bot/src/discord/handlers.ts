@@ -9,6 +9,9 @@ import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
   parseDiscordAgentPermissionCustomId,
+  parseDiscordAgentQuestionActionCustomId,
+  parseDiscordAgentQuestionModalCustomId,
+  parseDiscordAgentQuestionSelectCustomId,
   parseDiscordAgentStopCustomId,
   parseDiscordApprovalCustomId,
   parseDiscordCompletionCustomId,
@@ -34,6 +37,11 @@ import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
 import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
 import { handleAgentPermissionButton } from './features/actions/agentPermission.js';
+import {
+  handleAgentQuestionButton,
+  handleAgentQuestionModalSubmit,
+  handleAgentQuestionSelect,
+} from './features/actions/agentQuestion.js';
 import { handleAgentStopButton } from './features/actions/agentStop.js';
 import {
   handleBootstrapExtrasContinue,
@@ -428,6 +436,20 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         return;
       }
 
+      const parsedAgentQuestionAction = parseDiscordAgentQuestionActionCustomId(
+        interaction.customId,
+      );
+      if (parsedAgentQuestionAction) {
+        await handleAgentQuestionButton(
+          interaction,
+          parsedAgentQuestionAction,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
       const askFromJobToken = parseAskFromJobContinueButtonCustomId(interaction.customId);
       if (askFromJobToken) {
         await handleAskFromJobContinueButton(interaction, config, askFromJobToken);
@@ -772,6 +794,27 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.isStringSelectMenu()) {
+      const parsedAgentQuestionSelect = parseDiscordAgentQuestionSelectCustomId(
+        interaction.customId,
+      );
+      if (parsedAgentQuestionSelect) {
+        try {
+          await handleAgentQuestionSelect(
+            interaction,
+            parsedAgentQuestionSelect,
+            config,
+            workerEventQueue,
+            permissions,
+          );
+        } catch (err) {
+          logger.error({ err }, 'Discord agent question select failed');
+          await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+        }
+        return;
+      }
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === implementModalCustomId) {
       try {
         await handleImplementModalSubmit(interaction, config, queue, permissions);
@@ -833,6 +876,25 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       } catch (err) {
         logger.error({ err }, 'Discord bootstrap modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+      }
+    }
+
+    if (interaction.isModalSubmit()) {
+      const parsedAgentQuestionModal = parseDiscordAgentQuestionModalCustomId(interaction.customId);
+      if (parsedAgentQuestionModal) {
+        try {
+          await handleAgentQuestionModalSubmit(
+            interaction,
+            parsedAgentQuestionModal,
+            config,
+            workerEventQueue,
+            permissions,
+          );
+        } catch (err) {
+          logger.error({ err }, 'Discord agent question modal submit failed');
+          await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+        }
+        return;
       }
     }
   });

@@ -15,8 +15,15 @@ import {
   postDiscordMessage,
   uploadDiscordFile,
 } from './helpers.js';
-import { buildDiscordAgentPermissionComponents } from '@sniptail/core/discord/components.js';
+import {
+  buildDiscordAgentPermissionComponents,
+  buildDiscordAgentQuestionComponents,
+} from '@sniptail/core/discord/components.js';
 import { setDiscordAgentCommandMetadata } from './agentCommandMetadataCache.js';
+import {
+  clearPendingDiscordAgentQuestion,
+  setPendingDiscordAgentQuestion,
+} from './features/actions/agentQuestion.js';
 import type {
   RuntimeBotChannelAdapter,
   BotEventRuntime,
@@ -41,6 +48,8 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     'agent.metadata.update',
     'agent.permission.requested',
     'agent.permission.updated',
+    'agent.question.requested',
+    'agent.question.updated',
   ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
@@ -114,6 +123,12 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
         return true;
       case 'agent.permission.updated':
         await this.updateAgentPermissionRequest(client, event);
+        return true;
+      case 'agent.question.requested':
+        await this.postAgentQuestionRequest(client, event);
+        return true;
+      case 'agent.question.updated':
+        await this.updateAgentQuestionRequest(client, event);
         return true;
       default:
         return false;
@@ -266,6 +281,97 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
       text: buildAgentPermissionUpdateText(event.payload),
     });
   }
+
+  private async postAgentQuestionRequest(
+    client: Parameters<typeof postDiscordMessage>[0],
+    event: CoreBotEvent<'agent.question.requested'>,
+  ) {
+    setPendingDiscordAgentQuestion(event.payload);
+    const message = await postDiscordMessage(client, {
+      channelId: event.payload.channelId,
+      threadId: event.payload.threadId,
+      text: buildAgentQuestionRequestText(event.payload),
+      components: buildDiscordAgentQuestionComponents(
+        event.payload.sessionId,
+        event.payload.interactionId,
+        event.payload.questions,
+      ),
+    });
+    agentQuestionMessageIds.set(
+      agentQuestionKey(event.payload.sessionId, event.payload.interactionId),
+      message.id,
+    );
+  }
+
+  private async updateAgentQuestionRequest(
+    client: Parameters<typeof postDiscordMessage>[0],
+    event: CoreBotEvent<'agent.question.updated'>,
+  ) {
+    const key = agentQuestionKey(event.payload.sessionId, event.payload.interactionId);
+    clearPendingDiscordAgentQuestion(event.payload.sessionId, event.payload.interactionId);
+    const messageId = agentQuestionMessageIds.get(key);
+    if (messageId) {
+      try {
+        const existingMessage = await fetchDiscordMessage(client, {
+          channelId: event.payload.channelId,
+          threadId: event.payload.threadId,
+          messageId,
+        });
+        await editDiscordMessage(client, {
+          channelId: event.payload.channelId,
+          threadId: event.payload.threadId,
+          messageId,
+          text: appendAgentQuestionStatus(existingMessage.content, event.payload),
+          components: [],
+        });
+        agentQuestionMessageIds.delete(key);
+        return;
+      } catch (err) {
+        logger.warn(
+          {
+            err,
+            sessionId: event.payload.sessionId,
+            interactionId: event.payload.interactionId,
+            channelId: event.payload.channelId,
+            threadId: event.payload.threadId,
+            messageId,
+            cacheSize: agentQuestionMessageIds.size,
+            pid: process.pid,
+          },
+          'Failed to edit Discord agent question message',
+        );
+      }
+    } else {
+      logger.warn(
+        {
+          sessionId: event.payload.sessionId,
+          interactionId: event.payload.interactionId,
+          channelId: event.payload.channelId,
+          threadId: event.payload.threadId,
+          knownKeys: Array.from(agentQuestionMessageIds.keys()).slice(0, 10),
+          cacheSize: agentQuestionMessageIds.size,
+          pid: process.pid,
+        },
+        'Discord agent question message id was not found in local cache',
+      );
+    }
+    logger.info(
+      {
+        sessionId: event.payload.sessionId,
+        interactionId: event.payload.interactionId,
+        channelId: event.payload.channelId,
+        threadId: event.payload.threadId,
+        status: event.payload.status,
+        pid: process.pid,
+      },
+      'Posting fallback Discord agent question update message',
+    );
+    await postDiscordMessage(client, {
+      channelId: event.payload.channelId,
+      threadId: event.payload.threadId,
+      text: buildAgentQuestionUpdateText(event.payload),
+    });
+  }
 }
 
 function agentPermissionKey(sessionId: string, interactionId: string): string {
@@ -273,6 +379,12 @@ function agentPermissionKey(sessionId: string, interactionId: string): string {
 }
 
 const agentPermissionMessageIds = new Map<string, string>();
+
+function agentQuestionKey(sessionId: string, interactionId: string): string {
+  return `${sessionId}:${interactionId}`;
+}
+
+const agentQuestionMessageIds = new Map<string, string>();
 
 function buildAgentPermissionRequestText(
   payload: CoreBotEvent<'agent.permission.requested'>['payload'],
@@ -329,6 +441,71 @@ function appendAgentPermissionStatus(
 ): string {
   const base = stripTrailingPermissionStatus(existingText) || 'Permission requested';
   return `${base}\n\n${buildAgentPermissionUpdateText(payload)}`;
+}
+
+function buildAgentQuestionRequestText(
+  payload: CoreBotEvent<'agent.question.requested'>['payload'],
+): string {
+  const lines = [
+    '**Question requested**',
+    '',
+    `Workspace: \`${payload.workspaceKey}${payload.cwd ? ` / ${payload.cwd}` : ''}\``,
+    `Expires: <t:${Math.floor(Date.parse(payload.expiresAt) / 1000)}:R>`,
+  ];
+  payload.questions.forEach((question, index) => {
+    lines.push('', `**${index + 1}. ${question.header}**`, question.question);
+    if (question.options.length) {
+      const optionLabels = question.options
+        .slice(0, 25)
+        .map((option) => `- ${option.label}${option.description ? `: ${option.description}` : ''}`);
+      lines.push(...optionLabels);
+      if (question.options.length > 25) {
+        lines.push(
+          `_${question.options.length - 25} additional options hidden by Discord limits._`,
+        );
+      }
+    }
+    if (question.multiple) {
+      lines.push('_Multiple choices allowed._');
+    }
+    if (question.custom) {
+      lines.push('_Custom answer allowed._');
+    }
+  });
+  return lines.join('\n');
+}
+
+function buildAgentQuestionUpdateText(
+  payload: CoreBotEvent<'agent.question.updated'>['payload'],
+): string {
+  const actor = payload.actorUserId ? ` by <@${payload.actorUserId}>` : '';
+  if (payload.status === 'answered') return `Question answered${actor}.`;
+  if (payload.status === 'rejected') return `Question rejected${actor}.`;
+  if (payload.status === 'expired') return 'Question request expired and was rejected.';
+  return 'Question request failed.';
+}
+
+function stripTrailingQuestionStatus(text: string): string {
+  const markers = [
+    '\n\nQuestion answer selected by ',
+    '\n\nQuestion rejected by ',
+    '\n\nQuestion submitted by ',
+  ];
+  for (const marker of markers) {
+    const markerIndex = text.lastIndexOf(marker);
+    if (markerIndex !== -1) {
+      return text.slice(0, markerIndex).trim();
+    }
+  }
+  return text.trim();
+}
+
+function appendAgentQuestionStatus(
+  existingText: string,
+  payload: CoreBotEvent<'agent.question.updated'>['payload'],
+): string {
+  const base = stripTrailingQuestionStatus(existingText) || 'Question requested';
+  return `${base}\n\n${buildAgentQuestionUpdateText(payload)}`;
 }
 
 function toReactionAddPayload(

@@ -6,12 +6,14 @@ import type { Notifier } from '../channels/notifier.js';
 import {
   clearActiveOpenCodeRuntimes,
   setActiveOpenCodeRuntime,
-  setPendingOpenCodePermission,
+  setPendingOpenCodeInteraction,
 } from './activeOpenCodeRuntimes.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   replyOpenCodePermission: vi.fn(),
+  replyOpenCodeQuestion: vi.fn(),
+  rejectOpenCodeQuestion: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -20,6 +22,8 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 
 vi.mock('@sniptail/core/opencode/opencode.js', () => ({
   replyOpenCodePermission: hoisted.replyOpenCodePermission,
+  replyOpenCodeQuestion: hoisted.replyOpenCodeQuestion,
+  rejectOpenCodeQuestion: hoisted.rejectOpenCodeQuestion,
 }));
 
 import { resolveAgentInteraction } from './resolveOpenCodeInteraction.js';
@@ -80,6 +84,29 @@ function buildEvent(
   };
 }
 
+function buildQuestionEvent(
+  resolution: CoreWorkerEvent<'agent.interaction.resolve'>['payload']['resolution'] = {
+    kind: 'question',
+    answers: [['Worker']],
+  },
+): CoreWorkerEvent<'agent.interaction.resolve'> {
+  return {
+    schemaVersion: 1,
+    type: 'agent.interaction.resolve',
+    payload: {
+      sessionId: 'session-1',
+      response: {
+        provider: 'discord',
+        channelId: 'thread-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+      },
+      interactionId: 'interaction-1',
+      resolution,
+    },
+  };
+}
+
 function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
   return {
     postMessage: vi.fn(),
@@ -100,15 +127,18 @@ describe('resolve OpenCode agent interactions', () => {
     clearActiveOpenCodeRuntimes();
     hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
+    hoisted.replyOpenCodeQuestion.mockResolvedValue(undefined);
+    hoisted.rejectOpenCodeQuestion.mockResolvedValue(undefined);
     setActiveOpenCodeRuntime('session-1', {
       codingAgentSessionId: 'opencode-session-1',
       baseUrl: 'http://127.0.0.1:4096',
       directory: '/tmp/work',
       executionMode: 'local',
     });
-    setPendingOpenCodePermission({
+    setPendingOpenCodeInteraction({
       sessionId: 'session-1',
       interactionId: 'interaction-1',
+      kind: 'permission',
       requestId: 'permission-request-1',
       baseUrl: 'http://127.0.0.1:4096',
       directory: '/tmp/work',
@@ -171,7 +201,92 @@ describe('resolve OpenCode agent interactions', () => {
     expect(hoisted.replyOpenCodePermission).not.toHaveBeenCalled();
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'This permission request is no longer pending.',
+      'This agent interaction is no longer pending.',
     );
+  });
+
+  it('replies to OpenCode question requests and publishes Discord updates', async () => {
+    clearActiveOpenCodeRuntimes();
+    setActiveOpenCodeRuntime('session-1', {
+      codingAgentSessionId: 'opencode-session-1',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: '/tmp/work',
+      executionMode: 'local',
+    });
+    setPendingOpenCodeInteraction({
+      sessionId: 'session-1',
+      interactionId: 'interaction-1',
+      kind: 'question',
+      requestId: 'question-request-1',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: '/tmp/work',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+
+    await resolveAgentInteraction({
+      event: buildQuestionEvent({ kind: 'question', answers: [['Worker'], ['Tests', 'Build']] }),
+      config: buildConfig(),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    expect(hoisted.replyOpenCodeQuestion).toHaveBeenCalledWith(
+      '/tmp/work',
+      {},
+      expect.objectContaining({
+        requestID: 'question-request-1',
+        answers: [['Worker'], ['Tests', 'Build']],
+      }),
+    );
+    const published = botEvents.publish.mock.calls[0]?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.question.updated',
+      payload: {
+        status: 'answered',
+        actorUserId: 'user-1',
+      },
+    });
+  });
+
+  it('rejects OpenCode question requests when requested', async () => {
+    clearActiveOpenCodeRuntimes();
+    setActiveOpenCodeRuntime('session-1', {
+      codingAgentSessionId: 'opencode-session-1',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: '/tmp/work',
+      executionMode: 'local',
+    });
+    setPendingOpenCodeInteraction({
+      sessionId: 'session-1',
+      interactionId: 'interaction-1',
+      kind: 'question',
+      requestId: 'question-request-1',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: '/tmp/work',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const botEvents = buildBotEvents();
+
+    await resolveAgentInteraction({
+      event: buildQuestionEvent({ kind: 'question', reject: true }),
+      config: buildConfig(),
+      notifier: buildNotifier(),
+      botEvents,
+      env: {},
+    });
+
+    expect(hoisted.rejectOpenCodeQuestion).toHaveBeenCalledWith(
+      '/tmp/work',
+      {},
+      expect.objectContaining({ requestID: 'question-request-1' }),
+    );
+    const published = botEvents.publish.mock.calls[0]?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.question.updated',
+      payload: { status: 'rejected' },
+    });
   });
 });

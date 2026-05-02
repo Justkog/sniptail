@@ -73,7 +73,7 @@ export type WorkerAgentInteractionResolution =
     }
   | {
       kind: 'question';
-      answers?: Record<string, string | string[]>;
+      answers?: string[][];
       reject?: boolean;
       message?: string;
     };
