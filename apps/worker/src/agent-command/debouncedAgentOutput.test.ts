@@ -83,6 +83,30 @@ describe('debounced agent output buffer', () => {
     }
   });
 
+  it('flushes lines pushed while a previous flush is still posting', async () => {
+    const notifier = buildNotifier();
+    let releaseFirstPost: () => void = () => {};
+    const firstPost = new Promise<void>((resolve) => {
+      releaseFirstPost = resolve;
+    });
+    notifier.postMessage.mockReturnValueOnce(firstPost);
+    const buffer = createDebouncedAgentOutputBuffer({ notifier, ref, debounceMs: 1_000 });
+
+    buffer.push('first');
+    const firstFlush = buffer.flush();
+    await Promise.resolve();
+    expect(notifier.postMessage).toHaveBeenCalledTimes(1);
+
+    buffer.push('second');
+    const secondFlush = buffer.flush();
+    releaseFirstPost();
+    await firstFlush;
+    await secondFlush;
+
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(1, ref, 'first');
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(2, ref, 'second');
+  });
+
   it('cancels timers on close', async () => {
     const notifier = buildNotifier();
     const buffer = createDebouncedAgentOutputBuffer({ notifier, ref, debounceMs: 1_000 });

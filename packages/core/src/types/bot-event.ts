@@ -30,6 +30,30 @@ export type BotAgentProfileMetadata = {
   description?: string;
 };
 
+export type BotAgentPermissionRequestPayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  toolName?: string;
+  action?: string;
+  details?: string[];
+  expiresAt: string;
+  allowAlways: boolean;
+};
+
+export type BotAgentPermissionUpdatePayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  status: 'approved_once' | 'approved_always' | 'rejected' | 'expired' | 'failed';
+  actorUserId?: string;
+  message?: string;
+};
+
 export type BotEventPayloadMap = {
   'message.post': {
     channelId: string;
@@ -66,6 +90,8 @@ export type BotEventPayloadMap = {
     profiles: BotAgentProfileMetadata[];
     receivedAt: string;
   };
+  'agent.permission.requested': BotAgentPermissionRequestPayload;
+  'agent.permission.updated': BotAgentPermissionUpdatePayload;
 };
 
 export type CoreBotEventType = keyof BotEventPayloadMap;

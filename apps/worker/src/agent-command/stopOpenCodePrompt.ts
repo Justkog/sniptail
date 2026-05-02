@@ -7,7 +7,11 @@ import { logger } from '@sniptail/core/logger.js';
 import { abortOpenCodeSession } from '@sniptail/core/opencode/opencode.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
-import { deleteActiveOpenCodeRuntime, getActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
+import {
+  clearPendingOpenCodePermissionsForSession,
+  deleteActiveOpenCodeRuntime,
+  getActiveOpenCodeRuntime,
+} from './activeOpenCodeRuntimes.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
 export type StopAgentPromptOptions = {
@@ -110,6 +114,7 @@ export async function stopAgentPrompt({
       env,
       buildOpenCodeAbortOptions(config, baseUrl),
     );
+    clearPendingOpenCodePermissionsForSession(sessionId);
     deleteActiveOpenCodeRuntime(sessionId);
     await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session stopped');

@@ -45,6 +45,16 @@ export type OpenCodeAbortOptions = Pick<AgentRunOptions, 'opencode'> & {
   baseUrl?: string;
 };
 
+export type OpenCodePermissionReply = 'once' | 'always' | 'reject';
+
+export type OpenCodePermissionReplyOptions = Pick<AgentRunOptions, 'opencode'> & {
+  baseUrl?: string;
+  requestID: string;
+  workspace?: string;
+  reply: OpenCodePermissionReply;
+  message?: string;
+};
+
 async function getFreePort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
     const server = createServer();
@@ -176,7 +186,7 @@ async function streamEvents(
   sessionID: string,
   workDir: string,
   signal: AbortSignal,
-  onEvent: ((event: unknown) => void | Promise<void>) | undefined,
+  onEvent: ((event: OpenCodeEvent) => void | Promise<void>) | undefined,
   onAssistantMessageCompleted:
     | ((text: string, event: OpenCodeEvent) => void | Promise<void>)
     | undefined,
@@ -198,10 +208,10 @@ async function streamEvents(
     }
   } catch (err) {
     if (!signal.aborted) {
-      await onEvent?.({
-        type: 'session.error',
-        properties: { sessionID, error: String((err as { message?: unknown })?.message ?? err) },
-      });
+      // await onEvent?.({
+      //   type: 'session.error',
+      //   properties: { sessionID, error: String((err as { message?: unknown })?.message ?? err) },
+      // });
     }
   }
 }
@@ -476,5 +486,29 @@ export async function abortOpenCodeSession(
   const response = await client.session.abort({ sessionID, directory: workDir });
   if (response.error) {
     throw new Error(`OpenCode abort failed: ${JSON.stringify(response.error)}`);
+  }
+}
+
+export async function replyOpenCodePermission(
+  workDir: string,
+  env: NodeJS.ProcessEnv,
+  options: OpenCodePermissionReplyOptions,
+): Promise<void> {
+  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
+  if (!baseUrl) {
+    throw new Error(
+      'OpenCode permission reply requires an active runtime URL or [opencode].server_url.',
+    );
+  }
+  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
+  const response = await client.permission.reply({
+    requestID: options.requestID,
+    directory: workDir,
+    ...(options.workspace ? { workspace: options.workspace } : {}),
+    reply: options.reply,
+    ...(options.message ? { message: options.message } : {}),
+  });
+  if (response.error) {
+    throw new Error(`OpenCode permission reply failed: ${JSON.stringify(response.error)}`);
   }
 }

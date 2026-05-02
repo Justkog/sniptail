@@ -4,11 +4,13 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type { OpenCodePromptRunOptions } from '@sniptail/core/opencode/opencode.js';
+import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
 
 const hoisted = vi.hoisted(() => ({
   runOpenCodePrompt: vi.fn(),
+  replyOpenCodePermission: vi.fn(),
   loadAgentSession: vi.fn(),
   updateAgentSessionCodingAgentSessionId: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
@@ -16,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@sniptail/core/opencode/opencode.js', () => ({
   runOpenCodePrompt: hoisted.runOpenCodePrompt,
+  replyOpenCodePermission: hoisted.replyOpenCodePermission,
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -111,6 +114,12 @@ function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
   };
 }
 
+function buildBotEvents() {
+  return {
+    publish: vi.fn(),
+  };
+}
+
 type AssistantCompletedEvent = Parameters<
   NonNullable<OpenCodePromptRunOptions['onAssistantMessageCompleted']>
 >[1];
@@ -174,6 +183,7 @@ describe('OpenCode agent prompt runner', () => {
     );
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
+    hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
     hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
   });
 
@@ -190,6 +200,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent({ cwd: 'apps/worker' }),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -225,6 +236,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -276,6 +288,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -314,6 +327,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -324,6 +338,112 @@ describe('OpenCode agent prompt runner', () => {
       executionMode: 'local',
     });
     expect(getActiveOpenCodeRuntime('session-1')).toBeUndefined();
+  });
+
+  it('publishes Discord permission requests for OpenCode permission events', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'bash',
+            patterns: ['pnpm run check'],
+            metadata: { command: 'pnpm run check' },
+            always: [],
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    const published = botEvents.publish.mock.calls[0]?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.permission.requested',
+      payload: {
+        sessionId: 'session-1',
+        toolName: 'bash',
+        action: 'pnpm run check',
+        allowAlways: true,
+      },
+    });
+  });
+
+  it('flushes buffered assistant output before publishing permission requests', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const callOrder: string[] = [];
+    notifier.postMessage.mockImplementation(() => {
+      callOrder.push('message');
+    });
+    botEvents.publish.mockImplementation(() => {
+      callOrder.push('permission');
+      return Promise.resolve();
+    });
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onAssistantMessageCompleted?.(
+          'I need to inspect README files before editing.',
+          buildAssistantCompletedEvent(),
+        );
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'glob',
+            patterns: ['**/[Rr][Ee][Aa][Dd][Mm][Ee]*'],
+            metadata: { pattern: '**/[Rr][Ee][Aa][Dd][Mm][Ee]*' },
+            always: [],
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    expect(callOrder.slice(0, 2)).toEqual(['message', 'permission']);
+    expect(notifier.postMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'I need to inspect README files before editing.',
+    );
   });
 
   it('flushes pending assistant text before failure messages', async () => {
@@ -352,6 +472,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -377,6 +498,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -391,6 +513,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent({ cwd: 'missing' }),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -411,6 +534,7 @@ describe('OpenCode agent prompt runner', () => {
       event: buildEvent(),
       config,
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { runOpenCodePrompt } from '@sniptail/core/opencode/opencode.js';
 import {
   loadAgentSession,
@@ -6,10 +7,19 @@ import {
 } from '@sniptail/core/agent-sessions/registry.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
+import { BOT_EVENT_SCHEMA_VERSION, type BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
+import { replyOpenCodePermission } from '@sniptail/core/opencode/opencode.js';
 import type { Notifier } from '../channels/notifier.js';
-import { deleteActiveOpenCodeRuntime, setActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
+import type { BotEventSink } from '../channels/botEventSink.js';
+import {
+  clearPendingOpenCodePermissionsForSession,
+  deleteActiveOpenCodeRuntime,
+  setActiveOpenCodeRuntime,
+  setPendingOpenCodePermission,
+  takePendingOpenCodePermission,
+} from './activeOpenCodeRuntimes.js';
 import { createDebouncedAgentOutputBuffer } from './debouncedAgentOutput.js';
 import { resolveAgentWorkspace } from './workspaceResolver.js';
 
@@ -17,6 +27,7 @@ export type RunAgentSessionStartOptions = {
   event: CoreWorkerEvent<'agent.session.start'>;
   config: WorkerConfig;
   notifier: Notifier;
+  botEvents: BotEventSink;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -78,10 +89,155 @@ async function isSessionStopped(sessionId: string): Promise<boolean> {
   return session?.status === 'stopped';
 }
 
+type OpenCodePermissionAskedEvent = {
+  type: 'permission.asked';
+  properties: {
+    id: string;
+    sessionID: string;
+    permission: string;
+    patterns?: string[];
+    metadata?: Record<string, unknown>;
+  };
+};
+
+function isOpenCodePermissionAskedEvent(event: unknown): event is OpenCodePermissionAskedEvent {
+  if (!event || typeof event !== 'object') return false;
+  const candidate = event as { type?: unknown; properties?: unknown };
+  if (candidate.type !== 'permission.asked') return false;
+  const properties = candidate.properties;
+  if (!properties || typeof properties !== 'object') return false;
+  const typed = properties as { id?: unknown; sessionID?: unknown; permission?: unknown };
+  return (
+    typeof typed.id === 'string' &&
+    typeof typed.sessionID === 'string' &&
+    typeof typed.permission === 'string'
+  );
+}
+
+function summarizePermissionMetadata(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) return [];
+  return Object.entries(metadata)
+    .slice(0, 6)
+    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
+}
+
+function buildPermissionRequestEvent(input: {
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  permission: OpenCodePermissionAskedEvent['properties'];
+  expiresAt: string;
+}): BotEvent {
+  const patterns = input.permission.patterns ?? [];
+  const details = [
+    ...patterns.map((pattern) => `Pattern: ${pattern}`),
+    ...summarizePermissionMetadata(input.permission.metadata),
+  ];
+  return {
+    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+    provider: 'discord',
+    type: 'agent.permission.requested',
+    payload: {
+      channelId: input.response.threadId ?? input.response.channelId,
+      threadId: input.response.threadId ?? input.response.channelId,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      workspaceKey: input.workspaceKey,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      toolName: input.permission.permission,
+      ...(patterns.length ? { action: patterns.join(', ') } : {}),
+      ...(details.length ? { details } : {}),
+      expiresAt: input.expiresAt,
+      allowAlways: true,
+    },
+  };
+}
+
+async function publishPermissionUpdated(input: {
+  botEvents: BotEventSink;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  sessionId: string;
+  interactionId: string;
+  status: 'expired' | 'failed';
+  message?: string;
+}) {
+  await input.botEvents.publish({
+    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+    provider: 'discord',
+    type: 'agent.permission.updated',
+    payload: {
+      channelId: input.response.threadId ?? input.response.channelId,
+      threadId: input.response.threadId ?? input.response.channelId,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: input.status,
+      ...(input.message ? { message: input.message } : {}),
+    },
+  });
+}
+
+function buildOpenCodePermissionReplyOptions(config: WorkerConfig, baseUrl: string) {
+  return {
+    baseUrl,
+    opencode: {
+      executionMode: config.opencode.executionMode,
+      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
+      ...(config.opencode.serverAuthHeaderEnv
+        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
+        : {}),
+    },
+  };
+}
+
+async function rejectOpenCodePermissionOnTimeout(input: {
+  sessionId: string;
+  interactionId: string;
+  config: WorkerConfig;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  botEvents: BotEventSink;
+  env: NodeJS.ProcessEnv;
+}) {
+  const pending = takePendingOpenCodePermission(input.sessionId, input.interactionId);
+  if (!pending) return;
+  try {
+    await replyOpenCodePermission(pending.directory, input.env, {
+      ...buildOpenCodePermissionReplyOptions(input.config, pending.baseUrl),
+      requestID: pending.requestId,
+      ...(pending.workspace ? { workspace: pending.workspace } : {}),
+      reply: 'reject',
+      message: 'Permission request expired in Discord.',
+    });
+    await publishPermissionUpdated({
+      botEvents: input.botEvents,
+      response: input.response,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: 'expired',
+      message: 'Permission request expired and was rejected.',
+    });
+  } catch (err) {
+    logger.error(
+      { err, sessionId: input.sessionId, interactionId: input.interactionId },
+      'Failed to reject expired OpenCode permission request',
+    );
+    await publishPermissionUpdated({
+      botEvents: input.botEvents,
+      response: input.response,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: 'failed',
+      message: `Permission request expired, but rejecting it failed: ${(err as Error).message}`,
+    });
+  }
+}
+
 export async function runAgentSessionStart({
   event,
   config,
   notifier,
+  botEvents,
   env = process.env,
 }: RunAgentSessionStartOptions): Promise<void> {
   const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd } = event.payload;
@@ -136,6 +292,9 @@ export async function runAgentSessionStart({
       'Starting OpenCode agent session prompt',
     );
 
+    let activeRuntimeBaseUrl: string | undefined;
+    let activeRuntimeDirectory = resolved.resolvedCwd;
+
     const result = await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
       ...buildOpenCodeRunOptions(config, profile.name),
       runtimeId: sessionId,
@@ -150,6 +309,8 @@ export async function runAgentSessionStart({
         );
       },
       onRuntimeReady: (runtime) => {
+        activeRuntimeBaseUrl = runtime.baseUrl;
+        activeRuntimeDirectory = runtime.directory;
         setActiveOpenCodeRuntime(sessionId, {
           codingAgentSessionId: runtime.sessionId,
           baseUrl: runtime.baseUrl,
@@ -157,7 +318,47 @@ export async function runAgentSessionStart({
           executionMode: runtime.executionMode,
         });
       },
-      onEvent: (opencodeEvent) => {
+      onEvent: async (opencodeEvent) => {
+        if (isOpenCodePermissionAskedEvent(opencodeEvent)) {
+          await outputBuffer.flush();
+          const interactionId = randomUUID();
+          const expiresAt = new Date(Date.now() + config.agent.interactionTimeoutMs).toISOString();
+          const timeout = setTimeout(() => {
+            void rejectOpenCodePermissionOnTimeout({
+              sessionId,
+              interactionId,
+              config,
+              response,
+              botEvents,
+              env,
+            });
+          }, config.agent.interactionTimeoutMs);
+          setPendingOpenCodePermission({
+            sessionId,
+            interactionId,
+            requestId: opencodeEvent.properties.id,
+            baseUrl:
+              activeRuntimeBaseUrl ??
+              (config.opencode.executionMode === 'server'
+                ? config.opencode.serverUrl
+                : undefined) ??
+              '',
+            directory: activeRuntimeDirectory,
+            expiresAt,
+            timeout,
+          });
+          await botEvents.publish(
+            buildPermissionRequestEvent({
+              response,
+              sessionId,
+              interactionId,
+              workspaceKey,
+              ...(cwd ? { cwd } : {}),
+              permission: opencodeEvent.properties,
+              expiresAt,
+            }),
+          );
+        }
         const summary = summarizeEvent(opencodeEvent);
         if (!summary) return;
         if (summary.isError) {
@@ -194,6 +395,7 @@ export async function runAgentSessionStart({
     await outputBuffer.flush();
     await notifier.postMessage(ref, formatFailure(err));
   } finally {
+    clearPendingOpenCodePermissionsForSession(sessionId);
     deleteActiveOpenCodeRuntime(sessionId);
     outputBuffer.close();
   }

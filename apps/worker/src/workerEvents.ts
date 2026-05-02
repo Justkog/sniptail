@@ -4,6 +4,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
 import { runAgentSessionStart } from './agent-command/openCodePromptRunner.js';
+import { resolveAgentInteraction } from './agent-command/resolveOpenCodeInteraction.js';
 import { stopAgentPrompt } from './agent-command/stopOpenCodePrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
@@ -143,7 +144,7 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.start': {
-      void runAgentSessionStart({ event, config, notifier }).catch((err) => {
+      void runAgentSessionStart({ event, config, notifier, botEvents }).catch((err) => {
         logger.error(
           { err, sessionId: event.payload.sessionId },
           'Background agent session prompt failed',
@@ -180,28 +181,7 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.interaction.resolve': {
-      if (!config.agent.enabled) {
-        logger.warn(
-          {
-            sessionId: event.payload.sessionId,
-            interactionId: event.payload.interactionId,
-            threadId: event.payload.response.threadId,
-            userId: event.payload.response.userId,
-          },
-          'Ignoring agent interaction resolution because agent command is disabled in worker config',
-        );
-        return;
-      }
-      logger.info(
-        {
-          sessionId: event.payload.sessionId,
-          interactionId: event.payload.interactionId,
-          interactionKind: event.payload.resolution.kind,
-          threadId: event.payload.response.threadId,
-          userId: event.payload.response.userId,
-        },
-        'Received agent interaction resolution event (stub)',
-      );
+      await resolveAgentInteraction({ event, config, notifier, botEvents });
       return;
     }
     default:

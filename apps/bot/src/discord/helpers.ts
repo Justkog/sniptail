@@ -38,6 +38,20 @@ type DiscordReactionOptions = {
   threadId?: string;
 };
 
+type DiscordMessageEditOptions = {
+  channelId: string;
+  messageId: string;
+  text: string;
+  threadId?: string;
+  components?: unknown[];
+};
+
+type DiscordMessageFetchOptions = {
+  channelId: string;
+  messageId: string;
+  threadId?: string;
+};
+
 type DiscordEphemeralOptions = {
   channelId: string;
   userId: string;
@@ -133,6 +147,20 @@ export async function editDiscordInteractionReply(
     Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
     { body: { content: options.text } },
   );
+}
+
+export async function editDiscordMessage(client: Client, options: DiscordMessageEditOptions) {
+  const channel = await resolveChannel(client, options.threadId ?? options.channelId);
+  const message = await channel.messages.fetch(options.messageId);
+  await message.edit({
+    content: options.text,
+    components: (options.components ?? []) as NonNullable<MessageCreateOptions['components']>,
+  });
+}
+
+export async function fetchDiscordMessage(client: Client, options: DiscordMessageFetchOptions) {
+  const channel = await resolveChannel(client, options.threadId ?? options.channelId);
+  return channel.messages.fetch(options.messageId);
 }
 
 function normalizeReactionName(name: string): string {

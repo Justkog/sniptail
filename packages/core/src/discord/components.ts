@@ -12,6 +12,7 @@ export type DiscordCompletionAction =
   | 'clearJobCancel';
 
 export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
+export type DiscordAgentPermissionDecision = 'once' | 'always' | 'reject';
 
 type DiscordActionRow = {
   type: 1;
@@ -134,6 +135,70 @@ export function buildDiscordAgentStopComponents(sessionId: string): DiscordActio
       ],
     },
   ];
+}
+
+export function buildDiscordAgentPermissionCustomId(
+  decision: DiscordAgentPermissionDecision,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:perm:${decision}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentPermissionCustomId(customId: string):
+  | {
+      decision: DiscordAgentPermissionDecision;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:perm:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const decision = parts[3] as DiscordAgentPermissionDecision;
+  if (decision !== 'once' && decision !== 'always' && decision !== 'reject') return undefined;
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { decision, sessionId, interactionId };
+}
+
+export function buildDiscordAgentPermissionComponents(
+  sessionId: string,
+  interactionId: string,
+  options?: { allowAlways?: boolean },
+): DiscordActionRow[] {
+  const components: DiscordActionRow['components'] = [
+    {
+      type: 2,
+      style: 1,
+      label: 'Approve once',
+      custom_id: buildDiscordAgentPermissionCustomId('once', sessionId, interactionId),
+    },
+  ];
+  if (options?.allowAlways ?? false) {
+    components.push({
+      type: 2,
+      style: 2,
+      label: 'Always allow',
+      custom_id: buildDiscordAgentPermissionCustomId('always', sessionId, interactionId),
+    });
+  }
+  components.push(
+    {
+      type: 2,
+      style: 4,
+      label: 'Reject',
+      custom_id: buildDiscordAgentPermissionCustomId('reject', sessionId, interactionId),
+    },
+    {
+      type: 2,
+      style: 4,
+      label: 'Stop session',
+      custom_id: buildDiscordAgentStopCustomId(sessionId),
+    },
+  );
+  return [{ type: 1, components }];
 }
 
 export function buildDiscordCompletionComponents(

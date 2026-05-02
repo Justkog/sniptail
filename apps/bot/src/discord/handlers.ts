@@ -8,6 +8,7 @@ import { Events } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
+  parseDiscordAgentPermissionCustomId,
   parseDiscordAgentStopCustomId,
   parseDiscordApprovalCustomId,
   parseDiscordCompletionCustomId,
@@ -32,6 +33,7 @@ import { handleImplementSelection } from './features/actions/implementSelection.
 import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
 import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
+import { handleAgentPermissionButton } from './features/actions/agentPermission.js';
 import { handleAgentStopButton } from './features/actions/agentStop.js';
 import {
   handleBootstrapExtrasContinue,
@@ -402,6 +404,18 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
+      const parsedAgentPermission = parseDiscordAgentPermissionCustomId(interaction.customId);
+      if (parsedAgentPermission) {
+        await handleAgentPermissionButton(
+          interaction,
+          parsedAgentPermission,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
       const parsedAgentStop = parseDiscordAgentStopCustomId(interaction.customId);
       if (parsedAgentStop) {
         await handleAgentStopButton(

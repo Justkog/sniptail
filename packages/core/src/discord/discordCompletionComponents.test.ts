@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDiscordAgentPermissionComponents,
+  buildDiscordAgentPermissionCustomId,
   buildDiscordAgentStopComponents,
   buildDiscordAgentStopCustomId,
   buildDiscordCompletionComponents,
   buildDiscordCompletionCustomId,
+  parseDiscordAgentPermissionCustomId,
   parseDiscordAgentStopCustomId,
   parseDiscordCompletionCustomId,
 } from './components.js';
@@ -84,6 +87,31 @@ describe('discord completion components', () => {
           },
         ],
       },
+    ]);
+  });
+
+  it('round-trips agent permission custom ids', () => {
+    const customId = buildDiscordAgentPermissionCustomId(
+      'always',
+      'session-123',
+      'interaction-456',
+    );
+    expect(parseDiscordAgentPermissionCustomId(customId)).toEqual({
+      decision: 'always',
+      sessionId: 'session-123',
+      interactionId: 'interaction-456',
+    });
+  });
+
+  it('builds agent permission buttons with always allow and stop session', () => {
+    const rows = buildDiscordAgentPermissionComponents('session-123', 'interaction-456', {
+      allowAlways: true,
+    });
+    expect(rows[0]?.components.map((component) => component.label)).toEqual([
+      'Approve once',
+      'Always allow',
+      'Reject',
+      'Stop session',
     ]);
   });
 });
