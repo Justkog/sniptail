@@ -21,9 +21,16 @@ import {
   clearPendingOpenCodePermissionsForSession,
   deleteActiveOpenCodeRuntime,
   getActiveOpenCodeRuntime,
+  hasVisibleOpenCodePermission,
+  hasScheduledOpenCodePermissionPromotion,
+  markPendingOpenCodePermissionVisible,
+  promoteNextQueuedOpenCodePermission,
+  scheduleOpenCodePermissionPromotion,
   setActiveOpenCodeRuntime,
   setPendingOpenCodePermission,
+  takePendingOpenCodePermissionByRequestId,
   takePendingOpenCodePermission,
+  type PendingOpenCodePermission,
 } from './activeOpenCodeRuntimes.js';
 import {
   beginOpenCodePromptTurn,
@@ -54,6 +61,8 @@ export type RunAgentSessionMessageOptions = {
   botEvents: BotEventSink;
   env?: NodeJS.ProcessEnv;
 };
+
+const ALWAYS_PERMISSION_PROMOTION_DELAY_MS = 750;
 
 function buildOpenCodeRunOptions(config: WorkerConfig, profileName: string) {
   return {
@@ -124,6 +133,15 @@ type OpenCodePermissionAskedEvent = {
   };
 };
 
+type OpenCodePermissionRepliedEvent = {
+  type: 'permission.replied';
+  properties: {
+    sessionID: string;
+    requestID: string;
+    reply: 'once' | 'always' | 'reject';
+  };
+};
+
 type OpenCodeQuestionAskedEvent = {
   type: 'question.asked';
   properties: {
@@ -168,6 +186,26 @@ function isOpenCodeQuestionAskedEvent(event: unknown): event is OpenCodeQuestion
     typeof typed.sessionID === 'string' &&
     Array.isArray(typed.questions)
   );
+}
+
+function isOpenCodePermissionRepliedEvent(event: unknown): event is OpenCodePermissionRepliedEvent {
+  if (!event || typeof event !== 'object') return false;
+  const candidate = event as { type?: unknown; properties?: unknown };
+  if (candidate.type !== 'permission.replied') return false;
+  const properties = candidate.properties;
+  if (!properties || typeof properties !== 'object') return false;
+  const typed = properties as { sessionID?: unknown; requestID?: unknown; reply?: unknown };
+  return (
+    typeof typed.sessionID === 'string' &&
+    typeof typed.requestID === 'string' &&
+    (typed.reply === 'once' || typed.reply === 'always' || typed.reply === 'reject')
+  );
+}
+
+function getOpenCodeEventType(event: unknown): string | undefined {
+  if (!event || typeof event !== 'object') return undefined;
+  const type = (event as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
 }
 
 function summarizePermissionMetadata(metadata: Record<string, unknown> | undefined): string[] {
@@ -268,7 +306,7 @@ async function publishPermissionUpdated(input: {
   response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
   sessionId: string;
   interactionId: string;
-  status: 'expired' | 'failed';
+  status: 'approved_once' | 'approved_always' | 'rejected' | 'expired' | 'failed';
   message?: string;
 }) {
   await input.botEvents.publish({
@@ -284,6 +322,57 @@ async function publishPermissionUpdated(input: {
       ...(input.message ? { message: input.message } : {}),
     },
   });
+}
+
+function permissionReplyStatus(reply: 'once' | 'always' | 'reject') {
+  switch (reply) {
+    case 'once':
+      return 'approved_once' as const;
+    case 'always':
+      return 'approved_always' as const;
+    case 'reject':
+      return 'rejected' as const;
+  }
+}
+
+async function publishPromotedPermission(input: {
+  botEvents: BotEventSink;
+  permission: PendingOpenCodePermission | undefined;
+}) {
+  if (!input.permission) return;
+  await input.botEvents.publish(input.permission.requestEvent);
+}
+
+async function promoteNextPermission(input: { sessionId: string; botEvents: BotEventSink }) {
+  await publishPromotedPermission({
+    botEvents: input.botEvents,
+    permission: promoteNextQueuedOpenCodePermission(input.sessionId),
+  });
+}
+
+function scheduleAlwaysPermissionPromotion(input: { sessionId: string; botEvents: BotEventSink }) {
+  const replacingExistingTimer = hasScheduledOpenCodePermissionPromotion(input.sessionId);
+  scheduleOpenCodePermissionPromotion(input.sessionId, ALWAYS_PERMISSION_PROMOTION_DELAY_MS, () => {
+    const promoted = promoteNextQueuedOpenCodePermission(input.sessionId);
+    logger.info(
+      {
+        sessionId: input.sessionId,
+        promotedInteractionId: promoted?.interactionId,
+        promotedRequestId: promoted?.requestId,
+        promotedDisplayState: promoted?.displayState,
+      },
+      'Deferred Discord permission display queue promotion fired after always reply',
+    );
+    void publishPromotedPermission({ botEvents: input.botEvents, permission: promoted });
+  });
+  logger.info(
+    {
+      sessionId: input.sessionId,
+      delayMs: ALWAYS_PERMISSION_PROMOTION_DELAY_MS,
+      replacingExistingTimer,
+    },
+    'Scheduled deferred Discord permission display queue promotion after always reply',
+  );
 }
 
 async function publishQuestionUpdated(input: {
@@ -344,7 +433,8 @@ async function rejectOpenCodePermissionOnTimeout(input: {
   env: NodeJS.ProcessEnv;
 }) {
   const pending = takePendingOpenCodePermission(input.sessionId, input.interactionId);
-  if (!pending) return;
+  if (!pending || pending.kind !== 'permission') return;
+  const wasDisplayed = pending.displayState === 'visible' || pending.displayState === 'reply_sent';
   try {
     await replyOpenCodePermission(pending.directory, input.env, {
       ...buildOpenCodePermissionReplyOptions(input.config, pending.baseUrl),
@@ -353,27 +443,33 @@ async function rejectOpenCodePermissionOnTimeout(input: {
       reply: 'reject',
       message: 'Permission request expired in Discord.',
     });
-    await publishPermissionUpdated({
-      botEvents: input.botEvents,
-      response: input.response,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      status: 'expired',
-      message: 'Permission request expired and was rejected.',
-    });
+    if (wasDisplayed) {
+      await publishPermissionUpdated({
+        botEvents: input.botEvents,
+        response: input.response,
+        sessionId: input.sessionId,
+        interactionId: input.interactionId,
+        status: 'expired',
+        message: 'Permission request expired and was rejected.',
+      });
+    }
   } catch (err) {
     logger.error(
       { err, sessionId: input.sessionId, interactionId: input.interactionId },
       'Failed to reject expired OpenCode permission request',
     );
-    await publishPermissionUpdated({
-      botEvents: input.botEvents,
-      response: input.response,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      status: 'failed',
-      message: `Permission request expired, but rejecting it failed: ${(err as Error).message}`,
-    });
+    if (wasDisplayed) {
+      await publishPermissionUpdated({
+        botEvents: input.botEvents,
+        response: input.response,
+        sessionId: input.sessionId,
+        interactionId: input.interactionId,
+        status: 'failed',
+        message: `Permission request expired, but rejecting it failed: ${(err as Error).message}`,
+      });
+    }
+  } finally {
+    await promoteNextPermission({ sessionId: input.sessionId, botEvents: input.botEvents });
   }
 }
 
@@ -558,6 +654,13 @@ async function runOpenCodeTurn({
         });
       },
       onEvent: async (opencodeEvent) => {
+        const opencodeEventType = getOpenCodeEventType(opencodeEvent);
+        if (opencodeEventType?.startsWith('permission.')) {
+          logger.info(
+            { sessionId, opencodeEvent },
+            'OpenCode permission event received for agent session',
+          );
+        }
         if (isOpenCodePermissionAskedEvent(opencodeEvent)) {
           await outputBuffer.flush();
           const interactionId = randomUUID();
@@ -572,10 +675,20 @@ async function runOpenCodeTurn({
               env,
             });
           }, config.agent.interactionTimeoutMs);
+          const requestEvent = buildPermissionRequestEvent({
+            response,
+            sessionId,
+            interactionId,
+            workspaceKey,
+            ...(cwd ? { cwd } : {}),
+            permission: opencodeEvent.properties,
+            expiresAt,
+          });
           setPendingOpenCodePermission({
             sessionId,
             interactionId,
             kind: 'permission',
+            displayState: 'queued',
             requestId: opencodeEvent.properties.id,
             baseUrl:
               activeRuntimeBaseUrl ??
@@ -586,18 +699,85 @@ async function runOpenCodeTurn({
             directory: activeRuntimeDirectory,
             expiresAt,
             timeout,
+            requestEvent,
           });
-          await botEvents.publish(
-            buildPermissionRequestEvent({
-              response,
+          logger.info(
+            {
               sessionId,
               interactionId,
-              workspaceKey,
-              ...(cwd ? { cwd } : {}),
-              permission: opencodeEvent.properties,
-              expiresAt,
-            }),
+              requestId: opencodeEvent.properties.id,
+              permission: opencodeEvent.properties.permission,
+              visiblePermissionAlreadyPresent: hasVisibleOpenCodePermission(sessionId),
+            },
+            'Tracked OpenCode permission request',
           );
+          if (!hasVisibleOpenCodePermission(sessionId)) {
+            await publishPromotedPermission({
+              botEvents,
+              permission: markPendingOpenCodePermissionVisible(sessionId, interactionId),
+            });
+            logger.info(
+              {
+                sessionId,
+                interactionId,
+                requestId: opencodeEvent.properties.id,
+                permission: opencodeEvent.properties.permission,
+              },
+              'Published visible Discord permission request',
+            );
+          } else {
+            logger.info(
+              {
+                sessionId,
+                interactionId,
+                requestId: opencodeEvent.properties.id,
+                permission: opencodeEvent.properties.permission,
+              },
+              'Queued hidden Discord permission request',
+            );
+          }
+        }
+        if (isOpenCodePermissionRepliedEvent(opencodeEvent)) {
+          const pending = takePendingOpenCodePermissionByRequestId(
+            opencodeEvent.properties.requestID,
+          );
+          logger.info(
+            {
+              sessionId,
+              requestId: opencodeEvent.properties.requestID,
+              reply: opencodeEvent.properties.reply,
+              matchedPending: Boolean(pending),
+              interactionId: pending?.interactionId,
+              displayState: pending?.displayState,
+            },
+            'OpenCode permission reply matched pending request',
+          );
+          if (pending) {
+            if (pending.displayState === 'visible' || pending.displayState === 'reply_sent') {
+              await publishPermissionUpdated({
+                botEvents,
+                response,
+                sessionId,
+                interactionId: pending.interactionId,
+                status: permissionReplyStatus(opencodeEvent.properties.reply),
+              });
+            }
+            if (opencodeEvent.properties.reply === 'always') {
+              scheduleAlwaysPermissionPromotion({ sessionId, botEvents });
+            } else {
+              const promoted = promoteNextQueuedOpenCodePermission(sessionId);
+              logger.info(
+                {
+                  sessionId,
+                  promotedInteractionId: promoted?.interactionId,
+                  promotedRequestId: promoted?.requestId,
+                  promotedDisplayState: promoted?.displayState,
+                },
+                'Advanced Discord permission display queue after OpenCode reply',
+              );
+              await publishPromotedPermission({ botEvents, permission: promoted });
+            }
+          }
         }
         if (isOpenCodeQuestionAskedEvent(opencodeEvent)) {
           await outputBuffer.flush();

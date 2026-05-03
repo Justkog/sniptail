@@ -439,6 +439,236 @@ describe('OpenCode agent prompt runner', () => {
     });
   });
 
+  it('shows one permission request at a time and advances after OpenCode replies', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'glob',
+            patterns: ['**/*'],
+            metadata: { pattern: '**/*' },
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-2',
+            sessionID: 'opencode-session-1',
+            permission: 'read',
+            patterns: ['README.md'],
+            metadata: { filePath: 'README.md' },
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.replied',
+          properties: {
+            sessionID: 'opencode-session-1',
+            requestID: 'permission-request-1',
+            reply: 'once',
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    const events = botEvents.publish.mock.calls.map((call) => call[0] as BotEvent);
+    expect(events).toMatchObject([
+      {
+        type: 'agent.permission.requested',
+        payload: { toolName: 'glob' },
+      },
+      {
+        type: 'agent.permission.updated',
+        payload: { status: 'approved_once' },
+      },
+      {
+        type: 'agent.permission.requested',
+        payload: { toolName: 'read' },
+      },
+    ]);
+  });
+
+  it('drops hidden permission requests when OpenCode replies before display', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'glob',
+            patterns: ['**/*'],
+            metadata: {},
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-2',
+            sessionID: 'opencode-session-1',
+            permission: 'read',
+            patterns: ['README.md'],
+            metadata: {},
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.replied',
+          properties: {
+            sessionID: 'opencode-session-1',
+            requestID: 'permission-request-2',
+            reply: 'always',
+          },
+        });
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    const events = botEvents.publish.mock.calls.map((call) => call[0] as BotEvent);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'agent.permission.requested',
+      payload: { toolName: 'glob' },
+    });
+  });
+
+  it('defers promotion after always replies so OpenCode can resolve hidden permissions', async () => {
+    vi.useFakeTimers();
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'glob',
+            patterns: ['**/*'],
+            metadata: {},
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-2',
+            sessionID: 'opencode-session-1',
+            permission: 'glob',
+            patterns: ['README.md'],
+            metadata: {},
+            always: [],
+          },
+        });
+        await options.onEvent?.({
+          type: 'permission.replied',
+          properties: {
+            sessionID: 'opencode-session-1',
+            requestID: 'permission-request-1',
+            reply: 'always',
+          },
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await options.onEvent?.({
+          type: 'permission.replied',
+          properties: {
+            sessionID: 'opencode-session-1',
+            requestID: 'permission-request-2',
+            reply: 'always',
+          },
+        });
+        await vi.advanceTimersByTimeAsync(750);
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    try {
+      await runAgentSessionStart({
+        event: buildEvent(),
+        config: buildConfig(tempRoot),
+        notifier,
+        botEvents,
+        env: {},
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const events = botEvents.publish.mock.calls.map((call) => call[0] as BotEvent);
+    expect(events).toMatchObject([
+      {
+        type: 'agent.permission.requested',
+        payload: { toolName: 'glob' },
+      },
+      {
+        type: 'agent.permission.updated',
+        payload: { status: 'approved_always' },
+      },
+    ]);
+  });
+
   it('flushes buffered assistant output before publishing permission requests', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
@@ -605,6 +835,71 @@ describe('OpenCode agent prompt runner', () => {
     });
 
     expect(callOrder.slice(0, 2)).toEqual(['message', 'question']);
+  });
+
+  it('rejects visible permission requests after the interaction timeout', async () => {
+    vi.useFakeTimers();
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const config = buildConfig(tempRoot);
+    config.agent.interactionTimeoutMs = 100;
+    hoisted.runOpenCodePrompt.mockImplementationOnce(
+      async (
+        _prompt: string,
+        _workDir: string,
+        _env: NodeJS.ProcessEnv,
+        options: OpenCodePromptRunOptions,
+      ) => {
+        await options.onRuntimeReady?.({
+          baseUrl: 'http://127.0.0.1:4096',
+          directory: _workDir,
+          executionMode: 'local',
+          sessionId: 'opencode-session-1',
+        });
+        await options.onEvent?.({
+          type: 'permission.asked',
+          properties: {
+            id: 'permission-request-1',
+            sessionID: 'opencode-session-1',
+            permission: 'bash',
+            patterns: ['pnpm run check'],
+            metadata: { command: 'pnpm run check' },
+            always: [],
+          },
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+      },
+    );
+
+    try {
+      await runAgentSessionStart({
+        event: buildEvent(),
+        config,
+        notifier,
+        botEvents,
+        env: {},
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(hoisted.replyOpenCodePermission).toHaveBeenCalledWith(
+      tempRoot,
+      {},
+      expect.objectContaining({
+        requestID: 'permission-request-1',
+        reply: 'reject',
+      }),
+    );
+    const published = botEvents.publish.mock.calls.find(
+      (call) => (call[0] as BotEvent).type === 'agent.permission.updated',
+    )?.[0] as BotEvent | undefined;
+    expect(published).toMatchObject({
+      type: 'agent.permission.updated',
+      payload: { status: 'expired' },
+    });
   });
 
   it('rejects pending question requests after the interaction timeout', async () => {

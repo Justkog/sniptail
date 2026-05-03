@@ -121,6 +121,24 @@ function buildBotEvents() {
   };
 }
 
+function buildPermissionRequestEvent(interactionId: string): BotEvent {
+  return {
+    schemaVersion: 1,
+    provider: 'discord',
+    type: 'agent.permission.requested',
+    payload: {
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      sessionId: 'session-1',
+      interactionId,
+      workspaceKey: 'snatch',
+      toolName: 'bash',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      allowAlways: true,
+    },
+  };
+}
+
 describe('resolve OpenCode agent interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -139,14 +157,16 @@ describe('resolve OpenCode agent interactions', () => {
       sessionId: 'session-1',
       interactionId: 'interaction-1',
       kind: 'permission',
+      displayState: 'visible',
       requestId: 'permission-request-1',
       baseUrl: 'http://127.0.0.1:4096',
       directory: '/tmp/work',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      requestEvent: buildPermissionRequestEvent('interaction-1'),
     });
   });
 
-  it('replies to OpenCode permission requests and publishes Discord updates', async () => {
+  it('replies to OpenCode permission requests and waits for OpenCode reply events', async () => {
     const notifier = buildNotifier();
     const botEvents = buildBotEvents();
 
@@ -167,17 +187,68 @@ describe('resolve OpenCode agent interactions', () => {
         reply: 'always',
       }),
     );
-    const published = botEvents.publish.mock.calls[0]?.[0] as BotEvent | undefined;
-    expect(published).toMatchObject({
-      type: 'agent.permission.updated',
-      payload: {
-        sessionId: 'session-1',
-        interactionId: 'interaction-1',
-        status: 'approved_always',
-        actorUserId: 'user-1',
-      },
-    });
+    expect(botEvents.publish).not.toHaveBeenCalled();
     expect(notifier.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not reply twice after a permission reply is sent', async () => {
+    const notifier = buildNotifier();
+
+    await resolveAgentInteraction({
+      event: buildEvent('always'),
+      config: buildConfig(),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await resolveAgentInteraction({
+      event: buildEvent('always'),
+      config: buildConfig(),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.replyOpenCodePermission).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'This agent permission is already being resolved.',
+    );
+  });
+
+  it('publishes failed permission updates and promotes the next queued permission on reply failure', async () => {
+    hoisted.replyOpenCodePermission.mockRejectedValueOnce(new Error('reply failed'));
+    setPendingOpenCodeInteraction({
+      sessionId: 'session-1',
+      interactionId: 'interaction-2',
+      kind: 'permission',
+      displayState: 'queued',
+      requestId: 'permission-request-2',
+      baseUrl: 'http://127.0.0.1:4096',
+      directory: '/tmp/work',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      requestEvent: buildPermissionRequestEvent('interaction-2'),
+    });
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+
+    await resolveAgentInteraction({
+      event: buildEvent('reject'),
+      config: buildConfig(),
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    const published = botEvents.publish.mock.calls.map((call) => call[0] as BotEvent);
+    expect(published[0]).toMatchObject({
+      type: 'agent.permission.updated',
+      payload: { interactionId: 'interaction-1', status: 'failed' },
+    });
+    expect(published[1]).toMatchObject({
+      type: 'agent.permission.requested',
+      payload: { interactionId: 'interaction-2' },
+    });
   });
 
   it('does not call OpenCode when the permission is no longer pending', async () => {

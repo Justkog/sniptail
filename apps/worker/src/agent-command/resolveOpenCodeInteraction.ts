@@ -13,6 +13,8 @@ import type { Notifier } from '../channels/notifier.js';
 import {
   getActiveOpenCodeRuntime,
   getPendingOpenCodeInteraction,
+  markPendingOpenCodePermissionReplySent,
+  promoteNextQueuedOpenCodePermission,
   takePendingOpenCodePermission,
 } from './activeOpenCodeRuntimes.js';
 
@@ -50,15 +52,10 @@ function buildOpenCodeQuestionOptions(config: WorkerConfig, baseUrl: string) {
   };
 }
 
-function permissionStatus(decision: 'once' | 'always' | 'reject') {
-  switch (decision) {
-    case 'once':
-      return 'approved_once' as const;
-    case 'always':
-      return 'approved_always' as const;
-    case 'reject':
-      return 'rejected' as const;
-  }
+async function publishPromotedPermission(input: { botEvents: BotEventSink; sessionId: string }) {
+  const permission = promoteNextQueuedOpenCodePermission(input.sessionId);
+  if (!permission) return;
+  await input.botEvents.publish(permission.requestEvent);
 }
 
 async function publishPermissionUpdated(input: {
@@ -160,6 +157,56 @@ export async function resolveAgentInteraction({
     );
     return;
   }
+  if (
+    resolution.kind === 'permission' &&
+    pendingPreview.kind === 'permission' &&
+    pendingPreview.displayState === 'reply_sent'
+  ) {
+    await notifier.postMessage(ref, 'This agent permission is already being resolved.');
+    return;
+  }
+  if (
+    resolution.kind === 'permission' &&
+    pendingPreview.kind === 'permission' &&
+    pendingPreview.displayState !== 'visible'
+  ) {
+    await notifier.postMessage(ref, 'This agent permission is not currently displayed.');
+    return;
+  }
+  if (resolution.kind === 'permission') {
+    try {
+      await replyOpenCodePermission(pendingPreview.directory, env, {
+        ...buildOpenCodePermissionReplyOptions(
+          config,
+          pendingPreview.baseUrl || activeRuntime.baseUrl,
+        ),
+        requestID: pendingPreview.requestId,
+        ...(pendingPreview.workspace ? { workspace: pendingPreview.workspace } : {}),
+        reply: resolution.decision,
+        ...(resolution.message ? { message: resolution.message } : {}),
+      });
+      markPendingOpenCodePermissionReplySent(sessionId, interactionId);
+      return;
+    } catch (err) {
+      logger.error(
+        { err, sessionId, interactionId, kind: resolution.kind },
+        'Failed to resolve OpenCode interaction',
+      );
+      takePendingOpenCodePermission(sessionId, interactionId);
+      await publishPermissionUpdated({
+        botEvents,
+        event,
+        status: 'failed',
+        message: `Failed to resolve permission request: ${(err as Error).message}`,
+      });
+      await publishPromotedPermission({ botEvents, sessionId });
+      await notifier.postMessage(
+        ref,
+        `Failed to resolve OpenCode permission request: ${(err as Error).message}`,
+      );
+      return;
+    }
+  }
   const pending = takePendingOpenCodePermission(sessionId, interactionId);
   if (!pending) {
     await notifier.postMessage(ref, 'This agent interaction is no longer pending.');
@@ -167,23 +214,6 @@ export async function resolveAgentInteraction({
   }
 
   try {
-    if (resolution.kind === 'permission') {
-      await replyOpenCodePermission(pending.directory, env, {
-        ...buildOpenCodePermissionReplyOptions(config, pending.baseUrl || activeRuntime.baseUrl),
-        requestID: pending.requestId,
-        ...(pending.workspace ? { workspace: pending.workspace } : {}),
-        reply: resolution.decision,
-        ...(resolution.message ? { message: resolution.message } : {}),
-      });
-      await publishPermissionUpdated({
-        botEvents,
-        event,
-        status: permissionStatus(resolution.decision),
-        ...(resolution.message ? { message: resolution.message } : {}),
-      });
-      return;
-    }
-
     if (resolution.reject) {
       await rejectOpenCodeQuestion(pending.directory, env, {
         ...buildOpenCodeQuestionOptions(config, pending.baseUrl || activeRuntime.baseUrl),
@@ -216,19 +246,6 @@ export async function resolveAgentInteraction({
       { err, sessionId, interactionId, kind: resolution.kind },
       'Failed to resolve OpenCode interaction',
     );
-    if (resolution.kind === 'permission') {
-      await publishPermissionUpdated({
-        botEvents,
-        event,
-        status: 'failed',
-        message: `Failed to resolve permission request: ${(err as Error).message}`,
-      });
-      await notifier.postMessage(
-        ref,
-        `Failed to resolve OpenCode permission request: ${(err as Error).message}`,
-      );
-      return;
-    }
     await publishQuestionUpdated({
       botEvents,
       event,
