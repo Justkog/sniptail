@@ -186,11 +186,6 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
       });
       return;
     }
-
-    await postDiscordMessage(client, {
-      ...messageOptions,
-      text: buildOverflowStubText(event.jobId, title),
-    });
   }
 
   private async postAgentPermissionRequest(
@@ -529,17 +524,6 @@ function toReactionAddPayload(
 
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
 let overflowFileBotNamePrefix: string | undefined;
-
-function buildOverflowStubText(jobId?: string, title?: string): string {
-  const lines = ['Response was too long for Discord; full content is attached.'];
-  if (jobId) {
-    lines.push(`Job: ${jobId}`);
-  }
-  if (title) {
-    lines.push(`Attachment: ${title}`);
-  }
-  return lines.join('\n');
-}
 
 function buildOverflowUploadFailedText(jobId?: string): string {
   const lines = ['Response was too long for Discord, and uploading the attachment failed.'];
