@@ -32,10 +32,11 @@ export type OpenCodeRuntimeReady = {
 
 export type OpenCodePromptRunOptions = Omit<
   AgentRunOptions,
-  'promptOverride' | 'resumeThreadId'
+  'promptOverride' | 'resumeThreadId' | 'onEvent'
 > & {
   sessionId?: string;
   runtimeId?: string;
+  onEvent?: (event: OpenCodeEvent) => void | Promise<void>;
   onSessionId?: (sessionId: string) => void | Promise<void>;
   onRuntimeReady?: (runtime: OpenCodeRuntimeReady) => void | Promise<void>;
   onAssistantMessageCompleted?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
@@ -387,7 +388,7 @@ async function createRuntime(
   runtimeId: string,
   workDir: string,
   env: NodeJS.ProcessEnv,
-  options: AgentRunOptions,
+  options: Pick<AgentRunOptions, 'opencode'>,
 ): Promise<OpenCodeRuntime> {
   switch (options.opencode?.executionMode ?? 'local') {
     case 'server':
