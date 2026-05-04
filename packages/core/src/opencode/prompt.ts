@@ -1,9 +1,4 @@
-import {
-  createOpencodeClient,
-  type Event as OpenCodeEvent,
-  type Part,
-  type TextPart,
-} from '@opencode-ai/sdk/v2';
+import { type Event as OpenCodeEvent, type Part, type TextPart } from '@opencode-ai/sdk/v2';
 import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
@@ -13,13 +8,16 @@ import {
   createDockerRuntime,
   createLocalRuntime,
   createServerRuntime,
-  type OpenCodeAbortOptions,
-  type OpenCodePermissionReplyOptions,
-  type OpenCodeQuestionRejectOptions,
-  type OpenCodeQuestionReplyOptions,
+  type OpenCodeClient,
   type OpenCodeRuntime,
   type OpenCodeRuntimeReady,
 } from './runtime.js';
+export {
+  abortOpenCodeSession,
+  rejectOpenCodeQuestion,
+  replyOpenCodePermission,
+  replyOpenCodeQuestion,
+} from './client.js';
 import { streamEvents } from './events.js';
 
 export type OpenCodePromptRunOptions = Omit<
@@ -33,13 +31,6 @@ export type OpenCodePromptRunOptions = Omit<
   onRuntimeReady?: (runtime: OpenCodeRuntimeReady) => void | Promise<void>;
   onAssistantMessage?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
 };
-
-function buildHeaders(env: NodeJS.ProcessEnv, options: AgentRunOptions): Record<string, string> {
-  const headerEnv = options.opencode?.serverAuthHeaderEnv;
-  if (!headerEnv) return {};
-  const authHeader = env[headerEnv]?.trim();
-  return authHeader ? { Authorization: authHeader } : {};
-}
 
 function buildPrompt(job: JobSpec, workDir: string, options: AgentRunOptions): string {
   const botName = options.botName?.trim() || 'Sniptail';
@@ -69,7 +60,7 @@ function extractText(parts: Part[] | undefined): string {
 }
 
 async function fallbackFinalResponse(
-  client: ReturnType<typeof createOpencodeClient>,
+  client: OpenCodeClient,
   sessionID: string,
   workDir: string,
 ): Promise<string> {
@@ -100,19 +91,6 @@ async function createRuntime(
   }
 }
 
-function createClientForBaseUrl(
-  baseUrl: string,
-  workDir: string,
-  env: NodeJS.ProcessEnv,
-  options: OpenCodeAbortOptions,
-): ReturnType<typeof createOpencodeClient> {
-  return createOpencodeClient({
-    baseUrl,
-    directory: workDir,
-    headers: buildHeaders(env, options),
-  });
-}
-
 export async function runOpenCodePrompt(
   prompt: string,
   workDir: string,
@@ -131,15 +109,18 @@ export async function runOpenCodePrompt(
   try {
     const session = options.sessionId
       ? { id: options.sessionId }
-      : await runtime.client.session.create({ directory: workDir }).then((response) => {
-          if (response.error) {
-            throw new Error(`OpenCode session create failed: ${JSON.stringify(response.error)}`);
+      : await (async () => {
+          const sessionResponse = await runtime.client.session.create({ directory: workDir });
+          if (sessionResponse.error) {
+            throw new Error(
+              `OpenCode session create failed: ${JSON.stringify(sessionResponse.error)}`,
+            );
           }
-          if (!response.data?.id) {
+          if (!sessionResponse.data?.id) {
             throw new Error('OpenCode session create failed: missing session id');
           }
-          return response.data;
-        });
+          return sessionResponse.data;
+        })();
     await options.onSessionId?.(session.id);
     await options.onRuntimeReady?.({
       baseUrl: runtime.baseUrl,
@@ -196,90 +177,4 @@ export async function runOpenCode(
     runtimeId: job.jobId,
     ...(options.resumeThreadId ? { sessionId: options.resumeThreadId } : {}),
   });
-}
-
-export async function abortOpenCodeSession(
-  sessionID: string,
-  workDir: string,
-  env: NodeJS.ProcessEnv,
-  options: OpenCodeAbortOptions = {},
-): Promise<void> {
-  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
-  if (!baseUrl) {
-    throw new Error('OpenCode abort requires an active runtime URL or [opencode].server_url.');
-  }
-  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
-  const response = await client.session.abort({ sessionID, directory: workDir });
-  if (response.error) {
-    throw new Error(`OpenCode abort failed: ${JSON.stringify(response.error)}`);
-  }
-}
-
-export async function replyOpenCodePermission(
-  workDir: string,
-  env: NodeJS.ProcessEnv,
-  options: OpenCodePermissionReplyOptions,
-): Promise<void> {
-  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
-  if (!baseUrl) {
-    throw new Error(
-      'OpenCode permission reply requires an active runtime URL or [opencode].server_url.',
-    );
-  }
-  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
-  const response = await client.permission.reply({
-    requestID: options.requestID,
-    directory: workDir,
-    ...(options.workspace ? { workspace: options.workspace } : {}),
-    reply: options.reply,
-    ...(options.message ? { message: options.message } : {}),
-  });
-  if (response.error) {
-    throw new Error(`OpenCode permission reply failed: ${JSON.stringify(response.error)}`);
-  }
-}
-
-export async function replyOpenCodeQuestion(
-  workDir: string,
-  env: NodeJS.ProcessEnv,
-  options: OpenCodeQuestionReplyOptions,
-): Promise<void> {
-  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
-  if (!baseUrl) {
-    throw new Error(
-      'OpenCode question reply requires an active runtime URL or [opencode].server_url.',
-    );
-  }
-  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
-  const response = await client.question.reply({
-    requestID: options.requestID,
-    directory: workDir,
-    ...(options.workspace ? { workspace: options.workspace } : {}),
-    answers: options.answers,
-  });
-  if (response.error) {
-    throw new Error(`OpenCode question reply failed: ${JSON.stringify(response.error)}`);
-  }
-}
-
-export async function rejectOpenCodeQuestion(
-  workDir: string,
-  env: NodeJS.ProcessEnv,
-  options: OpenCodeQuestionRejectOptions,
-): Promise<void> {
-  const baseUrl = options.baseUrl ?? options.opencode?.serverUrl;
-  if (!baseUrl) {
-    throw new Error(
-      'OpenCode question reject requires an active runtime URL or [opencode].server_url.',
-    );
-  }
-  const client = createClientForBaseUrl(baseUrl, workDir, env, options);
-  const response = await client.question.reject({
-    requestID: options.requestID,
-    directory: workDir,
-    ...(options.workspace ? { workspace: options.workspace } : {}),
-  });
-  if (response.error) {
-    throw new Error(`OpenCode question reject failed: ${JSON.stringify(response.error)}`);
-  }
 }

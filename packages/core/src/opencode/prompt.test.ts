@@ -408,7 +408,6 @@ describe('OpenCode prompt helpers', () => {
     expect(hoisted.createOpencodeClient).toHaveBeenCalledWith({
       baseUrl: 'http://127.0.0.1:4096',
       directory: '/tmp/work',
-      headers: {},
     });
     expect(hoisted.client.session.abort).toHaveBeenCalledWith({
       sessionID: 'session-1',

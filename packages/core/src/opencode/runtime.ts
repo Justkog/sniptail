@@ -1,13 +1,14 @@
-import { createOpencodeClient, createOpencodeServer } from '@opencode-ai/sdk/v2';
+import { createOpencodeServer } from '@opencode-ai/sdk/v2';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import os from 'node:os';
+import { createOpenCodeClient } from './client.js';
 import { toEnvRecord } from '../agents/envRecord.js';
 import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScriptPath.js';
 import type { AgentRunOptions } from '../agents/types.js';
 
-export type OpenCodeClient = ReturnType<typeof createOpencodeClient>;
+export type OpenCodeClient = ReturnType<typeof createOpenCodeClient>;
 
 export type OpenCodeRuntime = {
   client: OpenCodeClient;
@@ -20,33 +21,6 @@ export type OpenCodeRuntimeReady = {
   sessionId: string;
   directory: string;
   executionMode: 'local' | 'server' | 'docker';
-};
-
-export type OpenCodeAbortOptions = Pick<AgentRunOptions, 'opencode'> & {
-  baseUrl?: string;
-};
-
-export type OpenCodePermissionReply = 'once' | 'always' | 'reject';
-
-export type OpenCodePermissionReplyOptions = Pick<AgentRunOptions, 'opencode'> & {
-  baseUrl?: string;
-  requestID: string;
-  workspace?: string;
-  reply: OpenCodePermissionReply;
-  message?: string;
-};
-
-export type OpenCodeQuestionReplyOptions = Pick<AgentRunOptions, 'opencode'> & {
-  baseUrl?: string;
-  requestID: string;
-  workspace?: string;
-  answers: string[][];
-};
-
-export type OpenCodeQuestionRejectOptions = Pick<AgentRunOptions, 'opencode'> & {
-  baseUrl?: string;
-  requestID: string;
-  workspace?: string;
 };
 
 async function getFreePort(): Promise<number> {
@@ -71,13 +45,6 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-function buildHeaders(env: NodeJS.ProcessEnv, options: AgentRunOptions): Record<string, string> {
-  const headerEnv = options.opencode?.serverAuthHeaderEnv;
-  if (!headerEnv) return {};
-  const authHeader = env[headerEnv]?.trim();
-  return authHeader ? { Authorization: authHeader } : {};
-}
-
 export async function createLocalRuntime(
   workDir: string,
   options: AgentRunOptions,
@@ -90,7 +57,7 @@ export async function createLocalRuntime(
   });
   return {
     baseUrl: server.url,
-    client: createOpencodeClient({ baseUrl: server.url, directory: workDir }),
+    client: createOpenCodeClient(server.url, workDir),
     close: () => server.close(),
   };
 }
@@ -159,7 +126,7 @@ export async function createDockerRuntime(
   const port = await getFreePort();
   const proc = spawnDockerServer(runtimeId, workDir, port, env, options);
   const baseUrl = `http://127.0.0.1:${port}`;
-  const client = createOpencodeClient({ baseUrl, directory: workDir });
+  const client = createOpenCodeClient(baseUrl, workDir);
   let exited = false;
   let output = '';
 
@@ -211,10 +178,6 @@ export function createServerRuntime(
   if (!baseUrl) {
     throw new Error('[opencode].server_url is required when execution_mode="server".');
   }
-  const client = createOpencodeClient({
-    baseUrl,
-    directory: workDir,
-    headers: buildHeaders(env, options),
-  });
+  const client = createOpenCodeClient(baseUrl, workDir, env, options);
   return { baseUrl, client, close: () => undefined };
 }
