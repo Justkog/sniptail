@@ -146,6 +146,7 @@ export function buildDiscordCommandDefinitions(botName: string) {
           description: 'Optional relative cwd inside the selected workspace',
           type: 3,
           required: false,
+          autocomplete: true,
         },
       ],
     },

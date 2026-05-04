@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
   clearDiscordAgentCommandMetadata,
@@ -38,6 +39,40 @@ describe('agentCommandMetadataCache', () => {
       { name: 'Snatch (snatch)', value: 'snatch' },
     ]);
     expect(buildProfileAutocompleteChoices('pl')).toEqual([{ name: 'Plan (plan)', value: 'plan' }]);
+  });
+
+  it('ranks preferred workspace and profile first', () => {
+    setDiscordAgentCommandMetadata({
+      enabled: true,
+      workspaces: [
+        { key: 'tools', label: 'Tools' },
+        { key: 'snatch', label: 'Snatch' },
+      ],
+      profiles: [
+        { key: 'plan', provider: 'opencode', name: 'plan', label: 'Plan' },
+        { key: 'build', provider: 'opencode', name: 'build', label: 'Build' },
+      ],
+      receivedAt: new Date().toISOString(),
+    });
+
+    expect(buildWorkspaceAutocompleteChoices('', 'snatch')).toEqual([
+      { name: 'Snatch (snatch)', value: 'snatch' },
+      { name: 'Tools (tools)', value: 'tools' },
+    ]);
+    expect(buildProfileAutocompleteChoices('', 'build')).toEqual([
+      { name: 'Build (build)', value: 'build' },
+      { name: 'Plan (plan)', value: 'plan' },
+    ]);
+  });
+
+  it('returns the sticky cwd when it matches the query', () => {
+    expect(buildCwdAutocompleteChoices('', 'apps/worker')).toEqual([
+      { name: 'apps/worker', value: 'apps/worker' },
+    ]);
+    expect(buildCwdAutocompleteChoices('worker', 'apps/worker')).toEqual([
+      { name: 'apps/worker', value: 'apps/worker' },
+    ]);
+    expect(buildCwdAutocompleteChoices('bot', 'apps/worker')).toEqual([]);
   });
 
   it('resolves explicit and default selections', () => {

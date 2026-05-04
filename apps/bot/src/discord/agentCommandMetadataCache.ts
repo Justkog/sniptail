@@ -24,6 +24,16 @@ type Choice = {
   value: string;
 };
 
+function sortRankedChoices<T extends { key: string }>(
+  items: Array<{ item: T; rank: number; preferred: boolean }>,
+): Array<{ item: T; rank: number; preferred: boolean }> {
+  return items.sort((a, b) => {
+    if (a.preferred !== b.preferred) return a.preferred ? -1 : 1;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.item.key.localeCompare(b.item.key);
+  });
+}
+
 function formatChoiceName(key: string, label: string | undefined): string {
   return label ? `${label} (${key})` : key;
 }
@@ -40,50 +50,70 @@ export function getDiscordAgentCommandMetadata(): DiscordAgentMetadata | undefin
   return cachedMetadata;
 }
 
-export function buildWorkspaceAutocompleteChoices(rawQuery: string, limit = 25): Choice[] {
+export function buildWorkspaceAutocompleteChoices(
+  rawQuery: string,
+  preferredWorkspaceKey?: string,
+  limit = 25,
+): Choice[] {
   const metadata = cachedMetadata;
   if (!metadata || !metadata.enabled) {
     return [];
   }
   const query = rawQuery.trim().toLowerCase();
-  return metadata.workspaces
-    .map((workspace) => ({
-      workspace,
+  return sortRankedChoices(
+    metadata.workspaces.map((workspace) => ({
+      item: workspace,
       rank: rankMatch(workspace.key, workspace.label, query),
-    }))
+      preferred: workspace.key === preferredWorkspaceKey,
+    })),
+  )
     .filter((item) => item.rank < 9)
-    .sort((a, b) => {
-      if (a.rank !== b.rank) return a.rank - b.rank;
-      return a.workspace.key.localeCompare(b.workspace.key);
-    })
     .slice(0, limit)
-    .map(({ workspace }) => ({
-      name: formatChoiceName(workspace.key, workspace.label),
-      value: workspace.key,
+    .map(({ item }) => ({
+      name: formatChoiceName(item.key, item.label),
+      value: item.key,
     }));
 }
 
-export function buildProfileAutocompleteChoices(rawQuery: string, limit = 25): Choice[] {
+export function buildProfileAutocompleteChoices(
+  rawQuery: string,
+  preferredProfileKey?: string,
+  limit = 25,
+): Choice[] {
   const metadata = cachedMetadata;
   if (!metadata || !metadata.enabled) {
     return [];
   }
   const query = rawQuery.trim().toLowerCase();
-  return metadata.profiles
-    .map((profile) => ({
-      profile,
+  return sortRankedChoices(
+    metadata.profiles.map((profile) => ({
+      item: profile,
       rank: rankMatch(profile.key, profile.label, query),
-    }))
+      preferred: profile.key === preferredProfileKey,
+    })),
+  )
     .filter((item) => item.rank < 9)
-    .sort((a, b) => {
-      if (a.rank !== b.rank) return a.rank - b.rank;
-      return a.profile.key.localeCompare(b.profile.key);
-    })
     .slice(0, limit)
-    .map(({ profile }) => ({
-      name: formatChoiceName(profile.key, profile.label),
-      value: profile.key,
+    .map(({ item }) => ({
+      name: formatChoiceName(item.key, item.label),
+      value: item.key,
     }));
+}
+
+export function buildCwdAutocompleteChoices(
+  rawQuery: string,
+  preferredCwd?: string,
+  limit = 25,
+): Choice[] {
+  const cwd = normalizeOptionalToken(preferredCwd);
+  if (!cwd) {
+    return [];
+  }
+  const query = rawQuery.trim().toLowerCase();
+  if (query && !cwd.toLowerCase().includes(query)) {
+    return [];
+  }
+  return [{ name: cwd, value: cwd }].slice(0, limit);
 }
 
 export function resolveAgentWorkspaceSelection(explicitWorkspaceKey?: string): string | undefined {

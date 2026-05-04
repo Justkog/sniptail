@@ -71,5 +71,13 @@ describe('buildDiscordCommandDefinitions', () => {
       required: false,
       autocomplete: true,
     });
+
+    const cwdOption = agentCommand?.options?.find((option) => option.name === 'cwd');
+    expect(cwdOption).toMatchObject({
+      name: 'cwd',
+      type: 3,
+      required: false,
+      autocomplete: true,
+    });
   });
 });

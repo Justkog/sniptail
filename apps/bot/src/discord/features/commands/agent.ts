@@ -3,6 +3,10 @@ import { isAbsolute } from 'node:path';
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import {
+  loadDiscordAgentDefaults,
+  upsertDiscordAgentDefaults,
+} from '@sniptail/core/agent-defaults/registry.js';
+import {
   createAgentSession,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
@@ -20,6 +24,7 @@ import {
   authorizeDiscordPrecheckAndRespond,
 } from '../../permissions/discordPermissionGuards.js';
 import {
+  buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
   getDiscordAgentCommandMetadata,
@@ -128,14 +133,119 @@ function hasProfileKey(
   return metadata.profiles.some((profile) => profile.key === key);
 }
 
+type ResolvedAgentSelections = {
+  workspaceKey: string;
+  profileKey: string;
+  cwd?: string;
+};
+
+function resolveKnownWorkspaceKey(
+  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  workspaceKey: string | undefined,
+): string | undefined {
+  if (!workspaceKey) return undefined;
+  return hasWorkspaceKey(metadata, workspaceKey) ? workspaceKey : undefined;
+}
+
+function resolveKnownProfileKey(
+  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  profileKey: string | undefined,
+): string | undefined {
+  if (!profileKey) return undefined;
+  return hasProfileKey(metadata, profileKey) ? profileKey : undefined;
+}
+
+async function resolveAgentSelections(
+  interaction: Pick<ChatInputCommandInteraction, 'options' | 'user' | 'guildId'>,
+  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+): Promise<ResolvedAgentSelections | { error: string }> {
+  const persistedDefaults = await loadDiscordAgentDefaults({
+    userId: interaction.user.id,
+    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+  }).catch((err) => {
+    logger.warn({ err, userId: interaction.user.id }, 'Failed to load Discord agent defaults');
+    return undefined;
+  });
+
+  const explicitWorkspace = normalizeOptionalString(interaction.options.getString('workspace'));
+  const explicitProfile = normalizeOptionalString(interaction.options.getString('agent_profile'));
+  const explicitCwd = validateRelativeCwd(
+    normalizeOptionalString(interaction.options.getString('cwd')),
+  );
+
+  if (explicitWorkspace && !resolveKnownWorkspaceKey(metadata, explicitWorkspace)) {
+    return { error: `Unknown workspace key: \`${explicitWorkspace}\`.` };
+  }
+  if (explicitProfile && !resolveKnownProfileKey(metadata, explicitProfile)) {
+    return { error: `Unknown agent profile key: \`${explicitProfile}\`.` };
+  }
+
+  const workspaceKey =
+    explicitWorkspace ??
+    resolveKnownWorkspaceKey(metadata, persistedDefaults?.workspaceKey) ??
+    resolveKnownWorkspaceKey(metadata, metadata.defaultWorkspace);
+  if (!workspaceKey) {
+    return { error: 'No workspace was provided and no valid default workspace is configured.' };
+  }
+
+  const profileKey =
+    explicitProfile ??
+    resolveKnownProfileKey(metadata, persistedDefaults?.agentProfileKey) ??
+    resolveKnownProfileKey(metadata, metadata.defaultAgentProfile);
+  if (!profileKey) {
+    return { error: 'No agent profile was provided and no valid default profile is configured.' };
+  }
+
+  const fallbackCwd =
+    !explicitCwd && persistedDefaults?.workspaceKey === workspaceKey
+      ? persistedDefaults.cwd
+      : undefined;
+  const cwd = explicitCwd ?? fallbackCwd;
+
+  return {
+    workspaceKey,
+    profileKey,
+    ...(cwd ? { cwd } : {}),
+  };
+}
+
 export async function handleAgentAutocomplete(interaction: AutocompleteInteraction) {
+  const persistedDefaults = await loadDiscordAgentDefaults({
+    userId: interaction.user.id,
+    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+  }).catch((err) => {
+    logger.warn({ err, userId: interaction.user.id }, 'Failed to load Discord agent defaults');
+    return undefined;
+  });
   const focused = interaction.options.getFocused(true);
+  const selectedWorkspace = normalizeOptionalString(interaction.options.getString('workspace'));
   if (focused.name === 'workspace') {
-    await interaction.respond(buildWorkspaceAutocompleteChoices(String(focused.value ?? '')));
+    await interaction.respond(
+      buildWorkspaceAutocompleteChoices(
+        String(focused.value ?? ''),
+        persistedDefaults?.workspaceKey,
+      ),
+    );
     return;
   }
   if (focused.name === 'agent_profile') {
-    await interaction.respond(buildProfileAutocompleteChoices(String(focused.value ?? '')));
+    await interaction.respond(
+      buildProfileAutocompleteChoices(
+        String(focused.value ?? ''),
+        persistedDefaults?.agentProfileKey,
+      ),
+    );
+    return;
+  }
+  if (focused.name === 'cwd') {
+    await interaction.respond(
+      buildCwdAutocompleteChoices(
+        String(focused.value ?? ''),
+        selectedWorkspace && selectedWorkspace !== persistedDefaults?.workspaceKey
+          ? undefined
+          : persistedDefaults?.cwd,
+      ),
+    );
     return;
   }
   await interaction.respond([]);
@@ -165,41 +275,24 @@ export async function handleAgentStart(
     return;
   }
 
-  const explicitWorkspace = normalizeOptionalString(interaction.options.getString('workspace'));
-  const explicitProfile = normalizeOptionalString(interaction.options.getString('agent_profile'));
-  const cwd = validateRelativeCwd(normalizeOptionalString(interaction.options.getString('cwd')));
-
-  const workspaceKey = explicitWorkspace ?? metadata.defaultWorkspace;
-  if (!workspaceKey) {
+  let resolvedSelections: ResolvedAgentSelections | { error: string };
+  try {
+    resolvedSelections = await resolveAgentSelections(interaction, metadata);
+  } catch (err) {
     await interaction.reply({
-      content: 'No workspace was provided and no default workspace is configured.',
+      content: `Failed to resolve agent defaults: ${(err as Error).message}`,
       ephemeral: true,
     });
     return;
   }
-  if (!hasWorkspaceKey(metadata, workspaceKey)) {
+  if ('error' in resolvedSelections) {
     await interaction.reply({
-      content: `Unknown workspace key: \`${workspaceKey}\`.`,
+      content: resolvedSelections.error,
       ephemeral: true,
     });
     return;
   }
-
-  const profileKey = explicitProfile ?? metadata.defaultAgentProfile;
-  if (!profileKey) {
-    await interaction.reply({
-      content: 'No agent profile was provided and no default profile is configured.',
-      ephemeral: true,
-    });
-    return;
-  }
-  if (!hasProfileKey(metadata, profileKey)) {
-    await interaction.reply({
-      content: `Unknown agent profile key: \`${profileKey}\`.`,
-      ephemeral: true,
-    });
-    return;
-  }
+  const { workspaceKey, profileKey, cwd } = resolvedSelections;
 
   const authorizedPrecheck = await authorizeDiscordPrecheckAndRespond({
     permissions,
@@ -324,6 +417,18 @@ export async function handleAgentStart(
 
   try {
     await enqueueWorkerEvent(workerEventQueue, event);
+    await upsertDiscordAgentDefaults({
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      workspaceKey,
+      agentProfileKey: profileKey,
+      ...(cwd ? { cwd } : {}),
+    }).catch((err) => {
+      logger.warn(
+        { err, sessionId, userId: interaction.user.id },
+        'Failed to persist Discord agent defaults',
+      );
+    });
     await updateAgentSessionStatus(sessionId, 'active');
     await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
   } catch (err) {

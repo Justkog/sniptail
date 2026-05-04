@@ -1,14 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleAgentStart } from './agent.js';
+import { handleAgentAutocomplete, handleAgentStart } from './agent.js';
 
 const hoisted = vi.hoisted(() => ({
+  loadDiscordAgentDefaults: vi.fn(),
+  upsertDiscordAgentDefaults: vi.fn(),
   createAgentSession: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
   enqueueWorkerEvent: vi.fn(),
   authorizeDiscordPrecheckAndRespond: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
   getDiscordAgentCommandMetadata: vi.fn(),
+  buildCwdAutocompleteChoices: vi.fn(),
+  buildProfileAutocompleteChoices: vi.fn(),
+  buildWorkspaceAutocompleteChoices: vi.fn(),
   postDiscordMessage: vi.fn(),
+}));
+
+vi.mock('@sniptail/core/agent-defaults/registry.js', () => ({
+  loadDiscordAgentDefaults: hoisted.loadDiscordAgentDefaults,
+  upsertDiscordAgentDefaults: hoisted.upsertDiscordAgentDefaults,
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -26,8 +36,9 @@ vi.mock('../../permissions/discordPermissionGuards.js', () => ({
 }));
 
 vi.mock('../../agentCommandMetadataCache.js', () => ({
-  buildProfileAutocompleteChoices: vi.fn(),
-  buildWorkspaceAutocompleteChoices: vi.fn(),
+  buildCwdAutocompleteChoices: hoisted.buildCwdAutocompleteChoices,
+  buildProfileAutocompleteChoices: hoisted.buildProfileAutocompleteChoices,
+  buildWorkspaceAutocompleteChoices: hoisted.buildWorkspaceAutocompleteChoices,
   getDiscordAgentCommandMetadata: hoisted.getDiscordAgentCommandMetadata,
 }));
 
@@ -83,6 +94,11 @@ describe('handleAgentStart', () => {
     });
     hoisted.authorizeDiscordPrecheckAndRespond.mockResolvedValue(true);
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
+    hoisted.buildCwdAutocompleteChoices.mockReturnValue([]);
+    hoisted.buildProfileAutocompleteChoices.mockReturnValue([]);
+    hoisted.buildWorkspaceAutocompleteChoices.mockReturnValue([]);
+    hoisted.loadDiscordAgentDefaults.mockResolvedValue(undefined);
+    hoisted.upsertDiscordAgentDefaults.mockResolvedValue(undefined);
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
@@ -122,6 +138,15 @@ describe('handleAgentStart', () => {
       queue,
       expect.objectContaining({ type: 'agent.session.start' }),
     );
+    expect(hoisted.upsertDiscordAgentDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        guildId: 'guild-1',
+        workspaceKey: 'snatch',
+        agentProfileKey: 'build',
+        cwd: 'apps/bot',
+      }),
+    );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
   });
 
@@ -155,5 +180,133 @@ describe('handleAgentStart', () => {
       }),
     );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
+  });
+
+  it('uses persisted defaults when command options are omitted', async () => {
+    const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+    hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
+    hoisted.loadDiscordAgentDefaults.mockResolvedValue({
+      workspaceKey: 'tools',
+      agentProfileKey: 'plan',
+      cwd: 'apps/worker',
+    });
+    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+      enabled: true,
+      defaultWorkspace: 'snatch',
+      defaultAgentProfile: 'build',
+      workspaces: [{ key: 'snatch' }, { key: 'tools' }],
+      profiles: [
+        { key: 'build', provider: 'opencode', name: 'build' },
+        { key: 'plan', provider: 'opencode', name: 'plan' },
+      ],
+      receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          return null;
+        }),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceKey: 'tools',
+        agentProfileKey: 'plan',
+        cwd: 'apps/worker',
+      }),
+    );
+  });
+
+  it('ignores stale persisted workspace defaults and falls back to worker defaults', async () => {
+    const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+    hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
+    hoisted.loadDiscordAgentDefaults.mockResolvedValue({
+      workspaceKey: 'missing',
+      agentProfileKey: 'build',
+      cwd: 'apps/worker',
+    });
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          if (name === 'cwd') return null;
+          return null;
+        }),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.createAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceKey: 'snatch',
+        agentProfileKey: 'build',
+      }),
+    );
+    expect(hoisted.createAgentSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        cwd: 'apps/worker',
+      }),
+    );
+  });
+
+  it('uses persisted defaults to bias autocomplete choices', async () => {
+    hoisted.loadDiscordAgentDefaults.mockResolvedValue({
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      cwd: 'apps/worker',
+    });
+    hoisted.buildWorkspaceAutocompleteChoices.mockReturnValue([
+      { name: 'Snatch', value: 'snatch' },
+    ]);
+    const interaction = {
+      user: { id: 'user-1' },
+      guildId: 'guild-1',
+      options: {
+        getFocused: vi.fn(() => ({ name: 'workspace', value: '' })),
+        getString: vi.fn(() => null),
+      },
+      respond: vi.fn(),
+    };
+
+    await handleAgentAutocomplete(interaction as never);
+
+    expect(hoisted.buildWorkspaceAutocompleteChoices).toHaveBeenCalledWith('', 'snatch');
+    expect(interaction.respond).toHaveBeenCalledWith([{ name: 'Snatch', value: 'snatch' }]);
+  });
+
+  it('suppresses sticky cwd autocomplete when another workspace is selected', async () => {
+    hoisted.loadDiscordAgentDefaults.mockResolvedValue({
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      cwd: 'apps/worker',
+    });
+    const interaction = {
+      user: { id: 'user-1' },
+      guildId: 'guild-1',
+      options: {
+        getFocused: vi.fn(() => ({ name: 'cwd', value: '' })),
+        getString: vi.fn((name: string) => (name === 'workspace' ? 'tools' : null)),
+      },
+      respond: vi.fn(),
+    };
+
+    await handleAgentAutocomplete(interaction as never);
+
+    expect(hoisted.buildCwdAutocompleteChoices).toHaveBeenCalledWith('', undefined);
   });
 });
