@@ -947,7 +947,19 @@ describe('config loaders', () => {
     applyRequiredEnv();
     writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'name = "build"']);
 
-    expect(() => loadWorkerConfig()).toThrow('Expected opencode');
+    expect(() => loadWorkerConfig()).toThrow('Expected opencode or copilot');
+  });
+
+  it('accepts copilot as an agent command profile provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"', 'name = "build"']);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'copilot',
+      name: 'build',
+    });
   });
 
   it('rejects invalid agent command timeout and debounce values', () => {

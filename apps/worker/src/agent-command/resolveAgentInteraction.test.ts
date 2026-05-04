@@ -7,7 +7,7 @@ import {
   clearActiveOpenCodeRuntimes,
   setActiveOpenCodeRuntime,
   setPendingOpenCodeInteraction,
-} from './activeOpenCodeRuntimes.js';
+} from './openCodeInteractionState.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock('@sniptail/core/opencode/prompt.js', () => ({
   rejectOpenCodeQuestion: hoisted.rejectOpenCodeQuestion,
 }));
 
-import { resolveAgentInteraction } from './resolveOpenCodeInteraction.js';
+import { resolveAgentInteraction } from './resolveAgentInteraction.js';
 
 function buildConfig(): WorkerConfig {
   return {
@@ -53,7 +53,12 @@ function buildConfig(): WorkerConfig {
       interactionTimeoutMs: 1_800_000,
       outputDebounceMs: 15_000,
       workspaces: {},
-      profiles: {},
+      profiles: {
+        build: {
+          provider: 'opencode',
+          name: 'build',
+        },
+      },
     },
     run: { actions: {} },
     codex: { executionMode: 'local' },
@@ -143,7 +148,7 @@ describe('resolve OpenCode agent interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearActiveOpenCodeRuntimes();
-    hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
+    hoisted.loadAgentSession.mockResolvedValue({ status: 'active', agentProfileKey: 'build' });
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
     hoisted.replyOpenCodeQuestion.mockResolvedValue(undefined);
     hoisted.rejectOpenCodeQuestion.mockResolvedValue(undefined);
@@ -164,6 +169,36 @@ describe('resolve OpenCode agent interactions', () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       requestEvent: buildPermissionRequestEvent('interaction-1'),
     });
+  });
+
+  it('returns the unsupported message for Copilot profiles', async () => {
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const config = buildConfig();
+    config.agent.profiles = {
+      build: {
+        provider: 'copilot',
+        name: 'build',
+      },
+    };
+    hoisted.loadAgentSession.mockResolvedValueOnce({
+      status: 'active',
+      agentProfileKey: 'build',
+    });
+
+    await resolveAgentInteraction({
+      event: buildEvent('always'),
+      config,
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    expect(hoisted.replyOpenCodePermission).not.toHaveBeenCalled();
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Copilot interactive agent sessions are not supported yet.',
+    );
   });
 
   it('replies to OpenCode permission requests and waits for OpenCode reply events', async () => {

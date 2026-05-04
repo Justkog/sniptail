@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
-import { clearActiveOpenCodeRuntimes, setActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
-import { stopAgentPrompt } from './stopOpenCodePrompt.js';
+import { clearActiveOpenCodeRuntimes, setActiveOpenCodeRuntime } from './openCodeInteractionState.js';
+import { stopAgentPrompt } from './stopAgentPrompt.js';
 
 const hoisted = vi.hoisted(() => ({
   abortOpenCodeSession: vi.fn(),
@@ -138,6 +138,29 @@ describe('stopAgentPrompt', () => {
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
     await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  it('returns the unsupported message for Copilot profiles', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      env: {},
+    });
+
+    expect(hoisted.abortOpenCodeSession).not.toHaveBeenCalled();
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Copilot interactive agent sessions are not supported yet.',
+    );
   });
 
   it('stops an active prompt through the active runtime ref', async () => {

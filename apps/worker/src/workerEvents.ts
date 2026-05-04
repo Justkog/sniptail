@@ -6,9 +6,9 @@ import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
 import {
   runAgentSessionMessage,
   runAgentSessionStart,
-} from './agent-command/openCodePromptRunner.js';
-import { resolveAgentInteraction } from './agent-command/resolveOpenCodeInteraction.js';
-import { stopAgentPrompt } from './agent-command/stopOpenCodePrompt.js';
+} from './agent-command/agentSessionRunner.js';
+import { resolveAgentInteraction } from './agent-command/resolveAgentInteraction.js';
+import { stopAgentPrompt } from './agent-command/stopAgentPrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';

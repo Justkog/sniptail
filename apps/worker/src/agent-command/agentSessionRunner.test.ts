@@ -31,9 +31,9 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
   updateAgentSessionStatus: hoisted.updateAgentSessionStatus,
 }));
 
-import { clearActiveOpenCodeRuntimes, getActiveOpenCodeRuntime } from './activeOpenCodeRuntimes.js';
-import { clearOpenCodePromptTurns } from './activeOpenCodePromptTurns.js';
-import { runAgentSessionMessage, runAgentSessionStart } from './openCodePromptRunner.js';
+import { clearActiveOpenCodeRuntimes, getActiveOpenCodeRuntime } from './openCodeInteractionState.js';
+import { clearAgentPromptTurns } from './activeAgentPromptTurns.js';
+import { runAgentSessionMessage, runAgentSessionStart } from './agentSessionRunner.js';
 
 function buildConfig(workspacePath: string): WorkerConfig {
   return {
@@ -222,8 +222,33 @@ describe('OpenCode agent prompt runner', () => {
 
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
-    clearOpenCodePromptTurns();
+    clearAgentPromptTurns();
     await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  it('fails unsupported Copilot profiles through the interactive agent registry', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runOpenCodePrompt).not.toHaveBeenCalled();
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'failed');
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Copilot interactive agent sessions are not supported yet.',
+    );
   });
 
   it('resolves workspace cwd and runs OpenCode with the selected profile', async () => {

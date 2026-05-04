@@ -1,121 +1,54 @@
 import { randomUUID } from 'node:crypto';
 import {
-  abortOpenCodeSession,
-  rejectOpenCodeQuestion,
-  replyOpenCodePermission,
-  runOpenCodePrompt,
-} from '@sniptail/core/opencode/prompt.js';
-import {
   loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
+import {
+  abortOpenCodeSession,
+  rejectOpenCodeQuestion,
+  replyOpenCodePermission,
+  replyOpenCodeQuestion,
+  runOpenCodePrompt,
+} from '@sniptail/core/opencode/prompt.js';
+import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
 import { BOT_EVENT_SCHEMA_VERSION, type BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
-import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
-import type { Notifier } from '../channels/notifier.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
+import {
+  clearAgentPromptTurn,
+  cancelAgentFollowUpSteer,
+  isAbortingAgentPromptForSteer,
+} from '../agent-command/activeAgentPromptTurns.js';
+import { createDebouncedAgentOutputBuffer } from '../agent-command/debouncedAgentOutput.js';
+import type {
+  ResolveInteractiveAgentInteractionInput,
+  RunInteractiveAgentTurnInput,
+  SteerInteractiveAgentTurnInput,
+  StopInteractiveAgentPromptInput,
+} from '../agent-command/interactiveAgentTypes.js';
 import {
   clearPendingOpenCodePermissionsForSession,
   deleteActiveOpenCodeRuntime,
   getActiveOpenCodeRuntime,
-  hasVisibleOpenCodePermission,
+  getPendingOpenCodeInteraction,
   hasScheduledOpenCodePermissionPromotion,
+  hasVisibleOpenCodePermission,
+  markPendingOpenCodePermissionReplySent,
   markPendingOpenCodePermissionVisible,
   promoteNextQueuedOpenCodePermission,
   scheduleOpenCodePermissionPromotion,
   setActiveOpenCodeRuntime,
   setPendingOpenCodePermission,
-  takePendingOpenCodePermissionByRequestId,
   takePendingOpenCodePermission,
+  takePendingOpenCodePermissionByRequestId,
   type PendingOpenCodePermission,
-} from './activeOpenCodeRuntimes.js';
-import {
-  beginOpenCodePromptTurn,
-  cancelOpenCodeFollowUpSteer,
-  clearOpenCodePromptTurn,
-  enqueueOpenCodeFollowUp,
-  finishOpenCodePromptTurn,
-  isAbortingOpenCodePromptForSteer,
-  isOpenCodePromptTurnActive,
-  steerOpenCodeFollowUp,
-  type QueuedOpenCodeFollowUp,
-} from './activeOpenCodePromptTurns.js';
-import { createDebouncedAgentOutputBuffer } from './debouncedAgentOutput.js';
-import { resolveAgentWorkspace } from './workspaceResolver.js';
-
-export type RunAgentSessionStartOptions = {
-  event: CoreWorkerEvent<'agent.session.start'>;
-  config: WorkerConfig;
-  notifier: Notifier;
-  botEvents: BotEventSink;
-  env?: NodeJS.ProcessEnv;
-};
-
-export type RunAgentSessionMessageOptions = {
-  event: CoreWorkerEvent<'agent.session.message'>;
-  config: WorkerConfig;
-  notifier: Notifier;
-  botEvents: BotEventSink;
-  env?: NodeJS.ProcessEnv;
-};
+} from './openCodeInteractionState.js';
+import { resolveAgentWorkspace } from '../agent-command/workspaceResolver.js';
 
 const ALWAYS_PERMISSION_PROMOTION_DELAY_MS = 750;
-
-function buildOpenCodeRunOptions(config: WorkerConfig, profileName: string) {
-  return {
-    botName: config.botName,
-    ...(config.opencode.defaultModel
-      ? {
-          model: config.opencode.defaultModel.model,
-          modelProvider: config.opencode.defaultModel.provider,
-        }
-      : {}),
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-      agent: profileName,
-      startupTimeoutMs: config.opencode.startupTimeoutMs,
-      dockerStreamLogs: config.opencode.dockerStreamLogs,
-      ...(config.opencode.executionMode === 'docker'
-        ? {
-            docker: {
-              enabled: true,
-              ...(config.opencode.dockerfilePath
-                ? { dockerfilePath: config.opencode.dockerfilePath }
-                : {}),
-              ...(config.opencode.dockerImage ? { image: config.opencode.dockerImage } : {}),
-              ...(config.opencode.dockerBuildContext
-                ? { buildContext: config.opencode.dockerBuildContext }
-                : {}),
-            },
-          }
-        : {}),
-    },
-  };
-}
-
-function summarizeEvent(event: unknown): { text: string; isError: boolean } | null {
-  return summarizeOpenCodeEvent(event as Parameters<typeof summarizeOpenCodeEvent>[0]);
-}
-
-function formatFailure(err: unknown): string {
-  const message = (err as Error).message || String(err);
-  return `OpenCode agent session failed: ${message}`;
-}
-
-async function isSessionStopped(sessionId: string): Promise<boolean> {
-  const session = await loadAgentSession(sessionId).catch((err) => {
-    logger.warn({ err, sessionId }, 'Failed to load agent session status');
-    return undefined;
-  });
-  return session?.status === 'stopped';
-}
 
 type OpenCodePermissionAskedEvent = {
   type: 'permission.asked';
@@ -154,6 +87,93 @@ type OpenCodeQuestionAskedEvent = {
     }>;
   };
 };
+
+function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['response']) {
+  return {
+    provider: response.provider,
+    channelId: response.channelId,
+    ...(response.threadId ? { threadId: response.threadId } : {}),
+  };
+}
+
+function buildOpenCodeRunOptions(config: WorkerConfig, profileName: string) {
+  return {
+    botName: config.botName,
+    ...(config.opencode.defaultModel
+      ? {
+          model: config.opencode.defaultModel.model,
+          modelProvider: config.opencode.defaultModel.provider,
+        }
+      : {}),
+    opencode: {
+      executionMode: config.opencode.executionMode,
+      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
+      ...(config.opencode.serverAuthHeaderEnv
+        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
+        : {}),
+      agent: profileName,
+      startupTimeoutMs: config.opencode.startupTimeoutMs,
+      dockerStreamLogs: config.opencode.dockerStreamLogs,
+      ...(config.opencode.executionMode === 'docker'
+        ? {
+            docker: {
+              enabled: true,
+              ...(config.opencode.dockerfilePath
+                ? { dockerfilePath: config.opencode.dockerfilePath }
+                : {}),
+              ...(config.opencode.dockerImage ? { image: config.opencode.dockerImage } : {}),
+              ...(config.opencode.dockerBuildContext
+                ? { buildContext: config.opencode.dockerBuildContext }
+                : {}),
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+function buildOpenCodeAbortOptions(config: WorkerConfig, baseUrl?: string) {
+  return {
+    ...(baseUrl ? { baseUrl } : {}),
+    opencode: {
+      executionMode: config.opencode.executionMode,
+      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
+      ...(config.opencode.serverAuthHeaderEnv
+        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
+        : {}),
+    },
+  };
+}
+
+function buildOpenCodePermissionReplyOptions(config: WorkerConfig, baseUrl: string) {
+  return buildOpenCodeAbortOptions(config, baseUrl);
+}
+
+function buildOpenCodeQuestionOptions(config: WorkerConfig, baseUrl: string) {
+  return buildOpenCodeAbortOptions(config, baseUrl);
+}
+
+function summarizeEvent(event: unknown): { text: string; isError: boolean } | null {
+  return summarizeOpenCodeEvent(event as Parameters<typeof summarizeOpenCodeEvent>[0]);
+}
+
+function formatFailure(err: unknown): string {
+  const message = (err as Error).message || String(err);
+  return `OpenCode agent session failed: ${message}`;
+}
+
+function formatStopFailure(err: unknown): string {
+  const message = (err as Error).message || String(err);
+  return `Failed to stop OpenCode prompt: ${message}`;
+}
+
+async function isSessionStopped(sessionId: string): Promise<boolean> {
+  const session = await loadAgentSession(sessionId).catch((err) => {
+    logger.warn({ err, sessionId }, 'Failed to load agent session status');
+    return undefined;
+  });
+  return session?.status === 'stopped';
+}
 
 function isOpenCodePermissionAskedEvent(event: unknown): event is OpenCodePermissionAskedEvent {
   if (!event || typeof event !== 'object') return false;
@@ -319,6 +339,31 @@ async function publishPermissionUpdated(input: {
   });
 }
 
+async function publishQuestionUpdated(input: {
+  botEvents: BotEventSink;
+  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
+  sessionId: string;
+  interactionId: string;
+  status: 'answered' | 'rejected' | 'expired' | 'failed';
+  actorUserId?: string;
+  message?: string;
+}) {
+  await input.botEvents.publish({
+    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+    provider: 'discord',
+    type: 'agent.question.updated',
+    payload: {
+      channelId: input.response.threadId ?? input.response.channelId,
+      threadId: input.response.threadId ?? input.response.channelId,
+      sessionId: input.sessionId,
+      interactionId: input.interactionId,
+      status: input.status,
+      ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
+      ...(input.message ? { message: input.message } : {}),
+    },
+  });
+}
+
 function permissionReplyStatus(reply: 'once' | 'always' | 'reject') {
   switch (reply) {
     case 'once':
@@ -368,55 +413,6 @@ function scheduleAlwaysPermissionPromotion(input: { sessionId: string; botEvents
     },
     'Scheduled deferred Discord permission display queue promotion after always reply',
   );
-}
-
-async function publishQuestionUpdated(input: {
-  botEvents: BotEventSink;
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  sessionId: string;
-  interactionId: string;
-  status: 'expired' | 'failed';
-  message?: string;
-}) {
-  await input.botEvents.publish({
-    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
-    type: 'agent.question.updated',
-    payload: {
-      channelId: input.response.threadId ?? input.response.channelId,
-      threadId: input.response.threadId ?? input.response.channelId,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      status: input.status,
-      ...(input.message ? { message: input.message } : {}),
-    },
-  });
-}
-
-function buildOpenCodePermissionReplyOptions(config: WorkerConfig, baseUrl: string) {
-  return {
-    baseUrl,
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-    },
-  };
-}
-
-function buildOpenCodeQuestionOptions(config: WorkerConfig, baseUrl: string) {
-  return {
-    baseUrl,
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-    },
-  };
 }
 
 async function rejectOpenCodePermissionOnTimeout(input: {
@@ -541,49 +537,15 @@ async function rejectUnrenderableOpenCodeQuestion(input: {
   });
 }
 
-function buildOpenCodeAbortOptions(config: WorkerConfig, baseUrl?: string) {
-  return {
-    ...(baseUrl ? { baseUrl } : {}),
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-    },
-  };
-}
-
-type OpenCodeTurnInput = {
-  sessionId: string;
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  prompt: string;
-  workspaceKey: string;
-  agentProfileKey: string;
-  cwd?: string;
-  codingAgentSessionId?: string;
-};
-
-async function runOpenCodeTurn({
+export async function runOpenCodeAgentTurn({
   turn,
   config,
   notifier,
   botEvents,
   env,
-}: {
-  turn: OpenCodeTurnInput;
-  config: WorkerConfig;
-  notifier: Notifier;
-  botEvents: BotEventSink;
-  env: NodeJS.ProcessEnv;
-}): Promise<void> {
-  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd, codingAgentSessionId } =
-    turn;
-  const ref = {
-    provider: response.provider,
-    channelId: response.channelId,
-    ...(response.threadId ? { threadId: response.threadId } : {}),
-  };
+}: RunInteractiveAgentTurnInput): Promise<void> {
+  const { sessionId, response, workspaceKey, profile, prompt, cwd, codingAgentSessionId } = turn;
+  const ref = buildRef(response);
   const outputBuffer = createDebouncedAgentOutputBuffer({
     notifier,
     ref,
@@ -591,11 +553,6 @@ async function runOpenCodeTurn({
   });
 
   try {
-    const profile = config.agent.profiles[agentProfileKey];
-    if (!profile) {
-      throw new Error(`Unknown agent profile key: ${agentProfileKey}`);
-    }
-
     const resolved = await resolveAgentWorkspace(
       config.agent.workspaces,
       {
@@ -613,7 +570,7 @@ async function runOpenCodeTurn({
       {
         sessionId,
         workspaceKey,
-        profileKey: agentProfileKey,
+        profileKey: profile.key,
         opencodeAgent: profile.name,
         resolvedCwd: resolved.resolvedCwd,
         promptLength: prompt.length,
@@ -628,11 +585,11 @@ async function runOpenCodeTurn({
       ...buildOpenCodeRunOptions(config, profile.name),
       runtimeId: sessionId,
       ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
-      onSessionId: async (codingAgentSessionId) => {
-        await updateAgentSessionCodingAgentSessionId(sessionId, codingAgentSessionId).catch(
+      onSessionId: async (nextCodingAgentSessionId) => {
+        await updateAgentSessionCodingAgentSessionId(sessionId, nextCodingAgentSessionId).catch(
           (err) => {
             logger.warn(
-              { err, sessionId, codingAgentSessionId },
+              { err, sessionId, codingAgentSessionId: nextCodingAgentSessionId },
               'Failed to store OpenCode session id',
             );
           },
@@ -696,56 +653,16 @@ async function runOpenCodeTurn({
             timeout,
             requestEvent,
           });
-          logger.info(
-            {
-              sessionId,
-              interactionId,
-              requestId: opencodeEvent.properties.id,
-              permission: opencodeEvent.properties.permission,
-              visiblePermissionAlreadyPresent: hasVisibleOpenCodePermission(sessionId),
-            },
-            'Tracked OpenCode permission request',
-          );
           if (!hasVisibleOpenCodePermission(sessionId)) {
             await publishPromotedPermission({
               botEvents,
               permission: markPendingOpenCodePermissionVisible(sessionId, interactionId),
             });
-            logger.info(
-              {
-                sessionId,
-                interactionId,
-                requestId: opencodeEvent.properties.id,
-                permission: opencodeEvent.properties.permission,
-              },
-              'Published visible Discord permission request',
-            );
-          } else {
-            logger.info(
-              {
-                sessionId,
-                interactionId,
-                requestId: opencodeEvent.properties.id,
-                permission: opencodeEvent.properties.permission,
-              },
-              'Queued hidden Discord permission request',
-            );
           }
         }
         if (isOpenCodePermissionRepliedEvent(opencodeEvent)) {
           const pending = takePendingOpenCodePermissionByRequestId(
             opencodeEvent.properties.requestID,
-          );
-          logger.info(
-            {
-              sessionId,
-              requestId: opencodeEvent.properties.requestID,
-              reply: opencodeEvent.properties.reply,
-              matchedPending: Boolean(pending),
-              interactionId: pending?.interactionId,
-              displayState: pending?.displayState,
-            },
-            'OpenCode permission reply matched pending request',
           );
           if (pending) {
             if (pending.displayState === 'visible' || pending.displayState === 'reply_sent') {
@@ -760,17 +677,10 @@ async function runOpenCodeTurn({
             if (opencodeEvent.properties.reply === 'always') {
               scheduleAlwaysPermissionPromotion({ sessionId, botEvents });
             } else {
-              const promoted = promoteNextQueuedOpenCodePermission(sessionId);
-              logger.info(
-                {
-                  sessionId,
-                  promotedInteractionId: promoted?.interactionId,
-                  promotedRequestId: promoted?.requestId,
-                  promotedDisplayState: promoted?.displayState,
-                },
-                'Advanced Discord permission display queue after OpenCode reply',
-              );
-              await publishPromotedPermission({ botEvents, permission: promoted });
+              await publishPromotedPermission({
+                botEvents,
+                permission: promoteNextQueuedOpenCodePermission(sessionId),
+              });
             }
           }
         }
@@ -851,16 +761,16 @@ async function runOpenCodeTurn({
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
   } catch (err) {
-    if (isAbortingOpenCodePromptForSteer(sessionId)) {
+    if (isAbortingAgentPromptForSteer(sessionId)) {
       logger.info(
-        { err, sessionId, workspaceKey, profileKey: agentProfileKey },
+        { err, sessionId, workspaceKey, profileKey: profile.key },
         'OpenCode agent prompt aborted for steer follow-up',
       );
       await outputBuffer.flush();
       return;
     }
     logger.error(
-      { err, sessionId, workspaceKey, profileKey: agentProfileKey },
+      { err, sessionId, workspaceKey, profileKey: profile.key },
       'OpenCode agent session prompt failed',
     );
     if (await isSessionStopped(sessionId)) {
@@ -879,194 +789,238 @@ async function runOpenCodeTurn({
   }
 }
 
-async function runOpenCodeTurnLoop(input: {
-  initialTurn: OpenCodeTurnInput;
-  config: WorkerConfig;
-  notifier: Notifier;
-  botEvents: BotEventSink;
-  env: NodeJS.ProcessEnv;
-}) {
-  let nextTurn: OpenCodeTurnInput | undefined = input.initialTurn;
-  while (nextTurn) {
-    await runOpenCodeTurn({
-      turn: nextTurn,
-      config: input.config,
-      notifier: input.notifier,
-      botEvents: input.botEvents,
-      env: input.env,
+export async function steerOpenCodeAgentTurn({
+  sessionId,
+  config,
+  env,
+}: SteerInteractiveAgentTurnInput): Promise<void> {
+  const activeRuntime = getActiveOpenCodeRuntime(sessionId);
+  if (!activeRuntime) {
+    throw new Error('active runtime is no longer reachable.');
+  }
+  try {
+    await abortOpenCodeSession(
+      activeRuntime.codingAgentSessionId,
+      activeRuntime.directory,
+      env,
+      buildOpenCodeAbortOptions(config, activeRuntime.baseUrl),
+    );
+  } catch (err) {
+    cancelAgentFollowUpSteer(sessionId);
+    throw err;
+  }
+}
+
+export async function stopOpenCodeAgentPrompt({
+  event,
+  session,
+  config,
+  notifier,
+  env,
+}: StopInteractiveAgentPromptInput): Promise<void> {
+  const { sessionId, response } = event.payload;
+  const ref = buildRef(response);
+
+  try {
+    const activeRuntime = getActiveOpenCodeRuntime(sessionId);
+    const codingAgentSessionId =
+      activeRuntime?.codingAgentSessionId ?? session.codingAgentSessionId;
+    if (!codingAgentSessionId) {
+      await notifier.postMessage(ref, 'OpenCode prompt cannot be stopped yet: session is starting.');
+      return;
+    }
+
+    const resolved = activeRuntime
+      ? undefined
+      : await resolveAgentWorkspace(
+          config.agent.workspaces,
+          {
+            workspaceKey: session.workspaceKey,
+            ...(session.cwd ? { cwd: session.cwd } : {}),
+          },
+          { requireExists: true },
+        );
+    const directory = activeRuntime?.directory ?? resolved?.resolvedCwd;
+    if (!directory) {
+      throw new Error('Unable to resolve OpenCode working directory.');
+    }
+
+    const baseUrl =
+      activeRuntime?.baseUrl ??
+      (config.opencode.executionMode === 'server' ? config.opencode.serverUrl : undefined);
+    if (!baseUrl) {
+      await notifier.postMessage(
+        ref,
+        'OpenCode prompt cannot be stopped: active runtime is no longer reachable.',
+      );
+      return;
+    }
+
+    await abortOpenCodeSession(
+      codingAgentSessionId,
+      directory,
+      env,
+      buildOpenCodeAbortOptions(config, baseUrl),
+    );
+    clearPendingOpenCodePermissionsForSession(sessionId);
+    deleteActiveOpenCodeRuntime(sessionId);
+    clearAgentPromptTurn(sessionId);
+    await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to mark agent session stopped');
     });
-    const queued = finishOpenCodePromptTurn(nextTurn.sessionId);
-    if (!queued) {
-      nextTurn = undefined;
-      continue;
-    }
-    const session = await loadAgentSession(queued.sessionId);
-    if (!session || session.status === 'stopped' || session.status === 'failed') {
-      clearOpenCodePromptTurn(queued.sessionId);
-      nextTurn = undefined;
-      continue;
-    }
-    nextTurn = {
-      sessionId: queued.sessionId,
-      response: queued.response,
-      prompt: queued.message,
-      workspaceKey: session.workspaceKey,
-      agentProfileKey: session.agentProfileKey,
-      ...(session.cwd ? { cwd: session.cwd } : {}),
-      ...(session.codingAgentSessionId
-        ? { codingAgentSessionId: session.codingAgentSessionId }
-        : {}),
-    };
+    await notifier.postMessage(ref, 'OpenCode prompt stopped.');
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to stop OpenCode agent prompt');
+    await notifier.postMessage(ref, formatStopFailure(err));
   }
 }
 
-export async function runAgentSessionStart({
+export async function resolveOpenCodeAgentInteraction({
   event,
   config,
   notifier,
   botEvents,
-  env = process.env,
-}: RunAgentSessionStartOptions): Promise<void> {
-  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd } = event.payload;
+  env,
+}: ResolveInteractiveAgentInteractionInput): Promise<void> {
+  const { sessionId, interactionId, response, resolution } = event.payload;
+  const ref = buildRef(response);
 
-  if (!config.agent.enabled) {
-    logger.warn(
-      { sessionId, workspaceKey, profileKey: agentProfileKey },
-      'Ignoring agent session start because agent command is disabled in worker config',
-    );
-    return;
-  }
-  if (!beginOpenCodePromptTurn(sessionId)) {
+  const activeRuntime = getActiveOpenCodeRuntime(sessionId);
+  if (!activeRuntime) {
     await notifier.postMessage(
-      {
-        provider: response.provider,
-        channelId: response.channelId,
-        ...(response.threadId ? { threadId: response.threadId } : {}),
-      },
-      'This agent session already has an active prompt.',
+      ref,
+      'OpenCode permission request cannot be resolved: active runtime is no longer reachable.',
     );
     return;
   }
 
-  await runOpenCodeTurnLoop({
-    initialTurn: {
-      sessionId,
-      response,
-      prompt,
-      workspaceKey,
-      agentProfileKey,
-      ...(cwd ? { cwd } : {}),
-    },
-    config,
-    notifier,
-    botEvents,
-    env,
-  });
-}
-
-export async function runAgentSessionMessage({
-  event,
-  config,
-  notifier,
-  botEvents,
-  env = process.env,
-}: RunAgentSessionMessageOptions): Promise<void> {
-  const { sessionId, response, message, messageId, mode = 'run' } = event.payload;
-  const ref = {
-    provider: response.provider,
-    channelId: response.channelId,
-    ...(response.threadId ? { threadId: response.threadId } : {}),
-  };
-
-  if (!config.agent.enabled) {
-    logger.warn(
-      { sessionId, threadId: response.threadId, userId: response.userId },
-      'Ignoring agent session message because agent command is disabled in worker config',
+  const pendingPreview = getPendingOpenCodeInteraction(sessionId, interactionId);
+  if (!pendingPreview) {
+    await notifier.postMessage(ref, 'This agent interaction is no longer pending.');
+    return;
+  }
+  if (pendingPreview.kind !== resolution.kind) {
+    await notifier.postMessage(
+      ref,
+      'This agent interaction no longer matches the selected control.',
     );
     return;
   }
-
-  const followUp: QueuedOpenCodeFollowUp = {
-    sessionId,
-    response,
-    message,
-    ...(messageId ? { messageId } : {}),
-  };
-
-  if (isOpenCodePromptTurnActive(sessionId)) {
-    if (mode === 'queue') {
-      enqueueOpenCodeFollowUp(followUp);
-      await notifier.postMessage(ref, 'Follow-up queued for the next agent turn.');
+  if (
+    resolution.kind === 'permission' &&
+    pendingPreview.kind === 'permission' &&
+    pendingPreview.displayState === 'reply_sent'
+  ) {
+    await notifier.postMessage(ref, 'This agent permission is already being resolved.');
+    return;
+  }
+  if (
+    resolution.kind === 'permission' &&
+    pendingPreview.kind === 'permission' &&
+    pendingPreview.displayState !== 'visible'
+  ) {
+    await notifier.postMessage(ref, 'This agent permission is not currently displayed.');
+    return;
+  }
+  if (resolution.kind === 'permission') {
+    try {
+      await replyOpenCodePermission(pendingPreview.directory, env, {
+        ...buildOpenCodePermissionReplyOptions(
+          config,
+          pendingPreview.baseUrl || activeRuntime.baseUrl,
+        ),
+        requestID: pendingPreview.requestId,
+        ...(pendingPreview.workspace ? { workspace: pendingPreview.workspace } : {}),
+        reply: resolution.decision,
+        ...(resolution.message ? { message: resolution.message } : {}),
+      });
+      markPendingOpenCodePermissionReplySent(sessionId, interactionId);
+      return;
+    } catch (err) {
+      logger.error(
+        { err, sessionId, interactionId, kind: resolution.kind },
+        'Failed to resolve OpenCode interaction',
+      );
+      takePendingOpenCodePermission(sessionId, interactionId);
+      await botEvents.publish({
+        schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+        provider: 'discord',
+        type: 'agent.permission.updated',
+        payload: {
+          channelId: response.threadId ?? response.channelId,
+          threadId: response.threadId ?? response.channelId,
+          sessionId,
+          interactionId,
+          status: 'failed',
+          ...(response.userId ? { actorUserId: response.userId } : {}),
+          message: `Failed to resolve permission request: ${(err as Error).message}`,
+        },
+      });
+      await publishPromotedPermission({
+        botEvents,
+        permission: promoteNextQueuedOpenCodePermission(sessionId),
+      });
+      await notifier.postMessage(
+        ref,
+        `Failed to resolve OpenCode permission request: ${(err as Error).message}`,
+      );
       return;
     }
-    if (mode === 'steer') {
-      steerOpenCodeFollowUp(followUp);
-      const activeRuntime = getActiveOpenCodeRuntime(sessionId);
-      if (!activeRuntime) {
-        cancelOpenCodeFollowUpSteer(sessionId);
-        await notifier.postMessage(
-          ref,
-          'Cannot steer this prompt: active runtime is no longer reachable.',
-        );
-        return;
-      }
-      try {
-        await abortOpenCodeSession(
-          activeRuntime.codingAgentSessionId,
-          activeRuntime.directory,
-          env,
-          buildOpenCodeAbortOptions(config, activeRuntime.baseUrl),
-        );
-        await notifier.postMessage(ref, 'Steering current prompt. Running this message next.');
-      } catch (err) {
-        cancelOpenCodeFollowUpSteer(sessionId);
-        logger.error({ err, sessionId }, 'Failed to abort OpenCode prompt for steer follow-up');
-        await notifier.postMessage(
-          ref,
-          `Failed to steer current prompt: ${(err as Error).message}`,
-        );
-      }
+  }
+
+  const pending = takePendingOpenCodePermission(sessionId, interactionId);
+  if (!pending) {
+    await notifier.postMessage(ref, 'This agent interaction is no longer pending.');
+    return;
+  }
+
+  try {
+    if (resolution.reject) {
+      await rejectOpenCodeQuestion(pending.directory, env, {
+        ...buildOpenCodeQuestionOptions(config, pending.baseUrl || activeRuntime.baseUrl),
+        requestID: pending.requestId,
+        ...(pending.workspace ? { workspace: pending.workspace } : {}),
+      });
+      await publishQuestionUpdated({
+        botEvents,
+        response,
+        sessionId,
+        interactionId,
+        status: 'rejected',
+        ...(response.userId ? { actorUserId: response.userId } : {}),
+        ...(resolution.message ? { message: resolution.message } : {}),
+      });
       return;
     }
-    await notifier.postMessage(ref, 'This agent session already has an active prompt.');
-    return;
-  }
 
-  const session = await loadAgentSession(sessionId);
-  if (!session) {
-    await notifier.postMessage(ref, 'Agent session not found.');
-    return;
-  }
-  if (session.status === 'pending') {
-    await notifier.postMessage(ref, 'This agent session is still waiting to start.');
-    return;
-  }
-  if (session.status !== 'completed' && session.status !== 'active') {
-    await notifier.postMessage(ref, `This agent session is ${session.status}.`);
-    return;
-  }
-  if (!session.codingAgentSessionId) {
-    await notifier.postMessage(ref, 'OpenCode session id is not available for this agent session.');
-    return;
-  }
-  if (!beginOpenCodePromptTurn(sessionId)) {
-    await notifier.postMessage(ref, 'This agent session already has an active prompt.');
-    return;
-  }
-
-  await runOpenCodeTurnLoop({
-    initialTurn: {
-      sessionId,
+    await replyOpenCodeQuestion(pending.directory, env, {
+      ...buildOpenCodeQuestionOptions(config, pending.baseUrl || activeRuntime.baseUrl),
+      requestID: pending.requestId,
+      ...(pending.workspace ? { workspace: pending.workspace } : {}),
+      answers: resolution.answers ?? [],
+    });
+    await publishQuestionUpdated({
+      botEvents,
       response,
-      prompt: message,
-      workspaceKey: session.workspaceKey,
-      agentProfileKey: session.agentProfileKey,
-      ...(session.cwd ? { cwd: session.cwd } : {}),
-      codingAgentSessionId: session.codingAgentSessionId,
-    },
-    config,
-    notifier,
-    botEvents,
-    env,
-  });
+      sessionId,
+      interactionId,
+      status: 'answered',
+      ...(response.userId ? { actorUserId: response.userId } : {}),
+      ...(resolution.message ? { message: resolution.message } : {}),
+    });
+  } catch (err) {
+    logger.error({ err, sessionId, interactionId }, 'Failed to resolve OpenCode question');
+    await publishQuestionUpdated({
+      botEvents,
+      response,
+      sessionId,
+      interactionId,
+      status: 'failed',
+      message: `Failed to resolve question: ${(err as Error).message}`,
+    });
+    await notifier.postMessage(
+      ref,
+      `Failed to resolve OpenCode question: ${(err as Error).message}`,
+    );
+  }
 }

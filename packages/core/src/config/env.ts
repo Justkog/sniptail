@@ -493,9 +493,9 @@ function parseAgentProfiles(
       `agent.profiles.${rawProfileKey}.provider`,
     );
     const provider = rawProvider?.trim();
-    if (provider !== 'opencode') {
+    if (provider !== 'opencode' && provider !== 'copilot') {
       throw new Error(
-        `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected opencode.`,
+        `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected opencode or copilot.`,
       );
     }
     const name = getTomlString(profileToml?.name, `agent.profiles.${rawProfileKey}.name`)?.trim();

@@ -121,7 +121,7 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # description = "Main Sniptail checkout"
 
 # /agent coding-agent profiles are underlying agent profiles/personas.
-# Only OpenCode profiles are supported for v1.
+# Copilot profiles are accepted here but interactive Copilot support is not implemented yet.
 #
 # [agent.profiles.build]
 # provider = "opencode"
