@@ -4,7 +4,7 @@ import {
   rejectOpenCodeQuestion,
   replyOpenCodePermission,
   runOpenCodePrompt,
-} from '@sniptail/core/opencode/opencode.js';
+} from '@sniptail/core/opencode/prompt.js';
 import {
   loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
@@ -102,11 +102,6 @@ function buildOpenCodeRunOptions(config: WorkerConfig, profileName: string) {
 
 function summarizeEvent(event: unknown): { text: string; isError: boolean } | null {
   return summarizeOpenCodeEvent(event as Parameters<typeof summarizeOpenCodeEvent>[0]);
-}
-
-function formatFinalResponse(response: string): string {
-  const trimmed = response.trim();
-  return trimmed || 'OpenCode finished without a text response.';
 }
 
 function formatFailure(err: unknown): string {
@@ -629,7 +624,7 @@ async function runOpenCodeTurn({
     let activeRuntimeBaseUrl: string | undefined;
     let activeRuntimeDirectory = resolved.resolvedCwd;
 
-    const result = await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
+    await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
       ...buildOpenCodeRunOptions(config, profile.name),
       runtimeId: sessionId,
       ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
@@ -855,7 +850,6 @@ async function runOpenCodeTurn({
     await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
-    // await notifier.postMessage(ref, formatFinalResponse(result.finalResponse ?? ''));
   } catch (err) {
     if (isAbortingOpenCodePromptForSteer(sessionId)) {
       logger.info(

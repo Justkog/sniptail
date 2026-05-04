@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
-import type { OpenCodePromptRunOptions } from '@sniptail/core/opencode/opencode.js';
+import type { OpenCodePromptRunOptions } from '@sniptail/core/opencode/prompt.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
@@ -18,7 +18,7 @@ const hoisted = vi.hoisted(() => ({
   updateAgentSessionStatus: vi.fn(),
 }));
 
-vi.mock('@sniptail/core/opencode/opencode.js', () => ({
+vi.mock('@sniptail/core/opencode/prompt.js', () => ({
   runOpenCodePrompt: hoisted.runOpenCodePrompt,
   abortOpenCodeSession: hoisted.abortOpenCodeSession,
   replyOpenCodePermission: hoisted.replyOpenCodePermission,
@@ -209,7 +209,7 @@ describe('OpenCode agent prompt runner', () => {
           properties: { info: { role: 'assistant', time: { completed: Date.now() } } },
         });
         await options.onAssistantMessage?.('assistant progress text', buildAssistantMessageEvent());
-        return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
+        return { finalResponse: 'assistant progress text', threadId: 'opencode-session-1' };
       },
     );
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
@@ -258,7 +258,7 @@ describe('OpenCode agent prompt runner', () => {
     expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'completed');
     expect(notifier.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'final answer',
+      'assistant progress text',
     );
   });
 
@@ -278,11 +278,6 @@ describe('OpenCode agent prompt runner', () => {
       1,
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant progress text',
-    );
-    expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'final answer',
     );
   });
 
@@ -326,12 +321,7 @@ describe('OpenCode agent prompt runner', () => {
       env: {},
     });
 
-    expect(notifier.postMessage).toHaveBeenCalledTimes(1);
-    expect(notifier.postMessage).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'final answer',
-    );
+    expect(notifier.postMessage).toHaveBeenCalledTimes(0);
   });
 
   it('records and clears the active OpenCode runtime ref', async () => {
@@ -1041,7 +1031,7 @@ describe('OpenCode agent prompt runner', () => {
     );
     expect(notifier.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
-      'final answer',
+      'assistant progress text',
     );
   });
 

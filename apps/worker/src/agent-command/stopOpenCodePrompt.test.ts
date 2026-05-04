@@ -14,7 +14,7 @@ const hoisted = vi.hoisted(() => ({
   updateAgentSessionStatus: vi.fn(),
 }));
 
-vi.mock('@sniptail/core/opencode/opencode.js', () => ({
+vi.mock('@sniptail/core/opencode/prompt.js', () => ({
   abortOpenCodeSession: hoisted.abortOpenCodeSession,
 }));
 

@@ -5,7 +5,7 @@ import {
   rejectOpenCodeQuestion,
   replyOpenCodePermission,
   replyOpenCodeQuestion,
-} from '@sniptail/core/opencode/opencode.js';
+} from '@sniptail/core/opencode/prompt.js';
 import { BOT_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';

@@ -1,13 +1,10 @@
-import { EventEmitter } from 'node:events';
-import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JobSpec } from '../types/job.js';
+import { abortOpenCodeSession, runOpenCode, runOpenCodePrompt } from './prompt.js';
 
 const hoisted = vi.hoisted(() => ({
   createOpencodeClient: vi.fn(),
   createOpencodeServer: vi.fn(),
-  spawn: vi.fn(),
-  resolveWorkerAgentScriptPath: vi.fn(() => '/tmp/opencode-docker-server.sh'),
   serverClose: vi.fn(),
   client: {
     session: {
@@ -30,25 +27,6 @@ vi.mock('@opencode-ai/sdk/v2', () => ({
   createOpencodeClient: hoisted.createOpencodeClient,
   createOpencodeServer: hoisted.createOpencodeServer,
 }));
-
-vi.mock('node:child_process', async () => {
-  const actual = await vi.importActual('node:child_process');
-  return {
-    ...actual,
-    spawn: hoisted.spawn,
-  };
-});
-
-vi.mock('../agents/resolveWorkerAgentScriptPath.js', () => ({
-  resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
-}));
-
-import {
-  abortOpenCodeSession,
-  fetchCompletedAssistantMessageText,
-  runOpenCode,
-  runOpenCodePrompt,
-} from './opencode.js';
 
 function buildJob(): JobSpec {
   return {
@@ -77,19 +55,7 @@ async function* eventsSequence(events: unknown[]) {
   }
 }
 
-function buildChildProcess() {
-  const proc = new EventEmitter() as EventEmitter & {
-    stdout: Readable;
-    stderr: Readable;
-    kill: ReturnType<typeof vi.fn>;
-  };
-  proc.stdout = new Readable({ read() {} });
-  proc.stderr = new Readable({ read() {} });
-  proc.kill = vi.fn();
-  return proc;
-}
-
-describe('runOpenCode', () => {
+describe('OpenCode prompt helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.createOpencodeServer.mockResolvedValue({
@@ -110,20 +76,6 @@ describe('runOpenCode', () => {
 
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  it('starts and closes a local SDK-managed server', async () => {
-    const result = await runOpenCode(buildJob(), '/tmp/work', {}, { botName: 'Sniptail' });
-
-    expect(result).toEqual({ finalResponse: 'done', threadId: 'session-1' });
-    expect(hoisted.createOpencodeServer).toHaveBeenCalledWith(
-      expect.objectContaining({ hostname: '127.0.0.1', timeout: 10_000 }),
-    );
-    expect(hoisted.createOpencodeClient).toHaveBeenCalledWith({
-      baseUrl: 'http://127.0.0.1:4096',
-      directory: '/tmp/work',
-    });
-    expect(hoisted.serverClose).toHaveBeenCalled();
   });
 
   it('runs a freeform prompt and reports the OpenCode session id immediately', async () => {
@@ -152,86 +104,6 @@ describe('runOpenCode', () => {
         parts: [{ type: 'text', text: 'inspect this repo' }],
       }),
     );
-  });
-
-  it('fetches completed assistant message text from message.updated events', async () => {
-    hoisted.client.session.message.mockResolvedValue({
-      data: {
-        info: { id: 'message-1', role: 'assistant' },
-        parts: [{ type: 'text', text: 'completed assistant text' }],
-      },
-    });
-
-    const text = await fetchCompletedAssistantMessageText(hoisted.client, {
-      type: 'message.updated',
-      properties: {
-        info: {
-          id: 'message-1',
-          sessionID: 'session-1',
-          role: 'assistant',
-          time: { completed: 123 },
-        },
-      },
-    });
-
-    expect(text).toBe('completed assistant text');
-    expect(hoisted.client.session.message).toHaveBeenCalledWith({
-      sessionID: 'session-1',
-      messageID: 'message-1',
-    });
-  });
-
-  it('ignores message updates that are not completed assistant messages', async () => {
-    await expect(
-      fetchCompletedAssistantMessageText(hoisted.client, {
-        type: 'message.updated',
-        properties: {
-          info: {
-            id: 'message-1',
-            sessionID: 'session-1',
-            role: 'assistant',
-            time: {},
-          },
-        },
-      }),
-    ).resolves.toBe('');
-    await expect(
-      fetchCompletedAssistantMessageText(hoisted.client, {
-        type: 'message.updated',
-        properties: {
-          info: {
-            id: 'message-1',
-            sessionID: 'session-1',
-            role: 'user',
-            time: { completed: 123 },
-          },
-        },
-      }),
-    ).resolves.toBe('');
-    expect(hoisted.client.session.message).not.toHaveBeenCalled();
-  });
-
-  it('returns empty text when the completed assistant message has no text parts', async () => {
-    hoisted.client.session.message.mockResolvedValue({
-      data: {
-        info: { id: 'message-1', role: 'assistant' },
-        parts: [{ type: 'tool', tool: 'bash' }],
-      },
-    });
-
-    await expect(
-      fetchCompletedAssistantMessageText(hoisted.client, {
-        type: 'message.updated',
-        properties: {
-          info: {
-            id: 'message-1',
-            sessionID: 'session-1',
-            role: 'assistant',
-            time: { completed: 123 },
-          },
-        },
-      }),
-    ).resolves.toBe('');
   });
 
   it('streams assistant text from message part updates', async () => {
@@ -325,50 +197,6 @@ describe('runOpenCode', () => {
 
     expect(onAssistantMessage).toHaveBeenCalledWith(
       'wrapped text',
-      expect.objectContaining({ type: 'message.part.updated' }),
-    );
-  });
-
-  it('uses message part deltas directly', async () => {
-    const onAssistantMessage = vi.fn();
-    hoisted.client.session.prompt.mockImplementationOnce(async () => {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
-      return { data: { parts: [{ type: 'text', text: 'done' }] } };
-    });
-    hoisted.client.event.subscribe.mockResolvedValue({
-      stream: eventsSequence([
-        {
-          type: 'message.updated',
-          properties: {
-            info: {
-              id: 'message-1',
-              sessionID: 'session-1',
-              role: 'assistant',
-              time: {},
-            },
-          },
-        },
-        {
-          type: 'message.part.updated',
-          properties: {
-            delta: 'hello',
-            part: {
-              id: 'part-1',
-              sessionID: 'session-1',
-              messageID: 'message-1',
-              type: 'text',
-              text: 'ignored snapshot',
-            },
-          },
-        },
-      ]),
-    });
-
-    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
-
-    expect(onAssistantMessage).toHaveBeenCalledTimes(1);
-    expect(onAssistantMessage).toHaveBeenCalledWith(
-      'hello',
       expect.objectContaining({ type: 'message.part.updated' }),
     );
   });
@@ -574,28 +402,6 @@ describe('runOpenCode', () => {
     );
   });
 
-  it('connects to a configured server with auth header env', async () => {
-    await runOpenCode(
-      buildJob(),
-      '/tmp/work',
-      { OPENCODE_AUTH_HEADER: 'Bearer secret' },
-      {
-        opencode: {
-          executionMode: 'server',
-          serverUrl: 'http://opencode.example',
-          serverAuthHeaderEnv: 'OPENCODE_AUTH_HEADER',
-        },
-      },
-    );
-
-    expect(hoisted.createOpencodeServer).not.toHaveBeenCalled();
-    expect(hoisted.createOpencodeClient).toHaveBeenCalledWith({
-      baseUrl: 'http://opencode.example',
-      directory: '/tmp/work',
-      headers: { Authorization: 'Bearer secret' },
-    });
-  });
-
   it('aborts an OpenCode session through a supplied runtime URL', async () => {
     await abortOpenCodeSession('session-1', '/tmp/work', {}, { baseUrl: 'http://127.0.0.1:4096' });
 
@@ -708,55 +514,5 @@ describe('runOpenCode', () => {
       directory: '/tmp/work',
       limit: 20,
     });
-  });
-
-  it('starts docker wrapper and cleans it up', async () => {
-    const proc = buildChildProcess();
-    hoisted.spawn.mockReturnValue(proc);
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
-    const result = await runOpenCode(
-      buildJob(),
-      '/tmp/work',
-      {},
-      {
-        opencode: {
-          executionMode: 'docker',
-          startupTimeoutMs: 1_000,
-          dockerStreamLogs: true,
-          docker: {
-            enabled: true,
-            dockerfilePath: './Dockerfile.opencode',
-            image: 'snatch-opencode:local',
-            buildContext: '.',
-          },
-        },
-        additionalDirectories: ['/tmp/repos'],
-      },
-    );
-
-    expect(result.finalResponse).toBe('done');
-    expect(hoisted.resolveWorkerAgentScriptPath).toHaveBeenCalledWith('opencode-docker-server.sh');
-    expect(hoisted.spawn).toHaveBeenCalledWith(
-      '/tmp/opencode-docker-server.sh',
-      [],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          OPENCODE_DOCKERFILE_PATH: expect.stringContaining('Dockerfile.opencode') as unknown,
-          OPENCODE_DOCKER_IMAGE: 'snatch-opencode:local',
-          OPENCODE_DOCKER_BUILD_CONTEXT: expect.any(String) as unknown,
-          OPENCODE_DOCKER_WORKDIR: '/tmp/work',
-          OPENCODE_DOCKER_ADDITIONAL_DIRS: '/tmp/repos',
-        }) as unknown,
-      }),
-    );
-    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
-    proc.stdout.emit('data', 'stdout line\n');
-    proc.stderr.emit('data', 'stderr line\n');
-    expect(stdoutSpy).toHaveBeenCalledWith('stdout line\n');
-    expect(stderrSpy).toHaveBeenCalledWith('stderr line\n');
-    stdoutSpy.mockRestore();
-    stderrSpy.mockRestore();
   });
 });

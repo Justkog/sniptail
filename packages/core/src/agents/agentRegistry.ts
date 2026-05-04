@@ -5,7 +5,7 @@ import { resolveWorkerAgentScriptPath } from './resolveWorkerAgentScriptPath.js'
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
 import { runCopilot } from '../copilot/copilot.js';
 import { formatCopilotEvent, summarizeCopilotEvent } from '../copilot/logging.js';
-import { runOpenCode } from '../opencode/opencode.js';
+import { runOpenCode } from '../opencode/prompt.js';
 import { formatOpenCodeEvent, summarizeOpenCodeEvent } from '../opencode/logging.js';
 import type { AgentId, JobType } from '../types/job.js';
 import type { Event as OpenCodeEvent } from '@opencode-ai/sdk/v2';

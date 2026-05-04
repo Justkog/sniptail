@@ -4,7 +4,7 @@ import {
 } from '@sniptail/core/agent-sessions/registry.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
-import { abortOpenCodeSession } from '@sniptail/core/opencode/opencode.js';
+import { abortOpenCodeSession } from '@sniptail/core/opencode/prompt.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
 import {

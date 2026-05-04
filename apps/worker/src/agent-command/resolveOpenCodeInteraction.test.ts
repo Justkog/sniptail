@@ -20,7 +20,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
   loadAgentSession: hoisted.loadAgentSession,
 }));
 
-vi.mock('@sniptail/core/opencode/opencode.js', () => ({
+vi.mock('@sniptail/core/opencode/prompt.js', () => ({
   replyOpenCodePermission: hoisted.replyOpenCodePermission,
   replyOpenCodeQuestion: hoisted.replyOpenCodeQuestion,
   rejectOpenCodeQuestion: hoisted.rejectOpenCodeQuestion,
