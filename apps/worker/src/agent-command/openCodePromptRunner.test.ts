@@ -164,31 +164,21 @@ function buildBotEvents() {
   };
 }
 
-type AssistantCompletedEvent = Parameters<
-  NonNullable<OpenCodePromptRunOptions['onAssistantMessageCompleted']>
+type AssistantMessageEvent = Parameters<
+  NonNullable<OpenCodePromptRunOptions['onAssistantMessage']>
 >[1];
 
-function buildAssistantCompletedEvent(): AssistantCompletedEvent {
+function buildAssistantMessageEvent(): AssistantMessageEvent {
   return {
-    type: 'message.updated',
+    type: 'message.part.updated',
     properties: {
-      info: {
-        id: 'message-1',
+      part: {
+        id: 'part-1',
+        messageID: 'message-1',
         sessionID: 'opencode-session-1',
-        role: 'assistant',
-        time: { created: 1, completed: Date.now() },
-        parentID: 'parent-1',
-        modelID: 'claude-sonnet',
-        providerID: 'anthropic',
-        mode: 'build',
-        path: { cwd: '/tmp/work', root: '/tmp/work' },
-        cost: 0,
-        tokens: {
-          input: 1,
-          output: 1,
-          reasoning: 0,
-          cache: { read: 0, write: 0 },
-        },
+        type: 'text',
+        text: 'assistant progress text',
+        time: { start: 1 },
       },
     },
   };
@@ -218,10 +208,7 @@ describe('OpenCode agent prompt runner', () => {
           type: 'message.updated',
           properties: { info: { role: 'assistant', time: { completed: Date.now() } } },
         });
-        await options.onAssistantMessageCompleted?.(
-          'assistant progress text',
-          buildAssistantCompletedEvent(),
-        );
+        await options.onAssistantMessage?.('assistant progress text', buildAssistantMessageEvent());
         return { finalResponse: 'final answer', threadId: 'opencode-session-1' };
       },
     );
@@ -275,7 +262,7 @@ describe('OpenCode agent prompt runner', () => {
     );
   });
 
-  it('flushes completed assistant text before the final response', async () => {
+  it('flushes streamed assistant text before the final response', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
 
@@ -688,9 +675,9 @@ describe('OpenCode agent prompt runner', () => {
         _env: NodeJS.ProcessEnv,
         options: OpenCodePromptRunOptions,
       ) => {
-        await options.onAssistantMessageCompleted?.(
+        await options.onAssistantMessage?.(
           'I need to inspect README files before editing.',
-          buildAssistantCompletedEvent(),
+          buildAssistantMessageEvent(),
         );
         await options.onEvent?.({
           type: 'permission.asked',
@@ -804,9 +791,9 @@ describe('OpenCode agent prompt runner', () => {
         _env: NodeJS.ProcessEnv,
         options: OpenCodePromptRunOptions,
       ) => {
-        await options.onAssistantMessageCompleted?.(
+        await options.onAssistantMessage?.(
           'I need your preference before continuing.',
-          buildAssistantCompletedEvent(),
+          buildAssistantMessageEvent(),
         );
         await options.onEvent?.({
           type: 'question.asked',
@@ -984,9 +971,9 @@ describe('OpenCode agent prompt runner', () => {
           type: 'session.error',
           properties: { error: { message: 'failed' } },
         });
-        await options.onAssistantMessageCompleted?.(
+        await options.onAssistantMessage?.(
           'assistant text before failure',
-          buildAssistantCompletedEvent(),
+          buildAssistantMessageEvent(),
         );
         throw new Error('prompt failed');
       },

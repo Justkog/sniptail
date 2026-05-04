@@ -843,7 +843,7 @@ async function runOpenCodeTurn({
           logger.info({ sessionId }, summary.text);
         }
       },
-      onAssistantMessageCompleted: (text) => {
+      onAssistantMessage: (text) => {
         outputBuffer.push(text);
       },
     });
@@ -855,7 +855,7 @@ async function runOpenCodeTurn({
     await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
-    await notifier.postMessage(ref, formatFinalResponse(result.finalResponse ?? ''));
+    // await notifier.postMessage(ref, formatFinalResponse(result.finalResponse ?? ''));
   } catch (err) {
     if (isAbortingOpenCodePromptForSteer(sessionId)) {
       logger.info(

@@ -1,6 +1,8 @@
 import {
   createOpencodeClient,
   createOpencodeServer,
+  type EventMessagePartUpdated,
+  type EventMessageUpdated,
   type Event as OpenCodeEvent,
   type Part,
 } from '@opencode-ai/sdk/v2';
@@ -39,7 +41,7 @@ export type OpenCodePromptRunOptions = Omit<
   onEvent?: (event: OpenCodeEvent) => void | Promise<void>;
   onSessionId?: (sessionId: string) => void | Promise<void>;
   onRuntimeReady?: (runtime: OpenCodeRuntimeReady) => void | Promise<void>;
-  onAssistantMessageCompleted?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
+  onAssistantMessage?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
 };
 
 export type OpenCodeAbortOptions = Pick<AgentRunOptions, 'opencode'> & {
@@ -195,28 +197,128 @@ function getEventSessionId(event: unknown): string | undefined {
   return undefined;
 }
 
+const ASSISTANT_MESSAGE_CLEANUP_DELAY_MS = 30_000;
+
+function unwrapOpenCodeEvent(event: OpenCodeEvent): OpenCodeEvent {
+  const payload = (event as { properties?: { payload?: unknown } }).properties?.payload;
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    typeof (payload as { type?: unknown }).type === 'string'
+  ) {
+    return payload as OpenCodeEvent;
+  }
+  return event;
+}
+
+function isMessageUpdatedEvent(event: OpenCodeEvent): event is EventMessageUpdated {
+  return event.type === 'message.updated';
+}
+
+function isMessagePartUpdatedEvent(event: OpenCodeEvent): event is EventMessagePartUpdated {
+  return event.type === 'message.part.updated';
+}
+
+function isMessageComplete(info: EventMessageUpdated['properties']['info']): boolean {
+  if (info.role !== 'assistant') return false;
+  return info.time?.completed != null;
+}
+
+class AssistantMessageTextTracker {
+  private readonly messageRoles = new Map<string, string>();
+  private readonly emittedTextLengths = new Map<string, number>();
+  private readonly cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly partMessageIds = new Map<string, string>();
+
+  handleEvent(event: OpenCodeEvent): string | undefined {
+    if (isMessageUpdatedEvent(event)) {
+      this.trackMessage(event);
+      return undefined;
+    }
+    if (!isMessagePartUpdatedEvent(event)) return undefined;
+    return this.extractTextDelta(event);
+  }
+
+  close(): void {
+    for (const timer of this.cleanupTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.cleanupTimers.clear();
+    this.messageRoles.clear();
+    this.emittedTextLengths.clear();
+    this.partMessageIds.clear();
+  }
+
+  private trackMessage(event: EventMessageUpdated): void {
+    const { info } = event.properties;
+    if (typeof info.id !== 'string' || typeof info.role !== 'string') return;
+    this.messageRoles.set(info.id, info.role);
+    if (isMessageComplete(info)) {
+      this.scheduleCleanup(info.id);
+    }
+  }
+
+  private extractTextDelta(event: EventMessagePartUpdated): string | undefined {
+    const { part } = event.properties;
+    if (!part || part.type !== 'text' || typeof part.id !== 'string') return undefined;
+
+    const messageID = this.getPartMessageId(event);
+    if (!messageID || this.messageRoles.get(messageID) !== 'assistant') return undefined;
+
+    this.partMessageIds.set(part.id, messageID);
+    const previousLength = this.emittedTextLengths.get(part.id) ?? 0;
+    const text = typeof part.text === 'string' ? part.text : undefined;
+
+    if (!text || text.length <= previousLength) return undefined;
+
+    const nextDelta = text.slice(previousLength);
+    this.emittedTextLengths.set(part.id, text.length);
+    return nextDelta;
+  }
+
+  private getPartMessageId(event: EventMessagePartUpdated): string | undefined {
+    const { part } = event.properties;
+    const messageID = part?.messageID
+    return typeof messageID === 'string' ? messageID : undefined;
+  }
+
+  private scheduleCleanup(messageID: string): void {
+    if (this.cleanupTimers.has(messageID)) return;
+    const timer = setTimeout(() => {
+      this.cleanupTimers.delete(messageID);
+      this.messageRoles.delete(messageID);
+      for (const [partID, partMessageID] of this.partMessageIds) {
+        if (partMessageID !== messageID) continue;
+        this.partMessageIds.delete(partID);
+        this.emittedTextLengths.delete(partID);
+      }
+    }, ASSISTANT_MESSAGE_CLEANUP_DELAY_MS);
+    this.cleanupTimers.set(messageID, timer);
+  }
+}
+
 async function streamEvents(
   client: OpenCodeClient,
   sessionID: string,
   workDir: string,
   signal: AbortSignal,
   onEvent: ((event: OpenCodeEvent) => void | Promise<void>) | undefined,
-  onAssistantMessageCompleted:
-    | ((text: string, event: OpenCodeEvent) => void | Promise<void>)
-    | undefined,
+  onAssistantMessage: ((text: string, event: OpenCodeEvent) => void | Promise<void>) | undefined,
 ): Promise<void> {
-  if (!onEvent && !onAssistantMessageCompleted) return;
+  if (!onEvent && !onAssistantMessage) return;
+  const assistantText = new AssistantMessageTextTracker();
   try {
     const subscription = await client.event.subscribe({ directory: workDir }, { signal });
-    for await (const event of subscription.stream as AsyncGenerator<OpenCodeEvent>) {
+    for await (const rawEvent of subscription.stream as AsyncGenerator<OpenCodeEvent>) {
       if (signal.aborted) return;
+      const event = unwrapOpenCodeEvent(rawEvent);
       const eventSessionId = getEventSessionId(event);
       if (eventSessionId && eventSessionId !== sessionID) continue;
       await onEvent?.(event);
-      if (onAssistantMessageCompleted) {
-        const assistantText = await fetchCompletedAssistantMessageText(client, event);
-        if (assistantText) {
-          await onAssistantMessageCompleted(assistantText, event);
+      if (onAssistantMessage) {
+        const text = assistantText.handleEvent(event);
+        if (text) {
+          await onAssistantMessage(text, event);
         }
       }
     }
@@ -227,6 +329,8 @@ async function streamEvents(
       //   properties: { sessionID, error: String((err as { message?: unknown })?.message ?? err) },
       // });
     }
+  } finally {
+    assistantText.close();
   }
 }
 
@@ -442,7 +546,7 @@ export async function runOpenCodePrompt(
       workDir,
       abortController.signal,
       options.onEvent,
-      options.onAssistantMessageCompleted,
+      options.onAssistantMessage,
     );
 
     const promptResponse = await runtime.client.session.prompt({

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JobSpec } from '../types/job.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -70,9 +70,11 @@ async function* emptyEvents() {
   if (Date.now() < 0) yield undefined as never;
 }
 
-async function* singleEvent(event: unknown) {
-  await Promise.resolve();
-  yield event;
+async function* eventsSequence(events: unknown[]) {
+  for (const event of events) {
+    await Promise.resolve();
+    yield event;
+  }
 }
 
 function buildChildProcess() {
@@ -104,6 +106,10 @@ describe('runOpenCode', () => {
     hoisted.client.session.messages.mockResolvedValue({ data: [] });
     hoisted.client.event.subscribe.mockResolvedValue({ stream: emptyEvents() });
     hoisted.client.config.get.mockResolvedValue({ data: {} });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('starts and closes a local SDK-managed server', async () => {
@@ -228,38 +234,319 @@ describe('runOpenCode', () => {
     ).resolves.toBe('');
   });
 
-  it('calls assistant completion callback with fetched message text', async () => {
-    const onAssistantMessageCompleted = vi.fn();
+  it('streams assistant text from message part updates', async () => {
+    const onAssistantMessage = vi.fn();
     hoisted.client.session.prompt.mockImplementationOnce(async () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
       return { data: { parts: [{ type: 'text', text: 'done' }] } };
     });
     hoisted.client.event.subscribe.mockResolvedValue({
-      stream: singleEvent({
-        type: 'message.updated',
-        properties: {
-          info: {
-            id: 'message-1',
-            sessionID: 'session-1',
-            role: 'assistant',
-            time: { completed: 123 },
+      stream: eventsSequence([
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: {},
+            },
           },
         },
-      }),
-    });
-    hoisted.client.session.message.mockResolvedValue({
-      data: {
-        info: { id: 'message-1', role: 'assistant' },
-        parts: [{ type: 'text', text: 'completed assistant text' }],
-      },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'assistant text',
+            },
+          },
+        },
+      ]),
     });
 
-    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessageCompleted });
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
 
-    expect(onAssistantMessageCompleted).toHaveBeenCalledWith(
-      'completed assistant text',
-      expect.objectContaining({ type: 'message.updated' }),
+    expect(onAssistantMessage).toHaveBeenCalledWith(
+      'assistant text',
+      expect.objectContaining({ type: 'message.part.updated' }),
     );
+    expect(hoisted.client.session.message).not.toHaveBeenCalled();
+  });
+
+  it('streams assistant text from wrapped payload events', async () => {
+    const onAssistantMessage = vi.fn();
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: eventsSequence([
+        {
+          type: 'event',
+          properties: {
+            payload: {
+              type: 'message.updated',
+              properties: {
+                info: {
+                  id: 'message-1',
+                  sessionID: 'session-1',
+                  role: 'assistant',
+                  time: {},
+                },
+              },
+            },
+          },
+        },
+        {
+          type: 'event',
+          properties: {
+            payload: {
+              type: 'message.part.updated',
+              properties: {
+                part: {
+                  id: 'part-1',
+                  sessionID: 'session-1',
+                  messageID: 'message-1',
+                  type: 'text',
+                  text: 'wrapped text',
+                },
+              },
+            },
+          },
+        },
+      ]),
+    });
+
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
+
+    expect(onAssistantMessage).toHaveBeenCalledWith(
+      'wrapped text',
+      expect.objectContaining({ type: 'message.part.updated' }),
+    );
+  });
+
+  it('uses message part deltas directly', async () => {
+    const onAssistantMessage = vi.fn();
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: eventsSequence([
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: {},
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            delta: 'hello',
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'ignored snapshot',
+            },
+          },
+        },
+      ]),
+    });
+
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
+
+    expect(onAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(onAssistantMessage).toHaveBeenCalledWith(
+      'hello',
+      expect.objectContaining({ type: 'message.part.updated' }),
+    );
+  });
+
+  it('emits only appended text from repeated full text snapshots', async () => {
+    const onAssistantMessage = vi.fn();
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: eventsSequence([
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: {},
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'hello',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'hello',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'hello world',
+            },
+          },
+        },
+      ]),
+    });
+
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
+
+    expect(onAssistantMessage.mock.calls.map(([text]) => text as string)).toEqual([
+      'hello',
+      ' world',
+    ]);
+  });
+
+  it('ignores text parts for non-assistant or unknown message roles', async () => {
+    const onAssistantMessage = vi.fn();
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 0));
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: eventsSequence([
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-unknown',
+              sessionID: 'session-1',
+              messageID: 'message-unknown',
+              type: 'text',
+              text: 'unknown role',
+            },
+          },
+        },
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'user',
+              time: {},
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-user',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'user text',
+            },
+          },
+        },
+      ]),
+    });
+
+    await runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
+
+    expect(onAssistantMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps completed assistant message roles briefly for late text parts', async () => {
+    vi.useFakeTimers();
+    const onAssistantMessage = vi.fn();
+    let finishPrompt: () => void = () => {};
+    hoisted.client.session.prompt.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finishPrompt = resolve;
+      });
+      return { data: { parts: [{ type: 'text', text: 'done' }] } };
+    });
+    hoisted.client.event.subscribe.mockResolvedValue({
+      stream: (async function* () {
+        yield {
+          type: 'message.updated',
+          properties: {
+            info: {
+              id: 'message-1',
+              sessionID: 'session-1',
+              role: 'assistant',
+              time: { completed: 123 },
+            },
+          },
+        };
+        yield {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-1',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'late',
+            },
+          },
+        };
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 30_001));
+        yield {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-2',
+              sessionID: 'session-1',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'too late',
+            },
+          },
+        };
+      })(),
+    });
+
+    const run = runOpenCodePrompt('inspect this repo', '/tmp/work', {}, { onAssistantMessage });
+    await vi.advanceTimersByTimeAsync(30_001);
+    finishPrompt();
+    await run;
+
+    expect(onAssistantMessage.mock.calls.map(([text]) => text as string)).toEqual(['late']);
   });
 
   it('resumes a freeform prompt session and forwards the selected OpenCode agent', async () => {
