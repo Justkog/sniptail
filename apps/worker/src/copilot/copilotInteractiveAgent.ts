@@ -32,9 +32,7 @@ type CopilotPermissionRequest = Parameters<
 type CopilotPermissionInvocation = Parameters<
   NonNullable<CopilotRunOptions['onPermissionRequest']>
 >[1];
-type CopilotUserInputRequest = Parameters<
-  NonNullable<CopilotRunOptions['onUserInputRequest']>
->[0];
+type CopilotUserInputRequest = Parameters<NonNullable<CopilotRunOptions['onUserInputRequest']>>[0];
 type CopilotUserInputInvocation = Parameters<
   NonNullable<CopilotRunOptions['onUserInputRequest']>
 >[1];
@@ -235,10 +233,8 @@ export async function runCopilotAgentTurn({
           return await onUserInputRequest(request, invocation);
         },
       },
-      onEvent: async (event) => {
-        const summary = summarizeCopilotEvent(
-          event as Parameters<typeof summarizeCopilotEvent>[0],
-        );
+      onEvent: (event) => {
+        const summary = summarizeCopilotEvent(event as Parameters<typeof summarizeCopilotEvent>[0]);
         if (summary) {
           if (summary.isError) {
             logger.error({ sessionId }, summary.text);
@@ -321,9 +317,8 @@ export async function runCopilotAgentTurn({
   }
 }
 
-export async function steerCopilotAgentTurn(
-  _input: SteerInteractiveAgentTurnInput,
-): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
+export async function steerCopilotAgentTurn(_input: SteerInteractiveAgentTurnInput): Promise<void> {
   throw unsupportedSteerError();
 }
 

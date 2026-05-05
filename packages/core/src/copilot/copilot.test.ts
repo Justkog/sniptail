@@ -149,11 +149,12 @@ describe('runCopilot', () => {
       },
       300_000,
     );
-    expect(hoisted.createSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        onPermissionRequest: expect.any(Function),
-      }),
-    );
+    const createSessionFirstCall = hoisted.createSession.mock.calls[0];
+    expect(createSessionFirstCall).toBeDefined();
+    const createSessionOptions = createSessionFirstCall?.[0] as
+      | { onPermissionRequest?: unknown }
+      | undefined;
+    expect(typeof createSessionOptions?.onPermissionRequest).toBe('function');
   });
 
   it('reuses the same current-turn attachments on idle-timeout retry', async () => {
@@ -195,12 +196,13 @@ describe('runCopilot', () => {
       },
       300_000,
     );
-    expect(hoisted.resumeSession).toHaveBeenCalledWith(
-      'session-1',
-      expect.objectContaining({
-        onPermissionRequest: expect.any(Function),
-      }),
-    );
+    const resumeSessionFirstCall = hoisted.resumeSession.mock.calls[0];
+    expect(resumeSessionFirstCall).toBeDefined();
+    expect(resumeSessionFirstCall?.[0]).toBe('session-1');
+    const resumeSessionOptions = resumeSessionFirstCall?.[1] as
+      | { onPermissionRequest?: unknown }
+      | undefined;
+    expect(typeof resumeSessionOptions?.onPermissionRequest).toBe('function');
   });
 
   it('passes the configured Copilot agent and streaming flag into new sessions', async () => {
@@ -210,14 +212,19 @@ describe('runCopilot', () => {
     });
     hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      copilot: {
-        agent: 'reviewer',
-        streaming: true,
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        copilot: {
+          agent: 'reviewer',
+          streaming: true,
+        },
+        model: 'gpt-5.5',
+        modelReasoningEffort: 'high',
       },
-      model: 'gpt-5.5',
-      modelReasoningEffort: 'high',
-    });
+    );
 
     expect(hoisted.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -238,12 +245,17 @@ describe('runCopilot', () => {
     const onUserInputRequest = vi.fn();
     hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      copilot: {
-        onPermissionRequest,
-        onUserInputRequest,
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        copilot: {
+          onPermissionRequest,
+          onUserInputRequest,
+        },
       },
-    });
+    );
 
     expect(hoisted.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -260,13 +272,18 @@ describe('runCopilot', () => {
     });
     hoisted.resumeSession.mockResolvedValue(createSessionMock(sendAndWait, 'session-9'));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      resumeThreadId: 'session-9',
-      copilot: {
-        agent: 'reviewer',
-        streaming: true,
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        resumeThreadId: 'session-9',
+        copilot: {
+          agent: 'reviewer',
+          streaming: true,
+        },
       },
-    });
+    );
 
     expect(hoisted.resumeSession).toHaveBeenCalledWith(
       'session-9',
@@ -286,13 +303,18 @@ describe('runCopilot', () => {
     const onUserInputRequest = vi.fn();
     hoisted.resumeSession.mockResolvedValue(createSessionMock(sendAndWait, 'session-9'));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      resumeThreadId: 'session-9',
-      copilot: {
-        onPermissionRequest,
-        onUserInputRequest,
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        resumeThreadId: 'session-9',
+        copilot: {
+          onPermissionRequest,
+          onUserInputRequest,
+        },
       },
-    });
+    );
 
     expect(hoisted.resumeSession).toHaveBeenCalledWith(
       'session-9',
@@ -310,9 +332,14 @@ describe('runCopilot', () => {
     });
     hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
 
-    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
-      copilotIdleTimeoutMs: 1_800_000,
-    });
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        copilotIdleTimeoutMs: 1_800_000,
+      },
+    );
 
     expect(sendAndWait).toHaveBeenCalledWith(
       {

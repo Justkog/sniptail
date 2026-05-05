@@ -1,7 +1,4 @@
-import type {
-  InteractiveAgentAdapter,
-  InteractiveAgentProvider,
-} from './interactiveAgentTypes.js';
+import type { InteractiveAgentAdapter, InteractiveAgentProvider } from './interactiveAgentTypes.js';
 import {
   resolveCopilotAgentInteraction,
   runCopilotAgentTurn,

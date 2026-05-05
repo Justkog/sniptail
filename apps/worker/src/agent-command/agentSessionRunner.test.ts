@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunOptions } from '@sniptail/core/agents/types.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type { OpenCodePromptRunOptions } from '@sniptail/core/opencode/prompt.js';
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
@@ -278,14 +279,15 @@ describe('OpenCode agent prompt runner', () => {
         modelReasoningEffort: 'high',
         copilotIdleRetries: 3,
         copilotIdleTimeoutMs: 1_800_000,
-        copilot: expect.objectContaining({
-          agent: 'build',
-          streaming: true,
-          onPermissionRequest: expect.any(Function),
-          onUserInputRequest: expect.any(Function),
-        }) as unknown,
       }),
     );
+    const firstCopilotCall = hoisted.runCopilot.mock.calls[0];
+    expect(firstCopilotCall).toBeDefined();
+    const firstCopilotOptions = firstCopilotCall?.[3] as AgentRunOptions | undefined;
+    expect(firstCopilotOptions?.copilot?.agent).toBe('build');
+    expect(firstCopilotOptions?.copilot?.streaming).toBe(true);
+    expect(typeof firstCopilotOptions?.copilot?.onPermissionRequest).toBe('function');
+    expect(typeof firstCopilotOptions?.copilot?.onUserInputRequest).toBe('function');
     expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
       'session-1',
       'copilot-session-1',
@@ -307,16 +309,18 @@ describe('OpenCode agent prompt runner', () => {
       name: 'build',
       label: 'Build',
     };
-    hoisted.runCopilot.mockImplementationOnce(async (_job, _workDir, _env, options) => {
-      await options?.onEvent?.({
-        type: 'assistant.message_delta',
-        data: { deltaContent: 'Copilot says hi' },
-      });
-      return {
-        finalResponse: 'Copilot says hi',
-        threadId: 'copilot-session-1',
-      };
-    });
+    hoisted.runCopilot.mockImplementationOnce(
+      async (_job, _workDir, _env, options: AgentRunOptions | undefined) => {
+        await options?.onEvent?.({
+          type: 'assistant.message_delta',
+          data: { deltaContent: 'Copilot says hi' },
+        });
+        return {
+          finalResponse: 'Copilot says hi',
+          threadId: 'copilot-session-1',
+        };
+      },
+    );
 
     await runAgentSessionStart({
       event: buildEvent(),
@@ -357,9 +361,12 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({
         model: 'gpt-5.4-mini',
         modelReasoningEffort: 'low',
-        copilot: expect.not.objectContaining({ agent: expect.any(String) }),
       }),
     );
+    const profileCopilotCall = hoisted.runCopilot.mock.calls[0];
+    expect(profileCopilotCall).toBeDefined();
+    const profileCopilotOptions = profileCopilotCall?.[3] as AgentRunOptions | undefined;
+    expect(profileCopilotOptions?.copilot?.agent).toBeUndefined();
   });
 
   it('reports Copilot steer as unsupported while a prompt is active', async () => {

@@ -130,6 +130,21 @@ function buildBotEvents() {
   };
 }
 
+function getPublishedInteractionId(botEvents: ReturnType<typeof buildBotEvents>): string {
+  const event = botEvents.publish.mock.calls[0]?.[0] as unknown;
+  if (!event || typeof event !== 'object' || !('type' in event)) {
+    throw new Error('Missing published event');
+  }
+  const botEvent = event as BotEvent;
+  if (
+    botEvent.type === 'agent.permission.requested' ||
+    botEvent.type === 'agent.question.requested'
+  ) {
+    return botEvent.payload.interactionId;
+  }
+  throw new Error(`Unexpected event type: ${botEvent.type}`);
+}
+
 function buildPermissionRequestEvent(interactionId: string): BotEvent {
   return {
     schemaVersion: 1,
@@ -199,7 +214,7 @@ describe('resolve OpenCode agent interactions', () => {
       request: { kind: 'read' },
     });
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const interactionId = (botEvents.publish.mock.calls[0]?.[0] as BotEvent).payload.interactionId;
+    const interactionId = getPublishedInteractionId(botEvents);
 
     await resolveAgentInteraction({
       event: {

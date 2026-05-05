@@ -14,7 +14,6 @@ import {
   runOpenCodePrompt,
 } from '@sniptail/core/opencode/prompt.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
-import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import {
@@ -255,7 +254,6 @@ function questionRequestDiscordLimitIssue(
   }
   return undefined;
 }
-
 
 function permissionReplyStatus(reply: 'once' | 'always' | 'reject') {
   switch (reply) {
@@ -738,7 +736,10 @@ export async function stopOpenCodeAgentPrompt({
     const codingAgentSessionId =
       activeRuntime?.codingAgentSessionId ?? session.codingAgentSessionId;
     if (!codingAgentSessionId) {
-      await notifier.postMessage(ref, 'OpenCode prompt cannot be stopped yet: session is starting.');
+      await notifier.postMessage(
+        ref,
+        'OpenCode prompt cannot be stopped yet: session is starting.',
+      );
       return;
     }
 

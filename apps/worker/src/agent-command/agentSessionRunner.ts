@@ -147,7 +147,10 @@ export async function runAgentSessionStart({
   }
 
   if (!beginAgentPromptTurn(sessionId)) {
-    await notifier.postMessage(buildRef(response), 'This agent session already has an active prompt.');
+    await notifier.postMessage(
+      buildRef(response),
+      'This agent session already has an active prompt.',
+    );
     return;
   }
 
@@ -224,7 +227,10 @@ export async function runAgentSessionMessage({
       } catch (err) {
         cancelAgentFollowUpSteer(sessionId);
         logger.error({ err, sessionId }, 'Failed to steer active agent prompt');
-        await notifier.postMessage(ref, `Failed to steer current prompt: ${(err as Error).message}`);
+        await notifier.postMessage(
+          ref,
+          `Failed to steer current prompt: ${(err as Error).message}`,
+        );
       }
       return;
     }

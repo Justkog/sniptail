@@ -30,6 +30,24 @@ function buildNotifier() {
   };
 }
 
+function getPublishedEvent(
+  botEvents: ReturnType<typeof buildBotEvents>,
+  callIndex: number,
+): BotEvent {
+  const event = botEvents.publish.mock.calls[callIndex]?.[0] as unknown;
+  if (!event || typeof event !== 'object' || !('type' in event)) {
+    throw new Error(`Missing published event at index ${callIndex}`);
+  }
+  return event as BotEvent;
+}
+
+function getRequestedInteractionId(event: BotEvent): string {
+  if (event.type === 'agent.permission.requested' || event.type === 'agent.question.requested') {
+    return event.payload.interactionId;
+  }
+  throw new Error(`Unexpected event type: ${event.type}`);
+}
+
 function buildPermissionResolveEvent(
   interactionId: string,
   decision: 'once' | 'always' | 'reject' = 'once',
@@ -89,20 +107,21 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
 
     expect(requestEvent).toMatchObject({
       type: 'agent.permission.requested',
       payload: {
         sessionId: 'session-1',
-        interactionId: expect.any(String),
         toolName: 'read',
         allowAlways: true,
       },
     });
+    expect(requestEvent.payload.interactionId).toEqual(expect.any(String));
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildPermissionResolveEvent(requestEvent.payload.interactionId, 'once'),
+      event: buildPermissionResolveEvent(interactionId, 'once'),
       notifier,
       botEvents,
     });
@@ -135,10 +154,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const firstEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const firstEvent = getPublishedEvent(botEvents, 0);
+    const firstInteractionId = getRequestedInteractionId(firstEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildPermissionResolveEvent(firstEvent.payload.interactionId, 'once'),
+      event: buildPermissionResolveEvent(firstInteractionId, 'once'),
       notifier,
       botEvents,
     });
@@ -183,10 +203,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const firstEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const firstEvent = getPublishedEvent(botEvents, 0);
+    const firstInteractionId = getRequestedInteractionId(firstEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildPermissionResolveEvent(firstEvent.payload.interactionId, 'always'),
+      event: buildPermissionResolveEvent(firstInteractionId, 'always'),
       notifier,
       botEvents,
     });
@@ -247,7 +268,7 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
 
     expect(requestEvent).toMatchObject({
       type: 'agent.permission.requested',
@@ -274,10 +295,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildPermissionResolveEvent(requestEvent.payload.interactionId, 'always'),
+      event: buildPermissionResolveEvent(interactionId, 'always'),
       notifier,
       botEvents,
     });
@@ -309,7 +331,8 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     expect(requestEvent).toMatchObject({
       type: 'agent.question.requested',
@@ -324,7 +347,7 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await resolveBrokeredCopilotInteraction({
-      event: buildQuestionResolveEvent(requestEvent.payload.interactionId),
+      event: buildQuestionResolveEvent(interactionId),
       notifier,
       botEvents,
     });
@@ -356,10 +379,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildQuestionResolveEvent(requestEvent.payload.interactionId, {
+      event: buildQuestionResolveEvent(interactionId, {
         kind: 'question',
         answers: [['Custom package']],
       }),
@@ -392,10 +416,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildQuestionResolveEvent(requestEvent.payload.interactionId, {
+      event: buildQuestionResolveEvent(interactionId, {
         kind: 'question',
         answers: [['Worker'], ['Bot']],
       }),
@@ -410,7 +435,9 @@ describe('interactiveAgentInteractionBroker', () => {
     expect(botEvents.publish).toHaveBeenCalledTimes(1);
 
     await clearBrokeredCopilotInteractions({ sessionId: 'session-1' });
-    await expect(pending).rejects.toThrow('Agent session ended before this interaction was resolved.');
+    await expect(pending).rejects.toThrow(
+      'Agent session ended before this interaction was resolved.',
+    );
   });
 
   it('rejects multi-select answers for Copilot user input', async () => {
@@ -428,10 +455,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildQuestionResolveEvent(requestEvent.payload.interactionId, {
+      event: buildQuestionResolveEvent(interactionId, {
         kind: 'question',
         answers: [['Worker', 'Bot']],
       }),
@@ -446,7 +474,9 @@ describe('interactiveAgentInteractionBroker', () => {
     expect(botEvents.publish).toHaveBeenCalledTimes(1);
 
     await clearBrokeredCopilotInteractions({ sessionId: 'session-1' });
-    await expect(pending).rejects.toThrow('Agent session ended before this interaction was resolved.');
+    await expect(pending).rejects.toThrow(
+      'Agent session ended before this interaction was resolved.',
+    );
   });
 
   it('rejects Copilot question requests', async () => {
@@ -464,10 +494,11 @@ describe('interactiveAgentInteractionBroker', () => {
     });
 
     await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
-    const requestEvent = botEvents.publish.mock.calls[0]?.[0] as BotEvent;
+    const requestEvent = getPublishedEvent(botEvents, 0);
+    const interactionId = getRequestedInteractionId(requestEvent);
 
     await resolveBrokeredCopilotInteraction({
-      event: buildQuestionResolveEvent(requestEvent.payload.interactionId, {
+      event: buildQuestionResolveEvent(interactionId, {
         kind: 'question',
         reject: true,
         message: 'No answer',

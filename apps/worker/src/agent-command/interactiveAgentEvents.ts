@@ -1,8 +1,5 @@
 import type { BotEvent } from '@sniptail/core/types/bot-event.js';
-import {
-  BOT_EVENT_SCHEMA_VERSION,
-  type BotAgentQuestion,
-} from '@sniptail/core/types/bot-event.js';
+import { BOT_EVENT_SCHEMA_VERSION, type BotAgentQuestion } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 

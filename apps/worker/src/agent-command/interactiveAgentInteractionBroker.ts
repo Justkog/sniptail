@@ -113,7 +113,9 @@ function getPendingPermission(
 }
 
 function deletePendingInteraction(interaction: PendingInteraction): void {
-  pendingInteractions.delete(pendingInteractionKey(interaction.sessionId, interaction.interactionId));
+  pendingInteractions.delete(
+    pendingInteractionKey(interaction.sessionId, interaction.interactionId),
+  );
   clearTimeout(interaction.timeout);
 
   if (interaction.kind !== 'permission') {
@@ -262,12 +264,14 @@ function resolveQueuedCoveredPermissions(
   }
 }
 
+const INVALID_COPILOT_INPUT_SHAPE = Symbol('invalid-copilot-input-shape');
+
 function validateCopilotUserInputResolution(
   resolution: Extract<
     CoreWorkerEvent<'agent.interaction.resolve'>['payload']['resolution'],
     { kind: 'question' }
   >,
-): string | 'invalid-shape' | undefined {
+): string | typeof INVALID_COPILOT_INPUT_SHAPE | undefined {
   const answerGroups = resolution.answers?.filter((group) =>
     group.some((value) => value.trim().length > 0),
   );
@@ -276,18 +280,16 @@ function validateCopilotUserInputResolution(
     return undefined;
   }
   if (answerGroups.length > 1) {
-    return 'invalid-shape';
+    return INVALID_COPILOT_INPUT_SHAPE;
   }
 
-  const answers = answerGroups[0]
-    ?.map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  const answers = answerGroups[0]?.map((value) => value.trim()).filter((value) => value.length > 0);
 
   if (!answers || answers.length === 0) {
     return undefined;
   }
   if (answers.length > 1) {
-    return 'invalid-shape';
+    return INVALID_COPILOT_INPUT_SHAPE;
   }
 
   return answers[0];
@@ -360,9 +362,7 @@ export async function requestCopilotPermission(
       workspaceKey: input.workspaceKey,
       ...(input.cwd ? { cwd: input.cwd } : {}),
       toolName: input.request.kind,
-      ...(input.request.toolCallId
-        ? { details: [`Tool call: ${input.request.toolCallId}`] }
-        : {}),
+      ...(input.request.toolCallId ? { details: [`Tool call: ${input.request.toolCallId}`] } : {}),
       expiresAt,
       allowAlways,
     });
@@ -490,7 +490,10 @@ export async function resolveBrokeredCopilotInteraction({
   }
 
   if (pending.kind !== resolution.kind) {
-    await notifier.postMessage(ref, 'This agent interaction no longer matches the selected control.');
+    await notifier.postMessage(
+      ref,
+      'This agent interaction no longer matches the selected control.',
+    );
     return;
   }
 
@@ -504,7 +507,10 @@ export async function resolveBrokeredCopilotInteraction({
       return;
     }
     if (resolution.decision === 'always' && !pending.allowAlways) {
-      await notifier.postMessage(ref, 'This agent interaction no longer matches the selected control.');
+      await notifier.postMessage(
+        ref,
+        'This agent interaction no longer matches the selected control.',
+      );
       return;
     }
 
@@ -542,12 +548,15 @@ export async function resolveBrokeredCopilotInteraction({
   }
 
   if (pending.kind !== 'question' || resolution.kind !== 'question') {
-    await notifier.postMessage(ref, 'This agent interaction no longer matches the selected control.');
+    await notifier.postMessage(
+      ref,
+      'This agent interaction no longer matches the selected control.',
+    );
     return;
   }
 
   const answer = validateCopilotUserInputResolution(resolution);
-  if (answer === 'invalid-shape') {
+  if (answer === INVALID_COPILOT_INPUT_SHAPE) {
     await notifier.postMessage(ref, 'Copilot user input expects a single answer.');
     return;
   }
