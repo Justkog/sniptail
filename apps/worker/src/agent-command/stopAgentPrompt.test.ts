@@ -9,6 +9,10 @@ import {
   clearActiveOpenCodeRuntimes,
   setActiveOpenCodeRuntime,
 } from '../opencode/openCodeInteractionState.js';
+import {
+  clearActiveCopilotRuntimes,
+  setActiveCopilotRuntime,
+} from '../copilot/copilotInteractionState.js';
 import { stopAgentPrompt } from './stopAgentPrompt.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -126,12 +130,19 @@ function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
   };
 }
 
+function buildBotEvents() {
+  return {
+    publish: vi.fn(() => Promise.resolve()),
+  };
+}
+
 describe('stopAgentPrompt', () => {
   let tempRoot: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     clearActiveOpenCodeRuntimes();
+    clearActiveCopilotRuntimes();
     tempRoot = await mkdtemp(join(tmpdir(), 'sniptail-agent-stop-'));
     await mkdir(tempRoot, { recursive: true });
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
@@ -141,10 +152,11 @@ describe('stopAgentPrompt', () => {
 
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
+    clearActiveCopilotRuntimes();
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  it('returns the unsupported message for Copilot profiles', async () => {
+  it('reports unreachable active runtime for Copilot profiles without an active runtime', async () => {
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
@@ -157,13 +169,76 @@ describe('stopAgentPrompt', () => {
       event: buildEvent(),
       config,
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
     expect(hoisted.abortOpenCodeSession).not.toHaveBeenCalled();
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'Copilot prompt stopping is not supported yet.',
+      'Copilot prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+  });
+
+  it('stops an active Copilot prompt through the active runtime ref', async () => {
+    const notifier = buildNotifier();
+    const abort = vi.fn(() => Promise.resolve());
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    setActiveCopilotRuntime('session-1', {
+      sessionId: 'copilot-session-1',
+      abort,
+      sendImmediate: vi.fn(),
+      enqueue: vi.fn(),
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(abort).toHaveBeenCalled();
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'stopped');
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Copilot prompt stopped.',
+    );
+  });
+
+  it('reports Copilot abort failures without marking stopped', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    setActiveCopilotRuntime('session-1', {
+      sessionId: 'copilot-session-1',
+      abort: vi.fn(() => Promise.reject(new Error('abort failed'))),
+      sendImmediate: vi.fn(),
+      enqueue: vi.fn(),
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalled();
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Failed to stop Copilot prompt: abort failed',
     );
   });
 
@@ -180,6 +255,7 @@ describe('stopAgentPrompt', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -203,6 +279,7 @@ describe('stopAgentPrompt', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot, 'server'),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -224,6 +301,7 @@ describe('stopAgentPrompt', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 
@@ -243,6 +321,7 @@ describe('stopAgentPrompt', () => {
       event: buildEvent(),
       config: buildConfig(tempRoot),
       notifier,
+      botEvents: buildBotEvents(),
       env: {},
     });
 

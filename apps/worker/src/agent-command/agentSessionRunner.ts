@@ -207,6 +207,34 @@ export async function runAgentSessionMessage({
   const adapter = getInteractiveAgentAdapter(profile.provider);
 
   if (isAgentPromptTurnActive(sessionId)) {
+    let handledByAdapter = false;
+    try {
+      handledByAdapter =
+        (await adapter.handleActiveMessage?.({
+          sessionId,
+          response,
+          message,
+          mode,
+          profile,
+          config,
+          notifier,
+          env,
+        })) ?? false;
+    } catch (err) {
+      logger.error({ err, sessionId, mode }, 'Failed to handle active agent prompt message');
+      await notifier.postMessage(ref, `Failed to steer current prompt: ${(err as Error).message}`);
+      return;
+    }
+    if (handledByAdapter) {
+      await notifier.postMessage(
+        ref,
+        mode === 'queue'
+          ? 'Follow-up queued for the current Copilot session.'
+          : 'Steering current prompt.',
+      );
+      return;
+    }
+
     if (mode === 'queue') {
       enqueueAgentFollowUp(followUp);
       await notifier.postMessage(ref, 'Follow-up queued for the next agent turn.');
@@ -218,6 +246,7 @@ export async function runAgentSessionMessage({
         await adapter.steerActiveTurn({
           sessionId,
           response,
+          message,
           profile,
           config,
           notifier,

@@ -1,4 +1,5 @@
 import {
+  loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
@@ -14,14 +15,21 @@ import {
   clearBrokeredCopilotInteractions,
   resolveBrokeredCopilotInteraction,
 } from '../agent-command/interactiveAgentInteractionBroker.js';
+import { clearAgentPromptTurn } from '../agent-command/activeAgentPromptTurns.js';
 import { createDebouncedAgentOutputBuffer } from '../agent-command/debouncedAgentOutput.js';
 import type {
+  HandleActiveInteractiveAgentMessageInput,
   ResolveInteractiveAgentInteractionInput,
   RunInteractiveAgentTurnInput,
   SteerInteractiveAgentTurnInput,
   StopInteractiveAgentPromptInput,
 } from '../agent-command/interactiveAgentTypes.js';
 import { resolveAgentWorkspace } from '../agent-command/workspaceResolver.js';
+import {
+  deleteActiveCopilotRuntime,
+  getActiveCopilotRuntime,
+  setActiveCopilotRuntime,
+} from './copilotInteractionState.js';
 
 const COPILOT_AGENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -116,8 +124,17 @@ function unsupportedSteerError(): Error {
   return new Error('Copilot prompt steering is not supported yet.');
 }
 
-function unsupportedStopMessage(): string {
-  return 'Copilot prompt stopping is not supported yet.';
+function formatStopFailure(err: unknown): string {
+  const message = (err as Error).message || String(err);
+  return `Failed to stop Copilot prompt: ${message}`;
+}
+
+async function isSessionStopped(sessionId: string): Promise<boolean> {
+  const session = await loadAgentSession(sessionId).catch((err) => {
+    logger.warn({ err, sessionId }, 'Failed to load agent session status');
+    return undefined;
+  });
+  return session?.status === 'stopped';
 }
 
 export async function runCopilotAgentTurn({
@@ -218,6 +235,9 @@ export async function runCopilotAgentTurn({
       ...runOptions,
       copilot: {
         ...runOptions.copilot,
+        onSessionReady: (runtime) => {
+          setActiveCopilotRuntime(sessionId, runtime);
+        },
         onPermissionRequest: async (
           request: CopilotPermissionRequest,
           invocation: CopilotPermissionInvocation,
@@ -290,10 +310,18 @@ export async function runCopilotAgentTurn({
       });
     }
 
+    if (await isSessionStopped(sessionId)) {
+      return;
+    }
+
     await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
   } catch (err) {
+    if (await isSessionStopped(sessionId)) {
+      return;
+    }
+
     logger.error(
       { err, sessionId, workspaceKey, profileKey: profile.key },
       'Copilot agent session prompt failed',
@@ -313,20 +341,71 @@ export async function runCopilotAgentTurn({
       clearTimeout(scheduledSnapshot);
     }
     await clearBrokeredCopilotInteractions({ sessionId, botEvents });
+    deleteActiveCopilotRuntime(sessionId);
     outputBuffer.close();
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
-export async function steerCopilotAgentTurn(_input: SteerInteractiveAgentTurnInput): Promise<void> {
-  throw unsupportedSteerError();
+export async function handleActiveCopilotAgentMessage({
+  sessionId,
+  message,
+  mode,
+}: HandleActiveInteractiveAgentMessageInput): Promise<boolean> {
+  const runtime = getActiveCopilotRuntime(sessionId);
+  if (!runtime) return false;
+
+  if (mode === 'queue') {
+    await runtime.enqueue(message);
+    return true;
+  }
+  if (mode === 'steer') {
+    await runtime.sendImmediate(message);
+    return true;
+  }
+  return false;
+}
+
+export async function steerCopilotAgentTurn({
+  sessionId,
+  message,
+}: SteerInteractiveAgentTurnInput): Promise<void> {
+  const runtime = getActiveCopilotRuntime(sessionId);
+  if (!runtime) {
+    throw unsupportedSteerError();
+  }
+  await runtime.sendImmediate(message);
 }
 
 export async function stopCopilotAgentPrompt({
   event,
   notifier,
+  botEvents,
 }: StopInteractiveAgentPromptInput): Promise<void> {
-  await notifier.postMessage(buildRef(event.payload.response), unsupportedStopMessage());
+  const { sessionId, response } = event.payload;
+  const ref = buildRef(response);
+  const runtime = getActiveCopilotRuntime(sessionId);
+  if (!runtime) {
+    await notifier.postMessage(
+      ref,
+      'Copilot prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+    return;
+  }
+
+  try {
+    await runtime.abort();
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to stop Copilot prompt');
+    await notifier.postMessage(ref, formatStopFailure(err));
+    return;
+  }
+
+  await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
+    logger.warn({ err, sessionId }, 'Failed to mark Copilot session stopped');
+  });
+  clearAgentPromptTurn(sessionId);
+  await clearBrokeredCopilotInteractions({ sessionId, botEvents });
+  await notifier.postMessage(ref, 'Copilot prompt stopped.');
 }
 
 export async function resolveCopilotAgentInteraction({

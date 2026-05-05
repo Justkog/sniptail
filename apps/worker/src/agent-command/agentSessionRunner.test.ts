@@ -41,6 +41,7 @@ import {
   clearActiveOpenCodeRuntimes,
   getActiveOpenCodeRuntime,
 } from '../opencode/openCodeInteractionState.js';
+import { clearActiveCopilotRuntimes } from '../copilot/copilotInteractionState.js';
 import { clearAgentPromptTurns } from './activeAgentPromptTurns.js';
 import { runAgentSessionMessage, runAgentSessionStart } from './agentSessionRunner.js';
 
@@ -241,6 +242,7 @@ describe('OpenCode agent prompt runner', () => {
 
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
+    clearActiveCopilotRuntimes();
     clearAgentPromptTurns();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -369,7 +371,182 @@ describe('OpenCode agent prompt runner', () => {
     expect(profileCopilotOptions?.copilot?.agent).toBeUndefined();
   });
 
-  it('reports Copilot steer as unsupported while a prompt is active', async () => {
+  it('steers active Copilot prompts through the SDK immediate mode', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+
+    let releasePrompt!: () => void;
+    const sendImmediate = vi.fn(() => Promise.resolve());
+    hoisted.runCopilot.mockImplementationOnce(
+      async (_job, _workDir, _env, options: AgentRunOptions | undefined) => {
+        await options?.copilot?.onSessionReady?.({
+          sessionId: 'copilot-session-1',
+          abort: vi.fn(),
+          sendImmediate,
+          enqueue: vi.fn(),
+        });
+        return await new Promise((resolve) => {
+          releasePrompt = () =>
+            resolve({
+              finalResponse: 'first done',
+              threadId: 'copilot-session-1',
+            });
+        });
+      },
+    );
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(hoisted.runCopilot).toHaveBeenCalledTimes(1));
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'steer', mode: 'steer' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    releasePrompt();
+    await first;
+
+    expect(sendImmediate).toHaveBeenCalledWith('steer');
+    expect(hoisted.runCopilot).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Steering current prompt.',
+    );
+  });
+
+  it('queues active Copilot follow-ups through the SDK enqueue mode', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+
+    let releasePrompt!: () => void;
+    const enqueue = vi.fn(() => Promise.resolve());
+    hoisted.runCopilot.mockImplementationOnce(
+      async (_job, _workDir, _env, options: AgentRunOptions | undefined) => {
+        await options?.copilot?.onSessionReady?.({
+          sessionId: 'copilot-session-1',
+          abort: vi.fn(),
+          sendImmediate: vi.fn(),
+          enqueue,
+        });
+        return await new Promise((resolve) => {
+          releasePrompt = () =>
+            resolve({
+              finalResponse: 'first done',
+              threadId: 'copilot-session-1',
+            });
+        });
+      },
+    );
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(hoisted.runCopilot).toHaveBeenCalledTimes(1));
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'queued', mode: 'queue' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    releasePrompt();
+    await first;
+
+    expect(enqueue).toHaveBeenCalledWith('queued');
+    expect(hoisted.runCopilot).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Follow-up queued for the current Copilot session.',
+    );
+  });
+
+  it('reports Copilot steer failures while a prompt is active', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+
+    let releasePrompt!: () => void;
+    hoisted.runCopilot.mockImplementationOnce(
+      async (_job, _workDir, _env, options: AgentRunOptions | undefined) => {
+        await options?.copilot?.onSessionReady?.({
+          sessionId: 'copilot-session-1',
+          abort: vi.fn(),
+          sendImmediate: vi.fn(() => Promise.reject(new Error('send failed'))),
+          enqueue: vi.fn(),
+        });
+        return await new Promise((resolve) => {
+          releasePrompt = () =>
+            resolve({
+              finalResponse: 'first done',
+              threadId: 'copilot-session-1',
+            });
+        });
+      },
+    );
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(hoisted.runCopilot).toHaveBeenCalledTimes(1));
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'steer', mode: 'steer' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    releasePrompt();
+    await first;
+
+    expect(hoisted.runCopilot).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Failed to steer current prompt: send failed',
+    );
+  });
+
+  it('falls back to worker steer failure when Copilot active runtime is unavailable', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);

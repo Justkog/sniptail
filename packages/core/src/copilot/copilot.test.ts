@@ -5,7 +5,9 @@ import { runCopilot } from './copilot.js';
 type MockSession = {
   sessionId: string;
   on: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
   sendAndWait: ReturnType<typeof vi.fn>;
+  abort: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
 };
@@ -98,7 +100,9 @@ function createSessionMock(
   return {
     sessionId,
     on: vi.fn(() => () => undefined),
+    send: vi.fn().mockResolvedValue('message-1'),
     sendAndWait,
+    abort: vi.fn().mockResolvedValue(undefined),
     destroy: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
   };
@@ -347,5 +351,62 @@ describe('runCopilot', () => {
       },
       1_800_000,
     );
+  });
+
+  it('publishes active session runtime after creating a session', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    const session = createSessionMock(sendAndWait, 'session-1');
+    const onSessionReady = vi.fn();
+    hoisted.createSession.mockResolvedValue(session);
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, { copilot: { onSessionReady } });
+
+    expect(onSessionReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+      }),
+    );
+    const runtime = onSessionReady.mock.calls[0]?.[0] as
+      | {
+          abort: () => Promise<void>;
+          sendImmediate: (message: string) => Promise<void>;
+          enqueue: (message: string) => Promise<void>;
+        }
+      | undefined;
+    await runtime?.abort();
+    await runtime?.sendImmediate('steer');
+    await runtime?.enqueue('later');
+
+    expect(session.abort).toHaveBeenCalled();
+    expect(session.send).toHaveBeenCalledWith({ prompt: 'steer', mode: 'immediate' });
+    expect(session.send).toHaveBeenCalledWith({ prompt: 'later', mode: 'enqueue' });
+  });
+
+  it('refreshes active session runtime after idle-timeout resume', async () => {
+    const firstSendAndWait = vi.fn().mockRejectedValue(new Error('session.idle'));
+    const secondSendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    const onSessionReady = vi.fn();
+    hoisted.createSession.mockResolvedValue(createSessionMock(firstSendAndWait, 'session-1'));
+    hoisted.resumeSession.mockResolvedValue(createSessionMock(secondSendAndWait, 'session-2'));
+
+    await runCopilot(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        copilot: { onSessionReady },
+        copilotIdleRetries: 1,
+      },
+    );
+
+    expect(onSessionReady).toHaveBeenCalledTimes(2);
+    expect(onSessionReady.mock.calls[0]?.[0]).toMatchObject({ sessionId: 'session-1' });
+    expect(onSessionReady.mock.calls[1]?.[0]).toMatchObject({ sessionId: 'session-2' });
   });
 });

@@ -165,7 +165,7 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.prompt.stop': {
-      await stopAgentPrompt({ event, config, notifier });
+      await stopAgentPrompt({ event, config, notifier, botEvents });
       return;
     }
     case 'agent.interaction.resolve': {

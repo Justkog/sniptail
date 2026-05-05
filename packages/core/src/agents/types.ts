@@ -21,6 +21,12 @@ export type CopilotPermissionDecision = Awaited<ReturnType<CopilotPermissionHand
 export type CopilotUserInputHandler = NonNullable<SessionConfig['onUserInputRequest']>;
 export type CopilotUserInputRequest = Parameters<CopilotUserInputHandler>[0];
 export type CopilotUserInputResponse = Awaited<ReturnType<CopilotUserInputHandler>>;
+export type CopilotSessionRuntime = {
+  sessionId: string;
+  abort: () => Promise<void>;
+  sendImmediate: (message: string) => Promise<void>;
+  enqueue: (message: string) => Promise<void>;
+};
 
 export type AgentRunOptions = {
   onEvent?: (event: unknown) => void | Promise<void>;
@@ -45,6 +51,7 @@ export type AgentRunOptions = {
     streaming?: boolean;
     onPermissionRequest?: CopilotPermissionHandler;
     onUserInputRequest?: CopilotUserInputHandler;
+    onSessionReady?: (runtime: CopilotSessionRuntime) => void | Promise<void>;
     docker?: {
       enabled?: boolean;
       dockerfilePath?: string;

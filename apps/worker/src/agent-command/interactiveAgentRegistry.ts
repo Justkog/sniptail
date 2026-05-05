@@ -1,5 +1,6 @@
 import type { InteractiveAgentAdapter, InteractiveAgentProvider } from './interactiveAgentTypes.js';
 import {
+  handleActiveCopilotAgentMessage,
   resolveCopilotAgentInteraction,
   runCopilotAgentTurn,
   steerCopilotAgentTurn,
@@ -25,6 +26,7 @@ const copilotInteractiveAgent: InteractiveAgentAdapter = {
   provider: 'copilot',
   displayName: 'Copilot',
   runTurn: runCopilotAgentTurn,
+  handleActiveMessage: handleActiveCopilotAgentMessage,
   steerActiveTurn: steerCopilotAgentTurn,
   stopPrompt: stopCopilotAgentPrompt,
   resolveInteraction: resolveCopilotAgentInteraction,

@@ -2,6 +2,7 @@ import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { BotEventSink } from '../channels/botEventSink.js';
 import type { Notifier } from '../channels/notifier.js';
 import { getInteractiveAgentAdapter } from './interactiveAgentRegistry.js';
 
@@ -9,6 +10,7 @@ export type StopAgentPromptOptions = {
   event: CoreWorkerEvent<'agent.prompt.stop'>;
   config: WorkerConfig;
   notifier: Notifier;
+  botEvents: BotEventSink;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -16,6 +18,7 @@ export async function stopAgentPrompt({
   event,
   config,
   notifier,
+  botEvents,
   env = process.env,
 }: StopAgentPromptOptions): Promise<void> {
   const { sessionId, response } = event.payload;
@@ -56,6 +59,7 @@ export async function stopAgentPrompt({
     profile: { key: session.agentProfileKey, ...profile },
     config,
     notifier,
+    botEvents,
     env,
   });
 }
