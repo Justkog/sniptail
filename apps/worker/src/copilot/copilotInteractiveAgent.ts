@@ -8,6 +8,12 @@ import { logger } from '@sniptail/core/logger.js';
 import { runCopilot } from '@sniptail/core/copilot/copilot.js';
 import { summarizeCopilotEvent } from '@sniptail/core/copilot/logging.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
+import {
+  buildCopilotPermissionHandler,
+  buildCopilotUserInputHandler,
+  clearBrokeredCopilotInteractions,
+  resolveBrokeredCopilotInteraction,
+} from '../agent-command/interactiveAgentInteractionBroker.js';
 import { createDebouncedAgentOutputBuffer } from '../agent-command/debouncedAgentOutput.js';
 import type {
   ResolveInteractiveAgentInteractionInput,
@@ -16,6 +22,22 @@ import type {
   StopInteractiveAgentPromptInput,
 } from '../agent-command/interactiveAgentTypes.js';
 import { resolveAgentWorkspace } from '../agent-command/workspaceResolver.js';
+
+const COPILOT_AGENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+type CopilotRunOptions = NonNullable<AgentRunOptions['copilot']>;
+type CopilotPermissionRequest = Parameters<
+  NonNullable<CopilotRunOptions['onPermissionRequest']>
+>[0];
+type CopilotPermissionInvocation = Parameters<
+  NonNullable<CopilotRunOptions['onPermissionRequest']>
+>[1];
+type CopilotUserInputRequest = Parameters<
+  NonNullable<CopilotRunOptions['onUserInputRequest']>
+>[0];
+type CopilotUserInputInvocation = Parameters<
+  NonNullable<CopilotRunOptions['onUserInputRequest']>
+>[1];
 
 function buildRef(response: RunInteractiveAgentTurnInput['turn']['response']) {
   return {
@@ -83,6 +105,7 @@ function buildCopilotRunOptions(
         : {}),
     },
     copilotIdleRetries: config.copilot.idleRetries,
+    copilotIdleTimeoutMs: COPILOT_AGENT_IDLE_TIMEOUT_MS,
   };
 }
 
@@ -99,17 +122,14 @@ function unsupportedStopMessage(): string {
   return 'Copilot prompt stopping is not supported yet.';
 }
 
-function unsupportedInteractionMessage(): string {
-  return 'Copilot agent interactions are not supported yet.';
-}
-
 export async function runCopilotAgentTurn({
   turn,
   config,
   notifier,
+  botEvents,
   env,
 }: RunInteractiveAgentTurnInput): Promise<void> {
-  const { sessionId, workspaceKey, profile, cwd } = turn;
+  const { sessionId, response, workspaceKey, profile, cwd } = turn;
   const ref = buildRef(turn.response);
   const outputBuffer = createDebouncedAgentOutputBuffer({
     notifier,
@@ -173,8 +193,48 @@ export async function runCopilotAgentTurn({
       'Starting Copilot agent session prompt',
     );
 
+    const runOptions = buildCopilotRunOptions(
+      turn,
+      config,
+      resolved.workspaceRoot,
+      resolved.resolvedCwd,
+    );
+    const onPermissionRequest = buildCopilotPermissionHandler({
+      sessionId,
+      response,
+      workspaceKey,
+      ...(cwd ? { cwd } : {}),
+      timeoutMs: config.agent.interactionTimeoutMs,
+      botEvents,
+    });
+    const onUserInputRequest = buildCopilotUserInputHandler({
+      sessionId,
+      response,
+      workspaceKey,
+      ...(cwd ? { cwd } : {}),
+      timeoutMs: config.agent.interactionTimeoutMs,
+      botEvents,
+    });
+
     const result = await runCopilot(buildInteractiveJob(turn), resolved.resolvedCwd, env, {
-      ...buildCopilotRunOptions(turn, config, resolved.workspaceRoot, resolved.resolvedCwd),
+      ...runOptions,
+      copilot: {
+        ...runOptions.copilot,
+        onPermissionRequest: async (
+          request: CopilotPermissionRequest,
+          invocation: CopilotPermissionInvocation,
+        ) => {
+          await queueSnapshotFlush();
+          return await onPermissionRequest(request, invocation);
+        },
+        onUserInputRequest: async (
+          request: CopilotUserInputRequest,
+          invocation: CopilotUserInputInvocation,
+        ) => {
+          await queueSnapshotFlush();
+          return await onUserInputRequest(request, invocation);
+        },
+      },
       onEvent: async (event) => {
         const summary = summarizeCopilotEvent(
           event as Parameters<typeof summarizeCopilotEvent>[0],
@@ -256,6 +316,7 @@ export async function runCopilotAgentTurn({
     if (scheduledSnapshot) {
       clearTimeout(scheduledSnapshot);
     }
+    await clearBrokeredCopilotInteractions({ sessionId, botEvents });
     outputBuffer.close();
   }
 }
@@ -276,6 +337,11 @@ export async function stopCopilotAgentPrompt({
 export async function resolveCopilotAgentInteraction({
   event,
   notifier,
+  botEvents,
 }: ResolveInteractiveAgentInteractionInput): Promise<void> {
-  await notifier.postMessage(buildRef(event.payload.response), unsupportedInteractionMessage());
+  await resolveBrokeredCopilotInteraction({
+    event,
+    notifier,
+    botEvents,
+  });
 }

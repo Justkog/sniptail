@@ -2,6 +2,7 @@ import type { JobSpec, AgentId } from '../types/job.js';
 import type { ModelReasoningEffort } from '@openai/codex-sdk';
 import type { WorkerConfig, JobModelConfig } from '../config/types.js';
 import type { JobType } from '../types/job.js';
+import type { PermissionHandler, SessionConfig } from '@github/copilot-sdk';
 
 export type AgentRunResult = {
   finalResponse: string;
@@ -13,6 +14,13 @@ export type AgentAttachment = {
   displayName: string;
   mediaType: string;
 };
+
+export type CopilotPermissionHandler = PermissionHandler;
+export type CopilotPermissionRequest = Parameters<CopilotPermissionHandler>[0];
+export type CopilotPermissionDecision = Awaited<ReturnType<CopilotPermissionHandler>>;
+export type CopilotUserInputHandler = NonNullable<SessionConfig['onUserInputRequest']>;
+export type CopilotUserInputRequest = Parameters<CopilotUserInputHandler>[0];
+export type CopilotUserInputResponse = Awaited<ReturnType<CopilotUserInputHandler>>;
 
 export type AgentRunOptions = {
   onEvent?: (event: unknown) => void | Promise<void>;
@@ -30,10 +38,13 @@ export type AgentRunOptions = {
   modelProvider?: string;
   modelReasoningEffort?: ModelReasoningEffort;
   copilotIdleRetries?: number;
+  copilotIdleTimeoutMs?: number;
   copilot?: {
     cliPath?: string;
     agent?: string;
     streaming?: boolean;
+    onPermissionRequest?: CopilotPermissionHandler;
+    onUserInputRequest?: CopilotUserInputHandler;
     docker?: {
       enabled?: boolean;
       dockerfilePath?: string;

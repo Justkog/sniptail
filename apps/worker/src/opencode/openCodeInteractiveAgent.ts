@@ -14,7 +14,7 @@ import {
   runOpenCodePrompt,
 } from '@sniptail/core/opencode/prompt.js';
 import { summarizeOpenCodeEvent } from '@sniptail/core/opencode/logging.js';
-import { BOT_EVENT_SCHEMA_VERSION, type BotEvent } from '@sniptail/core/types/bot-event.js';
+import type { BotEvent } from '@sniptail/core/types/bot-event.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import {
@@ -23,6 +23,12 @@ import {
   isAbortingAgentPromptForSteer,
 } from '../agent-command/activeAgentPromptTurns.js';
 import { createDebouncedAgentOutputBuffer } from '../agent-command/debouncedAgentOutput.js';
+import {
+  buildPermissionRequestEvent,
+  buildQuestionRequestEvent,
+  publishPermissionUpdated,
+  publishQuestionUpdated,
+} from '../agent-command/interactiveAgentEvents.js';
 import type {
   ResolveInteractiveAgentInteractionInput,
   RunInteractiveAgentTurnInput,
@@ -233,75 +239,6 @@ function summarizePermissionMetadata(metadata: Record<string, unknown> | undefin
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
 }
 
-function buildPermissionRequestEvent(input: {
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  sessionId: string;
-  interactionId: string;
-  workspaceKey: string;
-  cwd?: string;
-  permission: OpenCodePermissionAskedEvent['properties'];
-  expiresAt: string;
-}): BotEvent {
-  const patterns = input.permission.patterns ?? [];
-  const details = [
-    ...patterns.map((pattern) => `Pattern: ${pattern}`),
-    ...summarizePermissionMetadata(input.permission.metadata),
-  ];
-  return {
-    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
-    type: 'agent.permission.requested',
-    payload: {
-      channelId: input.response.threadId ?? input.response.channelId,
-      threadId: input.response.threadId ?? input.response.channelId,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      workspaceKey: input.workspaceKey,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
-      toolName: input.permission.permission,
-      ...(patterns.length ? { action: patterns.join(', ') } : {}),
-      ...(details.length ? { details } : {}),
-      expiresAt: input.expiresAt,
-      allowAlways: true,
-    },
-  };
-}
-
-function buildQuestionRequestEvent(input: {
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  sessionId: string;
-  interactionId: string;
-  workspaceKey: string;
-  cwd?: string;
-  question: OpenCodeQuestionAskedEvent['properties'];
-  expiresAt: string;
-}): BotEvent {
-  return {
-    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
-    type: 'agent.question.requested',
-    payload: {
-      channelId: input.response.threadId ?? input.response.channelId,
-      threadId: input.response.threadId ?? input.response.channelId,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      workspaceKey: input.workspaceKey,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
-      questions: input.question.questions.map((question) => ({
-        header: question.header,
-        question: question.question,
-        options: question.options.map((option) => ({
-          label: option.label,
-          ...(option.description ? { description: option.description } : {}),
-        })),
-        multiple: question.multiple ?? false,
-        custom: question.custom ?? true,
-      })),
-      expiresAt: input.expiresAt,
-    },
-  };
-}
-
 function questionRequestDiscordLimitIssue(
   question: OpenCodeQuestionAskedEvent['properties'],
 ): string | undefined {
@@ -319,53 +256,6 @@ function questionRequestDiscordLimitIssue(
   return undefined;
 }
 
-async function publishPermissionUpdated(input: {
-  botEvents: BotEventSink;
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  sessionId: string;
-  interactionId: string;
-  status: 'approved_once' | 'approved_always' | 'rejected' | 'expired' | 'failed';
-  message?: string;
-}) {
-  await input.botEvents.publish({
-    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
-    type: 'agent.permission.updated',
-    payload: {
-      channelId: input.response.threadId ?? input.response.channelId,
-      threadId: input.response.threadId ?? input.response.channelId,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      status: input.status,
-      ...(input.message ? { message: input.message } : {}),
-    },
-  });
-}
-
-async function publishQuestionUpdated(input: {
-  botEvents: BotEventSink;
-  response: CoreWorkerEvent<'agent.session.start'>['payload']['response'];
-  sessionId: string;
-  interactionId: string;
-  status: 'answered' | 'rejected' | 'expired' | 'failed';
-  actorUserId?: string;
-  message?: string;
-}) {
-  await input.botEvents.publish({
-    schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
-    type: 'agent.question.updated',
-    payload: {
-      channelId: input.response.threadId ?? input.response.channelId,
-      threadId: input.response.threadId ?? input.response.channelId,
-      sessionId: input.sessionId,
-      interactionId: input.interactionId,
-      status: input.status,
-      ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
-      ...(input.message ? { message: input.message } : {}),
-    },
-  });
-}
 
 function permissionReplyStatus(reply: 'once' | 'always' | 'reject') {
   switch (reply) {
@@ -638,8 +528,16 @@ export async function runOpenCodeAgentTurn({
             interactionId,
             workspaceKey,
             ...(cwd ? { cwd } : {}),
-            permission: opencodeEvent.properties,
+            toolName: opencodeEvent.properties.permission,
+            ...(opencodeEvent.properties.patterns?.length
+              ? { action: opencodeEvent.properties.patterns.join(', ') }
+              : {}),
+            details: [
+              ...(opencodeEvent.properties.patterns ?? []).map((pattern) => `Pattern: ${pattern}`),
+              ...summarizePermissionMetadata(opencodeEvent.properties.metadata),
+            ],
             expiresAt,
+            allowAlways: true,
           });
           setPendingOpenCodePermission({
             sessionId,
@@ -740,7 +638,16 @@ export async function runOpenCodeAgentTurn({
               interactionId,
               workspaceKey,
               ...(cwd ? { cwd } : {}),
-              question: opencodeEvent.properties,
+              questions: opencodeEvent.properties.questions.map((question) => ({
+                header: question.header,
+                question: question.question,
+                options: question.options.map((option) => ({
+                  label: option.label,
+                  ...(option.description ? { description: option.description } : {}),
+                })),
+                multiple: question.multiple ?? false,
+                custom: question.custom ?? true,
+              })),
               expiresAt,
             }),
           );
@@ -947,19 +854,14 @@ export async function resolveOpenCodeAgentInteraction({
         'Failed to resolve OpenCode interaction',
       );
       takePendingOpenCodePermission(sessionId, interactionId);
-      await botEvents.publish({
-        schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-        provider: 'discord',
-        type: 'agent.permission.updated',
-        payload: {
-          channelId: response.threadId ?? response.channelId,
-          threadId: response.threadId ?? response.channelId,
-          sessionId,
-          interactionId,
-          status: 'failed',
-          ...(response.userId ? { actorUserId: response.userId } : {}),
-          message: `Failed to resolve permission request: ${(err as Error).message}`,
-        },
+      await publishPermissionUpdated({
+        botEvents,
+        response,
+        sessionId,
+        interactionId,
+        status: 'failed',
+        ...(response.userId ? { actorUserId: response.userId } : {}),
+        message: `Failed to resolve permission request: ${(err as Error).message}`,
       });
       await publishPromotedPermission({
         botEvents,

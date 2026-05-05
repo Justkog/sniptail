@@ -62,6 +62,7 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
       jobType !== 'MENTION' && config.copilot.executionMode === 'docker',
     buildRunOptions: (config: WorkerConfig) => ({
       copilotIdleRetries: config.copilot.idleRetries,
+      copilotIdleTimeoutMs: config.copilot.idleTimeoutMs,
       copilot:
         config.copilot.executionMode === 'docker'
           ? {

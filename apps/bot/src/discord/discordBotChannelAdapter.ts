@@ -447,8 +447,19 @@ function buildAgentQuestionRequestText(
     `Workspace: \`${payload.workspaceKey}${payload.cwd ? ` / ${payload.cwd}` : ''}\``,
     `Expires: <t:${Math.floor(Date.parse(payload.expiresAt) / 1000)}:R>`,
   ];
+  const hasMultipleQuestions = payload.questions.length > 1;
   payload.questions.forEach((question, index) => {
-    lines.push('', `**${index + 1}. ${question.header}**`, question.question);
+    const header = question.header?.trim();
+    const title = hasMultipleQuestions
+      ? `**${index + 1}. ${header || `Question ${index + 1}`}**`
+      : header
+        ? `**${header}**`
+        : undefined;
+    lines.push('');
+    if (title) {
+      lines.push(title);
+    }
+    lines.push(question.question);
     if (question.options.length) {
       const optionLabels = question.options
         .slice(0, 25)

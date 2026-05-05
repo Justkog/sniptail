@@ -147,7 +147,7 @@ describe('runCopilot', () => {
           { type: 'file', path: 'context/notes.md', displayName: 'notes.md' },
         ],
       },
-      300000,
+      300_000,
     );
     expect(hoisted.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -186,14 +186,14 @@ describe('runCopilot', () => {
         prompt: 'mock prompt',
         attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
       },
-      300000,
+      300_000,
     );
     expect(secondSendAndWait).toHaveBeenCalledWith(
       {
         prompt: 'continue prompt',
         attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
       },
-      300000,
+      300_000,
     );
     expect(hoisted.resumeSession).toHaveBeenCalledWith(
       'session-1',
@@ -229,6 +229,30 @@ describe('runCopilot', () => {
     );
   });
 
+  it('passes custom permission and user input handlers into new sessions', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    const onPermissionRequest = vi.fn();
+    const onUserInputRequest = vi.fn();
+    hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
+      copilot: {
+        onPermissionRequest,
+        onUserInputRequest,
+      },
+    });
+
+    expect(hoisted.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onPermissionRequest,
+        onUserInputRequest,
+      }),
+    );
+  });
+
   it('passes the configured Copilot agent and streaming flag into resumed sessions', async () => {
     const sendAndWait = vi.fn().mockResolvedValue({
       type: 'assistant.message',
@@ -250,6 +274,51 @@ describe('runCopilot', () => {
         agent: 'reviewer',
         streaming: true,
       }),
+    );
+  });
+
+  it('passes custom permission and user input handlers into resumed sessions', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    const onPermissionRequest = vi.fn();
+    const onUserInputRequest = vi.fn();
+    hoisted.resumeSession.mockResolvedValue(createSessionMock(sendAndWait, 'session-9'));
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
+      resumeThreadId: 'session-9',
+      copilot: {
+        onPermissionRequest,
+        onUserInputRequest,
+      },
+    });
+
+    expect(hoisted.resumeSession).toHaveBeenCalledWith(
+      'session-9',
+      expect.objectContaining({
+        onPermissionRequest,
+        onUserInputRequest,
+      }),
+    );
+  });
+
+  it('passes a custom Copilot idle timeout to sendAndWait', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
+      copilotIdleTimeoutMs: 1_800_000,
+    });
+
+    expect(sendAndWait).toHaveBeenCalledWith(
+      {
+        prompt: 'mock prompt',
+      },
+      1_800_000,
     );
   });
 });

@@ -359,7 +359,7 @@ export function buildDiscordAgentQuestionComponents(
   sessionId: string,
   interactionId: string,
   questions: Array<{
-    header: string;
+    header?: string;
     options: Array<{ label: string; description?: string }>;
     multiple: boolean;
     custom: boolean;
@@ -384,7 +384,7 @@ export function buildDiscordAgentQuestionComponents(
             sessionId,
             interactionId,
           ),
-          placeholder: question.header.slice(0, 100),
+          placeholder: (question.header?.trim() || `Question ${questionIndex + 1}`).slice(0, 100),
           min_values: question.multiple ? 0 : 1,
           max_values: question.multiple ? Math.max(1, options.length) : 1,
           options,

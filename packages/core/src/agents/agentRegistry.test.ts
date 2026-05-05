@@ -29,6 +29,7 @@ function buildConfig(): WorkerConfig {
     copilot: {
       executionMode: 'local',
       idleRetries: 2,
+      idleTimeoutMs: 300_000,
       dockerfilePath: './Dockerfile.copilot',
       dockerImage: 'snatch-copilot:local',
       dockerBuildContext: '.',
@@ -56,6 +57,7 @@ describe('AGENT_DESCRIPTORS.copilot.buildRunOptions', () => {
 
     expect(options).toEqual({
       copilotIdleRetries: 2,
+      copilotIdleTimeoutMs: 300_000,
       copilot: {},
     });
     expect(hoisted.resolveWorkerAgentScriptPath).not.toHaveBeenCalled();
@@ -70,6 +72,7 @@ describe('AGENT_DESCRIPTORS.copilot.buildRunOptions', () => {
     expect(hoisted.resolveWorkerAgentScriptPath).toHaveBeenCalledWith('copilot-docker.sh');
     expect(options).toEqual({
       copilotIdleRetries: 2,
+      copilotIdleTimeoutMs: 300_000,
       copilot: {
         cliPath: '/tmp/copilot-docker.sh',
         docker: {

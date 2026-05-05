@@ -654,6 +654,17 @@ describe('config loaders', () => {
     expect(config.opencode.dockerImage).toBe('snatch-opencode:local');
   });
 
+  it('defaults and overrides the Copilot idle timeout', () => {
+    applyRequiredEnv();
+
+    expect(loadWorkerConfig().copilot.idleTimeoutMs).toBe(300_000);
+
+    resetConfigCaches();
+    applyRequiredEnv({ COPILOT_IDLE_TIMEOUT_MS: '1800000' });
+
+    expect(loadWorkerConfig().copilot.idleTimeoutMs).toBe(1_800_000);
+  });
+
   it('accepts opencode as the primary agent', () => {
     applyRequiredEnv({ PRIMARY_AGENT: 'opencode' });
 

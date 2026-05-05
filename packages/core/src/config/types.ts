@@ -119,6 +119,7 @@ export type WorkerConfig = CoreConfig & {
   copilot: {
     executionMode: 'local' | 'docker';
     idleRetries: number;
+    idleTimeoutMs: number;
     dockerfilePath?: string;
     dockerImage?: string;
     dockerBuildContext?: string;

@@ -64,7 +64,7 @@ export type BotAgentQuestionOption = {
 };
 
 export type BotAgentQuestion = {
-  header: string;
+  header?: string;
   question: string;
   options: BotAgentQuestionOption[];
   multiple: boolean;

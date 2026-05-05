@@ -181,6 +181,29 @@ export function resolveCopilotIdleRetries(tomlValue: unknown): number {
   return 2;
 }
 
+export function resolveCopilotIdleTimeoutMs(tomlValue: unknown): number {
+  const raw = process.env.COPILOT_IDLE_TIMEOUT_MS;
+  if (raw !== undefined && raw.trim() !== '') {
+    const normalized = raw.trim();
+    if (!/^\d+$/.test(normalized)) {
+      throw new Error(`Invalid COPILOT_IDLE_TIMEOUT_MS: ${raw}`);
+    }
+    const value = Number.parseInt(normalized, 10);
+    if (Number.isNaN(value) || value <= 0) {
+      throw new Error(`Invalid COPILOT_IDLE_TIMEOUT_MS: ${raw}`);
+    }
+    return value;
+  }
+  const tomlNumber = getTomlNumber(tomlValue, 'COPILOT_IDLE_TIMEOUT_MS');
+  if (tomlNumber !== undefined) {
+    if (!Number.isInteger(tomlNumber) || tomlNumber <= 0) {
+      throw new Error(`Invalid COPILOT_IDLE_TIMEOUT_MS: ${tomlNumber}`);
+    }
+    return tomlNumber;
+  }
+  return 300_000;
+}
+
 export function resolveCodexExecutionMode(tomlValue: unknown): 'local' | 'docker' {
   const raw = (
     resolveStringValue('CODEX_EXECUTION_MODE', tomlValue, { defaultValue: 'local' }) || 'local'

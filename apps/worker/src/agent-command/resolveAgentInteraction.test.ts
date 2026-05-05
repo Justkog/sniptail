@@ -8,6 +8,10 @@ import {
   setActiveOpenCodeRuntime,
   setPendingOpenCodeInteraction,
 } from '../opencode/openCodeInteractionState.js';
+import {
+  clearBrokeredCopilotInteractions,
+  requestCopilotPermission,
+} from './interactiveAgentInteractionBroker.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
@@ -41,7 +45,7 @@ function buildConfig(): WorkerConfig {
     jobConcurrency: 1,
     bootstrapConcurrency: 1,
     workerEventConcurrency: 1,
-    copilot: { executionMode: 'local', idleRetries: 3 },
+    copilot: { executionMode: 'local', idleRetries: 3, idleTimeoutMs: 300_000 },
     opencode: {
       executionMode: 'local',
       startupTimeoutMs: 10_000,
@@ -145,9 +149,10 @@ function buildPermissionRequestEvent(interactionId: string): BotEvent {
 }
 
 describe('resolve OpenCode agent interactions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     clearActiveOpenCodeRuntimes();
+    await clearBrokeredCopilotInteractions({ sessionId: 'session-1' });
     hoisted.loadAgentSession.mockResolvedValue({ status: 'active', agentProfileKey: 'build' });
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
     hoisted.replyOpenCodeQuestion.mockResolvedValue(undefined);
@@ -171,7 +176,7 @@ describe('resolve OpenCode agent interactions', () => {
     });
   });
 
-  it('returns the unsupported message for Copilot profiles', async () => {
+  it('resolves Copilot permission requests through the shared interaction broker', async () => {
     const notifier = buildNotifier();
     const botEvents = buildBotEvents();
     const config = buildConfig();
@@ -185,20 +190,34 @@ describe('resolve OpenCode agent interactions', () => {
       status: 'active',
       agentProfileKey: 'build',
     });
+    const pending = requestCopilotPermission({
+      sessionId: 'session-1',
+      response: buildEvent().payload.response,
+      workspaceKey: 'snatch',
+      timeoutMs: 60_000,
+      botEvents,
+      request: { kind: 'read' },
+    });
+    await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
+    const interactionId = (botEvents.publish.mock.calls[0]?.[0] as BotEvent).payload.interactionId;
 
     await resolveAgentInteraction({
-      event: buildEvent('always'),
+      event: {
+        ...buildEvent('always'),
+        payload: {
+          ...buildEvent('always').payload,
+          interactionId,
+        },
+      },
       config,
       notifier,
       botEvents,
       env: {},
     });
 
+    await expect(pending).resolves.toMatchObject({ kind: 'approve-for-session' });
     expect(hoisted.replyOpenCodePermission).not.toHaveBeenCalled();
-    expect(notifier.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ channelId: 'thread-1' }),
-      'Copilot agent interactions are not supported yet.',
-    );
+    expect(notifier.postMessage).not.toHaveBeenCalled();
   });
 
   it('replies to OpenCode permission requests and waits for OpenCode reply events', async () => {

@@ -204,4 +204,19 @@ describe('discord completion components', () => {
       rows[2]?.components.map((component) => ('label' in component ? component.label : '')),
     ).toEqual(['Answer with text', 'Submit answers', 'Reject', 'Stop session']);
   });
+
+  it('falls back to a numbered placeholder when a question header is omitted', () => {
+    const rows = buildDiscordAgentQuestionComponents('session-123', 'interaction-456', [
+      {
+        options: [{ label: 'One' }],
+        multiple: false,
+        custom: false,
+      },
+    ]);
+
+    expect(rows[0]?.components[0]).toMatchObject({
+      type: 3,
+      placeholder: 'Question 1',
+    });
+  });
 });

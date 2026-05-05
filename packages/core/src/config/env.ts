@@ -47,6 +47,7 @@ import {
   resolvePrimaryAgent,
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
+  resolveCopilotIdleTimeoutMs,
   resolveCodexExecutionMode,
   resolveOpenCodeExecutionMode,
   resolveOptionalFlagFromSources,
@@ -1017,6 +1018,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const primaryAgent = resolvePrimaryAgent(workerToml?.primary_agent);
   const copilotExecutionMode = resolveCopilotExecutionMode(copilotToml?.execution_mode);
   const copilotIdleRetries = resolveCopilotIdleRetries(copilotToml?.idle_retries);
+  const copilotIdleTimeoutMs = resolveCopilotIdleTimeoutMs(copilotToml?.idle_timeout_ms);
   const copilotDockerfilePath = resolveStringValue(
     'GH_COPILOT_DOCKERFILE_PATH',
     copilotToml?.dockerfile_path,
@@ -1165,6 +1167,7 @@ export function loadWorkerConfig(): WorkerConfig {
     copilot: {
       executionMode: copilotExecutionMode,
       idleRetries: copilotIdleRetries,
+      idleTimeoutMs: copilotIdleTimeoutMs,
       ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
       ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),

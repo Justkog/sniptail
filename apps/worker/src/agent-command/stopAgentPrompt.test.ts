@@ -45,6 +45,7 @@ function buildConfig(
     copilot: {
       executionMode: 'local',
       idleRetries: 3,
+      idleTimeoutMs: 300_000,
     },
     opencode: {
       executionMode,

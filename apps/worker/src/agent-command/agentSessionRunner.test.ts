@@ -59,6 +59,7 @@ function buildConfig(workspacePath: string): WorkerConfig {
     copilot: {
       executionMode: 'local',
       idleRetries: 3,
+      idleTimeoutMs: 300_000,
       defaultModel: {
         modelProvider: 'openai',
         model: 'gpt-5.5',
@@ -276,9 +277,12 @@ describe('OpenCode agent prompt runner', () => {
         modelProvider: 'openai',
         modelReasoningEffort: 'high',
         copilotIdleRetries: 3,
+        copilotIdleTimeoutMs: 1_800_000,
         copilot: expect.objectContaining({
           agent: 'build',
           streaming: true,
+          onPermissionRequest: expect.any(Function),
+          onUserInputRequest: expect.any(Function),
         }) as unknown,
       }),
     );

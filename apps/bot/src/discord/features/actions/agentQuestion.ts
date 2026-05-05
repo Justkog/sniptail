@@ -72,10 +72,21 @@ function buildAnswers(pending: PendingDiscordAgentQuestion): string[][] {
   return pending.questions.map((_, index) => pending.selections.get(index) ?? []);
 }
 
+function questionLabel(
+  question: PendingDiscordAgentQuestion['questions'][number],
+  index: number,
+): string {
+  const header = question.header?.trim();
+  if (header) {
+    return header;
+  }
+  return question.question.trim() || `Question ${index + 1}`;
+}
+
 function missingQuestionHeaders(pending: PendingDiscordAgentQuestion): string[] {
   return pending.questions
     .map((question, index) => ({
-      header: question.header,
+      header: questionLabel(question, index),
       answers: pending.selections.get(index) ?? [],
     }))
     .filter((entry) => entry.answers.length === 0)
@@ -292,7 +303,7 @@ function buildQuestionModal(pending: PendingDiscordAgentQuestion) {
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false);
       return new LabelBuilder()
-        .setLabel(entry.question.header.slice(0, 45))
+        .setLabel(questionLabel(entry.question, entry.index).slice(0, 45))
         .setTextInputComponent(input);
     }),
   );
