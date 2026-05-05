@@ -7,7 +7,7 @@ import {
   clearActiveOpenCodeRuntimes,
   setActiveOpenCodeRuntime,
   setPendingOpenCodeInteraction,
-} from './openCodeInteractionState.js';
+} from '../opencode/openCodeInteractionState.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
@@ -197,7 +197,7 @@ describe('resolve OpenCode agent interactions', () => {
     expect(hoisted.replyOpenCodePermission).not.toHaveBeenCalled();
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'Copilot interactive agent sessions are not supported yet.',
+      'Copilot agent interactions are not supported yet.',
     );
   });
 

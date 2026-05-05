@@ -87,6 +87,8 @@ export async function runCopilot(
     const sessionConfig: SessionConfig = {
       onPermissionRequest: approveAll,
       ...(options.model && { model: options.model }),
+      ...(options.copilot?.agent ? { agent: options.copilot.agent } : {}),
+      ...(options.copilot?.streaming ? { streaming: true } : {}),
       ...(options.modelReasoningEffort &&
         options.modelReasoningEffort !== 'minimal' && {
           reasoningEffort: options.modelReasoningEffort,

@@ -41,7 +41,10 @@ export type WorkerAgentCommandWorkspaceConfig = {
 
 export type WorkerAgentCommandProfileConfig = {
   provider: 'opencode' | 'copilot';
-  name: string;
+  name?: string;
+  model?: string;
+  modelProvider?: string;
+  reasoningEffort?: ModelReasoningEffort;
   label?: string;
   description?: string;
 };

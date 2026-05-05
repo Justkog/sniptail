@@ -9,6 +9,7 @@ import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
 
 const hoisted = vi.hoisted(() => ({
+  runCopilot: vi.fn(),
   runOpenCodePrompt: vi.fn(),
   abortOpenCodeSession: vi.fn(),
   replyOpenCodePermission: vi.fn(),
@@ -16,6 +17,10 @@ const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   updateAgentSessionCodingAgentSessionId: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
+}));
+
+vi.mock('@sniptail/core/copilot/copilot.js', () => ({
+  runCopilot: hoisted.runCopilot,
 }));
 
 vi.mock('@sniptail/core/opencode/prompt.js', () => ({
@@ -31,7 +36,10 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
   updateAgentSessionStatus: hoisted.updateAgentSessionStatus,
 }));
 
-import { clearActiveOpenCodeRuntimes, getActiveOpenCodeRuntime } from './openCodeInteractionState.js';
+import {
+  clearActiveOpenCodeRuntimes,
+  getActiveOpenCodeRuntime,
+} from '../opencode/openCodeInteractionState.js';
 import { clearAgentPromptTurns } from './activeAgentPromptTurns.js';
 import { runAgentSessionMessage, runAgentSessionStart } from './agentSessionRunner.js';
 
@@ -51,6 +59,11 @@ function buildConfig(workspacePath: string): WorkerConfig {
     copilot: {
       executionMode: 'local',
       idleRetries: 3,
+      defaultModel: {
+        modelProvider: 'openai',
+        model: 'gpt-5.5',
+        modelReasoningEffort: 'high',
+      },
     },
     opencode: {
       executionMode: 'local',
@@ -212,6 +225,10 @@ describe('OpenCode agent prompt runner', () => {
         return { finalResponse: 'assistant progress text', threadId: 'opencode-session-1' };
       },
     );
+    hoisted.runCopilot.mockResolvedValue({
+      finalResponse: 'copilot final response',
+      threadId: 'copilot-session-1',
+    });
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
@@ -226,7 +243,7 @@ describe('OpenCode agent prompt runner', () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  it('fails unsupported Copilot profiles through the interactive agent registry', async () => {
+  it('runs Copilot with the selected profile and stores the Copilot session id', async () => {
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
@@ -244,10 +261,185 @@ describe('OpenCode agent prompt runner', () => {
     });
 
     expect(hoisted.runOpenCodePrompt).not.toHaveBeenCalled();
-    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'failed');
+    expect(hoisted.runCopilot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'session-1',
+        requestText: 'inspect this',
+        agent: 'copilot',
+      }),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        botName: 'Sniptail',
+        promptOverride: 'inspect this',
+        model: 'gpt-5.5',
+        modelProvider: 'openai',
+        modelReasoningEffort: 'high',
+        copilotIdleRetries: 3,
+        copilot: expect.objectContaining({
+          agent: 'build',
+          streaming: true,
+        }) as unknown,
+      }),
+    );
+    expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
+      'session-1',
+      'copilot-session-1',
+    );
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'active');
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'completed');
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'Copilot interactive agent sessions are not supported yet.',
+      'copilot final response',
+    );
+  });
+
+  it('streams Copilot assistant deltas to Discord output', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.runCopilot.mockImplementationOnce(async (_job, _workDir, _env, options) => {
+      await options?.onEvent?.({
+        type: 'assistant.message_delta',
+        data: { deltaContent: 'Copilot says hi' },
+      });
+      return {
+        finalResponse: 'Copilot says hi',
+        threadId: 'copilot-session-1',
+      };
+    });
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Copilot says hi',
+    );
+  });
+
+  it('runs Copilot profiles without custom agent using profile model settings', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      model: 'gpt-5.4-mini',
+      reasoningEffort: 'low',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runCopilot).toHaveBeenCalledWith(
+      expect.anything(),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        model: 'gpt-5.4-mini',
+        modelReasoningEffort: 'low',
+        copilot: expect.not.objectContaining({ agent: expect.any(String) }),
+      }),
+    );
+  });
+
+  it('reports Copilot steer as unsupported while a prompt is active', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
+
+    let releasePrompt!: () => void;
+    hoisted.runCopilot.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePrompt = () =>
+            resolve({
+              finalResponse: 'first done',
+              threadId: 'copilot-session-1',
+            });
+        }),
+    );
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(hoisted.runCopilot).toHaveBeenCalledTimes(1));
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'steer', mode: 'steer' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    releasePrompt();
+    await first;
+
+    expect(hoisted.runCopilot).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Failed to steer current prompt: Copilot prompt steering is not supported yet.',
+    );
+  });
+
+  it('resumes completed Copilot sessions for follow-up turns', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValueOnce(
+      buildSession({
+        agentProfileKey: 'build',
+        codingAgentSessionId: 'copilot-session-9',
+      }),
+    );
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'follow up' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runCopilot).toHaveBeenCalledWith(
+      expect.objectContaining({ requestText: 'follow up' }),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        promptOverride: 'follow up',
+        resumeThreadId: 'copilot-session-9',
+      }),
     );
   });
 

@@ -498,10 +498,53 @@ function parseAgentProfiles(
         `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected opencode or copilot.`,
       );
     }
-    const name = getTomlString(profileToml?.name, `agent.profiles.${rawProfileKey}.name`)?.trim();
-    if (!name) {
+    const rawName = getTomlString(profileToml?.name, `agent.profiles.${rawProfileKey}.name`);
+    const name = rawName?.trim();
+    if (rawName !== undefined && !name) {
       throw new Error(
         `Invalid agent.profiles.${rawProfileKey}.name in TOML. Expected a non-empty string.`,
+      );
+    }
+    const rawModel = getTomlString(profileToml?.model, `agent.profiles.${rawProfileKey}.model`);
+    const model = rawModel?.trim();
+    if (rawModel !== undefined && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model in TOML. Expected a non-empty string.`,
+      );
+    }
+    const rawModelProvider = getTomlString(
+      profileToml?.model_provider,
+      `agent.profiles.${rawProfileKey}.model_provider`,
+    );
+    const modelProvider = rawModelProvider?.trim();
+    if (rawModelProvider !== undefined && !modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. Expected a non-empty string.`,
+      );
+    }
+    const reasoningEffort = parseModelReasoningEffort(
+      profileToml?.reasoning_effort,
+      `agent.profiles.${rawProfileKey}.reasoning_effort`,
+    );
+
+    if (!name && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey} in TOML. Expected at least one of: name or model.`,
+      );
+    }
+    if (reasoningEffort && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.reasoning_effort in TOML. model is required when reasoning_effort is set.`,
+      );
+    }
+    if (provider === 'copilot' && modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is not supported for copilot profiles.`,
+      );
+    }
+    if (provider === 'opencode' && model && !modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is required when model is set for opencode profiles.`,
       );
     }
     const label = parseOptionalDisplayString(
@@ -515,7 +558,10 @@ function parseAgentProfiles(
 
     profiles[profileKey] = {
       provider,
-      name,
+      ...(name ? { name } : {}),
+      ...(model ? { model } : {}),
+      ...(modelProvider ? { modelProvider } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
       ...(label ? { label } : {}),
       ...(description ? { description } : {}),
     };

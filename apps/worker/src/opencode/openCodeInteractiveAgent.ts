@@ -96,22 +96,25 @@ function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['r
   };
 }
 
-function buildOpenCodeRunOptions(config: WorkerConfig, profileName: string) {
+function buildOpenCodeRunOptions(
+  config: WorkerConfig,
+  profile: RunInteractiveAgentTurnInput['turn']['profile'],
+) {
+  const model = profile.model ?? config.opencode.defaultModel?.model;
+  const modelProvider = profile.modelProvider ?? config.opencode.defaultModel?.provider;
+  const variant = profile.reasoningEffort;
+
   return {
     botName: config.botName,
-    ...(config.opencode.defaultModel
-      ? {
-          model: config.opencode.defaultModel.model,
-          modelProvider: config.opencode.defaultModel.provider,
-        }
-      : {}),
+    ...(model && modelProvider ? { model, modelProvider } : {}),
     opencode: {
       executionMode: config.opencode.executionMode,
       ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
       ...(config.opencode.serverAuthHeaderEnv
         ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
         : {}),
-      agent: profileName,
+      ...(profile.name ? { agent: profile.name } : {}),
+      ...(variant ? { variant } : {}),
       startupTimeoutMs: config.opencode.startupTimeoutMs,
       dockerStreamLogs: config.opencode.dockerStreamLogs,
       ...(config.opencode.executionMode === 'docker'
@@ -571,7 +574,9 @@ export async function runOpenCodeAgentTurn({
         sessionId,
         workspaceKey,
         profileKey: profile.key,
-        opencodeAgent: profile.name,
+        ...(profile.name ? { opencodeAgent: profile.name } : {}),
+        ...(profile.model ? { opencodeModel: profile.model } : {}),
+        ...(profile.reasoningEffort ? { opencodeVariant: profile.reasoningEffort } : {}),
         resolvedCwd: resolved.resolvedCwd,
         promptLength: prompt.length,
       },
@@ -582,7 +587,7 @@ export async function runOpenCodeAgentTurn({
     let activeRuntimeDirectory = resolved.resolvedCwd;
 
     await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
-      ...buildOpenCodeRunOptions(config, profile.name),
+      ...buildOpenCodeRunOptions(config, profile),
       runtimeId: sessionId,
       ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
       onSessionId: async (nextCodingAgentSessionId) => {

@@ -462,7 +462,7 @@ describe('OpenCode prompt helpers', () => {
         resumeThreadId: 'session-old',
         modelProvider: 'anthropic',
         model: 'claude-sonnet',
-        opencode: { agent: 'build' },
+        opencode: { agent: 'build', variant: 'high' },
         currentTurnAttachments: [
           {
             path: '/tmp/work/context/file.txt',
@@ -481,6 +481,7 @@ describe('OpenCode prompt helpers', () => {
         directory: '/tmp/work',
         model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
         agent: 'build',
+        variant: 'high',
         parts: expect.arrayContaining([
           expect.objectContaining({ type: 'text' }),
           expect.objectContaining({

@@ -1,4 +1,5 @@
 import type { ChannelProvider } from './channel.js';
+import type { ModelReasoningEffort } from '@openai/codex-sdk';
 
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -25,7 +26,10 @@ export type BotAgentWorkspaceMetadata = {
 export type BotAgentProfileMetadata = {
   key: string;
   provider: 'opencode' | 'copilot';
-  name: string;
+  name?: string;
+  model?: string;
+  modelProvider?: string;
+  reasoningEffort?: ModelReasoningEffort;
   label?: string;
   description?: string;
 };

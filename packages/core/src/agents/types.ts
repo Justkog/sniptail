@@ -32,6 +32,8 @@ export type AgentRunOptions = {
   copilotIdleRetries?: number;
   copilot?: {
     cliPath?: string;
+    agent?: string;
+    streaming?: boolean;
     docker?: {
       enabled?: boolean;
       dockerfilePath?: string;
@@ -50,6 +52,7 @@ export type AgentRunOptions = {
     serverUrl?: string;
     serverAuthHeaderEnv?: string;
     agent?: string;
+    variant?: string;
     startupTimeoutMs?: number;
     dockerStreamLogs?: boolean;
     docker?: {

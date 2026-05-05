@@ -16,7 +16,7 @@ const hoisted = vi.hoisted(() => {
   const stop = vi.fn<() => Promise<unknown[]>>();
   const forceStop = vi.fn<() => Promise<void>>();
   const createSession = vi.fn<(options?: unknown) => Promise<MockSession>>();
-  const resumeSession = vi.fn<(sessionId: string) => Promise<MockSession>>();
+  const resumeSession = vi.fn<(sessionId: string, options?: unknown) => Promise<MockSession>>();
   const buildPromptForJob = vi.fn<() => string>(() => 'mock prompt');
 
   class CopilotClientMock {
@@ -40,8 +40,8 @@ const hoisted = vi.hoisted(() => {
       return createSession(options);
     }
 
-    resumeSession(sessionId: string): Promise<MockSession> {
-      return resumeSession(sessionId);
+    resumeSession(sessionId: string, options?: unknown): Promise<MockSession> {
+      return resumeSession(sessionId, options);
     }
   }
 
@@ -149,6 +149,11 @@ describe('runCopilot', () => {
       },
       300000,
     );
+    expect(hoisted.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onPermissionRequest: expect.any(Function),
+      }),
+    );
   });
 
   it('reuses the same current-turn attachments on idle-timeout retry', async () => {
@@ -189,6 +194,62 @@ describe('runCopilot', () => {
         attachments: [{ type: 'file', path: 'context/diagram.png', displayName: 'diagram.png' }],
       },
       300000,
+    );
+    expect(hoisted.resumeSession).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        onPermissionRequest: expect.any(Function),
+      }),
+    );
+  });
+
+  it('passes the configured Copilot agent and streaming flag into new sessions', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    hoisted.createSession.mockResolvedValue(createSessionMock(sendAndWait));
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
+      copilot: {
+        agent: 'reviewer',
+        streaming: true,
+      },
+      model: 'gpt-5.5',
+      modelReasoningEffort: 'high',
+    });
+
+    expect(hoisted.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: 'reviewer',
+        streaming: true,
+        model: 'gpt-5.5',
+        reasoningEffort: 'high',
+      }),
+    );
+  });
+
+  it('passes the configured Copilot agent and streaming flag into resumed sessions', async () => {
+    const sendAndWait = vi.fn().mockResolvedValue({
+      type: 'assistant.message',
+      data: { content: 'done' },
+    });
+    hoisted.resumeSession.mockResolvedValue(createSessionMock(sendAndWait, 'session-9'));
+
+    await runCopilot(buildJob('ASK'), '/tmp/work', {}, {
+      resumeThreadId: 'session-9',
+      copilot: {
+        agent: 'reviewer',
+        streaming: true,
+      },
+    });
+
+    expect(hoisted.resumeSession).toHaveBeenCalledWith(
+      'session-9',
+      expect.objectContaining({
+        agent: 'reviewer',
+        streaming: true,
+      }),
     );
   });
 });

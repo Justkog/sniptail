@@ -950,7 +950,7 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Expected opencode or copilot');
   });
 
-  it('accepts copilot as an agent command profile provider', () => {
+  it('accepts copilot as an agent command profile provider with name', () => {
     applyRequiredEnv();
     writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"', 'name = "build"']);
 
@@ -960,6 +960,86 @@ describe('config loaders', () => {
       provider: 'copilot',
       name: 'build',
     });
+  });
+
+  it('accepts copilot agent profiles with model and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'model = "gpt-5.5"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'copilot',
+      model: 'gpt-5.5',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('accepts opencode agent profiles with model provider, model, and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'model_provider = "anthropic"',
+      'model = "claude-sonnet"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'opencode',
+      modelProvider: 'anthropic',
+      model: 'claude-sonnet',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('rejects agent profiles that define neither name nor model', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected at least one of: name or model');
+  });
+
+  it('rejects reasoning_effort without model in agent profiles', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'name = "build"',
+      'reasoning_effort = "high"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model is required when reasoning_effort is set');
+  });
+
+  it('rejects copilot agent profiles using model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'model_provider = "anthropic"',
+      'model = "gpt-5.5"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is not supported for copilot');
+  });
+
+  it('rejects opencode model-only agent profiles without model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'model = "claude-sonnet"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is required when model is set');
   });
 
   it('rejects invalid agent command timeout and debounce values', () => {

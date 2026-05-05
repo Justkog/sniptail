@@ -145,6 +145,7 @@ export async function runOpenCodePrompt(
         ? { model: { providerID: options.modelProvider, modelID: options.model } }
         : {}),
       ...(options.opencode?.agent ? { agent: options.opencode.agent } : {}),
+      ...(options.opencode?.variant ? { variant: options.opencode.variant } : {}),
       parts: buildPromptParts(prompt, options.currentTurnAttachments),
     });
     if (promptResponse.error) {

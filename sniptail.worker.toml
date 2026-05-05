@@ -125,7 +125,10 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 #
 # [agent.profiles.build]
 # provider = "opencode"
-# name = "build"
+# name = "build" # optional custom agent/profile
+# model = "claude-sonnet" # optional model id
+# model_provider = "anthropic" # required with model for opencode profiles
+# reasoning_effort = "high" # optional; requires model
 # label = "Build"
 # description = "OpenCode Build primary agent"
 

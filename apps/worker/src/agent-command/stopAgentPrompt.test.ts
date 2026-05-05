@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
-import { clearActiveOpenCodeRuntimes, setActiveOpenCodeRuntime } from './openCodeInteractionState.js';
+import {
+  clearActiveOpenCodeRuntimes,
+  setActiveOpenCodeRuntime,
+} from '../opencode/openCodeInteractionState.js';
 import { stopAgentPrompt } from './stopAgentPrompt.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -159,7 +162,7 @@ describe('stopAgentPrompt', () => {
     expect(hoisted.abortOpenCodeSession).not.toHaveBeenCalled();
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'Copilot interactive agent sessions are not supported yet.',
+      'Copilot prompt stopping is not supported yet.',
     );
   });
 
