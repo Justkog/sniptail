@@ -1,5 +1,11 @@
 import type { InteractiveAgentAdapter, InteractiveAgentProvider } from './interactiveAgentTypes.js';
 import {
+  resolveCodexAgentInteraction,
+  runCodexAgentTurn,
+  steerCodexAgentTurn,
+  stopCodexAgentPrompt,
+} from '../codex/codexInteractiveAgent.js';
+import {
   handleActiveCopilotAgentMessage,
   resolveCopilotAgentInteraction,
   runCopilotAgentTurn,
@@ -12,6 +18,15 @@ import {
   steerOpenCodeAgentTurn,
   stopOpenCodeAgentPrompt,
 } from '../opencode/openCodeInteractiveAgent.js';
+
+const codexInteractiveAgent: InteractiveAgentAdapter = {
+  provider: 'codex',
+  displayName: 'Codex',
+  runTurn: runCodexAgentTurn,
+  steerActiveTurn: steerCodexAgentTurn,
+  stopPrompt: stopCodexAgentPrompt,
+  resolveInteraction: resolveCodexAgentInteraction,
+};
 
 const openCodeInteractiveAgent: InteractiveAgentAdapter = {
   provider: 'opencode',
@@ -34,6 +49,7 @@ const copilotInteractiveAgent: InteractiveAgentAdapter = {
 
 export const INTERACTIVE_AGENT_REGISTRY: Record<InteractiveAgentProvider, InteractiveAgentAdapter> =
   {
+    codex: codexInteractiveAgent,
     opencode: openCodeInteractiveAgent,
     copilot: copilotInteractiveAgent,
   };

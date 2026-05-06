@@ -105,8 +105,10 @@ function buildOpenCodeRunOptions(
   config: WorkerConfig,
   profile: RunInteractiveAgentTurnInput['turn']['profile'],
 ) {
-  const model = profile.model ?? config.opencode.defaultModel?.model;
-  const modelProvider = profile.modelProvider ?? config.opencode.defaultModel?.provider;
+  const usesNamedAgent = Boolean(profile.name);
+  const model = profile.model ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.model);
+  const modelProvider =
+    profile.modelProvider ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.provider);
   const variant = profile.reasoningEffort;
 
   return {

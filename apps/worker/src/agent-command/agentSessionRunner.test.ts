@@ -10,6 +10,7 @@ import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { Notifier } from '../channels/notifier.js';
 
 const hoisted = vi.hoisted(() => ({
+  runCodex: vi.fn(),
   runCopilot: vi.fn(),
   runOpenCodePrompt: vi.fn(),
   abortOpenCodeSession: vi.fn(),
@@ -18,6 +19,10 @@ const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   updateAgentSessionCodingAgentSessionId: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
+}));
+
+vi.mock('@sniptail/core/codex/codex.js', () => ({
+  runCodex: hoisted.runCodex,
 }));
 
 vi.mock('@sniptail/core/copilot/copilot.js', () => ({
@@ -37,6 +42,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
   updateAgentSessionStatus: hoisted.updateAgentSessionStatus,
 }));
 
+import { clearActiveCodexRuntimes, getActiveCodexRuntime } from '../codex/codexInteractionState.js';
 import {
   clearActiveOpenCodeRuntimes,
   getActiveOpenCodeRuntime,
@@ -232,6 +238,10 @@ describe('OpenCode agent prompt runner', () => {
       finalResponse: 'copilot final response',
       threadId: 'copilot-session-1',
     });
+    hoisted.runCodex.mockResolvedValue({
+      finalResponse: 'codex final response',
+      threadId: 'codex-thread-1',
+    });
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.updateAgentSessionCodingAgentSessionId.mockResolvedValue(undefined);
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
@@ -241,6 +251,7 @@ describe('OpenCode agent prompt runner', () => {
   });
 
   afterEach(async () => {
+    clearActiveCodexRuntimes();
     clearActiveOpenCodeRuntimes();
     clearActiveCopilotRuntimes();
     clearAgentPromptTurns();
@@ -276,9 +287,6 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({
         botName: 'Sniptail',
         promptOverride: 'inspect this',
-        model: 'gpt-5.5',
-        modelProvider: 'openai',
-        modelReasoningEffort: 'high',
         copilotIdleRetries: 3,
         copilotIdleTimeoutMs: 1_800_000,
       }),
@@ -288,6 +296,9 @@ describe('OpenCode agent prompt runner', () => {
     const firstCopilotOptions = firstCopilotCall?.[3] as AgentRunOptions | undefined;
     expect(firstCopilotOptions?.copilot?.agent).toBe('build');
     expect(firstCopilotOptions?.copilot?.streaming).toBe(true);
+    expect(firstCopilotOptions?.model).toBeUndefined();
+    expect(firstCopilotOptions?.modelProvider).toBeUndefined();
+    expect(firstCopilotOptions?.modelReasoningEffort).toBeUndefined();
     expect(typeof firstCopilotOptions?.copilot?.onPermissionRequest).toBe('function');
     expect(typeof firstCopilotOptions?.copilot?.onUserInputRequest).toBe('function');
     expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
@@ -369,6 +380,37 @@ describe('OpenCode agent prompt runner', () => {
     expect(profileCopilotCall).toBeDefined();
     const profileCopilotOptions = profileCopilotCall?.[3] as AgentRunOptions | undefined;
     expect(profileCopilotOptions?.copilot?.agent).toBeUndefined();
+  });
+
+  it('lets named Copilot agents supply default model settings', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.copilot.defaultModel = {
+      model: 'default-copilot-model',
+      modelProvider: 'openai',
+      modelReasoningEffort: 'medium',
+    };
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'reviewer',
+      label: 'Reviewer',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    const copilotCall = hoisted.runCopilot.mock.calls[0];
+    expect(copilotCall).toBeDefined();
+    const copilotOptions = copilotCall?.[3] as AgentRunOptions | undefined;
+    expect(copilotOptions?.copilot?.agent).toBe('reviewer');
+    expect(copilotOptions?.model).toBeUndefined();
+    expect(copilotOptions?.modelProvider).toBeUndefined();
+    expect(copilotOptions?.modelReasoningEffort).toBeUndefined();
   });
 
   it('steers active Copilot prompts through the SDK immediate mode', async () => {
@@ -631,6 +673,185 @@ describe('OpenCode agent prompt runner', () => {
     );
   });
 
+  it('runs Codex with the selected profile and stores the thread id', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      name: 'deep-review',
+      model: 'gpt-5',
+      reasoningEffort: 'high',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runOpenCodePrompt).not.toHaveBeenCalled();
+    expect(hoisted.runCopilot).not.toHaveBeenCalled();
+    expect(hoisted.runCodex).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'session-1',
+        requestText: 'inspect this',
+        agent: 'codex',
+      }),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        botName: 'Sniptail',
+        promptOverride: 'inspect this',
+        configProfile: 'deep-review',
+        model: 'gpt-5',
+        modelReasoningEffort: 'high',
+      }),
+    );
+    expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
+      'session-1',
+      'codex-thread-1',
+    );
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'codex final response',
+    );
+  });
+
+  it('lets Codex config profiles supply default model settings', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.codex.defaultModel = {
+      model: 'default-codex-model',
+      modelReasoningEffort: 'medium',
+    };
+    config.agent.profiles.build = {
+      provider: 'codex',
+      name: 'readonly',
+      label: 'Readonly',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runCodex).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'codex' }),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        configProfile: 'readonly',
+      }),
+    );
+    const codexOptions = hoisted.runCodex.mock.calls[0]?.[3] as AgentRunOptions | undefined;
+    expect(codexOptions?.model).toBeUndefined();
+    expect(codexOptions?.modelReasoningEffort).toBeUndefined();
+  });
+
+  it('resumes completed Codex sessions for follow-up turns', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      model: 'gpt-5',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValueOnce(
+      buildSession({
+        agentProfileKey: 'build',
+        codingAgentSessionId: 'codex-thread-9',
+      }),
+    );
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'follow up' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runCodex).toHaveBeenCalledWith(
+      expect.objectContaining({ requestText: 'follow up' }),
+      tempRoot,
+      {},
+      expect.objectContaining({
+        promptOverride: 'follow up',
+        resumeThreadId: 'codex-thread-9',
+      }),
+    );
+  });
+
+  it('steers Codex by aborting the active prompt and running the steered message next', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      model: 'gpt-5',
+      label: 'Build',
+    };
+    hoisted.loadAgentSession.mockResolvedValue(
+      buildSession({
+        status: 'completed',
+        codingAgentSessionId: 'codex-thread-1',
+      }),
+    );
+
+    let abortTurn: (() => void) | undefined;
+    hoisted.runCodex
+      .mockImplementationOnce(
+        async (_job, _workDir, _env, options: AgentRunOptions | undefined) => {
+          await options?.codex?.onTurnReady?.({
+            threadId: 'codex-thread-1',
+            abort: () => {
+              abortTurn?.();
+            },
+          });
+          return await new Promise((_, reject) => {
+            abortTurn = () => reject(new Error('aborted'));
+          });
+        },
+      )
+      .mockResolvedValueOnce({
+        finalResponse: 'steered done',
+        threadId: 'codex-thread-1',
+      });
+
+    const first = runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'first' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await vi.waitFor(() => expect(getActiveCodexRuntime('session-1')).toBeDefined());
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ message: 'steered', mode: 'steer' }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+    await first;
+
+    expect(hoisted.runCodex).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ requestText: 'steered' }),
+      tempRoot,
+      {},
+      expect.objectContaining({ resumeThreadId: 'codex-thread-1' }),
+    );
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalledWith('session-1', 'failed');
+  });
+
   it('resolves workspace cwd and runs OpenCode with the selected profile', async () => {
     await mkdir(join(tempRoot, 'apps', 'worker'), { recursive: true });
     const notifier = buildNotifier();
@@ -650,11 +871,14 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({
         runtimeId: 'session-1',
         botName: 'Sniptail',
-        model: 'claude-sonnet',
-        modelProvider: 'anthropic',
         opencode: expect.objectContaining({ agent: 'build', executionMode: 'local' }) as unknown,
       }),
     );
+    const openCodeCall = hoisted.runOpenCodePrompt.mock.calls[0];
+    expect(openCodeCall).toBeDefined();
+    const openCodeOptions = openCodeCall?.[3] as AgentRunOptions | undefined;
+    expect(openCodeOptions?.model).toBeUndefined();
+    expect(openCodeOptions?.modelProvider).toBeUndefined();
     expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
       'session-1',
       'opencode-session-1',
@@ -665,6 +889,43 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant progress text',
     );
+  });
+
+  it('lets named OpenCode agents supply default model settings', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.opencode.defaultModel = {
+      provider: 'anthropic',
+      model: 'default-opencode-model',
+    };
+    config.agent.profiles.build = {
+      provider: 'opencode',
+      name: 'build',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.runOpenCodePrompt).toHaveBeenCalledWith(
+      'inspect this',
+      tempRoot,
+      {},
+      expect.objectContaining({
+        botName: 'Sniptail',
+        opencode: expect.objectContaining({ agent: 'build', executionMode: 'local' }) as unknown,
+      }),
+    );
+    const openCodeCall = hoisted.runOpenCodePrompt.mock.calls[0];
+    expect(openCodeCall).toBeDefined();
+    const openCodeOptions = openCodeCall?.[3] as AgentRunOptions | undefined;
+    expect(openCodeOptions?.model).toBeUndefined();
+    expect(openCodeOptions?.modelProvider).toBeUndefined();
   });
 
   it('flushes streamed assistant text before the final response', async () => {

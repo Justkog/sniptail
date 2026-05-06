@@ -40,7 +40,7 @@ export type WorkerAgentCommandWorkspaceConfig = {
 };
 
 export type WorkerAgentCommandProfileConfig = {
-  provider: 'opencode' | 'copilot';
+  provider: 'codex' | 'opencode' | 'copilot';
   name?: string;
   model?: string;
   modelProvider?: string;

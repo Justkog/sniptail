@@ -15,6 +15,11 @@ export type AgentAttachment = {
   mediaType: string;
 };
 
+export type CodexTurnRuntime = {
+  threadId?: string;
+  abort: () => void;
+};
+
 export type CopilotPermissionHandler = PermissionHandler;
 export type CopilotPermissionRequest = Parameters<CopilotPermissionHandler>[0];
 export type CopilotPermissionDecision = Awaited<ReturnType<CopilotPermissionHandler>>;
@@ -45,6 +50,9 @@ export type AgentRunOptions = {
   modelReasoningEffort?: ModelReasoningEffort;
   copilotIdleRetries?: number;
   copilotIdleTimeoutMs?: number;
+  codex?: {
+    onTurnReady?: (runtime: CodexTurnRuntime) => void | Promise<void>;
+  };
   copilot?: {
     cliPath?: string;
     agent?: string;

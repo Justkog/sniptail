@@ -956,9 +956,51 @@ describe('config loaders', () => {
 
   it('rejects unsupported agent command profile provider', () => {
     applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "unknown"', 'name = "build"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected codex, opencode, or copilot');
+  });
+
+  it('accepts codex as an agent command profile provider with name', () => {
+    applyRequiredEnv();
     writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'name = "build"']);
 
-    expect(() => loadWorkerConfig()).toThrow('Expected opencode or copilot');
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'codex',
+      name: 'build',
+    });
+  });
+
+  it('accepts codex agent profiles with model and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "codex"',
+      'model = "gpt-5"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'codex',
+      model: 'gpt-5',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('rejects codex agent profiles with model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "codex"',
+      'model = "gpt-5"',
+      'model_provider = "openai"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is not supported for codex profiles');
   });
 
   it('accepts copilot as an agent command profile provider with name', () => {

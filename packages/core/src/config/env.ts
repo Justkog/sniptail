@@ -494,9 +494,9 @@ function parseAgentProfiles(
       `agent.profiles.${rawProfileKey}.provider`,
     );
     const provider = rawProvider?.trim();
-    if (provider !== 'opencode' && provider !== 'copilot') {
+    if (provider !== 'codex' && provider !== 'opencode' && provider !== 'copilot') {
       throw new Error(
-        `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected opencode or copilot.`,
+        `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected codex, opencode, or copilot.`,
       );
     }
     const rawName = getTomlString(profileToml?.name, `agent.profiles.${rawProfileKey}.name`);
@@ -541,6 +541,11 @@ function parseAgentProfiles(
     if (provider === 'copilot' && modelProvider) {
       throw new Error(
         `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is not supported for copilot profiles.`,
+      );
+    }
+    if (provider === 'codex' && modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is not supported for codex profiles.`,
       );
     }
     if (provider === 'opencode' && model && !modelProvider) {

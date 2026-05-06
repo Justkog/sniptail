@@ -13,6 +13,7 @@ import {
   clearActiveCopilotRuntimes,
   setActiveCopilotRuntime,
 } from '../copilot/copilotInteractionState.js';
+import { clearActiveCodexRuntimes, setActiveCodexRuntime } from '../codex/codexInteractionState.js';
 import { stopAgentPrompt } from './stopAgentPrompt.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -143,6 +144,7 @@ describe('stopAgentPrompt', () => {
     vi.clearAllMocks();
     clearActiveOpenCodeRuntimes();
     clearActiveCopilotRuntimes();
+    clearActiveCodexRuntimes();
     tempRoot = await mkdtemp(join(tmpdir(), 'sniptail-agent-stop-'));
     await mkdir(tempRoot, { recursive: true });
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
@@ -153,7 +155,91 @@ describe('stopAgentPrompt', () => {
   afterEach(async () => {
     clearActiveOpenCodeRuntimes();
     clearActiveCopilotRuntimes();
+    clearActiveCodexRuntimes();
     await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  it('reports unreachable active runtime for Codex profiles without an active runtime', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      model: 'gpt-5',
+      label: 'Build',
+    };
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Codex prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+  });
+
+  it('stops an active Codex prompt through the active runtime ref', async () => {
+    const notifier = buildNotifier();
+    const abort = vi.fn();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      model: 'gpt-5',
+      label: 'Build',
+    };
+    setActiveCodexRuntime('session-1', {
+      threadId: 'codex-thread-1',
+      abort,
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(abort).toHaveBeenCalled();
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'stopped');
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Codex prompt stopped.',
+    );
+  });
+
+  it('reports Codex abort failures without marking stopped', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      model: 'gpt-5',
+      label: 'Build',
+    };
+    setActiveCodexRuntime('session-1', {
+      threadId: 'codex-thread-1',
+      abort: vi.fn(() => {
+        throw new Error('abort failed');
+      }),
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalled();
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Failed to stop Codex prompt: abort failed',
+    );
   });
 
   it('reports unreachable active runtime for Copilot profiles without an active runtime', async () => {

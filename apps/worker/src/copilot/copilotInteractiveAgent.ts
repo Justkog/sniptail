@@ -78,10 +78,13 @@ function buildCopilotRunOptions(
 ): AgentRunOptions {
   const additionalDirectories =
     turn.cwd && workspaceRoot !== resolvedCwd ? [workspaceRoot] : undefined;
-  const model = turn.profile.model ?? config.copilot.defaultModel?.model;
-  const modelProvider = config.copilot.defaultModel?.modelProvider;
+  const usesNamedAgent = Boolean(turn.profile.name);
+  const model =
+    turn.profile.model ?? (usesNamedAgent ? undefined : config.copilot.defaultModel?.model);
+  const modelProvider = usesNamedAgent ? undefined : config.copilot.defaultModel?.modelProvider;
   const modelReasoningEffort =
-    turn.profile.reasoningEffort ?? config.copilot.defaultModel?.modelReasoningEffort;
+    turn.profile.reasoningEffort ??
+    (usesNamedAgent ? undefined : config.copilot.defaultModel?.modelReasoningEffort);
 
   return {
     botName: config.botName,

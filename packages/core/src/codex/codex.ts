@@ -14,12 +14,15 @@ import { resolveWorkerAgentScriptPath } from '../agents/resolveWorkerAgentScript
 import { buildPromptForJob } from '../agents/buildPrompt.js';
 import { toEnvRecord } from '../agents/envRecord.js';
 import type { JobSpec } from '../types/job.js';
-import type { AgentAttachment } from '../agents/types.js';
+import type { AgentAttachment, CodexTurnRuntime } from '../agents/types.js';
 
 export type CodexRunResult = {
   finalResponse: string;
   threadId?: string;
 };
+
+type CodexConstructorOptions = NonNullable<ConstructorParameters<typeof Codex>[0]>;
+type CodexConfig = NonNullable<CodexConstructorOptions['config']>;
 
 type DockerFilesystemMode = 'readonly' | 'writable';
 
@@ -35,8 +38,12 @@ export type CodexRunOptions = {
   resumeThreadId?: string;
   promptOverride?: string;
   currentTurnAttachments?: AgentAttachment[];
+  configProfile?: string;
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
+  codex?: {
+    onTurnReady?: (runtime: CodexTurnRuntime) => void | Promise<void>;
+  };
   docker?: {
     enabled?: boolean;
     dockerfilePath?: string;
@@ -82,10 +89,14 @@ export async function runCodex(
 ): Promise<CodexRunResult> {
   const codexEnv = toEnvRecord(env);
   const useDocker = options.docker?.enabled;
-  const requestedSandboxMode = options.sandboxMode ?? 'workspace-write';
+  const codexProfile = options.configProfile?.trim();
+  const hasConfigProfile = Boolean(codexProfile);
+  const requestedSandboxMode =
+    options.sandboxMode ?? (hasConfigProfile ? undefined : 'workspace-write');
   const dockerFilesystemMode: DockerFilesystemMode =
     requestedSandboxMode === 'read-only' ? 'readonly' : 'writable';
   const sandboxMode = useDocker ? 'danger-full-access' : requestedSandboxMode;
+  const approvalPolicy = options.approvalPolicy ?? (hasConfigProfile ? undefined : 'never');
   if (useDocker) {
     if (options.docker?.dockerfilePath) {
       codexEnv.CODEX_DOCKERFILE_PATH = resolve(options.docker.dockerfilePath);
@@ -101,15 +112,20 @@ export async function runCodex(
   }
   const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : 'codex';
 
+  const codexConfig: CodexConfig | undefined = codexProfile
+    ? { profile: codexProfile }
+    : undefined;
+
   const codex = new Codex({
     env: codexEnv,
     codexPathOverride,
+    ...(codexConfig ? { config: codexConfig } : {}),
   });
   const threadOptions: ThreadOptions = {
     workingDirectory: workDir,
     skipGitRepoCheck: options.skipGitRepoCheck ?? true,
-    sandboxMode,
-    approvalPolicy: options.approvalPolicy ?? 'never',
+    ...(sandboxMode ? { sandboxMode } : {}),
+    ...(approvalPolicy ? { approvalPolicy } : {}),
     ...(options.additionalDirectories
       ? { additionalDirectories: options.additionalDirectories }
       : {}),
@@ -125,14 +141,25 @@ export async function runCodex(
   const thread = options.resumeThreadId
     ? codex.resumeThread(options.resumeThreadId, threadOptions)
     : codex.startThread(threadOptions);
+  const abortController = new AbortController();
+  const publishTurnRuntime = async (threadId?: string) => {
+    await options.codex?.onTurnReady?.({
+      ...(threadId ? { threadId } : {}),
+      abort: () => {
+        abortController.abort();
+      },
+    });
+  };
 
   const botName = options.botName?.trim() || 'Sniptail';
   const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
   const prompt = options.resumeThreadId
     ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
     : basePrompt;
+  await publishTurnRuntime(options.resumeThreadId);
   const { events } = await thread.runStreamed(
     buildCodexInput(prompt, workDir, options.currentTurnAttachments),
+    { signal: abortController.signal },
   );
   let finalResponse = '';
   let threadId = options.resumeThreadId;
@@ -144,6 +171,7 @@ export async function runCodex(
 
     if (event.type === 'thread.started') {
       threadId = event.thread_id;
+      await publishTurnRuntime(threadId);
     }
 
     if (event.type === 'item.completed') {
