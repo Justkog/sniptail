@@ -1,4 +1,5 @@
 import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
+import type { AgentAttachment } from '@sniptail/core/agents/types.js';
 import type { WorkerAgentCommandProfileConfig, WorkerConfig } from '@sniptail/core/config/types.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
@@ -18,6 +19,8 @@ export type AgentSessionTurn = {
   profile: InteractiveAgentProfile;
   cwd?: string;
   codingAgentSessionId?: string;
+  currentTurnAttachments?: AgentAttachment[];
+  additionalDirectories?: string[];
 };
 
 export type RunInteractiveAgentTurnInput = {

@@ -18,7 +18,7 @@ function buildContextFilesInputBlock() {
     label: { type: 'plain_text' as const, text: 'Context files (optional)' },
     hint: {
       type: 'plain_text' as const,
-      text: 'PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Up to 3 files, 2 MiB each.',
+      text: 'PNG, JPG, GIF, WEBP, TXT, MD, JSON, YAML. Up to 3 files, 6 MiB each.',
     },
     element: {
       type: 'file_input' as const,

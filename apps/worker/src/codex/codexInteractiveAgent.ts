@@ -60,8 +60,12 @@ function buildCodexRunOptions(
   workspaceRoot: string,
   resolvedCwd: string,
 ): AgentRunOptions {
-  const additionalDirectories =
-    turn.cwd && workspaceRoot !== resolvedCwd ? [workspaceRoot] : undefined;
+  const additionalDirectories = Array.from(
+    new Set([
+      ...(turn.cwd && workspaceRoot !== resolvedCwd ? [workspaceRoot] : []),
+      ...(turn.additionalDirectories ?? []),
+    ]),
+  );
   const usesConfigProfile = Boolean(turn.profile.name);
   const model =
     turn.profile.model ?? (usesConfigProfile ? undefined : config.codex.defaultModel?.model);
@@ -76,6 +80,9 @@ function buildCodexRunOptions(
     ...(turn.codingAgentSessionId ? { resumeThreadId: turn.codingAgentSessionId } : {}),
     ...(model ? { model } : {}),
     ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
+    ...(turn.currentTurnAttachments?.length
+      ? { currentTurnAttachments: turn.currentTurnAttachments }
+      : {}),
     ...(additionalDirectories?.length ? { additionalDirectories } : {}),
     ...(config.codex.executionMode === 'docker'
       ? {

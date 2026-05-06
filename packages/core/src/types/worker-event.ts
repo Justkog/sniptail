@@ -1,4 +1,5 @@
 import type { ChannelProvider } from './channel.js';
+import type { JobContextFile } from './job.js';
 
 export const WORKER_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -49,6 +50,7 @@ export type WorkerAgentSessionStartPayload = {
   workspaceKey: string;
   agentProfileKey: string;
   cwd?: string;
+  contextFiles?: JobContextFile[];
 };
 
 export type WorkerAgentSessionMessagePayload = {

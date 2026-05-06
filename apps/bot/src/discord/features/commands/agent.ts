@@ -29,6 +29,10 @@ import {
   buildWorkspaceAutocompleteChoices,
   getDiscordAgentCommandMetadata,
 } from '../../agentCommandMetadataCache.js';
+import {
+  getDiscordCommandContextAttachments,
+  loadDiscordContextFiles,
+} from '../../lib/discordContextFiles.js';
 import { isSendableTextChannel, postDiscordMessage } from '../../helpers.js';
 import { truncateRequestSummary } from '../../../lib/jobs.js';
 
@@ -317,6 +321,19 @@ export async function handleAgentStart(
 
   await interaction.deferReply({ ephemeral: true });
 
+  let contextFiles: Awaited<ReturnType<typeof loadDiscordContextFiles>> | undefined;
+  const contextAttachments = getDiscordCommandContextAttachments(interaction);
+  if (contextAttachments.length) {
+    try {
+      const loadedFiles = await loadDiscordContextFiles(contextAttachments);
+      contextFiles = loadedFiles.length ? loadedFiles : undefined;
+    } catch (err) {
+      logger.warn({ err, profileKey }, 'Failed to load Discord command context files for /agent');
+      await interaction.editReply(`I couldn't use the attached files: ${(err as Error).message}`);
+      return;
+    }
+  }
+
   const sessionId = randomUUID();
   let thread: ResolvedAgentThread;
   try {
@@ -350,6 +367,7 @@ export async function handleAgentStart(
       workspaceKey,
       agentProfileKey: profileKey,
       ...(cwd ? { cwd } : {}),
+      ...(contextFiles?.length ? { contextFiles } : {}),
     },
   };
 

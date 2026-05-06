@@ -480,6 +480,12 @@ export async function runOpenCodeAgentTurn({
       ...buildOpenCodeRunOptions(config, profile),
       runtimeId: sessionId,
       ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
+      ...(turn.currentTurnAttachments?.length
+        ? { currentTurnAttachments: turn.currentTurnAttachments }
+        : {}),
+      ...(turn.additionalDirectories?.length
+        ? { additionalDirectories: turn.additionalDirectories }
+        : {}),
       onSessionId: async (nextCodingAgentSessionId) => {
         await updateAgentSessionCodingAgentSessionId(sessionId, nextCodingAgentSessionId).catch(
           (err) => {

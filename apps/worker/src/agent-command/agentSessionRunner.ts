@@ -1,7 +1,12 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import type { AgentAttachment } from '@sniptail/core/agents/types.js';
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
 import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
+import type { JobContextFile } from '@sniptail/core/types/job.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 import type { Notifier } from '../channels/notifier.js';
@@ -52,6 +57,48 @@ function resolveAgentProfile(
 ): InteractiveAgentProfile | undefined {
   const profile = config.agent.profiles[agentProfileKey];
   return profile ? { key: agentProfileKey, ...profile } : undefined;
+}
+
+function sanitizeAttachmentFileName(fileName: string, index: number): string {
+  const baseName = basename(fileName).trim() || `attachment-${index + 1}`;
+  return `${String(index + 1).padStart(2, '0')}-${baseName.replace(/[\\/]/g, '_')}`;
+}
+
+async function materializeTurnContextFiles(
+  contextFiles: JobContextFile[] | undefined,
+): Promise<{ directory?: string; attachments?: AgentAttachment[] }> {
+  if (!contextFiles?.length) {
+    return {};
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), 'sniptail-agent-files-'));
+  const attachments: AgentAttachment[] = [];
+
+  for (const [index, contextFile] of contextFiles.entries()) {
+    const filePath = join(directory, sanitizeAttachmentFileName(contextFile.originalName, index));
+    await writeFile(filePath, Buffer.from(contextFile.contentBase64, 'base64'));
+    attachments.push({
+      path: filePath,
+      displayName: contextFile.originalName,
+      mediaType: contextFile.mediaType,
+    });
+  }
+
+  return { directory, attachments };
+}
+
+function buildCodexNonImageContextNote(attachments: AgentAttachment[] | undefined): string | undefined {
+  if (!attachments?.length) return undefined;
+  const nonImageAttachments = attachments.filter((attachment) => !attachment.mediaType.startsWith('image/'));
+  if (!nonImageAttachments.length) return undefined;
+  const listedPaths = nonImageAttachments.map((attachment) => `- ${attachment.path}`).join('\n');
+  return [
+    '',
+    'Additional user-provided files are available for this turn:',
+    listedPaths,
+    '',
+    'Use them if relevant.',
+  ].join('\n');
 }
 
 async function runAgentTurnLoop(input: RunInteractiveAgentTurnInput) {
@@ -130,7 +177,8 @@ export async function runAgentSessionStart({
   botEvents,
   env = process.env,
 }: RunAgentSessionStartOptions): Promise<void> {
-  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd } = event.payload;
+  const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd, contextFiles } =
+    event.payload;
 
   if (!config.agent.enabled) {
     logger.warn(
@@ -154,20 +202,48 @@ export async function runAgentSessionStart({
     return;
   }
 
-  await runAgentTurnLoop({
-    turn: {
-      sessionId,
-      response,
-      prompt,
-      workspaceKey,
-      profile,
-      ...(cwd ? { cwd } : {}),
-    },
-    config,
-    notifier,
-    botEvents,
-    env,
-  });
+  let tempContextDirectory: string | undefined;
+  try {
+    const materialized = await materializeTurnContextFiles(contextFiles);
+    const codexNote =
+      profile.provider === 'codex'
+        ? buildCodexNonImageContextNote(materialized.attachments)
+        : undefined;
+    const filteredAttachments =
+      profile.provider === 'codex'
+        ? materialized.attachments?.filter((attachment) => attachment.mediaType.startsWith('image/'))
+        : materialized.attachments;
+    tempContextDirectory = materialized.directory;
+
+    await runAgentTurnLoop({
+      turn: {
+        sessionId,
+        response,
+        prompt: codexNote ? `${prompt}${codexNote}` : prompt,
+        workspaceKey,
+        profile,
+        ...(cwd ? { cwd } : {}),
+        ...(filteredAttachments?.length ? { currentTurnAttachments: filteredAttachments } : {}),
+        ...(tempContextDirectory ? { additionalDirectories: [tempContextDirectory] } : {}),
+      },
+      config,
+      notifier,
+      botEvents,
+      env,
+    });
+  } catch (err) {
+    clearAgentPromptTurn(sessionId);
+    throw err;
+  } finally {
+    if (tempContextDirectory) {
+      await rm(tempContextDirectory, { recursive: true, force: true }).catch((err) => {
+        logger.warn(
+          { err, sessionId, tempContextDirectory },
+          'Failed to remove temporary agent attachment directory',
+        );
+      });
+    }
+  }
 }
 
 export async function runAgentSessionMessage({

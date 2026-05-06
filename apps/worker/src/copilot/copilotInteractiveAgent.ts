@@ -76,8 +76,12 @@ function buildCopilotRunOptions(
   workspaceRoot: string,
   resolvedCwd: string,
 ): AgentRunOptions {
-  const additionalDirectories =
-    turn.cwd && workspaceRoot !== resolvedCwd ? [workspaceRoot] : undefined;
+  const additionalDirectories = Array.from(
+    new Set([
+      ...(turn.cwd && workspaceRoot !== resolvedCwd ? [workspaceRoot] : []),
+      ...(turn.additionalDirectories ?? []),
+    ]),
+  );
   const usesNamedAgent = Boolean(turn.profile.name);
   const model =
     turn.profile.model ?? (usesNamedAgent ? undefined : config.copilot.defaultModel?.model);
@@ -93,6 +97,9 @@ function buildCopilotRunOptions(
     ...(model ? { model } : {}),
     ...(modelProvider ? { modelProvider } : {}),
     ...(modelReasoningEffort ? { modelReasoningEffort } : {}),
+    ...(turn.currentTurnAttachments?.length
+      ? { currentTurnAttachments: turn.currentTurnAttachments }
+      : {}),
     ...(additionalDirectories?.length ? { additionalDirectories } : {}),
     copilot: {
       streaming: true,

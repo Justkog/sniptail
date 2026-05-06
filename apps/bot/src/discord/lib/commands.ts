@@ -127,6 +127,7 @@ export function buildDiscordCommandDefinitions(botName: string) {
           type: 3,
           required: true,
         },
+        ...buildContextAttachmentOptions(),
         {
           name: 'workspace',
           description: 'Workspace key',

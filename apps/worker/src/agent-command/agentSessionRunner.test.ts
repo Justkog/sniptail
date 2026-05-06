@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -311,6 +311,55 @@ describe('OpenCode agent prompt runner', () => {
       expect.objectContaining({ channelId: 'thread-1' }),
       'copilot final response',
     );
+  });
+
+  it('materializes initial attachment files into a temporary directory for Copilot and cleans them up', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'copilot',
+      name: 'build',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent({
+        contextFiles: [
+          {
+            originalName: 'diagram.png',
+            mediaType: 'image/png',
+            byteSize: 7,
+            contentBase64: Buffer.from('pngdata').toString('base64'),
+          },
+          {
+            originalName: 'notes.md',
+            mediaType: 'text/markdown',
+            byteSize: 5,
+            contentBase64: Buffer.from('notes').toString('base64'),
+          },
+        ],
+      }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    const copilotOptions = hoisted.runCopilot.mock.calls[0]?.[3] as AgentRunOptions | undefined;
+    expect(copilotOptions?.currentTurnAttachments).toHaveLength(2);
+    expect(copilotOptions?.additionalDirectories).toHaveLength(1);
+    const attachmentDirectory = copilotOptions?.additionalDirectories?.[0];
+    expect(attachmentDirectory).toBeDefined();
+    expect(copilotOptions?.currentTurnAttachments?.[0]).toMatchObject({
+      displayName: 'diagram.png',
+      mediaType: 'image/png',
+    });
+    expect(copilotOptions?.currentTurnAttachments?.[1]).toMatchObject({
+      displayName: 'notes.md',
+      mediaType: 'text/markdown',
+    });
+    expect(copilotOptions?.currentTurnAttachments?.every((entry) => entry.path.startsWith(`${attachmentDirectory}/`))).toBe(true);
+    await expect(access(attachmentDirectory!)).rejects.toThrow();
   });
 
   it('streams Copilot assistant deltas to Discord output', async () => {
@@ -720,6 +769,54 @@ describe('OpenCode agent prompt runner', () => {
     );
   });
 
+  it('passes only image attachments to Codex and appends a note for non-image files', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'codex',
+      name: 'deep-review',
+      label: 'Build',
+    };
+
+    await runAgentSessionStart({
+      event: buildEvent({
+        contextFiles: [
+          {
+            originalName: 'diagram.png',
+            mediaType: 'image/png',
+            byteSize: 7,
+            contentBase64: Buffer.from('pngdata').toString('base64'),
+          },
+          {
+            originalName: 'notes.md',
+            mediaType: 'text/markdown',
+            byteSize: 5,
+            contentBase64: Buffer.from('notes').toString('base64'),
+          },
+        ],
+      }),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    const codexCall = hoisted.runCodex.mock.calls[0];
+    const codexJob = codexCall?.[0] as { requestText: string } | undefined;
+    const codexOptions = codexCall?.[3] as AgentRunOptions | undefined;
+
+    expect(codexOptions?.currentTurnAttachments).toHaveLength(1);
+    expect(codexOptions?.currentTurnAttachments?.[0]).toMatchObject({
+      displayName: 'diagram.png',
+      mediaType: 'image/png',
+    });
+    expect(codexOptions?.additionalDirectories).toHaveLength(1);
+    expect(codexJob?.requestText).toContain('Additional user-provided files are available for this turn:');
+    expect(codexJob?.requestText).toContain('/tmp/sniptail-agent-files-');
+    expect(codexJob?.requestText).toContain('notes.md');
+    expect(codexJob?.requestText).not.toContain('diagram.png');
+  });
+
   it('lets Codex config profiles supply default model settings', async () => {
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);
@@ -786,6 +883,8 @@ describe('OpenCode agent prompt runner', () => {
         resumeThreadId: 'codex-thread-9',
       }),
     );
+    const codexOptions = hoisted.runCodex.mock.calls[0]?.[3] as AgentRunOptions | undefined;
+    expect(codexOptions?.currentTurnAttachments).toBeUndefined();
   });
 
   it('steers Codex by aborting the active prompt and running the steered message next', async () => {
@@ -1695,6 +1794,10 @@ describe('OpenCode agent prompt runner', () => {
         sessionId: 'opencode-session-1',
       }),
     );
+    const openCodeOptions = hoisted.runOpenCodePrompt.mock.calls[0]?.[3] as
+      | OpenCodePromptRunOptions
+      | undefined;
+    expect(openCodeOptions?.currentTurnAttachments).toBeUndefined();
     expect(notifier.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant progress text',

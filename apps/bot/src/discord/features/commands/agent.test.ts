@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
 import { handleAgentAutocomplete, handleAgentStart } from './agent.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const hoisted = vi.hoisted(() => ({
   buildProfileAutocompleteChoices: vi.fn(),
   buildWorkspaceAutocompleteChoices: vi.fn(),
   postDiscordMessage: vi.fn(),
+  loadDiscordContextFiles: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-defaults/registry.js', () => ({
@@ -47,6 +49,18 @@ vi.mock('../../helpers.js', () => ({
   postDiscordMessage: hoisted.postDiscordMessage,
 }));
 
+type DiscordContextFilesModule = Record<string, unknown> & {
+  loadDiscordContextFiles: typeof loadDiscordContextFiles;
+};
+
+vi.mock('../../lib/discordContextFiles.js', async () => {
+  const actual = await vi.importActual<DiscordContextFilesModule>('../../lib/discordContextFiles.js');
+  return {
+    ...actual,
+    loadDiscordContextFiles: hoisted.loadDiscordContextFiles,
+  };
+});
+
 function buildInteraction(overrides: Record<string, unknown> = {}) {
   const channel = {
     isTextBased: () => true,
@@ -69,6 +83,7 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
         if (name === 'cwd') return 'apps/bot';
         return null;
       }),
+      getAttachment: vi.fn(() => null),
     },
     reply: vi.fn(),
     deferReply: vi.fn(),
@@ -102,6 +117,7 @@ describe('handleAgentStart', () => {
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.loadDiscordContextFiles.mockResolvedValue([]);
   });
 
   it('uses the thread starter message as the agent control surface', async () => {
@@ -148,6 +164,145 @@ describe('handleAgentStart', () => {
       }),
     );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
+  });
+
+  it('includes validated command attachment files in the session start event', async () => {
+    const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+    hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
+    hoisted.loadDiscordContextFiles.mockResolvedValue([
+      {
+        originalName: 'diagram.png',
+        mediaType: 'image/png',
+        byteSize: 7,
+        contentBase64: Buffer.from('pngdata').toString('base64'),
+        source: {
+          provider: 'discord',
+          externalId: 'A1',
+          metadata: { mediaType: 'image/png' },
+        },
+      },
+    ]);
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          if (name === 'workspace') return null;
+          if (name === 'agent_profile') return null;
+          if (name === 'cwd') return 'apps/bot';
+          return null;
+        }),
+        getAttachment: vi.fn((name: string) => {
+          if (name !== 'context_file_1') return null;
+          return {
+            id: 'A1',
+            name: 'diagram.png',
+            url: 'https://example.test/A1',
+            contentType: 'image/png',
+            size: 7,
+          };
+        }),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.loadDiscordContextFiles).toHaveBeenCalledWith([
+      {
+        id: 'A1',
+        name: 'diagram.png',
+        url: 'https://example.test/A1',
+        mediaType: 'image/png',
+        byteSize: 7,
+      },
+    ]);
+    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
+      queue,
+      expect.objectContaining({
+        type: 'agent.session.start',
+        payload: expect.objectContaining({
+          contextFiles: [
+            expect.objectContaining({
+              originalName: 'diagram.png',
+              mediaType: 'image/png',
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('allows non-image attachments for Codex profiles and enqueues the session', async () => {
+    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+      enabled: true,
+      defaultWorkspace: 'snatch',
+      defaultAgentProfile: 'build',
+      workspaces: [{ key: 'snatch' }],
+      profiles: [{ key: 'build', provider: 'codex', name: 'deep-review' }],
+      receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    hoisted.loadDiscordContextFiles.mockResolvedValue([
+      {
+        originalName: 'notes.md',
+        mediaType: 'text/markdown',
+        byteSize: 7,
+        contentBase64: Buffer.from('notes').toString('base64'),
+        source: {
+          provider: 'discord',
+          externalId: 'A2',
+          metadata: { mediaType: 'text/markdown' },
+        },
+      },
+    ]);
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          if (name === 'workspace') return null;
+          if (name === 'agent_profile') return null;
+          if (name === 'cwd') return null;
+          return null;
+        }),
+        getAttachment: vi.fn((name: string) => {
+          if (name !== 'context_file_1') return null;
+          return {
+            id: 'A2',
+            name: 'notes.md',
+            url: 'https://example.test/A2',
+            contentType: 'text/markdown',
+            size: 7,
+          };
+        }),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.postDiscordMessage).toHaveBeenCalled();
+    expect(hoisted.createAgentSession).toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
+      queue,
+      expect.objectContaining({
+        type: 'agent.session.start',
+        payload: expect.objectContaining({
+          contextFiles: [
+            expect.objectContaining({
+              originalName: 'notes.md',
+              mediaType: 'text/markdown',
+            }),
+          ],
+        }),
+      }),
+    );
   });
 
   it('posts one control message when started inside an existing thread', async () => {
@@ -207,6 +362,7 @@ describe('handleAgentStart', () => {
           if (name === 'prompt') return 'inspect the failing tests';
           return null;
         }),
+        getAttachment: vi.fn(() => null),
       },
     });
 
@@ -241,6 +397,7 @@ describe('handleAgentStart', () => {
           if (name === 'cwd') return null;
           return null;
         }),
+        getAttachment: vi.fn(() => null),
       },
     });
 

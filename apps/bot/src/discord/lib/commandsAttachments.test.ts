@@ -56,6 +56,17 @@ describe('buildDiscordCommandDefinitions', () => {
       required: true,
     });
 
+    for (const attachmentOptionName of DISCORD_CONTEXT_ATTACHMENT_OPTION_NAMES) {
+      const attachmentOption = agentCommand?.options?.find(
+        (option) => option.name === attachmentOptionName,
+      );
+      expect(attachmentOption).toMatchObject({
+        name: attachmentOptionName,
+        type: 11,
+        required: false,
+      });
+    }
+
     const workspaceOption = agentCommand?.options?.find((option) => option.name === 'workspace');
     expect(workspaceOption).toMatchObject({
       name: 'workspace',
