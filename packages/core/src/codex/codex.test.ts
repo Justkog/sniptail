@@ -134,11 +134,16 @@ describe('runCodex', () => {
   });
 
   it('lets explicit sandbox and approval options override config.profile defaults', async () => {
-    await runCodex(buildJob('ASK'), '/tmp/work', {}, {
-      approvalPolicy: 'on-request',
-      configProfile: 'deep-review',
-      sandboxMode: 'read-only',
-    });
+    await runCodex(
+      buildJob('ASK'),
+      '/tmp/work',
+      {},
+      {
+        approvalPolicy: 'on-request',
+        configProfile: 'deep-review',
+        sandboxMode: 'read-only',
+      },
+    );
 
     expect(hoisted.startThread).toHaveBeenCalledWith(
       expect.objectContaining({

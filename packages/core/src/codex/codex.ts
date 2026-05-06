@@ -112,9 +112,7 @@ export async function runCodex(
   }
   const codexPathOverride = useDocker ? resolveWorkerAgentScriptPath('codex-docker.sh') : 'codex';
 
-  const codexConfig: CodexConfig | undefined = codexProfile
-    ? { profile: codexProfile }
-    : undefined;
+  const codexConfig: CodexConfig | undefined = codexProfile ? { profile: codexProfile } : undefined;
 
   const codex = new Codex({
     env: codexEnv,

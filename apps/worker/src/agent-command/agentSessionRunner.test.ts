@@ -358,7 +358,11 @@ describe('OpenCode agent prompt runner', () => {
       displayName: 'notes.md',
       mediaType: 'text/markdown',
     });
-    expect(copilotOptions?.currentTurnAttachments?.every((entry) => entry.path.startsWith(`${attachmentDirectory}/`))).toBe(true);
+    expect(
+      copilotOptions?.currentTurnAttachments?.every((entry) =>
+        entry.path.startsWith(`${attachmentDirectory}/`),
+      ),
+    ).toBe(true);
     await expect(access(attachmentDirectory!)).rejects.toThrow();
   });
 
@@ -811,7 +815,9 @@ describe('OpenCode agent prompt runner', () => {
       mediaType: 'image/png',
     });
     expect(codexOptions?.additionalDirectories).toHaveLength(1);
-    expect(codexJob?.requestText).toContain('Additional user-provided files are available for this turn:');
+    expect(codexJob?.requestText).toContain(
+      'Additional user-provided files are available for this turn:',
+    );
     expect(codexJob?.requestText).toContain('/tmp/sniptail-agent-files-');
     expect(codexJob?.requestText).toContain('notes.md');
     expect(codexJob?.requestText).not.toContain('diagram.png');

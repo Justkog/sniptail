@@ -54,7 +54,9 @@ type DiscordContextFilesModule = Record<string, unknown> & {
 };
 
 vi.mock('../../lib/discordContextFiles.js', async () => {
-  const actual = await vi.importActual<DiscordContextFilesModule>('../../lib/discordContextFiles.js');
+  const actual = await vi.importActual<DiscordContextFilesModule>(
+    '../../lib/discordContextFiles.js',
+  );
   return {
     ...actual,
     loadDiscordContextFiles: hoisted.loadDiscordContextFiles,
@@ -231,7 +233,7 @@ describe('handleAgentStart', () => {
               mediaType: 'image/png',
             }),
           ],
-        }),
+        }) as unknown,
       }),
     );
   });
@@ -300,7 +302,7 @@ describe('handleAgentStart', () => {
               mediaType: 'text/markdown',
             }),
           ],
-        }),
+        }) as unknown,
       }),
     );
   });

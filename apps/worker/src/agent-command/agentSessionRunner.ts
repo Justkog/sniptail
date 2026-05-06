@@ -87,9 +87,13 @@ async function materializeTurnContextFiles(
   return { directory, attachments };
 }
 
-function buildCodexNonImageContextNote(attachments: AgentAttachment[] | undefined): string | undefined {
+function buildCodexNonImageContextNote(
+  attachments: AgentAttachment[] | undefined,
+): string | undefined {
   if (!attachments?.length) return undefined;
-  const nonImageAttachments = attachments.filter((attachment) => !attachment.mediaType.startsWith('image/'));
+  const nonImageAttachments = attachments.filter(
+    (attachment) => !attachment.mediaType.startsWith('image/'),
+  );
   if (!nonImageAttachments.length) return undefined;
   const listedPaths = nonImageAttachments.map((attachment) => `- ${attachment.path}`).join('\n');
   return [
@@ -211,7 +215,9 @@ export async function runAgentSessionStart({
         : undefined;
     const filteredAttachments =
       profile.provider === 'codex'
-        ? materialized.attachments?.filter((attachment) => attachment.mediaType.startsWith('image/'))
+        ? materialized.attachments?.filter((attachment) =>
+            attachment.mediaType.startsWith('image/'),
+          )
         : materialized.attachments;
     tempContextDirectory = materialized.directory;
 
