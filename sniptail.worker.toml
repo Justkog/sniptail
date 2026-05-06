@@ -92,15 +92,15 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # worktree_setup_allow_failure = false
 
 [agent]
-# Enable the future Discord /agent command.
+# Enable the Discord /sniptail-agent command.
 # Optional. Default: false. Example: true
 # enabled = false
 
-# Default workspace key for /agent sessions. Required when enabled=true.
+# Default workspace key for /sniptail-agent sessions. Required when enabled=true.
 # Optional. No default. Example: "snatch"
 # default_workspace = "snatch"
 
-# Default coding-agent profile key for /agent sessions. Required when enabled=true.
+# Default coding-agent profile key for /sniptail-agent sessions. Required when enabled=true.
 # Optional. No default. Example: "build"
 # default_agent_profile = "build"
 
@@ -112,7 +112,7 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # Optional. Default: 15000. Example: 15000
 # output_debounce_ms = 15000
 
-# /agent workspaces are worker-local directories. Paths must be absolute after
+# /sniptail-agent workspaces are worker-local directories. Paths must be absolute after
 # $HOME/~ expansion.
 #
 # [agent.workspaces.snatch]
@@ -120,12 +120,20 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # label = "snatch"
 # description = "Main Sniptail checkout"
 
-# /agent coding-agent profiles are underlying agent profiles/personas.
-# Copilot profiles are accepted here but interactive Copilot support is not implemented yet.
+# /sniptail-agent coding-agent profiles select the underlying provider plus
+# optional provider-native agent/profile names and explicit model overrides.
+# Precedence:
+# - explicit profile fields here (model/model_provider/reasoning_effort) win
+# - otherwise, if name is set, the provider-native agent/profile supplies missing defaults
+# - otherwise, Sniptail falls back to global [codex], [copilot], or [opencode] default model settings
+# Notes:
+# - for codex, name maps to Codex config.profile
+# - for copilot, name maps to the Copilot session agent
+# - for opencode, name maps to the OpenCode prompt agent
 #
 # [agent.profiles.build]
 # provider = "opencode"
-# name = "build" # optional custom agent/profile
+# name = "build" # optional provider-native agent/profile
 # model = "claude-sonnet" # optional model id
 # model_provider = "anthropic" # required with model for opencode profiles
 # reasoning_effort = "high" # optional; requires model
