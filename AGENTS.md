@@ -3,14 +3,14 @@
 ## Project overview
 
 - Sniptail is an omnichannel bot that queues and runs configurable coding-agent jobs (ASK/IMPLEMENT/MENTION) via BullMQ and Redis.
-- Entry points: `apps/bot/src/index.ts` starts the Slack app (Socket Mode) and `apps/worker/src/index.ts` starts the worker.
+- Entry points: `apps/bot/src/index.ts` starts the bot runtime and `apps/worker/src/index.ts` starts the worker.
 - CLI entrypoint: `packages/cli/src/index.ts` provides the `sniptail` command and delegates runtime commands to bot/worker dist entrypoints.
 - Deployment model: `apps/bot` and `apps/worker` are intended to run on different machines and must not rely on any shared filesystem between them.
 
 ## Stack
 
 - Node.js + TypeScript (ESM), PNPM workspaces
-- Slack Bolt, BullMQ, Redis
+- Slack Bolt, Discord, Telegram, BullMQ, Redis
 - OpenAI Codex SDK, GitHub Copilot CLI, OpenCode
 
 ## TypeScript guideline
@@ -30,13 +30,19 @@
 
 ## Key paths
 
-- `apps/bot/src/index.ts`: Slack app bootstrap
-- `apps/bot/src/slack/features/`: Slack feature modules (grouped by capability)
-  - `actions/`: interactive action handlers (ask/implement/worktree/clear)
-  - `commands/`: slash command handlers (ask/implement/usage/bootstrap/clear)
-  - `events/`: Slack event handlers (app mentions, etc.)
-  - `views/`: modal submission handlers (ask/implement/bootstrap)
-  - `context.ts`: shared Slack feature context helpers
+- `apps/bot/src/index.ts`: bot runtime bootstrap
+- `apps/bot/src/channels/`: bot-side channel adapter selection and runtime wiring
+- `apps/bot/src/slack/`: Slack channel implementation
+  - `features/`: Slack feature modules (actions, commands, events, views)
+  - `lib/`: Slack helpers
+  - `permissions/`: Slack permission helpers
+- `apps/bot/src/discord/`: Discord channel implementation
+  - `features/`: Discord feature modules (actions, commands, events, views)
+  - `lib/`: Discord helpers
+  - `permissions/`: Discord permission helpers
+- `apps/bot/src/telegram/`: Telegram channel implementation
+  - `lib/`: Telegram helpers
+  - `permissions/`: Telegram permission helpers
 - `apps/worker/src/index.ts`: worker bootstrap
 - `apps/worker/src/job/runJob.ts`: job orchestration (ASK/IMPLEMENT/MENTION flow)
 - `apps/worker/src/job/records.ts`: job record/thread resolution helpers
@@ -44,11 +50,15 @@
 - `apps/worker/src/repos/`: git clone/worktree/check/commit helpers
 - `apps/worker/src/agents/runAgent.ts`: agent selection + execution
 - `apps/worker/src/merge-requests/`: PR/MR creation + description helpers
-- `apps/worker/src/channels/`: notification abstraction (Slack notifier today)
-- `apps/worker/src/slack/`: Slack-specific payload helpers
+- `apps/worker/src/channels/`: worker-side notification abstraction and channel adapter selection
+- `apps/worker/src/slack/`: Slack-specific worker payload helpers
+- `apps/worker/src/discord/`: Discord-specific worker payload helpers
+- `apps/worker/src/telegram/`: Telegram-specific worker payload helpers
 - `apps/worker/src/cli/`: worker-side CLI entrypoints (`run-job`, `sync-allowlist-file`, `repos`)
 - `packages/core/src/repos/catalog.ts`: repository catalog storage (DB-backed allowlist + seed/sync helpers)
-- `packages/core/src/slack/`: Slack commands, modals, and event handlers
+- `packages/core/src/channels/`: shared channel abstractions and registries
+- `packages/core/src/slack/`: shared Slack formatting and helpers
+- `packages/core/src/discord/`: shared Discord formatting and helpers
 - `packages/core/src/queue/`: BullMQ queue wiring
 - `packages/core/src/git/`: Git operations and repo management
 - `packages/core/src/codex/`: Codex SDK integration and execution
@@ -87,6 +97,9 @@ Populate `.env` from `.env.example`. Required vars are enforced in `packages/cor
 Notable variables:
 
 - `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_SIGNING_SECRET`
+- `DISCORD_BOT_TOKEN`, `DISCORD_APP_ID`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_IDS`
+- `TELEGRAM_BOT_TOKEN`
+- `SNIPTAIL_CHANNELS`
 - `REDIS_URL`
 - `GITLAB_BASE_URL`, `GITLAB_TOKEN`
 - `REPO_ALLOWLIST_PATH` (optional seed/projection JSON file; see below)
