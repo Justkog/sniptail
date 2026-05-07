@@ -6,6 +6,7 @@ const saveJobQueuedMock = vi.hoisted(() => vi.fn());
 const enqueueJobMock = vi.hoisted(() => vi.fn());
 const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
+const updateAgentSessionStatusMock = vi.hoisted(() => vi.fn());
 const loadApprovalRequestMock = vi.hoisted(() => vi.fn());
 const approveIfPendingMock = vi.hoisted(() => vi.fn());
 const denyIfPendingMock = vi.hoisted(() => vi.fn());
@@ -21,6 +22,10 @@ vi.mock('@sniptail/core/queue/queue.js', () => ({
   enqueueJob: enqueueJobMock,
   enqueueBootstrap: enqueueBootstrapMock,
   enqueueWorkerEvent: enqueueWorkerEventMock,
+}));
+
+vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
+  updateAgentSessionStatus: updateAgentSessionStatusMock,
 }));
 
 vi.mock('@sniptail/core/permissions/permissionsApprovalStore.js', () => ({
@@ -116,6 +121,34 @@ function createPendingRequest(overrides?: Partial<ApprovalRequest>): ApprovalReq
   };
 }
 
+function createPendingAgentStartRequest(overrides?: Partial<ApprovalRequest>): ApprovalRequest {
+  return createPendingRequest({
+    action: 'agent.start',
+    operation: {
+      kind: 'enqueueWorkerEvent',
+      event: {
+        schemaVersion: 1,
+        type: 'agent.session.start',
+        payload: {
+          sessionId: 'session-1',
+          response: {
+            provider: 'slack',
+            channelId: 'C1',
+            threadId: 'T1',
+            userId: 'U_REQ',
+            workspaceId: 'W1',
+          },
+          prompt: 'hello',
+          workspaceKey: 'snatch',
+          agentProfileKey: 'build',
+        },
+      },
+    },
+    summary: 'Start agent session session-1',
+    ...overrides,
+  });
+}
+
 describe('approval execution persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -123,6 +156,7 @@ describe('approval execution persistence', () => {
     enqueueJobMock.mockResolvedValue(undefined);
     enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
+    updateAgentSessionStatusMock.mockResolvedValue(undefined);
     expireIfPendingMock.mockResolvedValue({ changed: false, reason: 'not_pending' });
     denyIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
     cancelIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
@@ -312,5 +346,126 @@ describe('approval execution persistence', () => {
     expect(enqueueJobMock).not.toHaveBeenCalled();
     expect(enqueueBootstrapMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
+  });
+
+  it('marks pending agent sessions failed when agent start approvals are denied, cancelled, or expired', async () => {
+    const service = createService();
+    const pendingRequest = createPendingAgentStartRequest();
+    const deniedRequest = {
+      ...pendingRequest,
+      status: 'denied' as const,
+      resolution: 'denied' as const,
+      resolvedBy: { userId: 'U_APP' },
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+    const cancelledRequest = {
+      ...pendingRequest,
+      status: 'cancelled' as const,
+      resolution: 'cancelled' as const,
+      resolvedBy: { userId: 'U_REQ' },
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+    const expiredRequest = {
+      ...pendingRequest,
+      status: 'expired' as const,
+      resolution: 'expired' as const,
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+
+    loadApprovalRequestMock.mockResolvedValueOnce(pendingRequest);
+    denyIfPendingMock.mockResolvedValueOnce({
+      changed: true,
+      reason: 'updated',
+      request: deniedRequest,
+    });
+    await service.resolveApprovalInteraction({
+      action: 'approval.deny',
+      resolutionAction: 'approval.deny',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_APP',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    loadApprovalRequestMock.mockResolvedValueOnce(pendingRequest);
+    cancelIfPendingMock.mockResolvedValueOnce({
+      changed: true,
+      reason: 'updated',
+      request: cancelledRequest,
+    });
+    await service.resolveApprovalInteraction({
+      action: 'approval.cancel',
+      resolutionAction: 'approval.cancel',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_REQ',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    loadApprovalRequestMock.mockResolvedValueOnce({
+      ...pendingRequest,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    });
+    expireIfPendingMock.mockResolvedValueOnce({
+      changed: true,
+      reason: 'updated',
+      request: expiredRequest,
+    });
+    await service.resolveApprovalInteraction({
+      action: 'approval.grant',
+      resolutionAction: 'approval.grant',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_APP',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    expect(updateAgentSessionStatusMock).toHaveBeenCalledTimes(3);
+    expect(updateAgentSessionStatusMock).toHaveBeenNthCalledWith(1, 'session-1', 'failed');
+    expect(updateAgentSessionStatusMock).toHaveBeenNthCalledWith(2, 'session-1', 'failed');
+    expect(updateAgentSessionStatusMock).toHaveBeenNthCalledWith(3, 'session-1', 'failed');
+  });
+
+  it('marks agent sessions failed when approved agent start execution fails', async () => {
+    const service = createService();
+    const pendingRequest = createPendingAgentStartRequest();
+    const approvedRequest = {
+      ...pendingRequest,
+      status: 'approved' as const,
+      resolution: 'approved' as const,
+      resolvedBy: { userId: 'U_APP' },
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+    loadApprovalRequestMock.mockResolvedValue(pendingRequest);
+    approveIfPendingMock.mockResolvedValue({
+      changed: true,
+      reason: 'updated',
+      request: approvedRequest,
+    });
+    enqueueWorkerEventMock.mockRejectedValueOnce(new Error('enqueue failed'));
+
+    const result = await service.resolveApprovalInteraction({
+      action: 'approval.grant',
+      resolutionAction: 'approval.grant',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_APP',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    expect(result.status).toBe('approved');
+    if (result.status !== 'approved') {
+      throw new Error('Expected approved status');
+    }
+    expect(result.executed).toBe(false);
+    expect(updateAgentSessionStatusMock).toHaveBeenCalledWith('session-1', 'failed');
   });
 });

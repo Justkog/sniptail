@@ -9,7 +9,13 @@ function buildScopeKey(input: {
   provider: AgentDefaultRecord['provider'];
   userId: string;
   guildId?: string;
+  workspaceId?: string;
 }): string {
+  if (input.provider === 'slack') {
+    return input.workspaceId
+      ? `${input.provider}:workspace:${input.workspaceId}:user:${input.userId}`
+      : `${input.provider}:dm:user:${input.userId}`;
+  }
   return input.guildId
     ? `${input.provider}:guild:${input.guildId}:user:${input.userId}`
     : `${input.provider}:dm:user:${input.userId}`;
@@ -19,9 +25,10 @@ function fromRow(row: AgentDefaultRow | undefined): AgentDefaultRecord | undefin
   if (!row) return undefined;
   return {
     scopeKey: row.scopeKey,
-    provider: 'discord',
+    provider: row.provider,
     userId: row.userId,
     ...(row.guildId ? { guildId: row.guildId } : {}),
+    ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
     workspaceKey: row.workspaceKey,
     agentProfileKey: row.agentProfileKey,
     ...(row.cwd ? { cwd: row.cwd } : {}),
@@ -44,6 +51,9 @@ export function createSqliteAgentDefaultStore(client: SqliteJobRegistryClient): 
             input.guildId === undefined
               ? isNull(agentDefaults.guildId)
               : eq(agentDefaults.guildId, input.guildId),
+            input.workspaceId === undefined
+              ? isNull(agentDefaults.workspaceId)
+              : eq(agentDefaults.workspaceId, input.workspaceId),
           ),
         )
         .limit(1);
@@ -57,6 +67,7 @@ export function createSqliteAgentDefaultStore(client: SqliteJobRegistryClient): 
         provider: input.provider,
         userId: input.userId,
         ...(input.guildId ? { guildId: input.guildId } : {}),
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         workspaceKey: input.workspaceKey,
         agentProfileKey: input.agentProfileKey,
         ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -73,6 +84,7 @@ export function createSqliteAgentDefaultStore(client: SqliteJobRegistryClient): 
             provider: record.provider,
             userId: record.userId,
             guildId: record.guildId,
+            workspaceId: record.workspaceId,
             workspaceKey: record.workspaceKey,
             agentProfileKey: record.agentProfileKey,
             cwd: record.cwd,

@@ -4,14 +4,12 @@ import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { buildDiscordAgentFollowUpBusyComponents } from '@sniptail/core/discord/components.js';
-import {
-  WORKER_EVENT_SCHEMA_VERSION,
-  type WorkerEvent,
-} from '@sniptail/core/types/worker-event.js';
+import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { truncateRequestSummary } from '../../../lib/jobs.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
+import { buildAgentSessionMessageWorkerEvent } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 
 export async function handleAgentThreadMessage(
@@ -60,24 +58,16 @@ export async function handleAgentThreadMessage(
   const dedupeKey = `${message.channelId}:${message.id}:agent-session-message`;
   if (dedupe(dedupeKey)) return true;
 
-  const event: WorkerEvent = {
-    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
-    type: 'agent.session.message',
-    payload: {
-      sessionId: session.sessionId,
-      response: {
-        provider: 'discord',
-        channelId: session.threadId,
-        threadId: session.threadId,
-        userId: message.author.id,
-        workspaceId: session.workspaceKey,
-        ...(message.guildId ? { guildId: message.guildId } : {}),
-      },
-      message: text,
-      messageId: message.id,
-      mode: 'run',
+  const event = buildAgentSessionMessageWorkerEvent({
+    session,
+    actor: {
+      userId: message.author.id,
+      ...(message.guildId ? { guildId: message.guildId } : {}),
     },
-  };
+    message: text,
+    messageId: message.id,
+    mode: 'run',
+  });
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,

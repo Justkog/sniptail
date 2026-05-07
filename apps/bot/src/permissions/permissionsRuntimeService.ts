@@ -191,6 +191,7 @@ export class PermissionsRuntimeService {
     const expiresAt = new Date(request.expiresAt);
     if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
       const expired = await expireIfPending(request.id);
+      await this.#finalizeAgentStartApproval(expired.request, 'failed');
       return {
         status: 'expired',
         message: 'Approval request has expired.',
@@ -213,6 +214,7 @@ export class PermissionsRuntimeService {
         }
       }
       const cancelled = await cancelIfPending(request.id, input.userId);
+      await this.#finalizeAgentStartApproval(cancelled.request, 'failed');
       if (!cancelled.request) {
         return {
           status: 'not_found',
@@ -266,6 +268,7 @@ export class PermissionsRuntimeService {
 
     if (approvalAction === 'approval.deny') {
       const denied = await denyIfPending(request.id, input.userId);
+      await this.#finalizeAgentStartApproval(denied.request, 'failed');
       if (!denied.request) {
         return {
           status: 'not_found',
@@ -293,6 +296,7 @@ export class PermissionsRuntimeService {
       await this.executeDeferredOperation(approved.request.operation);
       executed = true;
     } catch (err) {
+      await this.#finalizeAgentStartApproval(approved.request, 'failed');
       logger.error(
         { err, approvalId: approved.request.id },
         'Failed to execute approved operation',
@@ -339,6 +343,36 @@ export class PermissionsRuntimeService {
         throw new Error(`Unsupported deferred operation: ${String(exhaustive)}`);
       }
     }
+  }
+
+  async #finalizeAgentStartApproval(
+    request: ApprovalRequest | undefined,
+    status: 'active' | 'failed',
+  ): Promise<void> {
+    const sessionId = this.#agentSessionIdFromOperation(request?.operation);
+    if (!sessionId) {
+      return;
+    }
+    try {
+      await updateAgentSessionStatus(sessionId, status);
+    } catch (err) {
+      logger.warn(
+        { err, approvalId: request?.id, sessionId, status },
+        'Failed to update agent session approval lifecycle status',
+      );
+    }
+  }
+
+  #agentSessionIdFromOperation(
+    operation: DeferredPermissionOperation | undefined,
+  ): string | undefined {
+    if (
+      operation?.kind !== 'enqueueWorkerEvent' ||
+      operation.event.type !== 'agent.session.start'
+    ) {
+      return undefined;
+    }
+    return operation.event.payload.sessionId;
   }
 
   renderSubjectMentions(provider: ChannelProvider, subjects: PermissionSubject[]): string[] {

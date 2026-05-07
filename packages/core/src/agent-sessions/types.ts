@@ -4,11 +4,12 @@ export type AgentSessionStatus = 'pending' | 'active' | 'stopped' | 'completed' 
 
 export type AgentSessionRecord = {
   sessionId: string;
-  provider: Extract<ChannelProvider, 'discord'>;
+  provider: ChannelProvider;
   channelId: string;
   threadId: string;
   userId: string;
   guildId?: string;
+  workspaceId?: string;
   workspaceKey: string;
   agentProfileKey: string;
   codingAgentSessionId?: string;

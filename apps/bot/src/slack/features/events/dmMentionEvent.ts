@@ -2,6 +2,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
 import { addReaction } from '../../helpers.js';
 import { resolveSlackRuntimeIdentity } from '../../lib/slackRuntimeIdentity.js';
+import { handleSlackAgentThreadMessage } from './agentThreadMention.js';
 import { queueSlackMentionJob } from './slackMentionEventRouting.js';
 
 type SlackMessageEvent = {
@@ -20,6 +21,10 @@ function isDirectMessageChannel(channelType?: string): channelType is 'im' | 'mp
   return channelType === 'im' || channelType === 'mpim';
 }
 
+function isChannelThreadReply(channelType?: string, threadTs?: string, ts?: string): boolean {
+  return (channelType === 'channel' || channelType === 'group') && Boolean(threadTs && ts);
+}
+
 function includesExplicitMention(text: string, botUserId: string): boolean {
   return text.includes(`<@${botUserId}>`);
 }
@@ -28,6 +33,7 @@ export function registerDmMentionEvent({
   app,
   config,
   queue,
+  workerEventQueue,
   permissions,
   slackIds,
 }: SlackHandlerContext) {
@@ -43,16 +49,34 @@ export function registerDmMentionEvent({
     const subtype = message.subtype;
     const channelType = message.channel_type;
 
-    if (
-      !channelId ||
-      !threadId ||
-      !eventTs ||
-      !userId ||
-      !text ||
-      botId ||
-      subtype ||
-      !isDirectMessageChannel(channelType)
-    ) {
+    if (!channelId || !threadId || !eventTs || !userId || !text || botId || subtype) {
+      return;
+    }
+
+    if (isChannelThreadReply(channelType, message.thread_ts, eventTs)) {
+      await handleSlackAgentThreadMessage(
+        {
+          app,
+          config,
+          workerEventQueue,
+          permissions,
+          slackIds,
+        },
+        {
+          channelId,
+          text,
+          threadId,
+          eventTs,
+          userId,
+          ...((event as { team?: string }).team
+            ? { workspaceId: (event as { team?: string }).team }
+            : {}),
+        },
+      );
+      return;
+    }
+
+    if (!isDirectMessageChannel(channelType)) {
       return;
     }
 
@@ -77,6 +101,26 @@ export function registerDmMentionEvent({
       { channelId, threadId, subtype, channelType, text },
       'Received Slack DM mention event',
     );
+
+    const handledAgentMention = await handleSlackAgentThreadMessage(
+      {
+        app,
+        config,
+        workerEventQueue,
+        permissions,
+        slackIds,
+      },
+      {
+        channelId,
+        text,
+        threadId,
+        ...(eventTs ? { eventTs } : {}),
+        ...(userId ? { userId } : {}),
+      },
+    );
+    if (handledAgentMention) {
+      return;
+    }
 
     await queueSlackMentionJob(
       {

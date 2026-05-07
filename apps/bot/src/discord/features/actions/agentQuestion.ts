@@ -14,12 +14,13 @@ import {
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotAgentQuestionRequestPayload } from '@sniptail/core/types/bot-event.js';
-import {
-  WORKER_EVENT_SCHEMA_VERSION,
-  type WorkerEvent,
-} from '@sniptail/core/types/worker-event.js';
+import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
+import {
+  buildAgentInteractionResolveWorkerEvent,
+  validateAgentSessionForThread,
+} from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 
 type PendingDiscordAgentQuestion = BotAgentQuestionRequestPayload & {
@@ -122,38 +123,6 @@ function appendQuestionDecisionText(
   return `${base}\n\n${label} by <@${userId}>.`;
 }
 
-function buildQuestionResolveEvent(input: {
-  sessionId: string;
-  interactionId: string;
-  session: NonNullable<Awaited<ReturnType<typeof loadAgentSession>>>;
-  userId: string;
-  guildId?: string;
-  answers?: string[][];
-  reject?: boolean;
-}): WorkerEvent {
-  return {
-    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
-    type: 'agent.interaction.resolve',
-    payload: {
-      sessionId: input.sessionId,
-      response: {
-        provider: 'discord',
-        channelId: input.session.threadId,
-        threadId: input.session.threadId,
-        userId: input.userId,
-        workspaceId: input.session.workspaceKey,
-        ...(input.guildId ? { guildId: input.guildId } : {}),
-      },
-      interactionId: input.interactionId,
-      resolution: {
-        kind: 'question',
-        ...(input.answers ? { answers: input.answers } : {}),
-        ...(input.reject ? { reject: true } : {}),
-      },
-    },
-  };
-}
-
 async function validateQuestionInteraction(
   interaction: ButtonInteraction | StringSelectMenuInteraction,
   input: { sessionId: string; interactionId: string },
@@ -163,16 +132,22 @@ async function validateQuestionInteraction(
     await interaction.reply({ content: 'Agent session not found.', ephemeral: true });
     return undefined;
   }
-  if (!isQuestionControlForSession(interaction, session)) {
+  const threadId =
+    interaction.channel?.isThread() && interaction.channelId
+      ? interaction.channelId
+      : getMessageThreadId(interaction.message);
+  const validationError = threadId
+    ? validateAgentSessionForThread({
+        session,
+        threadId,
+        allowedStatuses: ['active'],
+        wrongThreadMessage: 'This question control does not belong to this agent session thread.',
+      })
+    : 'This question control does not belong to this agent session thread.';
+  if (validationError || !isQuestionControlForSession(interaction, session)) {
     await interaction.reply({
-      content: 'This question control does not belong to this agent session thread.',
-      ephemeral: true,
-    });
-    return undefined;
-  }
-  if (session.status !== 'active') {
-    await interaction.reply({
-      content: `This agent session is ${session.status}.`,
+      content:
+        validationError ?? 'This question control does not belong to this agent session thread.',
       ephemeral: true,
     });
     return undefined;
@@ -258,13 +233,17 @@ export async function handleAgentQuestionSelect(
     return;
   }
 
-  const event = buildQuestionResolveEvent({
-    sessionId: input.sessionId,
-    interactionId: input.interactionId,
+  const event = buildAgentInteractionResolveWorkerEvent({
     session,
-    userId: interaction.user.id,
-    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-    answers: buildAnswers(pending),
+    actor: {
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+    },
+    interactionId: input.interactionId,
+    resolution: {
+      kind: 'question',
+      answers: buildAnswers(pending),
+    },
   });
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,
@@ -348,13 +327,17 @@ export async function handleAgentQuestionButton(
     }
   }
 
-  const event = buildQuestionResolveEvent({
-    sessionId: input.sessionId,
-    interactionId: input.interactionId,
+  const event = buildAgentInteractionResolveWorkerEvent({
     session,
-    userId: interaction.user.id,
-    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-    ...(input.action === 'reject' ? { reject: true } : { answers: buildAnswers(pending) }),
+    actor: {
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+    },
+    interactionId: input.interactionId,
+    resolution: {
+      kind: 'question',
+      ...(input.action === 'reject' ? { reject: true } : { answers: buildAnswers(pending) }),
+    },
   });
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,
@@ -429,13 +412,17 @@ export async function handleAgentQuestionModalSubmit(
   }
 
   await interaction.deferReply({ ephemeral: true });
-  const event = buildQuestionResolveEvent({
-    sessionId: input.sessionId,
-    interactionId: input.interactionId,
+  const event = buildAgentInteractionResolveWorkerEvent({
     session,
-    userId: interaction.user.id,
-    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-    answers: buildAnswers(pending),
+    actor: {
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+    },
+    interactionId: input.interactionId,
+    resolution: {
+      kind: 'question',
+      answers: buildAnswers(pending),
+    },
   });
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,

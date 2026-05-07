@@ -42,6 +42,7 @@ const loadSlackMentionContextFilesMock = vi.hoisted(() =>
 );
 const postMessageMock = vi.hoisted(() => vi.fn());
 const fetchSlackThreadContextMock = vi.hoisted(() => vi.fn());
+const handleSlackAgentThreadMessageMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
   enqueueJob: enqueueJobMock,
@@ -63,6 +64,11 @@ vi.mock('../../helpers.js', () => ({
   addReaction: addReactionMock,
   loadSlackMentionContextFiles: loadSlackMentionContextFilesMock,
   postMessage: postMessageMock,
+}));
+
+vi.mock('./agentThreadMention.js', () => ({
+  handleSlackAgentThreadMessage: handleSlackAgentThreadMessageMock,
+  handleSlackAgentThreadMention: handleSlackAgentThreadMessageMock,
 }));
 
 vi.mock('../../lib/threadContext.js', async () => {
@@ -135,6 +141,7 @@ describe('Slack DM mention event flow', () => {
     loadSlackMentionContextFilesMock.mockResolvedValue([]);
     postMessageMock.mockResolvedValue(undefined);
     fetchSlackThreadContextMock.mockResolvedValue(undefined);
+    handleSlackAgentThreadMessageMock.mockResolvedValue(false);
   });
 
   it('queues a mention job for a root IM mention and anchors replies to event ts', async () => {
@@ -359,6 +366,40 @@ describe('Slack DM mention event flow', () => {
       },
     });
 
+    expect(saveJobQueuedMock).not.toHaveBeenCalled();
+  });
+
+  it('routes channel thread replies to the agent-thread handler', async () => {
+    const { handlers } = createSlackContext();
+    const messageHandler = handlers.get('message');
+    if (!messageHandler) throw new Error('Expected message handler registration.');
+
+    handleSlackAgentThreadMessageMock.mockResolvedValueOnce(true);
+
+    await messageHandler({
+      client: { auth: { test: vi.fn() } } as never,
+      event: {
+        channel: 'C1',
+        channel_type: 'channel',
+        text: 'follow up',
+        ts: '111.223',
+        thread_ts: '111.222',
+        user: 'U1',
+        team: 'T1',
+      },
+    });
+
+    const agentThreadCall = handleSlackAgentThreadMessageMock.mock.calls[0] as
+      | [unknown, unknown]
+      | undefined;
+    expect(agentThreadCall?.[0]).toBeDefined();
+    expect(agentThreadCall?.[1]).toMatchObject({
+      channelId: 'C1',
+      threadId: '111.222',
+      eventTs: '111.223',
+      userId: 'U1',
+      workspaceId: 'T1',
+    });
     expect(saveJobQueuedMock).not.toHaveBeenCalled();
   });
 

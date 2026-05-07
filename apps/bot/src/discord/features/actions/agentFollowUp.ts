@@ -2,14 +2,16 @@ import type { ButtonInteraction, Message } from 'discord.js';
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import {
-  WORKER_EVENT_SCHEMA_VERSION,
-  type WorkerEvent,
-} from '@sniptail/core/types/worker-event.js';
+import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { DiscordAgentFollowUpAction } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { truncateRequestSummary } from '../../../lib/jobs.js';
+import {
+  buildAgentSessionMessageWorkerEvent,
+  resolveAgentFollowUpMode,
+  validateAgentSessionForThread,
+} from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 
 function getMessageThreadId(message: ButtonInteraction['message']): string | undefined {
@@ -70,16 +72,22 @@ export async function handleAgentFollowUpButton(
     await interaction.reply({ content: 'Agent session not found.', ephemeral: true });
     return;
   }
-  if (!isFollowUpControlForSession(interaction, session)) {
+  const threadId =
+    interaction.channel?.isThread() && interaction.channelId
+      ? interaction.channelId
+      : getMessageThreadId(interaction.message);
+  const validationError = threadId
+    ? validateAgentSessionForThread({
+        session,
+        threadId,
+        allowedStatuses: ['active', 'completed'],
+        wrongThreadMessage: 'This follow-up control does not belong to this agent session thread.',
+      })
+    : 'This follow-up control does not belong to this agent session thread.';
+  if (validationError || !isFollowUpControlForSession(interaction, session)) {
     await interaction.reply({
-      content: 'This follow-up control does not belong to this agent session thread.',
-      ephemeral: true,
-    });
-    return;
-  }
-  if (session.status !== 'active' && session.status !== 'completed') {
-    await interaction.reply({
-      content: `This agent session is ${session.status}.`,
+      content:
+        validationError ?? 'This follow-up control does not belong to this agent session thread.',
       ephemeral: true,
     });
     return;
@@ -95,25 +103,16 @@ export async function handleAgentFollowUpButton(
     return;
   }
 
-  const mode: 'run' | 'queue' | 'steer' = session.status === 'active' ? input.action : 'run';
-  const event: WorkerEvent = {
-    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
-    type: 'agent.session.message',
-    payload: {
-      sessionId: input.sessionId,
-      response: {
-        provider: 'discord',
-        channelId: session.threadId,
-        threadId: session.threadId,
-        userId: interaction.user.id,
-        workspaceId: session.workspaceKey,
-        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-      },
-      message: text,
-      messageId: input.messageId,
-      mode,
+  const event = buildAgentSessionMessageWorkerEvent({
+    session,
+    actor: {
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
     },
-  };
+    message: text,
+    messageId: input.messageId,
+    mode: resolveAgentFollowUpMode(session.status, input.action),
+  });
 
   let denied = false;
   const authorized = await authorizeDiscordOperationAndRespond({

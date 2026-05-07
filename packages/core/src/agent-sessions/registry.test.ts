@@ -4,6 +4,7 @@ import { resetConfigCaches } from '../config/env.js';
 import { applyRequiredEnv } from '../../tests/helpers/env.js';
 import {
   createAgentSession,
+  findAgentSessionByThread,
   findDiscordAgentSessionByThread,
   loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
@@ -31,6 +32,7 @@ describe('agent session registry', () => {
           'thread_id text NOT NULL,',
           'user_id text NOT NULL,',
           'guild_id text,',
+          'workspace_id text,',
           'workspace_key text NOT NULL,',
           'agent_profile_key text NOT NULL,',
           'coding_agent_session_id text,',
@@ -71,6 +73,11 @@ describe('agent session registry', () => {
     await expect(findDiscordAgentSessionByThread('T1')).resolves.toMatchObject({
       sessionId: 'session-1',
     });
+    await expect(
+      findAgentSessionByThread({ provider: 'discord', threadId: 'T1' }),
+    ).resolves.toMatchObject({
+      sessionId: 'session-1',
+    });
 
     const updated = await updateAgentSessionStatus('session-1', 'active');
     expect(updated?.status).toBe('active');
@@ -82,6 +89,35 @@ describe('agent session registry', () => {
     await expect(loadAgentSession('session-1')).resolves.toMatchObject({
       status: 'active',
       codingAgentSessionId: 'opencode-session-1',
+    });
+  });
+
+  it('stores and finds slack agent sessions by provider and thread', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureAgentSessionsTable();
+
+    await createAgentSession({
+      sessionId: 'session-slack-1',
+      provider: 'slack',
+      channelId: 'C1',
+      threadId: '1740000000.123',
+      userId: 'U1',
+      workspaceId: 'T1',
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      status: 'pending',
+      now: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    await expect(loadAgentSession('session-slack-1')).resolves.toMatchObject({
+      provider: 'slack',
+      workspaceId: 'T1',
+    });
+    await expect(
+      findAgentSessionByThread({ provider: 'slack', threadId: '1740000000.123' }),
+    ).resolves.toMatchObject({
+      sessionId: 'session-slack-1',
+      provider: 'slack',
     });
   });
 

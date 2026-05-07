@@ -1,4 +1,5 @@
 import type { RepoBootstrapService } from '@sniptail/core/types/bootstrap.js';
+import type { BotAgentQuestion } from '@sniptail/core/types/bot-event.js';
 import type { RepoConfig } from '@sniptail/core/types/job.js';
 import { getRepoProviderDisplayName } from '@sniptail/core/repos/providers.js';
 import type { RunActionParamDefinition } from '@sniptail/core/repos/runActions.js';
@@ -27,6 +28,23 @@ function buildContextFilesInputBlock() {
       max_files: 3,
     },
   };
+}
+
+function buildAgentStaticOptions(
+  items: Array<{ key: string; label?: string }>,
+  selectedKey?: string,
+) {
+  const options = items.slice(0, 100).map((item) => ({
+    text: {
+      type: 'plain_text' as const,
+      text: item.label ? `${item.label} (${item.key})` : item.key,
+    },
+    value: item.key,
+  }));
+  const initialOption = selectedKey
+    ? options.find((option) => option.value === selectedKey)
+    : undefined;
+  return { options, initialOption };
 }
 
 function resolveRepoSelectionDefaults(
@@ -301,6 +319,118 @@ export function buildAnswerQuestionsModal(
       },
       buildContextFilesInputBlock(),
     ],
+  };
+}
+
+export function buildAgentModal(
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  options: {
+    workspaces: Array<{ key: string; label?: string }>;
+    profiles: Array<{ key: string; label?: string }>;
+    selectedWorkspaceKey?: string;
+    selectedProfileKey?: string;
+    initialCwd?: string;
+  },
+) {
+  const workspaceOptions = buildAgentStaticOptions(
+    options.workspaces,
+    options.selectedWorkspaceKey,
+  );
+  const profileOptions = buildAgentStaticOptions(options.profiles, options.selectedProfileKey);
+
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Agent` },
+    submit: { type: 'plain_text' as const, text: 'Start' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input' as const,
+        block_id: 'prompt',
+        label: { type: 'plain_text' as const, text: 'Prompt' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'prompt',
+          multiline: true,
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'workspace',
+        label: { type: 'plain_text' as const, text: 'Workspace' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'workspace_key',
+          placeholder: { type: 'plain_text' as const, text: 'Select workspace' },
+          options: workspaceOptions.options,
+          ...(workspaceOptions.initialOption
+            ? { initial_option: workspaceOptions.initialOption }
+            : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'profile',
+        label: { type: 'plain_text' as const, text: 'Agent profile' },
+        element: {
+          type: 'static_select' as const,
+          action_id: 'agent_profile_key',
+          placeholder: { type: 'plain_text' as const, text: 'Select profile' },
+          options: profileOptions.options,
+          ...(profileOptions.initialOption ? { initial_option: profileOptions.initialOption } : {}),
+        },
+      },
+      {
+        type: 'input' as const,
+        block_id: 'cwd',
+        optional: true,
+        label: { type: 'plain_text' as const, text: 'CWD (optional)' },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'cwd',
+          ...(options.initialCwd ? { initial_value: options.initialCwd } : {}),
+        },
+      },
+      buildContextFilesInputBlock(),
+    ],
+  };
+}
+
+export function buildAgentQuestionCustomModal(
+  botName: string,
+  callbackId: string,
+  privateMetadata: string,
+  questions: BotAgentQuestion[],
+) {
+  return {
+    type: 'modal' as const,
+    callback_id: callbackId,
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text' as const, text: `${botName} Agent` },
+    submit: { type: 'plain_text' as const, text: 'Send' },
+    close: { type: 'plain_text' as const, text: 'Cancel' },
+    blocks: questions
+      .map((question, index) => ({ question, index }))
+      .filter((entry) => entry.question.custom)
+      .slice(0, 10)
+      .map((entry) => ({
+        type: 'input' as const,
+        block_id: `question_${entry.index}`,
+        optional: true,
+        label: {
+          type: 'plain_text' as const,
+          text: (entry.question.header?.trim() || `Question ${entry.index + 1}`).slice(0, 75),
+        },
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'answer',
+          multiline: true,
+        },
+      })),
   };
 }
 

@@ -9,6 +9,7 @@ import { registerPlanCommand } from './features/commands/plan.js';
 import { registerBootstrapCommand } from './features/commands/bootstrap.js';
 import { registerImplementCommand } from './features/commands/implement.js';
 import { registerRunCommand } from './features/commands/slackRunCommand.js';
+import { registerAgentCommand } from './features/commands/agent.js';
 import { registerUsageCommand } from './features/commands/usage.js';
 import { registerAskFromJobAction } from './features/actions/askFromJob.js';
 import { registerSlackExploreFromJobAction } from './features/actions/slackExploreFromJobAction.js';
@@ -20,6 +21,10 @@ import { registerRunFromJobAction } from './features/actions/runFromJob.js';
 import { registerReviewFromJobAction } from './features/actions/reviewFromJob.js';
 import { registerWorktreeCommandsAction } from './features/actions/worktreeCommands.js';
 import { registerApprovalActions } from './features/actions/approvalActions.js';
+import { registerAgentFollowUpActions } from './features/actions/agentFollowUp.js';
+import { registerAgentPermissionActions } from './features/actions/agentPermission.js';
+import { registerAgentQuestionActions } from './features/actions/agentQuestion.js';
+import { registerAgentStopAction } from './features/actions/agentStop.js';
 import { registerRunActionSelectOptions } from './features/actions/runActionSelect.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
 import { registerDmMentionEvent } from './features/events/dmMentionEvent.js';
@@ -32,6 +37,7 @@ import { registerImplementSubmitView } from './features/views/implementSubmit.js
 import { registerRepoAddModalSubmit } from './features/views/repoAddModalSubmit.js';
 import { registerRepoRemoveModalSubmit } from './features/views/repoRemoveModalSubmit.js';
 import { registerRunSubmitView } from './features/views/slackRunSubmitView.js';
+import { registerAgentSubmitView } from './features/views/agentSubmit.js';
 import type { SlackHandlerContext } from './features/context.js';
 
 export function registerSlackHandlers(context: SlackHandlerContext): void {
@@ -42,6 +48,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerPlanCommand(context);
   registerImplementCommand(context);
   registerRunCommand(context);
+  registerAgentCommand(context);
   registerBootstrapCommand(context);
   registerClearBeforeCommand(context);
   registerUsageCommand(context);
@@ -54,6 +61,10 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerWorktreeCommandsAction(context);
   registerClearJobAction(context);
   registerApprovalActions(context);
+  registerAgentStopAction(context);
+  registerAgentFollowUpActions(context);
+  registerAgentPermissionActions(context);
+  registerAgentQuestionActions(context);
   registerRunActionSelectOptions(context);
   registerAnswerQuestionsAction(context);
   registerAppMentionEvent(context);
@@ -67,6 +78,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerAnswerQuestionsSubmitView(context);
   registerImplementSubmitView(context);
   registerRunSubmitView(context);
+  registerAgentSubmitView(context);
 
   // eslint-disable-next-line @typescript-eslint/require-await
   context.app.error(async (err: CodedError) => {

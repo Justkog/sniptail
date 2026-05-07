@@ -240,9 +240,13 @@ function summarizePermissionMetadata(metadata: Record<string, unknown> | undefin
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`);
 }
 
-function questionRequestDiscordLimitIssue(
+function questionRequestRenderLimitIssue(
+  provider: CoreWorkerEvent<'agent.session.start'>['payload']['response']['provider'],
   question: OpenCodeQuestionAskedEvent['properties'],
 ): string | undefined {
+  if (provider !== 'discord') {
+    return undefined;
+  }
   if (question.questions.length === 0) {
     return 'OpenCode question request did not include any questions.';
   }
@@ -325,7 +329,7 @@ async function rejectOpenCodePermissionOnTimeout(input: {
       requestID: pending.requestId,
       ...(pending.workspace ? { workspace: pending.workspace } : {}),
       reply: 'reject',
-      message: 'Permission request expired in Discord.',
+      message: 'Permission request expired.',
     });
     if (wasDisplayed) {
       await publishPermissionUpdated({
@@ -600,7 +604,10 @@ export async function runOpenCodeAgentTurn({
             activeRuntimeBaseUrl ??
             (config.opencode.executionMode === 'server' ? config.opencode.serverUrl : undefined) ??
             '';
-          const limitIssue = questionRequestDiscordLimitIssue(opencodeEvent.properties);
+          const limitIssue = questionRequestRenderLimitIssue(
+            response.provider,
+            opencodeEvent.properties,
+          );
           if (limitIssue) {
             await rejectUnrenderableOpenCodeQuestion({
               sessionId,

@@ -18,8 +18,15 @@ export async function loadAgentSession(sessionId: string): Promise<AgentSessionR
 export async function findDiscordAgentSessionByThread(
   threadId: string,
 ): Promise<AgentSessionRecord | undefined> {
+  return findAgentSessionByThread({ provider: 'discord', threadId });
+}
+
+export async function findAgentSessionByThread(input: {
+  provider: AgentSessionRecord['provider'];
+  threadId: string;
+}): Promise<AgentSessionRecord | undefined> {
   const store = await getAgentSessionStore();
-  return store.findSessionByThread({ provider: 'discord', threadId });
+  return store.findSessionByThread(input);
 }
 
 export async function updateAgentSessionStatus(

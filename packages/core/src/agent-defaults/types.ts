@@ -2,9 +2,10 @@ import type { ChannelProvider } from '../types/channel.js';
 
 export type AgentDefaultRecord = {
   scopeKey: string;
-  provider: Extract<ChannelProvider, 'discord'>;
+  provider: ChannelProvider;
   userId: string;
   guildId?: string;
+  workspaceId?: string;
   workspaceKey: string;
   agentProfileKey: string;
   cwd?: string;
@@ -25,6 +26,7 @@ export interface AgentDefaultStore {
     provider: AgentDefaultRecord['provider'];
     userId: string;
     guildId?: string;
+    workspaceId?: string;
   }): Promise<AgentDefaultRecord | undefined>;
   upsertDefault(input: UpsertAgentDefaultInput): Promise<AgentDefaultRecord>;
 }

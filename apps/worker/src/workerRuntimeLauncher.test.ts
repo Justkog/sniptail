@@ -134,4 +134,43 @@ describe('workerRuntimeLauncher', () => {
     expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledWith(hoisted.config, 'copilot');
   });
+
+  it('publishes initial agent metadata updates for Slack and Discord on startup', async () => {
+    const consumerClose = vi.fn(() => Promise.resolve(undefined));
+    const add = vi.fn(() => Promise.resolve(undefined));
+    const queueRuntime = {
+      consumeJobs: vi.fn(() => ({ close: consumerClose })),
+      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add,
+        },
+      },
+    } as const;
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenNthCalledWith(
+      1,
+      'agent.metadata.update',
+      expect.objectContaining({
+        provider: 'slack',
+        type: 'agent.metadata.update',
+      }),
+      expect.any(Object),
+    );
+    expect(add).toHaveBeenNthCalledWith(
+      2,
+      'agent.metadata.update',
+      expect.objectContaining({
+        provider: 'discord',
+        type: 'agent.metadata.update',
+      }),
+      expect.any(Object),
+    );
+  });
 });

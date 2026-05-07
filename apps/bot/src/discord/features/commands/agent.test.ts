@@ -37,11 +37,11 @@ vi.mock('../../permissions/discordPermissionGuards.js', () => ({
   authorizeDiscordOperationAndRespond: hoisted.authorizeDiscordOperationAndRespond,
 }));
 
-vi.mock('../../agentCommandMetadataCache.js', () => ({
+vi.mock('../../../agentCommandMetadataCache.js', () => ({
   buildCwdAutocompleteChoices: hoisted.buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices: hoisted.buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices: hoisted.buildWorkspaceAutocompleteChoices,
-  getDiscordAgentCommandMetadata: hoisted.getDiscordAgentCommandMetadata,
+  getAgentCommandMetadata: hoisted.getDiscordAgentCommandMetadata,
 }));
 
 vi.mock('../../helpers.js', () => ({

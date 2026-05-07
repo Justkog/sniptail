@@ -1,12 +1,14 @@
 import { logger } from '@sniptail/core/logger.js';
 import type { SlackHandlerContext } from '../context.js';
 import { addReaction } from '../../helpers.js';
+import { handleSlackAgentThreadMention } from './agentThreadMention.js';
 import { queueSlackMentionJob } from './slackMentionEventRouting.js';
 
 export function registerAppMentionEvent({
   app,
   config,
   queue,
+  workerEventQueue,
   permissions,
   slackIds,
 }: SlackHandlerContext) {
@@ -32,6 +34,28 @@ export function registerAppMentionEvent({
         name: 'eyes',
         messageId: eventTs,
       });
+    }
+    const handledAgentMention = await handleSlackAgentThreadMention(
+      {
+        app,
+        config,
+        workerEventQueue,
+        permissions,
+        slackIds,
+      },
+      {
+        channelId,
+        text,
+        threadId,
+        ...(eventTs ? { eventTs } : {}),
+        ...(userId ? { userId } : {}),
+        ...((event as { team?: string }).team
+          ? { workspaceId: (event as { team?: string }).team }
+          : {}),
+      },
+    );
+    if (handledAgentMention) {
+      return;
     }
     await queueSlackMentionJob(
       {

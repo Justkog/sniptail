@@ -4,6 +4,7 @@ import {
   type BotEvent,
   type BotEventPayloadMap,
 } from '@sniptail/core/types/bot-event.js';
+import { KNOWN_CHANNEL_PROVIDERS, type ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { BotEventSink } from '../channels/botEventSink.js';
 
 function buildAgentMetadataPayload(): BotEventPayloadMap['agent.metadata.update'] {
@@ -45,12 +46,28 @@ function buildAgentMetadataPayload(): BotEventPayloadMap['agent.metadata.update'
   };
 }
 
-export async function publishAgentMetadataUpdate(botEvents: BotEventSink): Promise<void> {
+function metadataProviders(): ChannelProvider[] {
+  return KNOWN_CHANNEL_PROVIDERS.filter(
+    (provider) => provider === 'discord' || provider === 'slack',
+  );
+}
+
+export async function publishAgentMetadataUpdateForProvider(
+  botEvents: BotEventSink,
+  provider: ChannelProvider,
+): Promise<void> {
+  const payload = buildAgentMetadataPayload();
   const event: BotEvent = {
     schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
+    provider,
     type: 'agent.metadata.update',
-    payload: buildAgentMetadataPayload(),
+    payload,
   };
   await botEvents.publish(event);
+}
+
+export async function publishAgentMetadataUpdate(botEvents: BotEventSink): Promise<void> {
+  for (const provider of metadataProviders()) {
+    await publishAgentMetadataUpdateForProvider(botEvents, provider);
+  }
 }

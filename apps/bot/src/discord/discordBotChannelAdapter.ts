@@ -19,7 +19,7 @@ import {
   buildDiscordAgentPermissionComponents,
   buildDiscordAgentQuestionComponents,
 } from '@sniptail/core/discord/components.js';
-import { setDiscordAgentCommandMetadata } from './agentCommandMetadataCache.js';
+import { setAgentCommandMetadata as setDiscordAgentCommandMetadata } from '../agentCommandMetadataCache.js';
 import {
   clearPendingDiscordAgentQuestion,
   setPendingDiscordAgentQuestion,

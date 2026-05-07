@@ -3,15 +3,15 @@ import {
   buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
-  clearDiscordAgentCommandMetadata,
+  clearAgentCommandMetadata,
   resolveAgentProfileSelection,
   resolveAgentWorkspaceSelection,
-  setDiscordAgentCommandMetadata,
-} from './agentCommandMetadataCache.js';
+  setAgentCommandMetadata,
+} from '../agentCommandMetadataCache.js';
 
 describe('agentCommandMetadataCache', () => {
   afterEach(() => {
-    clearDiscordAgentCommandMetadata();
+    clearAgentCommandMetadata();
   });
 
   it('returns no autocomplete choices when metadata is unavailable', () => {
@@ -20,7 +20,7 @@ describe('agentCommandMetadataCache', () => {
   });
 
   it('builds autocomplete choices when metadata is enabled', () => {
-    setDiscordAgentCommandMetadata({
+    setAgentCommandMetadata({
       enabled: true,
       defaultWorkspace: 'snatch',
       defaultAgentProfile: 'build',
@@ -42,7 +42,7 @@ describe('agentCommandMetadataCache', () => {
   });
 
   it('ranks preferred workspace and profile first', () => {
-    setDiscordAgentCommandMetadata({
+    setAgentCommandMetadata({
       enabled: true,
       workspaces: [
         { key: 'tools', label: 'Tools' },
@@ -76,7 +76,7 @@ describe('agentCommandMetadataCache', () => {
   });
 
   it('resolves explicit and default selections', () => {
-    setDiscordAgentCommandMetadata({
+    setAgentCommandMetadata({
       enabled: true,
       defaultWorkspace: 'snatch',
       defaultAgentProfile: 'build',

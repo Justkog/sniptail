@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { closeJobRegistryDb, getJobRegistryDb } from '../db/index.js';
 import { resetConfigCaches } from '../config/env.js';
 import { applyRequiredEnv } from '../../tests/helpers/env.js';
-import { loadDiscordAgentDefaults, upsertDiscordAgentDefaults } from './registry.js';
+import {
+  loadDiscordAgentDefaults,
+  loadSlackAgentDefaults,
+  upsertDiscordAgentDefaults,
+  upsertSlackAgentDefaults,
+} from './registry.js';
 
 describe('agent default registry', () => {
   afterEach(async () => {
@@ -23,6 +28,7 @@ describe('agent default registry', () => {
           'provider text NOT NULL,',
           'user_id text NOT NULL,',
           'guild_id text,',
+          'workspace_id text,',
           'workspace_key text NOT NULL,',
           'agent_profile_key text NOT NULL,',
           'cwd text,',
@@ -69,6 +75,30 @@ describe('agent default registry', () => {
       agentProfileKey: 'plan',
     });
     await expect(loadDiscordAgentDefaults({ userId: 'U1' })).resolves.toBeUndefined();
+  });
+
+  it('loads and upserts per-workspace slack defaults', async () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    await ensureAgentDefaultsTable();
+
+    const created = await upsertSlackAgentDefaults({
+      userId: 'U1',
+      workspaceId: 'T1',
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      cwd: 'apps/worker',
+      now: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    expect(created.provider).toBe('slack');
+    await expect(
+      loadSlackAgentDefaults({ userId: 'U1', workspaceId: 'T1' }),
+    ).resolves.toMatchObject({
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      cwd: 'apps/worker',
+    });
+    await expect(loadSlackAgentDefaults({ userId: 'U1' })).resolves.toBeUndefined();
   });
 
   it('rejects pg and redis drivers for now', async () => {

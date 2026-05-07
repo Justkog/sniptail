@@ -13,12 +13,10 @@ import {
 import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import { logger } from '@sniptail/core/logger.js';
-import {
-  WORKER_EVENT_SCHEMA_VERSION,
-  type WorkerEvent,
-} from '@sniptail/core/types/worker-event.js';
+import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { buildDiscordAgentStopComponents } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
+import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
 import {
   authorizeDiscordOperationAndRespond,
   authorizeDiscordPrecheckAndRespond,
@@ -27,8 +25,8 @@ import {
   buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
-  getDiscordAgentCommandMetadata,
-} from '../../agentCommandMetadataCache.js';
+  getAgentCommandMetadata as getDiscordAgentCommandMetadata,
+} from '../../../agentCommandMetadataCache.js';
 import {
   getDiscordCommandContextAttachments,
   loadDiscordContextFiles,
@@ -350,26 +348,21 @@ export async function handleAgentStart(
     return;
   }
 
-  const event: WorkerEvent = {
-    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
-    type: 'agent.session.start',
-    payload: {
+  const event = buildAgentSessionStartWorkerEvent({
+    session: {
       sessionId,
-      response: {
-        provider: 'discord',
-        channelId: thread.threadId,
-        threadId: thread.threadId,
-        userId: interaction.user.id,
-        workspaceId: workspaceKey,
-        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
-      },
-      prompt,
+      provider: 'discord',
+      channelId: thread.channelId,
+      threadId: thread.threadId,
+      userId: interaction.user.id,
+      ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
       workspaceKey,
       agentProfileKey: profileKey,
       ...(cwd ? { cwd } : {}),
-      ...(contextFiles?.length ? { contextFiles } : {}),
     },
-  };
+    prompt,
+    ...(contextFiles?.length ? { contextFiles } : {}),
+  });
 
   try {
     await createAgentSession({

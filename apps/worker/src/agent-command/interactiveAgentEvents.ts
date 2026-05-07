@@ -6,6 +6,12 @@ import type { BotEventSink } from '../channels/botEventSink.js';
 type AgentResponse = CoreWorkerEvent<'agent.session.start'>['payload']['response'];
 
 function buildThreadTarget(response: AgentResponse) {
+  if (response.provider === 'slack') {
+    return {
+      channelId: response.channelId,
+      threadId: response.threadId ?? response.channelId,
+    };
+  }
   return {
     channelId: response.threadId ?? response.channelId,
     threadId: response.threadId ?? response.channelId,
@@ -26,7 +32,7 @@ export function buildPermissionRequestEvent(input: {
 }): BotEvent {
   return {
     schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
+    provider: input.response.provider,
     type: 'agent.permission.requested',
     payload: {
       ...buildThreadTarget(input.response),
@@ -54,7 +60,7 @@ export function buildQuestionRequestEvent(input: {
 }): BotEvent {
   return {
     schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
+    provider: input.response.provider,
     type: 'agent.question.requested',
     payload: {
       ...buildThreadTarget(input.response),
@@ -79,7 +85,7 @@ export async function publishPermissionUpdated(input: {
 }) {
   await input.botEvents.publish({
     schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
+    provider: input.response.provider,
     type: 'agent.permission.updated',
     payload: {
       ...buildThreadTarget(input.response),
@@ -103,7 +109,7 @@ export async function publishQuestionUpdated(input: {
 }) {
   await input.botEvents.publish({
     schemaVersion: BOT_EVENT_SCHEMA_VERSION,
-    provider: 'discord',
+    provider: input.response.provider,
     type: 'agent.question.updated',
     payload: {
       ...buildThreadTarget(input.response),

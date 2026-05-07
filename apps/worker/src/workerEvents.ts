@@ -2,7 +2,7 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
+import { publishAgentMetadataUpdateForProvider } from './agent-command/metadata.js';
 import {
   runAgentSessionMessage,
   runAgentSessionStart,
@@ -140,7 +140,7 @@ export async function handleWorkerEvent(
     }
     case 'agent.metadata.request': {
       try {
-        await publishAgentMetadataUpdate(botEvents);
+        await publishAgentMetadataUpdateForProvider(botEvents, event.payload.provider);
       } catch (err) {
         logger.error({ err, event }, 'Failed to publish agent metadata update');
       }

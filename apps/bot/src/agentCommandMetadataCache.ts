@@ -1,8 +1,8 @@
 import type { BotEventPayloadMap } from '@sniptail/core/types/bot-event.js';
 
-type DiscordAgentMetadata = BotEventPayloadMap['agent.metadata.update'];
+type AgentMetadata = BotEventPayloadMap['agent.metadata.update'];
 
-let cachedMetadata: DiscordAgentMetadata | undefined;
+let cachedMetadata: AgentMetadata | undefined;
 
 function normalizeOptionalToken(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
@@ -38,15 +38,15 @@ function formatChoiceName(key: string, label: string | undefined): string {
   return label ? `${label} (${key})` : key;
 }
 
-export function setDiscordAgentCommandMetadata(metadata: DiscordAgentMetadata): void {
+export function setAgentCommandMetadata(metadata: AgentMetadata): void {
   cachedMetadata = metadata;
 }
 
-export function clearDiscordAgentCommandMetadata(): void {
+export function clearAgentCommandMetadata(): void {
   cachedMetadata = undefined;
 }
 
-export function getDiscordAgentCommandMetadata(): DiscordAgentMetadata | undefined {
+export function getAgentCommandMetadata(): AgentMetadata | undefined {
   return cachedMetadata;
 }
 
