@@ -120,6 +120,9 @@ importers:
       bullmq:
         specifier: ^5.51.0
         version: 5.66.5
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.1(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(better-sqlite3@12.6.2)(pg@8.17.2)

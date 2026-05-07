@@ -8,6 +8,12 @@ import { Events } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import {
+  parseDiscordAgentPermissionCustomId,
+  parseDiscordAgentFollowUpCustomId,
+  parseDiscordAgentQuestionActionCustomId,
+  parseDiscordAgentQuestionModalCustomId,
+  parseDiscordAgentQuestionSelectCustomId,
+  parseDiscordAgentStopCustomId,
   parseDiscordApprovalCustomId,
   parseDiscordCompletionCustomId,
 } from '@sniptail/core/discord/components.js';
@@ -23,6 +29,7 @@ import { handleClearBefore } from './features/commands/clearBefore.js';
 import { handleRepoAddAdmin } from './features/commands/repoAddAdmin.js';
 import { handleRepoRemoveAdmin } from './features/commands/repoRemoveAdmin.js';
 import { handleUsage } from './features/commands/usage.js';
+import { handleAgentAutocomplete, handleAgentStart } from './features/commands/agent.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
 import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
@@ -30,6 +37,14 @@ import { handleImplementSelection } from './features/actions/implementSelection.
 import { handleRunRepoSelection } from './features/actions/runRepoSelection.js';
 import { handleRunActionSelection } from './features/actions/runActionSelection.js';
 import { handleAnswerQuestionsButton } from './features/actions/answerQuestions.js';
+import { handleAgentPermissionButton } from './features/actions/agentPermission.js';
+import { handleAgentFollowUpButton } from './features/actions/agentFollowUp.js';
+import {
+  handleAgentQuestionButton,
+  handleAgentQuestionModalSubmit,
+  handleAgentQuestionSelect,
+} from './features/actions/agentQuestion.js';
+import { handleAgentStopButton } from './features/actions/agentStop.js';
 import {
   handleBootstrapExtrasContinue,
   handleBootstrapExtrasSelection,
@@ -47,6 +62,7 @@ import { handlePlanModalSubmit } from './features/views/planSubmit.js';
 import { handleImplementModalSubmit } from './features/views/implementSubmit.js';
 import { handleBootstrapModalSubmit } from './features/views/bootstrapSubmit.js';
 import { handleMention } from './features/events/mention.js';
+import { handleAgentThreadMessage } from './features/events/agentThreadMessage.js';
 import {
   handleAskFromJobButton,
   handleAskFromJobContinueButton,
@@ -120,6 +136,19 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
   client.once(Events.ClientReady, () => {
     logger.info(`🤖 ${config.botName} Discord bot is running`);
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isAutocomplete()) return;
+    if (interaction.commandName !== commandNames.agent) return;
+
+    try {
+      await handleAgentAutocomplete(interaction);
+    } catch (err) {
+      logger.error({ err, command: interaction.commandName }, 'Discord autocomplete failed');
+      await interaction.respond([]);
+    }
   });
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -353,6 +382,23 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.commandName === commandNames.agent) {
+      try {
+        await handleAgentStart(interaction, config, workerEventQueue, permissions);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply('Something went wrong handling that command.');
+        } else {
+          await interaction.reply({
+            content: 'Something went wrong handling that command.',
+            ephemeral: true,
+          });
+        }
+      }
+      return;
+    }
+
     await interaction.deferReply({ ephemeral: true });
 
     try {
@@ -368,6 +414,56 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
+      const parsedAgentPermission = parseDiscordAgentPermissionCustomId(interaction.customId);
+      if (parsedAgentPermission) {
+        await handleAgentPermissionButton(
+          interaction,
+          parsedAgentPermission,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
+      const parsedAgentFollowUp = parseDiscordAgentFollowUpCustomId(interaction.customId);
+      if (parsedAgentFollowUp) {
+        await handleAgentFollowUpButton(
+          interaction,
+          parsedAgentFollowUp,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
+      const parsedAgentStop = parseDiscordAgentStopCustomId(interaction.customId);
+      if (parsedAgentStop) {
+        await handleAgentStopButton(
+          interaction,
+          parsedAgentStop.sessionId,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
+      const parsedAgentQuestionAction = parseDiscordAgentQuestionActionCustomId(
+        interaction.customId,
+      );
+      if (parsedAgentQuestionAction) {
+        await handleAgentQuestionButton(
+          interaction,
+          parsedAgentQuestionAction,
+          config,
+          workerEventQueue,
+          permissions,
+        );
+        return;
+      }
+
       const askFromJobToken = parseAskFromJobContinueButtonCustomId(interaction.customId);
       if (askFromJobToken) {
         await handleAskFromJobContinueButton(interaction, config, askFromJobToken);
@@ -712,6 +808,27 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.isStringSelectMenu()) {
+      const parsedAgentQuestionSelect = parseDiscordAgentQuestionSelectCustomId(
+        interaction.customId,
+      );
+      if (parsedAgentQuestionSelect) {
+        try {
+          await handleAgentQuestionSelect(
+            interaction,
+            parsedAgentQuestionSelect,
+            config,
+            workerEventQueue,
+            permissions,
+          );
+        } catch (err) {
+          logger.error({ err }, 'Discord agent question select failed');
+          await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+        }
+        return;
+      }
+    }
+
     if (interaction.isModalSubmit() && interaction.customId === implementModalCustomId) {
       try {
         await handleImplementModalSubmit(interaction, config, queue, permissions);
@@ -775,6 +892,25 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
       }
     }
+
+    if (interaction.isModalSubmit()) {
+      const parsedAgentQuestionModal = parseDiscordAgentQuestionModalCustomId(interaction.customId);
+      if (parsedAgentQuestionModal) {
+        try {
+          await handleAgentQuestionModalSubmit(
+            interaction,
+            parsedAgentQuestionModal,
+            config,
+            workerEventQueue,
+            permissions,
+          );
+        } catch (err) {
+          logger.error({ err }, 'Discord agent question modal submit failed');
+          await replyToInteractionError(interaction, 'Something went wrong handling that request.');
+        }
+        return;
+      }
+    }
   });
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -789,6 +925,15 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
     }
 
     try {
+      const handledAgentThreadMessage = await handleAgentThreadMessage(
+        message,
+        config,
+        workerEventQueue,
+        permissions,
+      );
+      if (handledAgentThreadMessage) {
+        return;
+      }
       await handleMention(message, config, queue, permissions);
     } catch (err) {
       logger.error({ err }, 'Discord mention handling failed');

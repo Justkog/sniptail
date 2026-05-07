@@ -1,4 +1,5 @@
 import type { ChannelProvider } from './channel.js';
+import type { JobContextFile } from './job.js';
 
 export const WORKER_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -42,6 +43,51 @@ export type WorkerRepoRemovePayload = {
   repoKey: string;
 };
 
+export type WorkerAgentSessionStartPayload = {
+  sessionId: string;
+  response: WorkerReplyTarget;
+  prompt: string;
+  workspaceKey: string;
+  agentProfileKey: string;
+  cwd?: string;
+  contextFiles?: JobContextFile[];
+};
+
+export type WorkerAgentSessionMessagePayload = {
+  sessionId: string;
+  response: WorkerReplyTarget;
+  message: string;
+  messageId?: string;
+  mode?: 'run' | 'queue' | 'steer';
+};
+
+export type WorkerAgentPromptStopPayload = {
+  sessionId: string;
+  response: WorkerReplyTarget;
+  reason?: string;
+  messageId?: string;
+};
+
+export type WorkerAgentInteractionResolution =
+  | {
+      kind: 'permission';
+      decision: 'once' | 'always' | 'reject';
+      message?: string;
+    }
+  | {
+      kind: 'question';
+      answers?: string[][];
+      reject?: boolean;
+      message?: string;
+    };
+
+export type WorkerAgentInteractionResolvePayload = {
+  sessionId: string;
+  response: WorkerReplyTarget;
+  interactionId: string;
+  resolution: WorkerAgentInteractionResolution;
+};
+
 export type WorkerEventPayloadMap = {
   'jobs.clear': {
     jobId: string;
@@ -53,6 +99,13 @@ export type WorkerEventPayloadMap = {
   'repos.add': WorkerRepoAddPayload;
   'repos.remove': WorkerRepoRemovePayload;
   'status.codexUsage': WorkerCodexUsagePayload;
+  'agent.metadata.request': {
+    provider: ChannelProvider;
+  };
+  'agent.session.start': WorkerAgentSessionStartPayload;
+  'agent.session.message': WorkerAgentSessionMessagePayload;
+  'agent.prompt.stop': WorkerAgentPromptStopPayload;
+  'agent.interaction.resolve': WorkerAgentInteractionResolvePayload;
 };
 
 export type CoreWorkerEventType = keyof WorkerEventPayloadMap;

@@ -1,4 +1,5 @@
 import type { ChannelProvider } from './channel.js';
+import type { ModelReasoningEffort } from '@openai/codex-sdk';
 
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -15,6 +16,81 @@ type FileUploadPayloadBase = {
 export type FileUploadPayload =
   | (FileUploadPayloadBase & { filePath: string; fileContent?: never })
   | (FileUploadPayloadBase & { filePath?: never; fileContent: string });
+
+export type BotAgentWorkspaceMetadata = {
+  key: string;
+  label?: string;
+  description?: string;
+};
+
+export type BotAgentProfileMetadata = {
+  key: string;
+  provider: 'codex' | 'opencode' | 'copilot';
+  name?: string;
+  model?: string;
+  modelProvider?: string;
+  reasoningEffort?: ModelReasoningEffort;
+  label?: string;
+  description?: string;
+};
+
+export type BotAgentPermissionRequestPayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  toolName?: string;
+  action?: string;
+  details?: string[];
+  expiresAt: string;
+  allowAlways: boolean;
+};
+
+export type BotAgentPermissionUpdatePayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  status: 'approved_once' | 'approved_always' | 'rejected' | 'expired' | 'failed';
+  actorUserId?: string;
+  message?: string;
+};
+
+export type BotAgentQuestionOption = {
+  label: string;
+  description?: string;
+};
+
+export type BotAgentQuestion = {
+  header?: string;
+  question: string;
+  options: BotAgentQuestionOption[];
+  multiple: boolean;
+  custom: boolean;
+};
+
+export type BotAgentQuestionRequestPayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  workspaceKey: string;
+  cwd?: string;
+  questions: BotAgentQuestion[];
+  expiresAt: string;
+};
+
+export type BotAgentQuestionUpdatePayload = {
+  channelId: string;
+  threadId: string;
+  sessionId: string;
+  interactionId: string;
+  status: 'answered' | 'rejected' | 'expired' | 'failed';
+  actorUserId?: string;
+  message?: string;
+};
 
 export type BotEventPayloadMap = {
   'message.post': {
@@ -44,6 +120,18 @@ export type BotEventPayloadMap = {
     interactionApplicationId: string;
     text: string;
   };
+  'agent.metadata.update': {
+    enabled: boolean;
+    defaultWorkspace?: string;
+    defaultAgentProfile?: string;
+    workspaces: BotAgentWorkspaceMetadata[];
+    profiles: BotAgentProfileMetadata[];
+    receivedAt: string;
+  };
+  'agent.permission.requested': BotAgentPermissionRequestPayload;
+  'agent.permission.updated': BotAgentPermissionUpdatePayload;
+  'agent.question.requested': BotAgentQuestionRequestPayload;
+  'agent.question.updated': BotAgentQuestionUpdatePayload;
 };
 
 export type CoreBotEventType = keyof BotEventPayloadMap;

@@ -12,6 +12,9 @@ export type DiscordCompletionAction =
   | 'clearJobCancel';
 
 export type DiscordApprovalAction = 'approvalApprove' | 'approvalDeny' | 'approvalCancel';
+export type DiscordAgentPermissionDecision = 'once' | 'always' | 'reject';
+export type DiscordAgentQuestionAction = 'custom' | 'submit' | 'reject';
+export type DiscordAgentFollowUpAction = 'queue' | 'steer';
 
 type DiscordActionRow = {
   type: 1;
@@ -23,8 +26,27 @@ type DiscordActionRow = {
   }>;
 };
 
+type DiscordSelectActionRow = {
+  type: 1;
+  components: Array<{
+    type: 3;
+    custom_id: string;
+    placeholder: string;
+    min_values: number;
+    max_values: number;
+    options: Array<{
+      label: string;
+      value: string;
+      description?: string;
+    }>;
+  }>;
+};
+
+type DiscordQuestionComponentRow = DiscordActionRow | DiscordSelectActionRow;
+
 const completionPrefix = 'sniptail:completion';
 const approvalPrefix = 'sniptail:approval';
+const agentPrefix = 'sniptail:agent';
 
 const actionTokens = {
   askFromJob: 'ask',
@@ -106,6 +128,304 @@ export function parseDiscordApprovalCustomId(
   const action = approvalTokenToAction[actionToken];
   if (!action) return undefined;
   return { action, approvalId };
+}
+
+export function buildDiscordAgentStopCustomId(sessionId: string) {
+  return `${agentPrefix}:stop:${sessionId}`;
+}
+
+export function parseDiscordAgentStopCustomId(customId: string): { sessionId: string } | undefined {
+  if (!customId.startsWith(`${agentPrefix}:stop:`)) return undefined;
+  const sessionId = customId.slice(`${agentPrefix}:stop:`.length).trim();
+  if (!sessionId) return undefined;
+  return { sessionId };
+}
+
+export function buildDiscordAgentStopComponents(sessionId: string): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 4,
+          label: 'Stop',
+          custom_id: buildDiscordAgentStopCustomId(sessionId),
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDiscordAgentFollowUpCustomId(
+  action: DiscordAgentFollowUpAction,
+  sessionId: string,
+  messageId: string,
+) {
+  return `${agentPrefix}:follow:${action}:${sessionId}:${messageId}`;
+}
+
+export function parseDiscordAgentFollowUpCustomId(customId: string):
+  | {
+      action: DiscordAgentFollowUpAction;
+      sessionId: string;
+      messageId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:follow:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const action = parts[3] as DiscordAgentFollowUpAction;
+  if (action !== 'queue' && action !== 'steer') return undefined;
+  const sessionId = parts[4]?.trim();
+  const messageId = parts.slice(5).join(':').trim();
+  if (!sessionId || !messageId) return undefined;
+  return { action, sessionId, messageId };
+}
+
+export function buildDiscordAgentFollowUpBusyComponents(
+  sessionId: string,
+  messageId: string,
+): DiscordActionRow[] {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 1,
+          label: 'Queue',
+          custom_id: buildDiscordAgentFollowUpCustomId('queue', sessionId, messageId),
+        },
+        {
+          type: 2,
+          style: 4,
+          label: 'Steer',
+          custom_id: buildDiscordAgentFollowUpCustomId('steer', sessionId, messageId),
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDiscordAgentPermissionCustomId(
+  decision: DiscordAgentPermissionDecision,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:perm:${decision}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentPermissionCustomId(customId: string):
+  | {
+      decision: DiscordAgentPermissionDecision;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:perm:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const decision = parts[3] as DiscordAgentPermissionDecision;
+  if (decision !== 'once' && decision !== 'always' && decision !== 'reject') return undefined;
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { decision, sessionId, interactionId };
+}
+
+export function buildDiscordAgentPermissionComponents(
+  sessionId: string,
+  interactionId: string,
+  options?: { allowAlways?: boolean },
+): DiscordActionRow[] {
+  const components: DiscordActionRow['components'] = [
+    {
+      type: 2,
+      style: 1,
+      label: 'Approve once',
+      custom_id: buildDiscordAgentPermissionCustomId('once', sessionId, interactionId),
+    },
+  ];
+  if (options?.allowAlways ?? false) {
+    components.push({
+      type: 2,
+      style: 2,
+      label: 'Always allow',
+      custom_id: buildDiscordAgentPermissionCustomId('always', sessionId, interactionId),
+    });
+  }
+  components.push(
+    {
+      type: 2,
+      style: 4,
+      label: 'Reject',
+      custom_id: buildDiscordAgentPermissionCustomId('reject', sessionId, interactionId),
+    },
+    {
+      type: 2,
+      style: 4,
+      label: 'Stop session',
+      custom_id: buildDiscordAgentStopCustomId(sessionId),
+    },
+  );
+  return [{ type: 1, components }];
+}
+
+export function buildDiscordAgentQuestionSelectCustomId(
+  questionIndex: number,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:qsel:${questionIndex}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionSelectCustomId(customId: string):
+  | {
+      questionIndex: number;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qsel:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const questionIndex = Number.parseInt(parts[3] ?? '', 10);
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!Number.isInteger(questionIndex) || questionIndex < 0 || !sessionId || !interactionId) {
+    return undefined;
+  }
+  return { questionIndex, sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionActionCustomId(
+  action: DiscordAgentQuestionAction,
+  sessionId: string,
+  interactionId: string,
+) {
+  return `${agentPrefix}:qact:${action}:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionActionCustomId(customId: string):
+  | {
+      action: DiscordAgentQuestionAction;
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qact:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 6) return undefined;
+  const action = parts[3] as DiscordAgentQuestionAction;
+  if (action !== 'custom' && action !== 'submit' && action !== 'reject') return undefined;
+  const sessionId = parts[4]?.trim();
+  const interactionId = parts.slice(5).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { action, sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionModalCustomId(sessionId: string, interactionId: string) {
+  return `${agentPrefix}:qmodal:${sessionId}:${interactionId}`;
+}
+
+export function parseDiscordAgentQuestionModalCustomId(customId: string):
+  | {
+      sessionId: string;
+      interactionId: string;
+    }
+  | undefined {
+  if (!customId.startsWith(`${agentPrefix}:qmodal:`)) return undefined;
+  const parts = customId.split(':');
+  if (parts.length < 5) return undefined;
+  const sessionId = parts[3]?.trim();
+  const interactionId = parts.slice(4).join(':').trim();
+  if (!sessionId || !interactionId) return undefined;
+  return { sessionId, interactionId };
+}
+
+export function buildDiscordAgentQuestionTextInputCustomId(questionIndex: number) {
+  return `qtext:${questionIndex}`;
+}
+
+export function parseDiscordAgentQuestionTextInputCustomId(customId: string): number | undefined {
+  if (!customId.startsWith('qtext:')) return undefined;
+  const questionIndex = Number.parseInt(customId.slice('qtext:'.length), 10);
+  if (!Number.isInteger(questionIndex) || questionIndex < 0) return undefined;
+  return questionIndex;
+}
+
+export function buildDiscordAgentQuestionComponents(
+  sessionId: string,
+  interactionId: string,
+  questions: Array<{
+    header?: string;
+    options: Array<{ label: string; description?: string }>;
+    multiple: boolean;
+    custom: boolean;
+  }>,
+): DiscordQuestionComponentRow[] {
+  const rows: DiscordQuestionComponentRow[] = [];
+  const selectableQuestions = questions.slice(0, 4);
+  selectableQuestions.forEach((question, questionIndex) => {
+    if (!question.options.length) return;
+    const options = question.options.slice(0, 25).map((option, optionIndex) => ({
+      label: option.label.slice(0, 100),
+      value: String(optionIndex),
+      ...(option.description ? { description: option.description.slice(0, 100) } : {}),
+    }));
+    rows.push({
+      type: 1,
+      components: [
+        {
+          type: 3,
+          custom_id: buildDiscordAgentQuestionSelectCustomId(
+            questionIndex,
+            sessionId,
+            interactionId,
+          ),
+          placeholder: (question.header?.trim() || `Question ${questionIndex + 1}`).slice(0, 100),
+          min_values: question.multiple ? 0 : 1,
+          max_values: question.multiple ? Math.max(1, options.length) : 1,
+          options,
+        },
+      ],
+    });
+  });
+
+  const controls: DiscordActionRow['components'] = [];
+  if (questions.some((question) => question.custom)) {
+    controls.push({
+      type: 2,
+      style: 1,
+      label: 'Answer with text',
+      custom_id: buildDiscordAgentQuestionActionCustomId('custom', sessionId, interactionId),
+    });
+  }
+  if (questions.length > 1) {
+    controls.push({
+      type: 2,
+      style: 1,
+      label: 'Submit answers',
+      custom_id: buildDiscordAgentQuestionActionCustomId('submit', sessionId, interactionId),
+    });
+  }
+  controls.push(
+    {
+      type: 2,
+      style: 4,
+      label: 'Reject',
+      custom_id: buildDiscordAgentQuestionActionCustomId('reject', sessionId, interactionId),
+    },
+    {
+      type: 2,
+      style: 4,
+      label: 'Stop session',
+      custom_id: buildDiscordAgentStopCustomId(sessionId),
+    },
+  );
+  rows.push({ type: 1, components: controls });
+  return rows;
 }
 
 export function buildDiscordCompletionComponents(

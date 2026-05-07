@@ -28,6 +28,7 @@
     "@opencode-ai/sdk": "^1.14.22",
     "better-sqlite3": "^12.6.2",
     "bullmq": "^5.51.0",
+    "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
     "handlebars": "^4.7.9",
     "pg": "^8.16.3",

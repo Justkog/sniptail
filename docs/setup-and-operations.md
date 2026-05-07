@@ -96,6 +96,7 @@ For distributed mode, keep Redis queue transport:
 Optional: if you want the job registry to use a different Redis than the queue, set `JOB_REGISTRY_REDIS_URL` (or set `[core].job_registry_redis_url` in TOML).
 
 If you want to keep the TOML files somewhere else (for example so upgrades don't overwrite them), pass `--config` or set:
+
 - `SNIPTAIL_BOT_CONFIG_PATH`
 - `SNIPTAIL_WORKER_CONFIG_PATH`
 
@@ -116,6 +117,7 @@ Prebuilt release artifacts prune `@openai/codex-sdk/vendor`, bundled `@github/co
 #### 5) Slack / Discord / Telegram setup
 
 See `docs/slack-bot-setup.md`, `docs/discord-bot-setup.md`, and `docs/telegram-bot-setup.md`.
+For worker-side `/sniptail-agent` configuration, see [agent-command-config.md](/home/jc/Perso/snatch/docs/agent-command-config.md).
 
 Enable channels in `sniptail.bot.toml` using the channel section:
 
@@ -181,6 +183,7 @@ Example allowlist JSON:
 ```
 
 Notes:
+
 - Use `sshUrl` or `localPath` for every entry.
 - `localPath` points at a local repo source on the same machine.
 - `projectId` is required for GitLab merge requests.
@@ -319,8 +322,8 @@ SNIPTAIL_DEBUG=*
 
 Currently supported namespaces:
 
-| Namespace | Description |
-|-----------|-------------|
+| Namespace | Description                                                                  |
+| --------- | ---------------------------------------------------------------------------- |
 | `slack`   | Detailed Slack API call logs (request payloads, responses, runtime identity) |
 
 Add `SNIPTAIL_DEBUG=` (empty or unset) to suppress all debug output (default).

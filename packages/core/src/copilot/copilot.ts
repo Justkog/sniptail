@@ -14,6 +14,7 @@ import type { AgentRunOptions, AgentRunResult } from '../agents/types.js';
 import continuationPromptSource from './prompts/continue.md?raw';
 
 const continuationPrompt = continuationPromptSource.trimEnd();
+const DEFAULT_COPILOT_IDLE_TIMEOUT_MS = 300_000;
 
 function isIdleTimeout(err: unknown): boolean {
   return String((err as { message?: unknown })?.message ?? err).includes('session.idle');
@@ -27,6 +28,24 @@ function buildCopilotAttachments(options: AgentRunOptions) {
   }));
 
   return attachments.length ? attachments : undefined;
+}
+
+async function publishSessionRuntime(
+  session: Awaited<ReturnType<CopilotClient['createSession']>>,
+  options: AgentRunOptions,
+): Promise<void> {
+  await options.copilot?.onSessionReady?.({
+    sessionId: session.sessionId,
+    abort: async () => {
+      await session.abort();
+    },
+    sendImmediate: async (message: string) => {
+      await session.send({ prompt: message, mode: 'immediate' });
+    },
+    enqueue: async (message: string) => {
+      await session.send({ prompt: message, mode: 'enqueue' });
+    },
+  });
 }
 
 export async function runCopilot(
@@ -85,8 +104,13 @@ export async function runCopilot(
     );
 
     const sessionConfig: SessionConfig = {
-      onPermissionRequest: approveAll,
+      onPermissionRequest: options.copilot?.onPermissionRequest ?? approveAll,
+      ...(options.copilot?.onUserInputRequest
+        ? { onUserInputRequest: options.copilot.onUserInputRequest }
+        : {}),
       ...(options.model && { model: options.model }),
+      ...(options.copilot?.agent ? { agent: options.copilot.agent } : {}),
+      ...(options.copilot?.streaming ? { streaming: true } : {}),
       ...(options.modelReasoningEffort &&
         options.modelReasoningEffort !== 'minimal' && {
           reasoningEffort: options.modelReasoningEffort,
@@ -97,6 +121,7 @@ export async function runCopilot(
       : await client.createSession(sessionConfig);
 
     sessionId = session.sessionId;
+    await publishSessionRuntime(session, options);
 
     const registerSessionHandlers = (activeSession: typeof session) => {
       activeSession.on((event: SessionEvent) => {
@@ -119,6 +144,7 @@ export async function runCopilot(
     const botName = options.botName?.trim() || 'Sniptail';
     const prompt = options.promptOverride ?? buildPromptForJob(job, botName);
     const maxIdleRetries = options.copilotIdleRetries ?? 2;
+    const idleTimeoutMs = options.copilotIdleTimeoutMs ?? DEFAULT_COPILOT_IDLE_TIMEOUT_MS;
     let attempt = 0;
     let response: SessionEvent | undefined;
 
@@ -129,7 +155,7 @@ export async function runCopilot(
             prompt: attempt === 0 ? prompt : continuationPrompt,
             ...(attachments ? { attachments } : {}),
           },
-          60000 * 5,
+          idleTimeoutMs,
         );
         if (fatalError) {
           throw fatalError;
@@ -149,6 +175,7 @@ export async function runCopilot(
           }
           session = await client.resumeSession(sessionId, sessionConfig);
           sessionId = session.sessionId;
+          await publishSessionRuntime(session, options);
           registerSessionHandlers(session);
           continue;
         }
