@@ -51,9 +51,8 @@ export type AcpLaunchConfig = {
 
 export type WorkerAgentCommandNativeProfileConfig = {
   provider: 'codex' | 'opencode' | 'copilot';
-  name?: string;
+  profile?: string;
   agent?: never;
-  profile?: never;
   command?: never;
   env?: never;
   model?: string;
@@ -65,7 +64,6 @@ export type WorkerAgentCommandNativeProfileConfig = {
 
 export type WorkerAgentCommandAcpProfileConfig = AcpLaunchConfig & {
   provider: 'acp';
-  name?: never;
   label?: string;
   description?: string;
 };

@@ -21,7 +21,7 @@ description = "Main checkout"
 
 [agent.profiles.build]
 provider = "opencode"
-name = "build"
+profile = "build"
 label = "Build"
 description = "General purpose build agent"
 ```
@@ -62,7 +62,7 @@ Each profile selects the underlying coding-agent provider and its provider-speci
 Shared fields:
 
 - `provider`: required, one of `codex`, `copilot`, or `opencode`
-- `name`: optional provider-native agent/profile name
+- `profile`: optional provider-native agent/profile name
 - `model`: optional explicit model override
 - `reasoning_effort`: optional explicit reasoning override; requires `model`
 - `label`: optional display label for UI/autocomplete
@@ -76,67 +76,67 @@ Restrictions:
 
 - `model_provider` is not supported for `codex` profiles
 - `model_provider` is not supported for `copilot` profiles
-- every profile must define at least one of `name` or `model`
+- every profile must define at least one of `profile` or `model`
 
 ## Provider behavior
 
 ### Codex profiles
 
-`name` maps to Codex SDK constructor `config.profile`.
+`profile` maps to Codex SDK constructor `config.profile`.
 
 Example:
 
 ```toml
 [agent.profiles.codex-readonly]
 provider = "codex"
-name = "readonly"
+profile = "readonly"
 label = "Codex Readonly"
 ```
 
 Precedence:
 
 - explicit `model` / `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the Codex CLI profile supplies missing defaults
+- otherwise, when `profile` is set, the Codex CLI profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[codex]` default model settings
 
-When a Codex profile `name` is set, Sniptail does not inject its normal default `sandboxMode = "workspace-write"` or `approvalPolicy = "never"`. That allows the selected Codex CLI profile to own `sandbox_mode`, `approval_policy`, and similar config unless the worker passes explicit overrides.
+When a Codex profile `profile` is set, Sniptail does not inject its normal default `sandboxMode = "workspace-write"` or `approvalPolicy = "never"`. That allows the selected Codex CLI profile to own `sandbox_mode`, `approval_policy`, and similar config unless the worker passes explicit overrides.
 
 ### Copilot profiles
 
-`name` maps to the Copilot session `agent`.
+`profile` maps to the Copilot session `agent`.
 
 Example:
 
 ```toml
 [agent.profiles.copilot-review]
 provider = "copilot"
-name = "reviewer"
+profile = "reviewer"
 label = "Copilot Reviewer"
 ```
 
 Precedence:
 
 - explicit `model` / `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the named Copilot agent supplies missing defaults
+- otherwise, when `profile` is set, the selected Copilot profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[copilot]` default model settings
 
 ### OpenCode profiles
 
-`name` maps to the OpenCode prompt `agent`.
+`profile` maps to the OpenCode prompt `agent`.
 
 Example:
 
 ```toml
 [agent.profiles.opencode-build]
 provider = "opencode"
-name = "build"
+profile = "build"
 label = "OpenCode Build"
 ```
 
 Precedence:
 
 - explicit `model`, `model_provider`, and `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the named OpenCode agent supplies missing defaults
+- otherwise, when `profile` is set, the selected OpenCode profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[opencode]` default model settings
 
 ## Runtime behavior summary

@@ -66,7 +66,7 @@ function buildCodexRunOptions(
       ...(turn.additionalDirectories ?? []),
     ]),
   );
-  const usesConfigProfile = Boolean(turn.profile.name);
+  const usesConfigProfile = Boolean(turn.profile.profile);
   const model =
     turn.profile.model ?? (usesConfigProfile ? undefined : config.codex.defaultModel?.model);
   const modelReasoningEffort =
@@ -76,7 +76,7 @@ function buildCodexRunOptions(
   return {
     botName: config.botName,
     promptOverride: turn.prompt,
-    ...(turn.profile.name ? { configProfile: turn.profile.name } : {}),
+    ...(turn.profile.profile ? { configProfile: turn.profile.profile } : {}),
     ...(turn.codingAgentSessionId ? { resumeThreadId: turn.codingAgentSessionId } : {}),
     ...(model ? { model } : {}),
     ...(modelReasoningEffort ? { modelReasoningEffort } : {}),

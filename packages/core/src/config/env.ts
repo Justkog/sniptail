@@ -618,11 +618,14 @@ function parseAgentProfiles(
       };
       continue;
     }
-    const rawName = getTomlString(profileToml?.name, `agent.profiles.${rawProfileKey}.name`);
-    const name = rawName?.trim();
-    if (rawName !== undefined && !name) {
+    const rawProfile = getTomlString(
+      profileToml?.profile,
+      `agent.profiles.${rawProfileKey}.profile`,
+    );
+    const profile = rawProfile?.trim();
+    if (rawProfile !== undefined && !profile) {
       throw new Error(
-        `Invalid agent.profiles.${rawProfileKey}.name in TOML. Expected a non-empty string.`,
+        `Invalid agent.profiles.${rawProfileKey}.profile in TOML. Expected a non-empty string.`,
       );
     }
     const rawModel = getTomlString(profileToml?.model, `agent.profiles.${rawProfileKey}.model`);
@@ -647,9 +650,9 @@ function parseAgentProfiles(
       `agent.profiles.${rawProfileKey}.reasoning_effort`,
     );
 
-    if (!name && !model) {
+    if (!profile && !model) {
       throw new Error(
-        `Invalid agent.profiles.${rawProfileKey} in TOML. Expected at least one of: name or model.`,
+        `Invalid agent.profiles.${rawProfileKey} in TOML. Expected at least one of: profile or model.`,
       );
     }
     if (reasoningEffort && !model) {
@@ -683,7 +686,7 @@ function parseAgentProfiles(
 
     profiles[profileKey] = {
       provider,
-      ...(name ? { name } : {}),
+      ...(profile ? { profile } : {}),
       ...(model ? { model } : {}),
       ...(modelProvider ? { modelProvider } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),

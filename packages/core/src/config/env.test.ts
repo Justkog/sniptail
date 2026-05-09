@@ -821,7 +821,7 @@ describe('config loaders', () => {
       '',
       '[agent.profiles.build]',
       'provider = "opencode"',
-      'name = "build"',
+      'profile = "build"',
       'label = "Build"',
       'description = "OpenCode build agent"',
     ]);
@@ -844,7 +844,7 @@ describe('config loaders', () => {
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
           label: 'Build',
           description: 'OpenCode build agent',
         },
@@ -876,11 +876,11 @@ describe('config loaders', () => {
       '',
       '[agent.profiles.build]',
       'provider = "opencode"',
-      'name = "build"',
+      'profile = "build"',
       '',
       '[agent.profiles.plan]',
       'provider = "opencode"',
-      'name = "plan"',
+      'profile = "plan"',
     ]);
 
     const config = loadWorkerConfig();
@@ -917,7 +917,7 @@ describe('config loaders', () => {
       '',
       '[agent.profiles.build]',
       'provider = "opencode"',
-      'name = "build"',
+      'profile = "build"',
     ]);
 
     expect(() => loadWorkerConfig()).toThrow('Invalid agent.default_workspace');
@@ -936,7 +936,7 @@ describe('config loaders', () => {
       '',
       '[agent.profiles.build]',
       'provider = "opencode"',
-      'name = "build"',
+      'profile = "build"',
     ]);
 
     expect(() => loadWorkerConfig()).toThrow('Expected an absolute path');
@@ -949,27 +949,27 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Invalid agent.workspaces key');
 
     resetConfigCaches();
-    writeWorkerConfig(['[agent.profiles.""]', 'provider = "opencode"', 'name = "build"']);
+    writeWorkerConfig(['[agent.profiles.""]', 'provider = "opencode"', 'profile = "build"']);
 
     expect(() => loadWorkerConfig()).toThrow('Invalid agent.profiles key');
   });
 
   it('rejects unsupported agent command profile provider', () => {
     applyRequiredEnv();
-    writeWorkerConfig(['[agent.profiles.build]', 'provider = "unknown"', 'name = "build"']);
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "unknown"', 'profile = "build"']);
 
     expect(() => loadWorkerConfig()).toThrow('Expected codex, opencode, copilot, or acp');
   });
 
-  it('accepts codex as an agent command profile provider with name', () => {
+  it('accepts codex as an agent command profile provider with profile', () => {
     applyRequiredEnv();
-    writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'name = "build"']);
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'profile = "build"']);
 
     const config = loadWorkerConfig();
 
     expect(config.agent.profiles.build).toEqual({
       provider: 'codex',
-      name: 'build',
+      profile: 'build',
     });
   });
 
@@ -1003,15 +1003,15 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('model_provider is not supported for codex profiles');
   });
 
-  it('accepts copilot as an agent command profile provider with name', () => {
+  it('accepts copilot as an agent command profile provider with profile', () => {
     applyRequiredEnv();
-    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"', 'name = "build"']);
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"', 'profile = "build"']);
 
     const config = loadWorkerConfig();
 
     expect(config.agent.profiles.build).toEqual({
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
     });
   });
 
@@ -1053,11 +1053,11 @@ describe('config loaders', () => {
     });
   });
 
-  it('rejects agent profiles that define neither name nor model', () => {
+  it('rejects agent profiles that define neither profile nor model', () => {
     applyRequiredEnv();
     writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"']);
 
-    expect(() => loadWorkerConfig()).toThrow('Expected at least one of: name or model');
+    expect(() => loadWorkerConfig()).toThrow('Expected at least one of: profile or model');
   });
 
   it('rejects reasoning_effort without model in agent profiles', () => {
@@ -1065,7 +1065,7 @@ describe('config loaders', () => {
     writeWorkerConfig([
       '[agent.profiles.build]',
       'provider = "copilot"',
-      'name = "build"',
+      'profile = "build"',
       'reasoning_effort = "high"',
     ]);
 

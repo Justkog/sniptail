@@ -29,8 +29,8 @@ describe('agentCommandMetadataCache', () => {
         { key: 'tools', label: 'Tools' },
       ],
       profiles: [
-        { key: 'build', provider: 'opencode', name: 'build', label: 'Build' },
-        { key: 'plan', provider: 'opencode', name: 'plan', label: 'Plan' },
+        { key: 'build', provider: 'opencode', profile: 'build', label: 'Build' },
+        { key: 'plan', provider: 'opencode', profile: 'plan', label: 'Plan' },
       ],
       receivedAt: new Date().toISOString(),
     });
@@ -49,8 +49,8 @@ describe('agentCommandMetadataCache', () => {
         { key: 'snatch', label: 'Snatch' },
       ],
       profiles: [
-        { key: 'plan', provider: 'opencode', name: 'plan', label: 'Plan' },
-        { key: 'build', provider: 'opencode', name: 'build', label: 'Build' },
+        { key: 'plan', provider: 'opencode', profile: 'plan', label: 'Plan' },
+        { key: 'build', provider: 'opencode', profile: 'build', label: 'Build' },
       ],
       receivedAt: new Date().toISOString(),
     });
@@ -81,7 +81,7 @@ describe('agentCommandMetadataCache', () => {
       defaultWorkspace: 'snatch',
       defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'opencode', name: 'build' }],
+      profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
       receivedAt: new Date().toISOString(),
     });
 

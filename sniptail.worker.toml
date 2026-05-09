@@ -124,16 +124,16 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # optional provider-native agent/profile names and explicit model overrides.
 # Precedence:
 # - explicit profile fields here (model/model_provider/reasoning_effort) win
-# - otherwise, if name is set, the provider-native agent/profile supplies missing defaults
+# - otherwise, if profile is set, the provider-native agent/profile supplies missing defaults
 # - otherwise, Sniptail falls back to global [codex], [copilot], or [opencode] default model settings
 # Notes:
-# - for codex, name maps to Codex config.profile
-# - for copilot, name maps to the Copilot session agent
-# - for opencode, name maps to the OpenCode prompt agent
+# - for codex, profile maps to Codex config.profile
+# - for copilot, profile maps to the Copilot session agent
+# - for opencode, profile maps to the OpenCode prompt agent
 #
 # [agent.profiles.build]
 # provider = "opencode"
-# name = "build" # optional provider-native agent/profile
+# profile = "build" # optional provider-native agent/profile
 # model = "claude-sonnet" # optional model id
 # model_provider = "anthropic" # required with model for opencode profiles
 # reasoning_effort = "high" # optional; requires model

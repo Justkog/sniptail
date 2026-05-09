@@ -74,7 +74,7 @@ function buildConfig(
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
           label: 'Build',
         },
       },
@@ -247,7 +247,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
 
@@ -272,7 +272,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     setActiveCopilotRuntime('session-1', {
@@ -303,7 +303,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     setActiveCopilotRuntime('session-1', {

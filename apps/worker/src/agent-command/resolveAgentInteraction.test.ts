@@ -60,7 +60,7 @@ function buildConfig(): WorkerConfig {
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
         },
       },
     },
@@ -198,7 +198,7 @@ describe('resolve OpenCode agent interactions', () => {
     config.agent.profiles = {
       build: {
         provider: 'copilot',
-        name: 'build',
+        profile: 'build',
       },
     };
     hoisted.loadAgentSession.mockResolvedValueOnce({
