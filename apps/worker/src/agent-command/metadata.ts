@@ -26,6 +26,8 @@ function buildAgentMetadataPayload(): BotEventPayloadMap['agent.metadata.update'
       key,
       provider: profile.provider,
       ...(profile.name ? { name: profile.name } : {}),
+      ...(profile.agent ? { agent: profile.agent } : {}),
+      ...(profile.profile ? { profile: profile.profile } : {}),
       ...(profile.model ? { model: profile.model } : {}),
       ...(profile.modelProvider ? { modelProvider: profile.modelProvider } : {}),
       ...(profile.reasoningEffort ? { reasoningEffort: profile.reasoningEffort } : {}),
