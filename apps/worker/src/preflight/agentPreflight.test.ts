@@ -83,4 +83,12 @@ describe('agent preflight dispatcher', () => {
     expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
   });
+
+  it('accepts acp without a dedicated preflight yet', async () => {
+    const config = buildConfig('acp');
+    await assertLocalAgentPreflight(config, 'acp');
+    expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
+  });
 });

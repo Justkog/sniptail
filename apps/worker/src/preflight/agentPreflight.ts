@@ -9,6 +9,8 @@ export async function assertLocalAgentPreflight(
   agentId: AgentId,
 ): Promise<void> {
   switch (agentId) {
+    case 'acp':
+      return;
     case 'codex':
       await assertLocalCodexPreflight(config);
       return;

@@ -1198,8 +1198,8 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('agent.profiles.build.env.TOKEN');
   });
 
-  it('parses managed-job acp config without allowing acp as primary_agent yet', () => {
-    applyRequiredEnv();
+  it('parses managed-job acp config and allows acp as primary_agent', () => {
+    applyRequiredEnv({ PRIMARY_AGENT: 'acp' });
     writeWorkerConfig([
       '[acp]',
       'agent = "copilot"',
@@ -1225,12 +1225,7 @@ describe('config loaders', () => {
       modelProvider: 'openai',
       reasoningEffort: 'medium',
     });
-
-    resetConfigCaches();
-    applyRequiredEnv({ PRIMARY_AGENT: 'acp' });
-    writeWorkerConfig([]);
-
-    expect(() => loadWorkerConfig()).toThrow('Invalid PRIMARY_AGENT: acp');
+    expect(config.primaryAgent).toBe('acp');
   });
 
   it('rejects invalid agent command timeout and debounce values', () => {
