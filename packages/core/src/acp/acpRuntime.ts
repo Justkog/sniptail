@@ -292,7 +292,10 @@ async function applySessionOverrides(
 }
 
 function buildClient(
-  options: Pick<AcpRuntimeOptions, 'onSessionUpdate' | 'onRequestPermission' | 'onCreateElicitation'>,
+  options: Pick<
+    AcpRuntimeOptions,
+    'onSessionUpdate' | 'onRequestPermission' | 'onCreateElicitation'
+  >,
 ): Client {
   return {
     requestPermission: async (request) =>
@@ -300,9 +303,9 @@ function buildClient(
         outcome: { outcome: 'cancelled' },
       },
     unstable_createElicitation: async (request) =>
-      (await options.onCreateElicitation?.(
-        request as unknown as AcpCreateElicitationRequest,
-      )) ?? { action: 'cancel' },
+      (await options.onCreateElicitation?.(request as unknown as AcpCreateElicitationRequest)) ?? {
+        action: 'cancel',
+      },
     sessionUpdate: async (notification) => {
       await options.onSessionUpdate?.(notification as unknown as SessionNotification);
     },
@@ -343,9 +346,13 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
   const connection = new ClientSideConnection(
     () =>
       buildClient({
-        onSessionUpdate: options.onSessionUpdate,
-        onRequestPermission: options.onRequestPermission,
-        onCreateElicitation: options.onCreateElicitation,
+        ...(options.onSessionUpdate ? { onSessionUpdate: options.onSessionUpdate } : {}),
+        ...(options.onRequestPermission
+          ? { onRequestPermission: options.onRequestPermission }
+          : {}),
+        ...(options.onCreateElicitation
+          ? { onCreateElicitation: options.onCreateElicitation }
+          : {}),
       }),
     stream,
   );

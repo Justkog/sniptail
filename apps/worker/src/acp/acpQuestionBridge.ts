@@ -290,8 +290,8 @@ function buildQuestionSchema(request: AcpCreateElicitationRequest): QuestionSche
         ...base,
         kind: 'array',
         options,
-        minItems: property.minItems ?? undefined,
-        maxItems: property.maxItems ?? undefined,
+        ...(typeof property.minItems === 'number' ? { minItems: property.minItems } : {}),
+        ...(typeof property.maxItems === 'number' ? { maxItems: property.maxItems } : {}),
         question: {
           ...base.question,
           options: options.map((option) => ({ label: option.label })),
@@ -575,7 +575,7 @@ export function buildAcpQuestionHandler(input: {
   timeoutMs: number;
   botEvents: BotEventSink;
   flushOutput?: () => Promise<void>;
-}) {
+}): (request: AcpCreateElicitationRequest) => Promise<AcpCreateElicitationResponse> {
   return async (request: AcpCreateElicitationRequest) =>
     await requestAcpQuestion({
       ...input,

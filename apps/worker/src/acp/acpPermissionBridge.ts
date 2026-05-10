@@ -274,19 +274,20 @@ export async function requestAcpPermission(
   return await new Promise<AcpRequestPermissionResponse>((resolveResult) => {
     const interactionId = randomUUID();
     const expiresAt = new Date(Date.now() + input.timeoutMs).toISOString();
+    const toolName = toolNameFromRequest(input.request);
+    const action = buildActionLabel(input.request);
+    const allowAlways = findOptionByKind(input.request.options, 'allow_always') !== undefined;
     const requestEvent = buildPermissionRequestEvent({
       response: input.response,
       sessionId: input.sessionId,
       interactionId,
       workspaceKey: input.workspaceKey,
       ...(input.cwd ? { cwd: input.cwd } : {}),
-      ...(toolNameFromRequest(input.request)
-        ? { toolName: toolNameFromRequest(input.request) }
-        : {}),
-      ...(buildActionLabel(input.request) ? { action: buildActionLabel(input.request) } : {}),
+      ...(toolName ? { toolName } : {}),
+      ...(action ? { action } : {}),
       details: buildPermissionDetails(input.request),
       expiresAt,
-      allowAlways: findOptionByKind(input.request.options, 'allow_always') !== undefined,
+      allowAlways,
     });
     const pending: PendingAcpPermission = {
       sessionId: input.sessionId,
@@ -297,7 +298,7 @@ export async function requestAcpPermission(
       request: input.request,
       expiresAt,
       displayState: 'queued',
-      allowAlways: findOptionByKind(input.request.options, 'allow_always') !== undefined,
+      allowAlways,
       requestEvent,
       timeout: setTimeout(() => {
         void timeoutPermission({
@@ -439,7 +440,7 @@ export function buildAcpPermissionHandler(input: {
   cwd?: string;
   timeoutMs: number;
   botEvents: BotEventSink;
-}) {
+}): (request: AcpRequestPermissionRequest) => Promise<AcpRequestPermissionResponse> {
   return async (request: AcpRequestPermissionRequest) =>
     await requestAcpPermission({
       ...input,

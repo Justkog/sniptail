@@ -798,7 +798,7 @@ describe('config loaders', () => {
     expect(config.agent).toEqual({
       enabled: false,
       interactionTimeoutMs: 1_800_000,
-      outputDebounceMs: 15_000,
+      outputDebounceMs: 3_000,
       workspaces: {},
       profiles: {},
     });
