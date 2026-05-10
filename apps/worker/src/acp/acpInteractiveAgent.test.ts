@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type { Notifier } from '../channels/notifier.js';
-import { runAcpAgentTurn } from './acpInteractiveAgent.js';
+import { runAcpAgentTurn, steerAcpAgentTurn } from './acpInteractiveAgent.js';
+import { clearAgentPromptTurns } from '../agent-command/activeAgentPromptTurns.js';
+import { clearActiveAcpRuntimes, getActiveAcpRuntime } from './acpInteractionState.js';
 
 type MockLaunchOptions = {
   cwd: string;
@@ -15,6 +17,7 @@ type MockLaunchOptions = {
     profile?: string;
     command: string[];
   };
+  cancel?: () => Promise<void>;
   onRequestPermission?: (request: unknown) => void | Promise<unknown>;
   onSessionUpdate?: (notification: {
     update: { sessionUpdate: string; content?: { type: string; text: string } };
@@ -136,6 +139,8 @@ describe('ACP interactive agent', () => {
   });
 
   afterEach(async () => {
+    clearActiveAcpRuntimes();
+    clearAgentPromptTurns();
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -143,12 +148,14 @@ describe('ACP interactive agent', () => {
     const notifier = buildNotifier();
     const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
     const loadSession = vi.fn();
+    const cancel = vi.fn().mockResolvedValue(undefined);
     const close = vi.fn().mockResolvedValue(undefined);
 
     hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
       Promise.resolve({
         createSession,
         loadSession,
+        cancel,
         prompt: vi.fn(async () => {
           await options.onSessionUpdate?.({
             update: {
@@ -209,6 +216,7 @@ describe('ACP interactive agent', () => {
       expect.objectContaining({ channelId: 'thread-1' }),
       'Hello world',
     );
+    expect(getActiveAcpRuntime('session-1')).toBeUndefined();
     expect(close).toHaveBeenCalled();
   });
 
@@ -216,12 +224,14 @@ describe('ACP interactive agent', () => {
     const notifier = buildNotifier();
     const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
     const loadSession = vi.fn();
+    const cancel = vi.fn().mockResolvedValue(undefined);
     const close = vi.fn().mockResolvedValue(undefined);
 
     hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
       Promise.resolve({
         createSession,
         loadSession,
+        cancel,
         prompt: vi.fn(async () => {
           await options.onSessionUpdate?.({
             update: {
@@ -260,6 +270,7 @@ describe('ACP interactive agent', () => {
     const notifier = buildNotifier();
     const createSession = vi.fn();
     const loadSession = vi.fn();
+    const cancel = vi.fn().mockResolvedValue(undefined);
     const close = vi.fn().mockResolvedValue(undefined);
 
     hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
@@ -274,6 +285,7 @@ describe('ACP interactive agent', () => {
           });
           return { sessionId: 'acp-session-9' };
         }),
+        cancel,
         prompt: vi.fn(async () => {
           await options.onSessionUpdate?.({
             update: {
@@ -330,11 +342,13 @@ describe('ACP interactive agent', () => {
       .mockRejectedValue(
         new Error('ACP agent does not support session/load; cannot load session acp-session-9.'),
       );
+    const cancel = vi.fn().mockResolvedValue(undefined);
     const close = vi.fn().mockResolvedValue(undefined);
 
     hoisted.launchAcpRuntime.mockResolvedValueOnce({
       createSession,
       loadSession,
+      cancel,
       prompt: vi.fn(),
       close,
     });
@@ -356,5 +370,98 @@ describe('ACP interactive agent', () => {
       'ACP agent session failed: ACP agent does not support session/load; cannot load session acp-session-9.',
     );
     expect(close).toHaveBeenCalled();
+  });
+
+  it('registers the active ACP runtime while a prompt is running and clears it afterwards', async () => {
+    const notifier = buildNotifier();
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const loadSession = vi.fn();
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    let releasePrompt: (() => void) | undefined;
+
+    hoisted.launchAcpRuntime.mockImplementationOnce(() =>
+      Promise.resolve({
+        createSession,
+        loadSession,
+        cancel,
+        prompt: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              releasePrompt = resolve;
+            }),
+        ),
+        close,
+      }),
+    );
+
+    const turn = runAcpAgentTurn({
+      turn: buildTurn(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: { publish: vi.fn() },
+      env: {},
+    });
+
+    await vi.waitFor(() =>
+      expect(getActiveAcpRuntime('session-1')).toMatchObject({
+        sessionId: 'session-1',
+        codingAgentSessionId: 'acp-session-1',
+        directory: tempRoot,
+      }),
+    );
+
+    await getActiveAcpRuntime('session-1')?.cancel();
+    expect(cancel).toHaveBeenCalledTimes(1);
+
+    releasePrompt?.();
+    await turn;
+    expect(getActiveAcpRuntime('session-1')).toBeUndefined();
+  });
+
+  it('steers an active ACP prompt by cancelling the active runtime', async () => {
+    const notifier = buildNotifier();
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    let releasePrompt: (() => void) | undefined;
+
+    hoisted.launchAcpRuntime.mockImplementationOnce(() =>
+      Promise.resolve({
+        createSession: vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' }),
+        loadSession: vi.fn(),
+        cancel,
+        prompt: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              releasePrompt = resolve;
+            }),
+        ),
+        close,
+      }),
+    );
+
+    const turn = runAcpAgentTurn({
+      turn: buildTurn(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: { publish: vi.fn() },
+      env: {},
+    });
+
+    await vi.waitFor(() => expect(getActiveAcpRuntime('session-1')).toBeDefined());
+
+    await steerAcpAgentTurn({
+      sessionId: 'session-1',
+      response: buildTurn().response,
+      message: 'steered',
+      profile: buildTurn().profile,
+      config: buildConfig(tempRoot),
+      notifier,
+      env: {},
+    });
+
+    expect(cancel).toHaveBeenCalled();
+    releasePrompt?.();
+    await turn;
   });
 });

@@ -8,6 +8,7 @@ import { extractAcpAssistantText, summarizeAcpEvent } from '@sniptail/core/acp/a
 import { launchAcpRuntime } from '@sniptail/core/acp/acpRuntime.js';
 import { logger } from '@sniptail/core/logger.js';
 import {
+  clearAgentPromptTurn,
   cancelAgentFollowUpSteer,
   isAbortingAgentPromptForSteer,
 } from '../agent-command/activeAgentPromptTurns.js';
@@ -24,6 +25,11 @@ import {
   clearAcpPermissionInteractions,
   resolveAcpPermissionInteraction,
 } from './acpPermissionBridge.js';
+import {
+  deleteActiveAcpRuntime,
+  getActiveAcpRuntime,
+  setActiveAcpRuntime,
+} from './acpInteractionState.js';
 
 type AcpNotification = Parameters<typeof summarizeAcpEvent>[0];
 type AcpSessionHandle = { sessionId: string };
@@ -39,6 +45,11 @@ function buildRef(response: RunInteractiveAgentTurnInput['turn']['response']) {
 function formatFailure(err: unknown): string {
   const message = (err as Error).message || String(err);
   return `ACP agent session failed: ${message}`;
+}
+
+function formatStopFailure(err: unknown): string {
+  const message = (err as Error).message || String(err);
+  return `Failed to stop ACP prompt: ${message}`;
 }
 
 function launchCommandLabel(command: string[]): string | undefined {
@@ -205,6 +216,13 @@ export async function runAcpAgentTurn({
       });
     }
 
+    setActiveAcpRuntime(sessionId, {
+      sessionId,
+      codingAgentSessionId: session.sessionId,
+      directory: resolved.resolvedCwd,
+      cancel: runtime.cancel.bind(runtime),
+    });
+
     isCapturingAssistantOutput = true;
     await runtime.prompt({ prompt: turn.prompt });
     isCapturingAssistantOutput = false;
@@ -274,6 +292,7 @@ export async function runAcpAgentTurn({
     await clearAcpPermissionInteractions({ sessionId, botEvents }).catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to clear ACP permission interactions');
     });
+    deleteActiveAcpRuntime(sessionId);
     await runtime?.close().catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to close ACP runtime');
     });
@@ -282,18 +301,50 @@ export async function runAcpAgentTurn({
 }
 
 export function steerAcpAgentTurn({ sessionId }: SteerInteractiveAgentTurnInput): Promise<void> {
-  cancelAgentFollowUpSteer(sessionId);
-  throw new Error('ACP prompt steering is not supported yet.');
+  const activeRuntime = getActiveAcpRuntime(sessionId);
+  if (!activeRuntime) {
+    cancelAgentFollowUpSteer(sessionId);
+    throw new Error('ACP prompt steering is not supported: active runtime is no longer reachable.');
+  }
+  return activeRuntime.cancel().catch((err) => {
+    cancelAgentFollowUpSteer(sessionId);
+    throw err;
+  });
 }
 
 export async function stopAcpAgentPrompt({
   event,
+  botEvents,
   notifier,
 }: StopInteractiveAgentPromptInput): Promise<void> {
-  await notifier.postMessage(
-    buildRef(event.payload.response),
-    'ACP prompt cannot be stopped yet: active runtime tracking is not implemented.',
-  );
+  const { sessionId, response } = event.payload;
+  const ref = buildRef(response);
+  const activeRuntime = getActiveAcpRuntime(sessionId);
+  if (!activeRuntime) {
+    await notifier.postMessage(
+      ref,
+      'ACP prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+    return;
+  }
+
+  try {
+    await activeRuntime.cancel();
+    await clearAcpPermissionInteractions({
+      sessionId,
+      botEvents,
+      message: 'ACP prompt stopped before this interaction was resolved.',
+    });
+    deleteActiveAcpRuntime(sessionId);
+    clearAgentPromptTurn(sessionId);
+    await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to mark ACP session stopped');
+    });
+    await notifier.postMessage(ref, 'ACP prompt stopped.');
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to stop ACP prompt');
+    await notifier.postMessage(ref, formatStopFailure(err));
+  }
 }
 
 export async function resolveAcpAgentInteraction({
