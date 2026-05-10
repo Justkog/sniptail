@@ -37,16 +37,13 @@ describe('ACP event mapping', () => {
     expect(extractAcpAssistantText(notification)).toBeUndefined();
   });
 
-  it('summarizes thought chunks for logs only', () => {
+  it('keeps thought chunks out of summary logs', () => {
     const notification = buildNotification({
       sessionUpdate: 'agent_thought_chunk',
       content: { type: 'text', text: 'Inspecting config' },
     });
 
-    expect(summarizeAcpEvent(notification)).toEqual({
-      text: 'ACP thought: Inspecting config',
-      isError: false,
-    });
+    expect(summarizeAcpEvent(notification)).toBeNull();
   });
 
   it('summarizes tool start events with path and raw input', () => {

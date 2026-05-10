@@ -1,0 +1,276 @@
+import { basename } from 'node:path';
+import {
+  loadAgentSession,
+  updateAgentSessionCodingAgentSessionId,
+  updateAgentSessionStatus,
+} from '@sniptail/core/agent-sessions/registry.js';
+import { extractAcpAssistantText, summarizeAcpEvent } from '@sniptail/core/acp/acpEventMapping.js';
+import { launchAcpRuntime } from '@sniptail/core/acp/acpRuntime.js';
+import { logger } from '@sniptail/core/logger.js';
+import {
+  cancelAgentFollowUpSteer,
+  isAbortingAgentPromptForSteer,
+} from '../agent-command/activeAgentPromptTurns.js';
+import { createDebouncedAgentOutputBuffer } from '../agent-command/debouncedAgentOutput.js';
+import type {
+  ResolveInteractiveAgentInteractionInput,
+  RunInteractiveAgentTurnInput,
+  SteerInteractiveAgentTurnInput,
+  StopInteractiveAgentPromptInput,
+} from '../agent-command/interactiveAgentTypes.js';
+import { resolveAgentWorkspace } from '../agent-command/workspaceResolver.js';
+import {
+  buildAcpPermissionHandler,
+  clearAcpPermissionInteractions,
+  resolveAcpPermissionInteraction,
+} from './acpPermissionBridge.js';
+
+type AcpNotification = Parameters<typeof summarizeAcpEvent>[0];
+
+function buildRef(response: RunInteractiveAgentTurnInput['turn']['response']) {
+  return {
+    provider: response.provider,
+    channelId: response.channelId,
+    ...(response.threadId ? { threadId: response.threadId } : {}),
+  };
+}
+
+function formatFailure(err: unknown): string {
+  const message = (err as Error).message || String(err);
+  return `ACP agent session failed: ${message}`;
+}
+
+function launchCommandLabel(command: string[]): string | undefined {
+  const executable = command[0];
+  return executable ? basename(executable) : undefined;
+}
+
+async function isSessionStopped(sessionId: string): Promise<boolean> {
+  const session = await loadAgentSession(sessionId).catch((err) => {
+    logger.warn({ err, sessionId }, 'Failed to load agent session status');
+    return undefined;
+  });
+  return session?.status === 'stopped';
+}
+
+export async function runAcpAgentTurn({
+  turn,
+  config,
+  notifier,
+  botEvents,
+  env,
+}: RunInteractiveAgentTurnInput): Promise<void> {
+  const { sessionId, workspaceKey, profile, cwd } = turn;
+  const ref = buildRef(turn.response);
+  const outputBuffer = createDebouncedAgentOutputBuffer({
+    notifier,
+    ref,
+    debounceMs: config.agent.outputDebounceMs,
+  });
+  const acpCommand = profile.provider === 'acp' ? launchCommandLabel(profile.command) : undefined;
+  let runtime: Awaited<ReturnType<typeof launchAcpRuntime>> | undefined;
+  let latestAssistantText = '';
+  let publishedAssistantText = '';
+  let scheduledSnapshot: NodeJS.Timeout | undefined;
+  let snapshotQueue = Promise.resolve();
+
+  const flushAssistantSnapshot = async () => {
+    if (!latestAssistantText || latestAssistantText === publishedAssistantText) return;
+    publishedAssistantText = latestAssistantText;
+    outputBuffer.push(latestAssistantText);
+    await outputBuffer.flush();
+  };
+
+  const queueSnapshotFlush = () => {
+    snapshotQueue = snapshotQueue.then(flushAssistantSnapshot, flushAssistantSnapshot);
+    return snapshotQueue;
+  };
+
+  const scheduleSnapshotFlush = () => {
+    if (scheduledSnapshot) return;
+    scheduledSnapshot = setTimeout(() => {
+      scheduledSnapshot = undefined;
+      void queueSnapshotFlush().catch((err) => {
+        logger.warn({ err, sessionId }, 'Failed to flush ACP assistant snapshot');
+      });
+    }, config.agent.outputDebounceMs);
+  };
+
+  try {
+    if (profile.provider !== 'acp') {
+      throw new Error(`Invalid ACP interactive profile provider: ${profile.provider}`);
+    }
+    if (turn.codingAgentSessionId) {
+      throw new Error('ACP session continuation is not implemented yet.');
+    }
+
+    const resolved = await resolveAgentWorkspace(
+      config.agent.workspaces,
+      {
+        workspaceKey,
+        ...(cwd ? { cwd } : {}),
+      },
+      { requireExists: true },
+    );
+
+    await updateAgentSessionStatus(sessionId, 'active').catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to mark agent session active');
+    });
+
+    logger.info(
+      {
+        sessionId,
+        workspaceKey,
+        profileKey: profile.key,
+        resolvedCwd: resolved.resolvedCwd,
+        promptLength: turn.prompt.length,
+        ...(profile.agent ? { acpAgent: profile.agent } : {}),
+        ...(profile.profile ? { acpProfile: profile.profile } : {}),
+        ...(acpCommand ? { acpCommand } : {}),
+      },
+      'Starting ACP agent session prompt',
+    );
+
+    runtime = await launchAcpRuntime({
+      launch: profile,
+      cwd: resolved.resolvedCwd,
+      env,
+      onRequestPermission: buildAcpPermissionHandler({
+        sessionId,
+        response: turn.response,
+        workspaceKey,
+        cwd: resolved.resolvedCwd,
+        timeoutMs: config.agent.interactionTimeoutMs,
+        botEvents,
+      }),
+      onSessionUpdate: (notification: AcpNotification) => {
+        const summary = summarizeAcpEvent(notification);
+        if (summary) {
+          if (summary.isError) {
+            logger.error({ sessionId }, summary.text);
+          } else {
+            logger.info({ sessionId }, summary.text);
+          }
+        }
+
+        const assistantText = extractAcpAssistantText(notification);
+        if (!assistantText) {
+          return;
+        }
+        latestAssistantText += assistantText;
+        scheduleSnapshotFlush();
+      },
+    });
+
+    const session = await runtime.createSession({
+      cwd: resolved.resolvedCwd,
+      ...(turn.additionalDirectories?.length
+        ? { additionalDirectories: turn.additionalDirectories }
+        : {}),
+    });
+    await updateAgentSessionCodingAgentSessionId(sessionId, session.sessionId).catch((err) => {
+      logger.warn(
+        { err, sessionId, codingAgentSessionId: session.sessionId },
+        'Failed to store ACP session id',
+      );
+    });
+
+    await runtime.prompt({ prompt: turn.prompt });
+
+    if (scheduledSnapshot) {
+      clearTimeout(scheduledSnapshot);
+      scheduledSnapshot = undefined;
+    }
+    await queueSnapshotFlush();
+
+    if (await isSessionStopped(sessionId)) {
+      return;
+    }
+    await updateAgentSessionStatus(sessionId, 'completed').catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
+    });
+  } catch (err) {
+    if (isAbortingAgentPromptForSteer(sessionId)) {
+      logger.info(
+        { err, sessionId, workspaceKey, profileKey: profile.key },
+        'ACP agent prompt aborted for steer follow-up',
+      );
+      if (scheduledSnapshot) {
+        clearTimeout(scheduledSnapshot);
+        scheduledSnapshot = undefined;
+      }
+      await queueSnapshotFlush();
+      await outputBuffer.flush();
+      return;
+    }
+    if (await isSessionStopped(sessionId)) {
+      if (scheduledSnapshot) {
+        clearTimeout(scheduledSnapshot);
+        scheduledSnapshot = undefined;
+      }
+      await queueSnapshotFlush();
+      await outputBuffer.flush();
+      return;
+    }
+
+    logger.error(
+      {
+        err,
+        sessionId,
+        workspaceKey,
+        profileKey: profile.key,
+        ...(profile.agent ? { acpAgent: profile.agent } : {}),
+        ...(acpCommand ? { acpCommand } : {}),
+      },
+      'ACP agent session prompt failed',
+    );
+    await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
+      logger.warn({ err: updateErr, sessionId }, 'Failed to mark agent session failed');
+    });
+    if (scheduledSnapshot) {
+      clearTimeout(scheduledSnapshot);
+      scheduledSnapshot = undefined;
+    }
+    await queueSnapshotFlush();
+    await outputBuffer.flush();
+    await notifier.postMessage(ref, formatFailure(err));
+  } finally {
+    if (scheduledSnapshot) {
+      clearTimeout(scheduledSnapshot);
+    }
+    await clearAcpPermissionInteractions({ sessionId, botEvents }).catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to clear ACP permission interactions');
+    });
+    await runtime?.close().catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to close ACP runtime');
+    });
+    outputBuffer.close();
+  }
+}
+
+export function steerAcpAgentTurn({ sessionId }: SteerInteractiveAgentTurnInput): Promise<void> {
+  cancelAgentFollowUpSteer(sessionId);
+  throw new Error('ACP prompt steering is not supported yet.');
+}
+
+export async function stopAcpAgentPrompt({
+  event,
+  notifier,
+}: StopInteractiveAgentPromptInput): Promise<void> {
+  await notifier.postMessage(
+    buildRef(event.payload.response),
+    'ACP prompt cannot be stopped yet: active runtime tracking is not implemented.',
+  );
+}
+
+export async function resolveAcpAgentInteraction({
+  event,
+  notifier,
+  botEvents,
+}: ResolveInteractiveAgentInteractionInput): Promise<void> {
+  await resolveAcpPermissionInteraction({
+    event,
+    notifier,
+    botEvents,
+  });
+}

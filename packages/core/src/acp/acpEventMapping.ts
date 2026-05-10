@@ -81,15 +81,8 @@ export function summarizeAcpEvent(notification: SessionNotification): EventSumma
   switch (update.sessionUpdate) {
     case 'agent_message_chunk':
     case 'user_message_chunk':
-      return null;
     case 'agent_thought_chunk':
-      return {
-        text:
-          update.content.type === 'text'
-            ? `ACP thought: ${update.content.text}`
-            : `ACP thought chunk: ${update.content.type}`,
-        isError: false,
-      };
+      return null;
     case 'tool_call':
     case 'tool_call_update':
       return summarizeToolUpdate(update);

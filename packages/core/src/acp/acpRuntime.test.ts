@@ -1,7 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Client, SessionNotification } from '@agentclientprotocol/sdk';
+import type {
+  Client,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionNotification,
+} from '@agentclientprotocol/sdk';
 import { launchAcpRuntime } from './acpRuntime.js';
 
 type MockChildProcess = EventEmitter & {
@@ -187,6 +192,23 @@ describe('ACP runtime wrapper', () => {
     expect(runtime.agentInfo).toEqual({ name: 'Mock ACP' });
   });
 
+  it('includes a default ACP client version when client info is omitted', async () => {
+    const { connection } = queueRuntime();
+
+    await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: {
+        command: ['mock-acp', '--stdio'],
+      },
+    });
+
+    expect(connection.initialize).toHaveBeenCalledWith({
+      protocolVersion: 1,
+      clientInfo: { name: 'Sniptail', version: '0.1.0' },
+      clientCapabilities: {},
+    });
+  });
+
   it('creates a session, applies configured overrides, sends a text prompt, and closes cleanly', async () => {
     const configOptions = [
       {
@@ -349,6 +371,45 @@ describe('ACP runtime wrapper', () => {
     await hoisted.lastClient?.sessionUpdate(notification);
 
     expect(onSessionUpdate).toHaveBeenCalledWith(notification);
+  });
+
+  it('forwards ACP permission requests to the configured client handler', async () => {
+    queueRuntime();
+    const onRequestPermission = vi
+      .fn<(request: RequestPermissionRequest) => Promise<RequestPermissionResponse>>()
+      .mockResolvedValue({
+        outcome: {
+          outcome: 'selected',
+          optionId: 'allow-once',
+        },
+      });
+    await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'] },
+      onRequestPermission,
+    });
+    const request: RequestPermissionRequest = {
+      sessionId: 'session-1',
+      options: [
+        {
+          optionId: 'allow-once',
+          name: 'Allow once',
+          kind: 'allow_once',
+        },
+      ],
+      toolCall: {
+        toolCallId: 'tool-1',
+        title: 'Read README',
+      },
+    };
+
+    await expect(hoisted.lastClient?.requestPermission(request)).resolves.toEqual({
+      outcome: {
+        outcome: 'selected',
+        optionId: 'allow-once',
+      },
+    });
+    expect(onRequestPermission).toHaveBeenCalledWith(request);
   });
 
   it('fails configured overrides when the launched ACP agent cannot support them', async () => {

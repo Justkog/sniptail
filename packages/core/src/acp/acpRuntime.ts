@@ -10,7 +10,6 @@ import {
   type LoadSessionResponse,
   type NewSessionResponse,
   type PromptResponse,
-  type RequestPermissionResponse,
   type SessionConfigOption,
   type SessionConfigSelectOption,
   type SessionNotification,
@@ -20,8 +19,13 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 import type { AcpLaunchConfig } from '../config/types.js';
+import type { AcpRequestPermissionRequest, AcpRequestPermissionResponse } from './types.js';
 
 const CLOSE_TIMEOUT_MS = 5_000;
+const DEFAULT_CLIENT_INFO: Implementation = {
+  name: 'Sniptail',
+  version: '0.1.0',
+};
 
 export type AcpSessionStartOptions = {
   cwd: string;
@@ -39,6 +43,9 @@ export type AcpRuntimeOptions = {
   clientInfo?: Implementation;
   clientCapabilities?: ClientCapabilities;
   onSessionUpdate?: (notification: SessionNotification) => void | Promise<void>;
+  onRequestPermission?: (
+    request: AcpRequestPermissionRequest,
+  ) => AcpRequestPermissionResponse | Promise<AcpRequestPermissionResponse>;
 };
 
 export type AcpRuntimeHandle = {
@@ -258,14 +265,16 @@ async function applySessionOverrides(
   }
 }
 
-function buildClient(onSessionUpdate: AcpRuntimeOptions['onSessionUpdate']): Client {
+function buildClient(
+  options: Pick<AcpRuntimeOptions, 'onSessionUpdate' | 'onRequestPermission'>,
+): Client {
   return {
-    requestPermission: () =>
-      Promise.resolve({
+    requestPermission: async (request) =>
+      (await options.onRequestPermission?.(request as unknown as AcpRequestPermissionRequest)) ?? {
         outcome: { outcome: 'cancelled' },
-      } satisfies RequestPermissionResponse),
+      },
     sessionUpdate: async (notification) => {
-      await onSessionUpdate?.(notification as unknown as SessionNotification);
+      await options.onSessionUpdate?.(notification as unknown as SessionNotification);
     },
   };
 }
@@ -301,10 +310,17 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
     Writable.toWeb(proc.stdin) as WritableStream<Uint8Array>,
     Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>,
   );
-  const connection = new ClientSideConnection(() => buildClient(options.onSessionUpdate), stream);
+  const connection = new ClientSideConnection(
+    () =>
+      buildClient({
+        onSessionUpdate: options.onSessionUpdate,
+        onRequestPermission: options.onRequestPermission,
+      }),
+    stream,
+  );
   const initialize = initializeAcpConnection(connection, {
     protocolVersion: PROTOCOL_VERSION,
-    clientInfo: options.clientInfo ?? { name: 'Sniptail' },
+    clientInfo: options.clientInfo ?? DEFAULT_CLIENT_INFO,
     clientCapabilities: options.clientCapabilities ?? {},
   });
   let initialized: InitializeResponse;

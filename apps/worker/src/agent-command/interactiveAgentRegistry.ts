@@ -18,10 +18,12 @@ import {
   steerOpenCodeAgentTurn,
   stopOpenCodeAgentPrompt,
 } from '../opencode/openCodeInteractiveAgent.js';
-
-function unsupportedAcpRuntime(): never {
-  throw new Error('ACP interactive agent runtime is not implemented yet.');
-}
+import {
+  resolveAcpAgentInteraction,
+  runAcpAgentTurn,
+  steerAcpAgentTurn,
+  stopAcpAgentPrompt,
+} from '../acp/acpInteractiveAgent.js';
 
 const codexInteractiveAgent: InteractiveAgentAdapter = {
   provider: 'codex',
@@ -54,10 +56,10 @@ const copilotInteractiveAgent: InteractiveAgentAdapter = {
 const acpInteractiveAgent: InteractiveAgentAdapter = {
   provider: 'acp',
   displayName: 'ACP',
-  runTurn: () => unsupportedAcpRuntime(),
-  steerActiveTurn: () => unsupportedAcpRuntime(),
-  stopPrompt: () => unsupportedAcpRuntime(),
-  resolveInteraction: () => unsupportedAcpRuntime(),
+  runTurn: runAcpAgentTurn,
+  steerActiveTurn: steerAcpAgentTurn,
+  stopPrompt: stopAcpAgentPrompt,
+  resolveInteraction: resolveAcpAgentInteraction,
 };
 
 export const INTERACTIVE_AGENT_REGISTRY: Record<InteractiveAgentProvider, InteractiveAgentAdapter> =
