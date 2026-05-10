@@ -142,11 +142,13 @@ describe('ACP interactive agent', () => {
   it('starts a new ACP session, stores its session id, and streams assistant output', async () => {
     const notifier = buildNotifier();
     const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const loadSession = vi.fn();
     const close = vi.fn().mockResolvedValue(undefined);
 
     hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
       Promise.resolve({
         createSession,
+        loadSession,
         prompt: vi.fn(async () => {
           await options.onSessionUpdate?.({
             update: {
@@ -196,6 +198,7 @@ describe('ACP interactive agent', () => {
       cwd: tempRoot,
       additionalDirectories: ['/tmp/context'],
     });
+    expect(loadSession).not.toHaveBeenCalled();
     expect(hoisted.updateAgentSessionCodingAgentSessionId).toHaveBeenCalledWith(
       'session-1',
       'acp-session-1',
@@ -209,8 +212,80 @@ describe('ACP interactive agent', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('fails clearly when asked to continue an existing ACP session before session/load support exists', async () => {
+  it('streams only new assistant text snapshots during a single prompt turn', async () => {
     const notifier = buildNotifier();
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const loadSession = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
+      Promise.resolve({
+        createSession,
+        loadSession,
+        prompt: vi.fn(async () => {
+          await options.onSessionUpdate?.({
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Hello' },
+            },
+          });
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          await options.onSessionUpdate?.({
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: ' world' },
+            },
+          });
+          return {};
+        }),
+        close,
+      }),
+    );
+
+    await runAcpAgentTurn({
+      turn: buildTurn(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: { publish: vi.fn() },
+      env: {},
+    });
+
+    expect(notifier.postMessage.mock.calls).toEqual([
+      [expect.objectContaining({ channelId: 'thread-1' }), 'Hello'],
+      [expect.objectContaining({ channelId: 'thread-1' }), ' world'],
+    ]);
+  });
+
+  it('loads an existing ACP session for follow-up turns and streams assistant output', async () => {
+    const notifier = buildNotifier();
+    const createSession = vi.fn();
+    const loadSession = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    hoisted.launchAcpRuntime.mockImplementationOnce((options: MockLaunchOptions) =>
+      Promise.resolve({
+        createSession,
+        loadSession: loadSession.mockImplementation(async () => {
+          await options.onSessionUpdate?.({
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Earlier answer' },
+            },
+          });
+          return { sessionId: 'acp-session-9' };
+        }),
+        prompt: vi.fn(async () => {
+          await options.onSessionUpdate?.({
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: 'Resumed' },
+            },
+          });
+          return {};
+        }),
+        close,
+      }),
+    );
 
     await runAcpAgentTurn({
       turn: buildTurn({ codingAgentSessionId: 'acp-session-9' }),
@@ -220,11 +295,66 @@ describe('ACP interactive agent', () => {
       env: {},
     });
 
-    expect(hoisted.launchAcpRuntime).not.toHaveBeenCalled();
+    const launchOptions = hoisted.launchAcpRuntime.mock
+      .calls[0]?.[0] as unknown as MockLaunchOptions;
+    expect(launchOptions).toMatchObject({
+      cwd: tempRoot,
+      launch: {
+        provider: 'acp',
+        agent: 'opencode',
+        profile: 'build',
+        command: ['opencode', 'acp'],
+      },
+    });
+    expect(createSession).not.toHaveBeenCalled();
+    expect(loadSession).toHaveBeenCalledWith('acp-session-9', { cwd: tempRoot });
+    expect(hoisted.updateAgentSessionCodingAgentSessionId).not.toHaveBeenCalled();
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'active');
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'completed');
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Resumed',
+    );
+    expect(notifier.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      expect.stringContaining('Earlier answer'),
+    );
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('surfaces ACP session/load failures through the normal agent failure path', async () => {
+    const notifier = buildNotifier();
+    const createSession = vi.fn();
+    const loadSession = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('ACP agent does not support session/load; cannot load session acp-session-9.'),
+      );
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    hoisted.launchAcpRuntime.mockResolvedValueOnce({
+      createSession,
+      loadSession,
+      prompt: vi.fn(),
+      close,
+    });
+
+    await runAcpAgentTurn({
+      turn: buildTurn({ codingAgentSessionId: 'acp-session-9' }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: { publish: vi.fn() },
+      env: {},
+    });
+
+    expect(createSession).not.toHaveBeenCalled();
+    expect(loadSession).toHaveBeenCalledWith('acp-session-9', { cwd: tempRoot });
+    expect(hoisted.updateAgentSessionCodingAgentSessionId).not.toHaveBeenCalled();
     expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'failed');
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
-      'ACP agent session failed: ACP session continuation is not implemented yet.',
+      'ACP agent session failed: ACP agent does not support session/load; cannot load session acp-session-9.',
     );
+    expect(close).toHaveBeenCalled();
   });
 });

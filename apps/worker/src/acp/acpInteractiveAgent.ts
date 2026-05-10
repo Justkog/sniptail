@@ -26,6 +26,7 @@ import {
 } from './acpPermissionBridge.js';
 
 type AcpNotification = Parameters<typeof summarizeAcpEvent>[0];
+type AcpSessionHandle = { sessionId: string };
 
 function buildRef(response: RunInteractiveAgentTurnInput['turn']['response']) {
   return {
@@ -53,6 +54,36 @@ async function isSessionStopped(sessionId: string): Promise<boolean> {
   return session?.status === 'stopped';
 }
 
+async function startOrLoadAcpSession(
+  runtime: Awaited<ReturnType<typeof launchAcpRuntime>>,
+  turn: RunInteractiveAgentTurnInput['turn'],
+  resolvedCwd: string,
+): Promise<{ sessionId: string; persisted: boolean }> {
+  const sessionOptions = {
+    cwd: resolvedCwd,
+    ...(turn.additionalDirectories?.length
+      ? { additionalDirectories: turn.additionalDirectories }
+      : {}),
+  };
+
+  if (turn.codingAgentSessionId) {
+    const session = (await runtime.loadSession(
+      turn.codingAgentSessionId,
+      sessionOptions,
+    )) as AcpSessionHandle;
+    return {
+      sessionId: session.sessionId,
+      persisted: false,
+    };
+  }
+
+  const session = (await runtime.createSession(sessionOptions)) as AcpSessionHandle;
+  return {
+    sessionId: session.sessionId,
+    persisted: true,
+  };
+}
+
 export async function runAcpAgentTurn({
   turn,
   config,
@@ -73,11 +104,16 @@ export async function runAcpAgentTurn({
   let publishedAssistantText = '';
   let scheduledSnapshot: NodeJS.Timeout | undefined;
   let snapshotQueue = Promise.resolve();
+  let isCapturingAssistantOutput = false;
 
   const flushAssistantSnapshot = async () => {
     if (!latestAssistantText || latestAssistantText === publishedAssistantText) return;
-    publishedAssistantText = latestAssistantText;
-    outputBuffer.push(latestAssistantText);
+    const nextText = latestAssistantText;
+    const delta = nextText.startsWith(publishedAssistantText)
+      ? nextText.slice(publishedAssistantText.length)
+      : nextText;
+    publishedAssistantText = nextText;
+    outputBuffer.push(delta, { preserveWhitespace: true });
     await outputBuffer.flush();
   };
 
@@ -99,9 +135,6 @@ export async function runAcpAgentTurn({
   try {
     if (profile.provider !== 'acp') {
       throw new Error(`Invalid ACP interactive profile provider: ${profile.provider}`);
-    }
-    if (turn.codingAgentSessionId) {
-      throw new Error('ACP session continuation is not implemented yet.');
     }
 
     const resolved = await resolveAgentWorkspace(
@@ -154,7 +187,7 @@ export async function runAcpAgentTurn({
         }
 
         const assistantText = extractAcpAssistantText(notification);
-        if (!assistantText) {
+        if (!assistantText || !isCapturingAssistantOutput) {
           return;
         }
         latestAssistantText += assistantText;
@@ -162,20 +195,19 @@ export async function runAcpAgentTurn({
       },
     });
 
-    const session = await runtime.createSession({
-      cwd: resolved.resolvedCwd,
-      ...(turn.additionalDirectories?.length
-        ? { additionalDirectories: turn.additionalDirectories }
-        : {}),
-    });
-    await updateAgentSessionCodingAgentSessionId(sessionId, session.sessionId).catch((err) => {
-      logger.warn(
-        { err, sessionId, codingAgentSessionId: session.sessionId },
-        'Failed to store ACP session id',
-      );
-    });
+    const session = await startOrLoadAcpSession(runtime, turn, resolved.resolvedCwd);
+    if (session.persisted) {
+      await updateAgentSessionCodingAgentSessionId(sessionId, session.sessionId).catch((err) => {
+        logger.warn(
+          { err, sessionId, codingAgentSessionId: session.sessionId },
+          'Failed to store ACP session id',
+        );
+      });
+    }
 
+    isCapturingAssistantOutput = true;
     await runtime.prompt({ prompt: turn.prompt });
+    isCapturingAssistantOutput = false;
 
     if (scheduledSnapshot) {
       clearTimeout(scheduledSnapshot);
@@ -190,6 +222,7 @@ export async function runAcpAgentTurn({
       logger.warn({ err, sessionId }, 'Failed to mark agent session completed');
     });
   } catch (err) {
+    isCapturingAssistantOutput = false;
     if (isAbortingAgentPromptForSteer(sessionId)) {
       logger.info(
         { err, sessionId, workspaceKey, profileKey: profile.key },

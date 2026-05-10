@@ -420,7 +420,7 @@ function parseWorkerRunActions(
 
 const AGENT_COMMAND_CONFIG_DEFAULTS = {
   interactionTimeoutMs: 1_800_000,
-  outputDebounceMs: 15_000,
+  outputDebounceMs: 3_000,
 } as const;
 
 const SAFE_AGENT_CONFIG_KEY = /^[A-Za-z0-9_.-]+$/;

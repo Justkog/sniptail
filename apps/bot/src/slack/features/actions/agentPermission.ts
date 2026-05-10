@@ -4,6 +4,7 @@ import {
   appendSlackAgentPermissionDecision,
   parseSlackAgentActionValue,
 } from '../../agentCommandState.js';
+import { getSlackAgentPermissionMessageState } from '../../slackBotChannelAdapter.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
   validateAgentSessionForThread,
@@ -105,11 +106,12 @@ function registerPermissionAction(actionId: string, context: SlackHandlerContext
     }
 
     await enqueueWorkerEvent(workerEventQueue, event);
+    const messageState = getSlackAgentPermissionMessageState(sessionId, interactionId);
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
       text: appendSlackAgentPermissionDecision(
-        (body as { message?: { text?: string } }).message?.text ?? '',
+        messageState?.requestText ?? (body as { message?: { text?: string } }).message?.text ?? '',
         userId,
         decision,
       ),

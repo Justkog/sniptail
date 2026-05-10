@@ -29,6 +29,11 @@ import type {
   BotEventRuntime,
 } from '../channels/runtimeBotChannelAdapter.js';
 
+export type AgentPermissionMessageState = {
+  messageId: string;
+  requestText: string;
+};
+
 export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
   providerId = 'discord' as const;
   capabilities = {
@@ -192,43 +197,52 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     client: Parameters<typeof postDiscordMessage>[0],
     event: CoreBotEvent<'agent.permission.requested'>,
   ) {
+    const requestText = buildAgentPermissionRequestText(event.payload);
     const message = await postDiscordMessage(client, {
       channelId: event.payload.channelId,
       threadId: event.payload.threadId,
-      text: buildAgentPermissionRequestText(event.payload),
+      text: requestText,
       components: buildDiscordAgentPermissionComponents(
         event.payload.sessionId,
         event.payload.interactionId,
         { allowAlways: event.payload.allowAlways },
       ),
     });
-    agentPermissionMessageIds.set(
-      agentPermissionKey(event.payload.sessionId, event.payload.interactionId),
-      message.id,
-    );
+    setDiscordAgentPermissionMessageState(event.payload.sessionId, event.payload.interactionId, {
+      messageId: message.id,
+      requestText,
+    });
   }
 
   private async updateAgentPermissionRequest(
     client: Parameters<typeof postDiscordMessage>[0],
     event: CoreBotEvent<'agent.permission.updated'>,
   ) {
-    const key = agentPermissionKey(event.payload.sessionId, event.payload.interactionId);
-    const messageId = agentPermissionMessageIds.get(key);
-    if (messageId) {
+    const messageState = getDiscordAgentPermissionMessageState(
+      event.payload.sessionId,
+      event.payload.interactionId,
+    );
+    if (messageState?.messageId) {
       try {
         const existingMessage = await fetchDiscordMessage(client, {
           channelId: event.payload.channelId,
           threadId: event.payload.threadId,
-          messageId,
+          messageId: messageState.messageId,
         });
         await editDiscordMessage(client, {
           channelId: event.payload.channelId,
           threadId: event.payload.threadId,
-          messageId,
-          text: appendAgentPermissionStatus(existingMessage.content, event.payload),
+          messageId: messageState.messageId,
+          text: appendAgentPermissionStatus(
+            messageState.requestText || existingMessage.content,
+            event.payload,
+          ),
           components: [],
         });
-        agentPermissionMessageIds.delete(key);
+        clearDiscordAgentPermissionMessageState(
+          event.payload.sessionId,
+          event.payload.interactionId,
+        );
         return;
       } catch (err) {
         logger.warn(
@@ -238,8 +252,8 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
             interactionId: event.payload.interactionId,
             channelId: event.payload.channelId,
             threadId: event.payload.threadId,
-            messageId,
-            cacheSize: agentPermissionMessageIds.size,
+            messageId: messageState.messageId,
+            cacheSize: agentPermissionMessages.size,
             pid: process.pid,
           },
           'Failed to edit Discord agent permission message',
@@ -252,8 +266,8 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
           interactionId: event.payload.interactionId,
           channelId: event.payload.channelId,
           threadId: event.payload.threadId,
-          knownKeys: Array.from(agentPermissionMessageIds.keys()).slice(0, 10),
-          cacheSize: agentPermissionMessageIds.size,
+          knownKeys: Array.from(agentPermissionMessages.keys()).slice(0, 10),
+          cacheSize: agentPermissionMessages.size,
           pid: process.pid,
         },
         'Discord agent permission message id was not found in local cache',
@@ -373,7 +387,29 @@ function agentPermissionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
 }
 
-const agentPermissionMessageIds = new Map<string, string>();
+const agentPermissionMessages = new Map<string, AgentPermissionMessageState>();
+
+export function getDiscordAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+): AgentPermissionMessageState | undefined {
+  return agentPermissionMessages.get(agentPermissionKey(sessionId, interactionId));
+}
+
+export function setDiscordAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+  state: AgentPermissionMessageState,
+): void {
+  agentPermissionMessages.set(agentPermissionKey(sessionId, interactionId), state);
+}
+
+export function clearDiscordAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+): void {
+  agentPermissionMessages.delete(agentPermissionKey(sessionId, interactionId));
+}
 
 function agentQuestionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;

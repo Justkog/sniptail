@@ -30,6 +30,8 @@ type AgentInteractionMessageState = {
   requestText: string;
 };
 
+export type AgentPermissionMessageState = AgentInteractionMessageState;
+
 export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
   providerId = 'slack' as const;
   capabilities = {
@@ -161,21 +163,20 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
         }),
       ],
     });
-    agentPermissionMessageTs.set(
-      agentInteractionKey(event.payload.sessionId, event.payload.interactionId),
-      {
-        ts: message.ts ?? '',
-        requestText,
-      },
-    );
+    setSlackAgentPermissionMessageState(event.payload.sessionId, event.payload.interactionId, {
+      ts: message.ts ?? '',
+      requestText,
+    });
   }
 
   private async updateAgentPermissionRequest(
     app: NonNullable<BotEventRuntime['slackApp']>,
     event: CoreBotEvent<'agent.permission.updated'>,
   ) {
-    const key = agentInteractionKey(event.payload.sessionId, event.payload.interactionId);
-    const messageState = agentPermissionMessageTs.get(key);
+    const messageState = getSlackAgentPermissionMessageState(
+      event.payload.sessionId,
+      event.payload.interactionId,
+    );
     const text = messageState
       ? appendSlackAgentPermissionStatus(messageState.requestText, event.payload)
       : buildSlackAgentPermissionUpdateText(event.payload);
@@ -186,7 +187,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
         text,
         blocks: [],
       });
-      agentPermissionMessageTs.delete(key);
+      clearSlackAgentPermissionMessageState(event.payload.sessionId, event.payload.interactionId);
       return;
     }
     await postMessage(app, {
@@ -269,6 +270,28 @@ function agentInteractionKey(sessionId: string, interactionId: string): string {
 
 const agentPermissionMessageTs = new Map<string, AgentInteractionMessageState>();
 const agentQuestionMessageTs = new Map<string, AgentInteractionMessageState>();
+
+export function getSlackAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+): AgentPermissionMessageState | undefined {
+  return agentPermissionMessageTs.get(agentInteractionKey(sessionId, interactionId));
+}
+
+export function setSlackAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+  state: AgentPermissionMessageState,
+): void {
+  agentPermissionMessageTs.set(agentInteractionKey(sessionId, interactionId), state);
+}
+
+export function clearSlackAgentPermissionMessageState(
+  sessionId: string,
+  interactionId: string,
+): void {
+  agentPermissionMessageTs.delete(agentInteractionKey(sessionId, interactionId));
+}
 
 function toReactionAddPayload(
   payload: CoreBotEvent['payload'],
