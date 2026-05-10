@@ -3,6 +3,8 @@ import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   Client,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification,
@@ -183,7 +185,7 @@ describe('ACP runtime wrapper', () => {
     expect(connection.initialize).toHaveBeenCalledWith({
       protocolVersion: 1,
       clientInfo: { name: 'Sniptail Test', version: '1.0.0' },
-      clientCapabilities: { fs: { readTextFile: true } },
+      clientCapabilities: { fs: { readTextFile: true }, elicitation: { form: {} } },
     });
     expect(runtime.capabilities).toEqual({
       loadSession: true,
@@ -205,7 +207,7 @@ describe('ACP runtime wrapper', () => {
     expect(connection.initialize).toHaveBeenCalledWith({
       protocolVersion: 1,
       clientInfo: { name: 'Sniptail', version: '0.1.0' },
-      clientCapabilities: {},
+      clientCapabilities: { elicitation: { form: {} } },
     });
   });
 
@@ -410,6 +412,45 @@ describe('ACP runtime wrapper', () => {
       },
     });
     expect(onRequestPermission).toHaveBeenCalledWith(request);
+  });
+
+  it('forwards ACP elicitation requests to the configured client handler', async () => {
+    queueRuntime();
+    const onCreateElicitation = vi
+      .fn<(request: CreateElicitationRequest) => Promise<CreateElicitationResponse>>()
+      .mockResolvedValue({
+        action: 'accept',
+        content: {
+          package: 'core',
+        },
+      });
+    await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'] },
+      onCreateElicitation,
+    });
+    const request: CreateElicitationRequest = {
+      mode: 'form',
+      sessionId: 'session-1',
+      message: 'Which package should I edit?',
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          package: {
+            type: 'string',
+            title: 'Package',
+          },
+        },
+      },
+    };
+
+    await expect(hoisted.lastClient?.unstable_createElicitation?.(request)).resolves.toEqual({
+      action: 'accept',
+      content: {
+        package: 'core',
+      },
+    });
+    expect(onCreateElicitation).toHaveBeenCalledWith(request);
   });
 
   it('fails configured overrides when the launched ACP agent cannot support them', async () => {

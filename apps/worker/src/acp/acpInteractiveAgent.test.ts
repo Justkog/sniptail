@@ -19,6 +19,7 @@ type MockLaunchOptions = {
   };
   cancel?: () => Promise<void>;
   onRequestPermission?: (request: unknown) => void | Promise<unknown>;
+  onCreateElicitation?: (request: unknown) => void | Promise<unknown>;
   onSessionUpdate?: (notification: {
     update: { sessionUpdate: string; content?: { type: string; text: string } };
   }) => void | Promise<void>;
@@ -201,6 +202,7 @@ describe('ACP interactive agent', () => {
       },
     });
     expect(launchOptions.onRequestPermission).toEqual(expect.any(Function));
+    expect(launchOptions.onCreateElicitation).toEqual(expect.any(Function));
     expect(createSession).toHaveBeenCalledWith({
       cwd: tempRoot,
       additionalDirectories: ['/tmp/context'],

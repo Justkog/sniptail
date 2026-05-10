@@ -19,12 +19,22 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process';
 import { Readable, Writable } from 'node:stream';
 import type { AcpLaunchConfig } from '../config/types.js';
-import type { AcpRequestPermissionRequest, AcpRequestPermissionResponse } from './types.js';
+import type {
+  AcpCreateElicitationRequest,
+  AcpCreateElicitationResponse,
+  AcpRequestPermissionRequest,
+  AcpRequestPermissionResponse,
+} from './types.js';
 
 const CLOSE_TIMEOUT_MS = 5_000;
 const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'Sniptail',
   version: '0.1.0',
+};
+const DEFAULT_CLIENT_CAPABILITIES: ClientCapabilities = {
+  elicitation: {
+    form: {},
+  },
 };
 
 export type AcpSessionStartOptions = {
@@ -46,6 +56,9 @@ export type AcpRuntimeOptions = {
   onRequestPermission?: (
     request: AcpRequestPermissionRequest,
   ) => AcpRequestPermissionResponse | Promise<AcpRequestPermissionResponse>;
+  onCreateElicitation?: (
+    request: AcpCreateElicitationRequest,
+  ) => AcpCreateElicitationResponse | Promise<AcpCreateElicitationResponse>;
 };
 
 export type AcpRuntimeHandle = {
@@ -107,6 +120,19 @@ function mergeEnv(
     ...process.env,
     ...baseEnv,
     ...launchEnv,
+  };
+}
+
+function mergeClientCapabilities(
+  clientCapabilities: ClientCapabilities | undefined,
+): ClientCapabilities {
+  return {
+    ...DEFAULT_CLIENT_CAPABILITIES,
+    ...clientCapabilities,
+    elicitation: {
+      ...DEFAULT_CLIENT_CAPABILITIES.elicitation,
+      ...clientCapabilities?.elicitation,
+    },
   };
 }
 
@@ -266,13 +292,17 @@ async function applySessionOverrides(
 }
 
 function buildClient(
-  options: Pick<AcpRuntimeOptions, 'onSessionUpdate' | 'onRequestPermission'>,
+  options: Pick<AcpRuntimeOptions, 'onSessionUpdate' | 'onRequestPermission' | 'onCreateElicitation'>,
 ): Client {
   return {
     requestPermission: async (request) =>
       (await options.onRequestPermission?.(request as unknown as AcpRequestPermissionRequest)) ?? {
         outcome: { outcome: 'cancelled' },
       },
+    unstable_createElicitation: async (request) =>
+      (await options.onCreateElicitation?.(
+        request as unknown as AcpCreateElicitationRequest,
+      )) ?? { action: 'cancel' },
     sessionUpdate: async (notification) => {
       await options.onSessionUpdate?.(notification as unknown as SessionNotification);
     },
@@ -315,13 +345,14 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
       buildClient({
         onSessionUpdate: options.onSessionUpdate,
         onRequestPermission: options.onRequestPermission,
+        onCreateElicitation: options.onCreateElicitation,
       }),
     stream,
   );
   const initialize = initializeAcpConnection(connection, {
     protocolVersion: PROTOCOL_VERSION,
     clientInfo: options.clientInfo ?? DEFAULT_CLIENT_INFO,
-    clientCapabilities: options.clientCapabilities ?? {},
+    clientCapabilities: mergeClientCapabilities(options.clientCapabilities),
   });
   let initialized: InitializeResponse;
   try {

@@ -26,6 +26,11 @@ import {
   resolveAcpPermissionInteraction,
 } from './acpPermissionBridge.js';
 import {
+  buildAcpQuestionHandler,
+  clearAcpQuestionInteractions,
+  resolveAcpQuestionInteraction,
+} from './acpQuestionBridge.js';
+import {
   deleteActiveAcpRuntime,
   getActiveAcpRuntime,
   setActiveAcpRuntime,
@@ -187,6 +192,22 @@ export async function runAcpAgentTurn({
         timeoutMs: config.agent.interactionTimeoutMs,
         botEvents,
       }),
+      onCreateElicitation: buildAcpQuestionHandler({
+        sessionId,
+        response: turn.response,
+        workspaceKey,
+        cwd: resolved.resolvedCwd,
+        timeoutMs: config.agent.interactionTimeoutMs,
+        botEvents,
+        flushOutput: async () => {
+          if (scheduledSnapshot) {
+            clearTimeout(scheduledSnapshot);
+            scheduledSnapshot = undefined;
+          }
+          await queueSnapshotFlush();
+          await outputBuffer.flush();
+        },
+      }),
       onSessionUpdate: (notification: AcpNotification) => {
         const summary = summarizeAcpEvent(notification);
         if (summary) {
@@ -292,6 +313,9 @@ export async function runAcpAgentTurn({
     await clearAcpPermissionInteractions({ sessionId, botEvents }).catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to clear ACP permission interactions');
     });
+    await clearAcpQuestionInteractions({ sessionId, botEvents }).catch((err) => {
+      logger.warn({ err, sessionId }, 'Failed to clear ACP question interactions');
+    });
     deleteActiveAcpRuntime(sessionId);
     await runtime?.close().catch((err) => {
       logger.warn({ err, sessionId }, 'Failed to close ACP runtime');
@@ -335,6 +359,11 @@ export async function stopAcpAgentPrompt({
       botEvents,
       message: 'ACP prompt stopped before this interaction was resolved.',
     });
+    await clearAcpQuestionInteractions({
+      sessionId,
+      botEvents,
+      message: 'ACP prompt stopped before this interaction was resolved.',
+    });
     deleteActiveAcpRuntime(sessionId);
     clearAgentPromptTurn(sessionId);
     await updateAgentSessionStatus(sessionId, 'stopped').catch((err) => {
@@ -352,7 +381,15 @@ export async function resolveAcpAgentInteraction({
   notifier,
   botEvents,
 }: ResolveInteractiveAgentInteractionInput): Promise<void> {
-  await resolveAcpPermissionInteraction({
+  if (event.payload.resolution.kind === 'permission') {
+    await resolveAcpPermissionInteraction({
+      event,
+      notifier,
+      botEvents,
+    });
+    return;
+  }
+  await resolveAcpQuestionInteraction({
     event,
     notifier,
     botEvents,
