@@ -5,6 +5,8 @@ import { createQueueTransportRuntime } from '@sniptail/core/queue/queueTransport
 import { startBotRuntime } from '@sniptail/bot/runtime';
 import { startWorkerRuntime } from '@sniptail/worker/runtime';
 
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+
 function validateLocalConfig(): void {
   const botConfig = loadBotConfig();
   const workerConfig = loadWorkerConfig();
@@ -50,23 +52,48 @@ async function main() {
   const queueRuntime = createQueueTransportRuntime({ driver: 'inproc' });
   let workerRuntime: Awaited<ReturnType<typeof startWorkerRuntime>> | undefined;
   let botRuntime: Awaited<ReturnType<typeof startBotRuntime>> | undefined;
-  let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
 
-  const shutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info({ signal }, 'Shutting down local unified runtime');
-    try {
+  const shutdown = (signal: NodeJS.Signals) => {
+    shutdownPromise ??= (async () => {
+      logger.info({ signal }, 'Shutting down local unified runtime');
       if (botRuntime) {
+        logger.info('Closing local bot runtime');
         await botRuntime.close();
       }
       if (workerRuntime) {
+        logger.info('Closing local worker runtime');
         await workerRuntime.close();
       }
+      logger.info('Closing local queue runtime');
       await queueRuntime.close();
-    } finally {
-      process.exitCode = 0;
-    }
+      logger.info('Closed local unified runtime');
+    })();
+    return shutdownPromise;
+  };
+
+  const installSignalHandler = (signal: NodeJS.Signals) => {
+    process.once(signal, () => {
+      const forceExitTimer = setTimeout(() => {
+        logger.warn(
+          { signal, timeoutMs: SHUTDOWN_TIMEOUT_MS },
+          'Forcing local unified runtime exit after shutdown timeout',
+        );
+        process.exit(1);
+      }, SHUTDOWN_TIMEOUT_MS);
+      forceExitTimer.unref?.();
+
+      void shutdown(signal)
+        .then(() => {
+          clearTimeout(forceExitTimer);
+          process.exit(0);
+        })
+        .catch((err) => {
+          clearTimeout(forceExitTimer);
+          logger.error({ err, signal }, 'Local unified runtime shutdown failed');
+          process.exit(1);
+        });
+    });
   };
 
   try {
@@ -83,12 +110,8 @@ async function main() {
     throw err;
   }
 
-  process.once('SIGINT', () => {
-    void shutdown('SIGINT');
-  });
-  process.once('SIGTERM', () => {
-    void shutdown('SIGTERM');
-  });
+  installSignalHandler('SIGINT');
+  installSignalHandler('SIGTERM');
 }
 
 void main().catch((err) => {

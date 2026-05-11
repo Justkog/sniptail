@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { JobSpec } from '../types/job.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDockerRuntime, createLocalRuntime, createServerRuntime } from './runtime.js';
 
 const hoisted = vi.hoisted(() => ({
   createOpencodeClient: vi.fn(),
@@ -11,7 +11,9 @@ const hoisted = vi.hoisted(() => ({
   serverClose: vi.fn(),
   client: {
     session: {
+      abort: vi.fn(),
       create: vi.fn(),
+      message: vi.fn(),
       prompt: vi.fn(),
       messages: vi.fn(),
     },
@@ -41,28 +43,6 @@ vi.mock('../agents/resolveWorkerAgentScriptPath.js', () => ({
   resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
 }));
 
-import { runOpenCode } from './opencode.js';
-
-function buildJob(): JobSpec {
-  return {
-    jobId: 'job-1',
-    type: 'ASK',
-    repoKeys: ['repo-1'],
-    gitRef: 'main',
-    requestText: 'answer this',
-    channel: {
-      provider: 'slack',
-      channelId: 'C123',
-      userId: 'U123',
-    },
-  };
-}
-
-async function* emptyEvents() {
-  await Promise.resolve();
-  if (Date.now() < 0) yield undefined as never;
-}
-
 function buildChildProcess() {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: Readable;
@@ -75,7 +55,7 @@ function buildChildProcess() {
   return proc;
 }
 
-describe('runOpenCode', () => {
+describe('OpenCode runtime helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.createOpencodeServer.mockResolvedValue({
@@ -83,19 +63,19 @@ describe('runOpenCode', () => {
       close: hoisted.serverClose,
     });
     hoisted.createOpencodeClient.mockReturnValue(hoisted.client);
-    hoisted.client.session.create.mockResolvedValue({ data: { id: 'session-1' } });
-    hoisted.client.session.prompt.mockResolvedValue({
-      data: { parts: [{ type: 'text', text: 'done' }] },
-    });
-    hoisted.client.session.messages.mockResolvedValue({ data: [] });
-    hoisted.client.event.subscribe.mockResolvedValue({ stream: emptyEvents() });
     hoisted.client.config.get.mockResolvedValue({ data: {} });
   });
 
-  it('starts and closes a local SDK-managed server', async () => {
-    const result = await runOpenCode(buildJob(), '/tmp/work', {}, { botName: 'Sniptail' });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    expect(result).toEqual({ finalResponse: 'done', threadId: 'session-1' });
+  it('starts and closes a local SDK-managed server', async () => {
+    const runtime = await createLocalRuntime('/tmp/work', { botName: 'Sniptail' });
+
+    expect(runtime.baseUrl).toBe('http://127.0.0.1:4096');
+    expect(runtime.client).toBe(hoisted.client);
+    expect(typeof runtime.close).toBe('function');
     expect(hoisted.createOpencodeServer).toHaveBeenCalledWith(
       expect.objectContaining({ hostname: '127.0.0.1', timeout: 10_000 }),
     );
@@ -103,12 +83,13 @@ describe('runOpenCode', () => {
       baseUrl: 'http://127.0.0.1:4096',
       directory: '/tmp/work',
     });
+
+    await runtime.close();
     expect(hoisted.serverClose).toHaveBeenCalled();
   });
 
-  it('connects to a configured server with auth header env', async () => {
-    await runOpenCode(
-      buildJob(),
+  it('connects to a configured server with auth header env', () => {
+    const runtime = createServerRuntime(
       '/tmp/work',
       { OPENCODE_AUTH_HEADER: 'Bearer secret' },
       {
@@ -120,73 +101,13 @@ describe('runOpenCode', () => {
       },
     );
 
-    expect(hoisted.createOpencodeServer).not.toHaveBeenCalled();
+    expect(runtime.baseUrl).toBe('http://opencode.example');
+    expect(runtime.client).toBe(hoisted.client);
+    expect(typeof runtime.close).toBe('function');
     expect(hoisted.createOpencodeClient).toHaveBeenCalledWith({
       baseUrl: 'http://opencode.example',
       directory: '/tmp/work',
       headers: { Authorization: 'Bearer secret' },
-    });
-  });
-
-  it('reuses resumed session id and forwards provider/model, agent, and attachments', async () => {
-    const result = await runOpenCode(
-      buildJob(),
-      '/tmp/work',
-      {},
-      {
-        resumeThreadId: 'session-old',
-        modelProvider: 'anthropic',
-        model: 'claude-sonnet',
-        opencode: { agent: 'build' },
-        currentTurnAttachments: [
-          {
-            path: '/tmp/work/context/file.txt',
-            displayName: 'file.txt',
-            mediaType: 'text/plain',
-          },
-        ],
-      },
-    );
-
-    expect(result.threadId).toBe('session-old');
-    expect(hoisted.client.session.create).not.toHaveBeenCalled();
-    expect(hoisted.client.session.prompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionID: 'session-old',
-        directory: '/tmp/work',
-        model: { providerID: 'anthropic', modelID: 'claude-sonnet' },
-        agent: 'build',
-        parts: expect.arrayContaining([
-          expect.objectContaining({ type: 'text' }),
-          expect.objectContaining({
-            type: 'file',
-            mime: 'text/plain',
-            filename: 'file.txt',
-            url: 'file:///tmp/work/context/file.txt',
-          }),
-        ]) as unknown,
-      }),
-    );
-  });
-
-  it('falls back to session messages when prompt response has no text', async () => {
-    hoisted.client.session.prompt.mockResolvedValue({ data: { parts: [] } });
-    hoisted.client.session.messages.mockResolvedValue({
-      data: [
-        {
-          info: { role: 'assistant' },
-          parts: [{ type: 'text', text: 'fallback response' }],
-        },
-      ],
-    });
-
-    const result = await runOpenCode(buildJob(), '/tmp/work', {}, {});
-
-    expect(result.finalResponse).toBe('fallback response');
-    expect(hoisted.client.session.messages).toHaveBeenCalledWith({
-      sessionID: 'session-1',
-      directory: '/tmp/work',
-      limit: 20,
     });
   });
 
@@ -196,8 +117,8 @@ describe('runOpenCode', () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    const result = await runOpenCode(
-      buildJob(),
+    const runtime = await createDockerRuntime(
+      'job-1',
       '/tmp/work',
       {},
       {
@@ -216,7 +137,7 @@ describe('runOpenCode', () => {
       },
     );
 
-    expect(result.finalResponse).toBe('done');
+    expect(runtime.baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect(hoisted.resolveWorkerAgentScriptPath).toHaveBeenCalledWith('opencode-docker-server.sh');
     expect(hoisted.spawn).toHaveBeenCalledWith(
       '/tmp/opencode-docker-server.sh',
@@ -231,11 +152,15 @@ describe('runOpenCode', () => {
         }) as unknown,
       }),
     );
-    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+
     proc.stdout.emit('data', 'stdout line\n');
     proc.stderr.emit('data', 'stderr line\n');
     expect(stdoutSpy).toHaveBeenCalledWith('stdout line\n');
     expect(stderrSpy).toHaveBeenCalledWith('stderr line\n');
+
+    await runtime.close();
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+
     stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
   });

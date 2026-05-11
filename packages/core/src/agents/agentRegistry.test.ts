@@ -9,7 +9,7 @@ vi.mock('./resolveWorkerAgentScriptPath.js', () => ({
   resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
 }));
 
-import { AGENT_DESCRIPTORS } from './agentRegistry.js';
+import { AGENT_DESCRIPTORS, getDockerModeAgents } from './agentRegistry.js';
 
 function buildConfig(): WorkerConfig {
   return {
@@ -29,6 +29,7 @@ function buildConfig(): WorkerConfig {
     copilot: {
       executionMode: 'local',
       idleRetries: 2,
+      idleTimeoutMs: 300_000,
       dockerfilePath: './Dockerfile.copilot',
       dockerImage: 'snatch-copilot:local',
       dockerBuildContext: '.',
@@ -44,6 +45,11 @@ function buildConfig(): WorkerConfig {
       dockerImage: 'snatch-opencode:local',
       dockerBuildContext: '.',
     },
+    acp: {
+      agent: 'opencode',
+      command: ['opencode', 'acp'],
+      profile: 'build',
+    },
   };
 }
 
@@ -56,6 +62,7 @@ describe('AGENT_DESCRIPTORS.copilot.buildRunOptions', () => {
 
     expect(options).toEqual({
       copilotIdleRetries: 2,
+      copilotIdleTimeoutMs: 300_000,
       copilot: {},
     });
     expect(hoisted.resolveWorkerAgentScriptPath).not.toHaveBeenCalled();
@@ -70,6 +77,7 @@ describe('AGENT_DESCRIPTORS.copilot.buildRunOptions', () => {
     expect(hoisted.resolveWorkerAgentScriptPath).toHaveBeenCalledWith('copilot-docker.sh');
     expect(options).toEqual({
       copilotIdleRetries: 2,
+      copilotIdleTimeoutMs: 300_000,
       copilot: {
         cliPath: '/tmp/copilot-docker.sh',
         docker: {
@@ -136,5 +144,36 @@ describe('AGENT_DESCRIPTORS.opencode', () => {
         },
       },
     });
+  });
+});
+
+describe('AGENT_DESCRIPTORS.acp', () => {
+  it('is never treated as docker mode and forwards [acp] launch config', () => {
+    const config = buildConfig();
+
+    expect(AGENT_DESCRIPTORS.acp.isDockerMode(config)).toBe(false);
+    expect(AGENT_DESCRIPTORS.acp.buildRunOptions(config)).toEqual({
+      acp: {
+        agent: 'opencode',
+        command: ['opencode', 'acp'],
+        profile: 'build',
+      },
+    });
+  });
+
+  it('does not resolve a separate model override and is not discovered as docker mode', () => {
+    const config = buildConfig();
+
+    expect(AGENT_DESCRIPTORS.acp.resolveModelConfig(config, 'ASK')).toBeUndefined();
+    expect(getDockerModeAgents(config)).not.toContain('acp');
+  });
+
+  it('fails clearly when [acp] config is missing', () => {
+    const config = buildConfig();
+    delete config.acp;
+
+    expect(() => AGENT_DESCRIPTORS.acp.buildRunOptions(config)).toThrow(
+      'ACP managed jobs require an [acp] worker config with an ACP launch command or preset.',
+    );
   });
 });

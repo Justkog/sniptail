@@ -2,6 +2,13 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import { publishAgentMetadataUpdateForProvider } from './agent-command/metadata.js';
+import {
+  runAgentSessionMessage,
+  runAgentSessionStart,
+} from './agent-command/agentSessionRunner.js';
+import { resolveAgentInteraction } from './agent-command/resolveAgentInteraction.js';
+import { stopAgentPrompt } from './agent-command/stopAgentPrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
@@ -129,6 +136,40 @@ export async function handleWorkerEvent(
           botEvents,
         );
       }
+      return;
+    }
+    case 'agent.metadata.request': {
+      try {
+        await publishAgentMetadataUpdateForProvider(botEvents, event.payload.provider);
+      } catch (err) {
+        logger.error({ err, event }, 'Failed to publish agent metadata update');
+      }
+      return;
+    }
+    case 'agent.session.start': {
+      void runAgentSessionStart({ event, config, notifier, botEvents }).catch((err) => {
+        logger.error(
+          { err, sessionId: event.payload.sessionId },
+          'Background agent session prompt failed',
+        );
+      });
+      return;
+    }
+    case 'agent.session.message': {
+      void runAgentSessionMessage({ event, config, notifier, botEvents }).catch((err) => {
+        logger.error(
+          { err, sessionId: event.payload.sessionId },
+          'Background agent session follow-up failed',
+        );
+      });
+      return;
+    }
+    case 'agent.prompt.stop': {
+      await stopAgentPrompt({ event, config, notifier, botEvents });
+      return;
+    }
+    case 'agent.interaction.resolve': {
+      await resolveAgentInteraction({ event, config, notifier, botEvents });
       return;
     }
     default:

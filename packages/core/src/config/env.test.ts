@@ -13,6 +13,28 @@ describe('config loaders', () => {
     vi.restoreAllMocks();
   });
 
+  function writeWorkerConfig(extraLines: string[]) {
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      `job_work_root = "${join(configDir, 'jobs')}"`,
+      'queue_driver = "inproc"',
+      `job_registry_path = "${join(configDir, 'job-registry')}"`,
+      'job_registry_db = "sqlite"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "opencode"',
+      `repo_cache_root = "${join(configDir, 'repos')}"`,
+      '',
+      ...extraLines,
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+    return configDir;
+  }
+
   it('throws when required bot env vars are missing', () => {
     applyRequiredEnv({ SNIPTAIL_CHANNELS: 'slack', SLACK_BOT_TOKEN: undefined });
 
@@ -632,6 +654,17 @@ describe('config loaders', () => {
     expect(config.opencode.dockerImage).toBe('snatch-opencode:local');
   });
 
+  it('defaults and overrides the Copilot idle timeout', () => {
+    applyRequiredEnv();
+
+    expect(loadWorkerConfig().copilot.idleTimeoutMs).toBe(300_000);
+
+    resetConfigCaches();
+    applyRequiredEnv({ COPILOT_IDLE_TIMEOUT_MS: '1800000' });
+
+    expect(loadWorkerConfig().copilot.idleTimeoutMs).toBe(1_800_000);
+  });
+
   it('accepts opencode as the primary agent', () => {
     applyRequiredEnv({ PRIMARY_AGENT: 'opencode' });
 
@@ -755,6 +788,460 @@ describe('config loaders', () => {
       provider: 'openai',
       model: 'gpt-5',
     });
+  });
+
+  it('defaults agent command config when omitted', () => {
+    applyRequiredEnv();
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent).toEqual({
+      enabled: false,
+      interactionTimeoutMs: 1_800_000,
+      outputDebounceMs: 3_000,
+      workspaces: {},
+      profiles: {},
+    });
+  });
+
+  it('parses enabled agent command config from worker TOML', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+      'interaction_timeout_ms = 120000',
+      'output_debounce_ms = 5000',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      'label = "Snatch"',
+      'description = "Main repository"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+      'label = "Build"',
+      'description = "OpenCode build agent"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent).toEqual({
+      enabled: true,
+      defaultWorkspace: 'snatch',
+      defaultAgentProfile: 'build',
+      interactionTimeoutMs: 120_000,
+      outputDebounceMs: 5_000,
+      workspaces: {
+        snatch: {
+          path: '/tmp/snatch',
+          label: 'Snatch',
+          description: 'Main repository',
+        },
+      },
+      profiles: {
+        build: {
+          provider: 'opencode',
+          profile: 'build',
+          label: 'Build',
+          description: 'OpenCode build agent',
+        },
+      },
+    });
+  });
+
+  it('applies agent command scalar env overrides', () => {
+    applyRequiredEnv({
+      AGENT_COMMAND_ENABLED: 'true',
+      AGENT_COMMAND_DEFAULT_WORKSPACE: 'two',
+      AGENT_COMMAND_DEFAULT_AGENT_PROFILE: 'plan',
+      AGENT_COMMAND_INTERACTION_TIMEOUT_MS: '300000',
+      AGENT_COMMAND_OUTPUT_DEBOUNCE_MS: '7000',
+    });
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = false',
+      'default_workspace = "one"',
+      'default_agent_profile = "build"',
+      'interaction_timeout_ms = 120000',
+      'output_debounce_ms = 5000',
+      '',
+      '[agent.workspaces.one]',
+      `path = "${join('/tmp', 'one')}"`,
+      '',
+      '[agent.workspaces.two]',
+      `path = "${join('/tmp', 'two')}"`,
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+      '',
+      '[agent.profiles.plan]',
+      'provider = "opencode"',
+      'profile = "plan"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.enabled).toBe(true);
+    expect(config.agent.defaultWorkspace).toBe('two');
+    expect(config.agent.defaultAgentProfile).toBe('plan');
+    expect(config.agent.interactionTimeoutMs).toBe(300_000);
+    expect(config.agent.outputDebounceMs).toBe(7_000);
+  });
+
+  it('rejects enabled agent command config without workspaces or profiles', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('enabled=true requires at least one workspace');
+  });
+
+  it('rejects unknown agent command default keys', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "missing"',
+      'default_agent_profile = "build"',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.default_workspace');
+  });
+
+  it('rejects relative agent command workspace paths', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "relative/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected an absolute path');
+  });
+
+  it('rejects invalid agent command workspace and profile keys', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.workspaces."bad/key"]', 'path = "/tmp/snatch"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.workspaces key');
+
+    resetConfigCaches();
+    writeWorkerConfig(['[agent.profiles.""]', 'provider = "opencode"', 'profile = "build"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid agent.profiles key');
+  });
+
+  it('rejects unsupported agent command profile provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "unknown"', 'profile = "build"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected codex, opencode, copilot, or acp');
+  });
+
+  it('accepts codex as an agent command profile provider with profile', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "codex"', 'profile = "build"']);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'codex',
+      profile: 'build',
+    });
+  });
+
+  it('accepts codex agent profiles with model and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "codex"',
+      'model = "gpt-5"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'codex',
+      model: 'gpt-5',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('rejects codex agent profiles with model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "codex"',
+      'model = "gpt-5"',
+      'model_provider = "openai"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is not supported for codex profiles');
+  });
+
+  it('accepts copilot as an agent command profile provider with profile', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"', 'profile = "build"']);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'copilot',
+      profile: 'build',
+    });
+  });
+
+  it('accepts copilot agent profiles with model and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'model = "gpt-5.5"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'copilot',
+      model: 'gpt-5.5',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('accepts opencode agent profiles with model provider, model, and reasoning effort', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'model_provider = "anthropic"',
+      'model = "claude-sonnet"',
+      'reasoning_effort = "high"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'opencode',
+      modelProvider: 'anthropic',
+      model: 'claude-sonnet',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('rejects agent profiles that define neither profile nor model', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "copilot"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected at least one of: profile or model');
+  });
+
+  it('rejects reasoning_effort without model in agent profiles', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'profile = "build"',
+      'reasoning_effort = "high"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model is required when reasoning_effort is set');
+  });
+
+  it('rejects copilot agent profiles using model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "copilot"',
+      'model_provider = "anthropic"',
+      'model = "gpt-5.5"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is not supported for copilot');
+  });
+
+  it('rejects opencode model-only agent profiles without model_provider', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'model = "claude-sonnet"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('model_provider is required when model is set');
+  });
+
+  it('accepts acp agent profiles with a preset agent and resolved command', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "acp"',
+      'agent = "opencode"',
+      'profile = "build"',
+      'label = "OpenCode ACP"',
+      'description = "OpenCode through ACP"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'acp',
+      agent: 'opencode',
+      profile: 'build',
+      command: ['opencode', 'acp'],
+      label: 'OpenCode ACP',
+      description: 'OpenCode through ACP',
+    });
+  });
+
+  it('accepts acp agent profiles with explicit command, env, and model overrides', () => {
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "acp"',
+      'agent = "copilot"',
+      'command = ["/usr/local/bin/custom-acp", "--stdio"]',
+      'profile = "pairing"',
+      'model = "gpt-5.5"',
+      'model_provider = "openai"',
+      'reasoning_effort = "high"',
+      '',
+      '[agent.profiles.build.env]',
+      'FOO = "bar"',
+      'TOKEN = "secret"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent.profiles.build).toEqual({
+      provider: 'acp',
+      agent: 'copilot',
+      profile: 'pairing',
+      command: ['/usr/local/bin/custom-acp', '--stdio'],
+      env: {
+        FOO: 'bar',
+        TOKEN: 'secret',
+      },
+      model: 'gpt-5.5',
+      modelProvider: 'openai',
+      reasoningEffort: 'high',
+    });
+  });
+
+  it('rejects acp agent profiles without an agent or command', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "acp"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected at least one of: agent or command');
+  });
+
+  it('rejects acp agent profiles with unknown presets and custom without command', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "acp"', 'agent = "unknown-agent"']);
+
+    expect(() => loadWorkerConfig()).toThrow('Unknown ACP agent preset: unknown-agent');
+
+    resetConfigCaches();
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "acp"', 'agent = "custom"']);
+
+    expect(() => loadWorkerConfig()).toThrow('command is required when agent is custom');
+  });
+
+  it('rejects invalid acp command arrays and env values', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "acp"', 'command = []']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected a non-empty array of strings');
+
+    resetConfigCaches();
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent.profiles.build]', 'provider = "acp"', 'command = ["acp", ""]']);
+
+    expect(() => loadWorkerConfig()).toThrow('Expected non-empty string values');
+
+    resetConfigCaches();
+    applyRequiredEnv();
+    writeWorkerConfig([
+      '[agent.profiles.build]',
+      'provider = "acp"',
+      'command = ["acp"]',
+      '',
+      '[agent.profiles.build.env]',
+      'TOKEN = ""',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('agent.profiles.build.env.TOKEN');
+  });
+
+  it('parses managed-job acp config and allows acp as primary_agent', () => {
+    applyRequiredEnv({ PRIMARY_AGENT: 'acp' });
+    writeWorkerConfig([
+      '[acp]',
+      'agent = "copilot"',
+      'profile = "reviewer"',
+      'model = "gpt-5.5"',
+      'model_provider = "openai"',
+      'reasoning_effort = "medium"',
+      '',
+      '[acp.env]',
+      'ACP_TOKEN = "abc"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.acp).toEqual({
+      agent: 'copilot',
+      profile: 'reviewer',
+      command: ['copilot', '--acp', '--stdio'],
+      env: {
+        ACP_TOKEN: 'abc',
+      },
+      model: 'gpt-5.5',
+      modelProvider: 'openai',
+      reasoningEffort: 'medium',
+    });
+    expect(config.primaryAgent).toBe('acp');
+  });
+
+  it('rejects invalid agent command timeout and debounce values', () => {
+    applyRequiredEnv({ AGENT_COMMAND_INTERACTION_TIMEOUT_MS: '0' });
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Invalid AGENT_COMMAND_INTERACTION_TIMEOUT_MS. Expected a positive integer.',
+    );
+
+    resetConfigCaches();
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent]', 'output_debounce_ms = 0']);
+
+    expect(() => loadWorkerConfig()).toThrow(
+      'Invalid agent.output_debounce_ms in TOML. Expected a positive integer.',
+    );
   });
 
   it('loads optional worktree setup hook settings', () => {

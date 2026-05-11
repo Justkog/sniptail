@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import { isAbsolute } from 'node:path';
 import type { TomlTable } from './toml.js';
 import {
   loadTomlConfig,
@@ -8,6 +9,7 @@ import {
   getTomlStringArray,
 } from './toml.js';
 import type {
+  AcpLaunchConfig,
   CoreConfig,
   BotConfig,
   WorkerConfig,
@@ -15,6 +17,7 @@ import type {
   OpenCodeModelConfig,
   BotRunActionReference,
   WorkerRunActionConfig,
+  WorkerAgentCommandConfig,
 } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
@@ -45,10 +48,12 @@ import {
   resolvePrimaryAgent,
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
+  resolveCopilotIdleTimeoutMs,
   resolveCodexExecutionMode,
   resolveOpenCodeExecutionMode,
   resolveOptionalFlagFromSources,
   resolveStringArrayFromSources,
+  expandHomePath,
   resolvePathValue,
   resolveStringValue,
 } from './resolve.js';
@@ -411,6 +416,345 @@ function parseWorkerRunActions(
     {},
   );
   return Object.keys(actions).length ? actions : undefined;
+}
+
+const AGENT_COMMAND_CONFIG_DEFAULTS = {
+  interactionTimeoutMs: 1_800_000,
+  outputDebounceMs: 3_000,
+} as const;
+
+const SAFE_AGENT_CONFIG_KEY = /^[A-Za-z0-9_.-]+$/;
+const ACP_LAUNCH_PRESETS = {
+  opencode: ['opencode', 'acp'],
+  copilot: ['copilot', '--acp', '--stdio'],
+} as const;
+
+function parseAgentConfigKey(rawKey: string, label: string): string {
+  const key = rawKey.trim();
+  if (!key || !SAFE_AGENT_CONFIG_KEY.test(key)) {
+    throw new Error(
+      `Invalid ${label} key: ${rawKey}. Expected letters, numbers, underscores, dots, or hyphens.`,
+    );
+  }
+  return key;
+}
+
+function parseOptionalDisplayString(value: unknown, label: string): string | undefined {
+  const raw = getTomlString(value, label);
+  const trimmed = raw?.trim();
+  return trimmed || undefined;
+}
+
+function parseRequiredNonEmptyString(value: unknown, label: string): string | undefined {
+  const raw = getTomlString(value, label);
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error(`Invalid ${label} in TOML. Expected a non-empty string.`);
+  }
+  return trimmed;
+}
+
+function parseRequiredNonEmptyStringArray(value: unknown, label: string): string[] | undefined {
+  const raw = getTomlStringArray(value, label);
+  if (raw === undefined) return undefined;
+  if (raw.length === 0) {
+    throw new Error(`Invalid ${label} in TOML. Expected a non-empty array of strings.`);
+  }
+  const values = raw.map((item) => item.trim());
+  if (values.some((item) => !item)) {
+    throw new Error(`Invalid ${label} in TOML. Expected non-empty string values.`);
+  }
+  return values;
+}
+
+function parseOptionalStringRecord(
+  value: unknown,
+  label: string,
+): Record<string, string> | undefined {
+  const table = getTomlTable(value, label);
+  if (!table) return undefined;
+  const record: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(table)) {
+    const key = rawKey.trim();
+    if (!key) {
+      throw new Error(`Invalid ${label} in TOML. Expected non-empty string keys.`);
+    }
+    record[key] = parseRequiredNonEmptyString(rawValue, `${label}.${rawKey}`) as string;
+  }
+  return Object.keys(record).length ? record : undefined;
+}
+
+function resolveAcpPresetCommand(agent: string, label: string): string[] {
+  const preset = ACP_LAUNCH_PRESETS[agent as keyof typeof ACP_LAUNCH_PRESETS];
+  if (preset) {
+    return [...preset];
+  }
+  if (agent === 'custom') {
+    throw new Error(`Invalid ${label} in TOML. command is required when agent is custom.`);
+  }
+  throw new Error(`Invalid ${label} in TOML. Unknown ACP agent preset: ${agent}.`);
+}
+
+function parseAcpLaunchConfig(
+  value: TomlTable | undefined,
+  label: string,
+): AcpLaunchConfig | undefined {
+  if (!value) return undefined;
+  const agent = parseRequiredNonEmptyString(value.agent, `${label}.agent`);
+  const profile = parseRequiredNonEmptyString(value.profile, `${label}.profile`);
+  const explicitCommand = parseRequiredNonEmptyStringArray(value.command, `${label}.command`);
+  const env = parseOptionalStringRecord(value.env, `${label}.env`);
+  const model = parseRequiredNonEmptyString(value.model, `${label}.model`);
+  const modelProvider = parseRequiredNonEmptyString(
+    value.model_provider,
+    `${label}.model_provider`,
+  );
+  const reasoningEffort = parseModelReasoningEffort(
+    value.reasoning_effort,
+    `${label}.reasoning_effort`,
+  );
+
+  if (!agent && !explicitCommand) {
+    throw new Error(`Invalid ${label} in TOML. Expected at least one of: agent or command.`);
+  }
+  if (reasoningEffort && !model) {
+    throw new Error(
+      `Invalid ${label}.reasoning_effort in TOML. model is required when reasoning_effort is set.`,
+    );
+  }
+
+  return {
+    ...(agent ? { agent } : {}),
+    ...(profile ? { profile } : {}),
+    command: explicitCommand ?? resolveAcpPresetCommand(agent as string, `${label}.agent`),
+    ...(env ? { env } : {}),
+    ...(model ? { model } : {}),
+    ...(modelProvider ? { modelProvider } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  };
+}
+
+function parseAgentWorkspaces(
+  workspacesToml: TomlTable | undefined,
+): WorkerAgentCommandConfig['workspaces'] {
+  if (!workspacesToml) return {};
+  const workspaces: WorkerAgentCommandConfig['workspaces'] = {};
+
+  for (const [rawWorkspaceKey, rawWorkspaceValue] of Object.entries(workspacesToml)) {
+    const workspaceKey = parseAgentConfigKey(rawWorkspaceKey, 'agent.workspaces');
+    const workspaceToml = getTomlTable(rawWorkspaceValue, `agent.workspaces.${rawWorkspaceKey}`);
+    const rawPath = getTomlString(workspaceToml?.path, `agent.workspaces.${rawWorkspaceKey}.path`);
+    const path = rawPath ? expandHomePath(rawPath.trim()) : undefined;
+    if (!path) {
+      throw new Error(
+        `Invalid agent.workspaces.${rawWorkspaceKey}.path in TOML. Expected a non-empty string.`,
+      );
+    }
+    if (!isAbsolute(path)) {
+      throw new Error(
+        `Invalid agent.workspaces.${rawWorkspaceKey}.path in TOML. Expected an absolute path.`,
+      );
+    }
+    const label = parseOptionalDisplayString(
+      workspaceToml?.label,
+      `agent.workspaces.${rawWorkspaceKey}.label`,
+    );
+    const description = parseOptionalDisplayString(
+      workspaceToml?.description,
+      `agent.workspaces.${rawWorkspaceKey}.description`,
+    );
+
+    workspaces[workspaceKey] = {
+      path,
+      ...(label ? { label } : {}),
+      ...(description ? { description } : {}),
+    };
+  }
+
+  return workspaces;
+}
+
+function parseAgentProfiles(
+  profilesToml: TomlTable | undefined,
+): WorkerAgentCommandConfig['profiles'] {
+  if (!profilesToml) return {};
+  const profiles: WorkerAgentCommandConfig['profiles'] = {};
+
+  for (const [rawProfileKey, rawProfileValue] of Object.entries(profilesToml)) {
+    const profileKey = parseAgentConfigKey(rawProfileKey, 'agent.profiles');
+    const profileToml = getTomlTable(rawProfileValue, `agent.profiles.${rawProfileKey}`);
+    const rawProvider = getTomlString(
+      profileToml?.provider,
+      `agent.profiles.${rawProfileKey}.provider`,
+    );
+    const provider = rawProvider?.trim();
+    if (
+      provider !== 'codex' &&
+      provider !== 'opencode' &&
+      provider !== 'copilot' &&
+      provider !== 'acp'
+    ) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.provider in TOML. Expected codex, opencode, copilot, or acp.`,
+      );
+    }
+    if (provider === 'acp') {
+      const acp = parseAcpLaunchConfig(profileToml, `agent.profiles.${rawProfileKey}`);
+      const label = parseOptionalDisplayString(
+        profileToml?.label,
+        `agent.profiles.${rawProfileKey}.label`,
+      );
+      const description = parseOptionalDisplayString(
+        profileToml?.description,
+        `agent.profiles.${rawProfileKey}.description`,
+      );
+
+      profiles[profileKey] = {
+        provider,
+        ...(acp as AcpLaunchConfig),
+        ...(label ? { label } : {}),
+        ...(description ? { description } : {}),
+      };
+      continue;
+    }
+    const rawProfile = getTomlString(
+      profileToml?.profile,
+      `agent.profiles.${rawProfileKey}.profile`,
+    );
+    const profile = rawProfile?.trim();
+    if (rawProfile !== undefined && !profile) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.profile in TOML. Expected a non-empty string.`,
+      );
+    }
+    const rawModel = getTomlString(profileToml?.model, `agent.profiles.${rawProfileKey}.model`);
+    const model = rawModel?.trim();
+    if (rawModel !== undefined && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model in TOML. Expected a non-empty string.`,
+      );
+    }
+    const rawModelProvider = getTomlString(
+      profileToml?.model_provider,
+      `agent.profiles.${rawProfileKey}.model_provider`,
+    );
+    const modelProvider = rawModelProvider?.trim();
+    if (rawModelProvider !== undefined && !modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. Expected a non-empty string.`,
+      );
+    }
+    const reasoningEffort = parseModelReasoningEffort(
+      profileToml?.reasoning_effort,
+      `agent.profiles.${rawProfileKey}.reasoning_effort`,
+    );
+
+    if (!profile && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey} in TOML. Expected at least one of: profile or model.`,
+      );
+    }
+    if (reasoningEffort && !model) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.reasoning_effort in TOML. model is required when reasoning_effort is set.`,
+      );
+    }
+    if (provider === 'copilot' && modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is not supported for copilot profiles.`,
+      );
+    }
+    if (provider === 'codex' && modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is not supported for codex profiles.`,
+      );
+    }
+    if (provider === 'opencode' && model && !modelProvider) {
+      throw new Error(
+        `Invalid agent.profiles.${rawProfileKey}.model_provider in TOML. model_provider is required when model is set for opencode profiles.`,
+      );
+    }
+    const label = parseOptionalDisplayString(
+      profileToml?.label,
+      `agent.profiles.${rawProfileKey}.label`,
+    );
+    const description = parseOptionalDisplayString(
+      profileToml?.description,
+      `agent.profiles.${rawProfileKey}.description`,
+    );
+
+    profiles[profileKey] = {
+      provider,
+      ...(profile ? { profile } : {}),
+      ...(model ? { model } : {}),
+      ...(modelProvider ? { modelProvider } : {}),
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(label ? { label } : {}),
+      ...(description ? { description } : {}),
+    };
+  }
+
+  return profiles;
+}
+
+function parseWorkerAgentCommandConfig(agentToml: TomlTable | undefined): WorkerAgentCommandConfig {
+  const enabled = resolveOptionalFlagFromSources(
+    'AGENT_COMMAND_ENABLED',
+    agentToml?.enabled,
+    false,
+  );
+  const defaultWorkspace = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_WORKSPACE',
+    agentToml?.default_workspace,
+  );
+  const defaultAgentProfile = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
+    agentToml?.default_agent_profile,
+  );
+  const interactionTimeoutMs = resolvePositiveIntegerFromSources(
+    'AGENT_COMMAND_INTERACTION_TIMEOUT_MS',
+    agentToml?.interaction_timeout_ms,
+    'agent.interaction_timeout_ms',
+    AGENT_COMMAND_CONFIG_DEFAULTS.interactionTimeoutMs,
+  );
+  const outputDebounceMs = resolvePositiveIntegerFromSources(
+    'AGENT_COMMAND_OUTPUT_DEBOUNCE_MS',
+    agentToml?.output_debounce_ms,
+    'agent.output_debounce_ms',
+    AGENT_COMMAND_CONFIG_DEFAULTS.outputDebounceMs,
+  );
+  const workspaces = parseAgentWorkspaces(getTomlTable(agentToml?.workspaces, 'agent.workspaces'));
+  const profiles = parseAgentProfiles(getTomlTable(agentToml?.profiles, 'agent.profiles'));
+
+  if (enabled) {
+    if (!Object.keys(workspaces).length) {
+      throw new Error('Invalid agent config. enabled=true requires at least one workspace.');
+    }
+    if (!Object.keys(profiles).length) {
+      throw new Error('Invalid agent config. enabled=true requires at least one profile.');
+    }
+    if (!defaultWorkspace || !workspaces[defaultWorkspace]) {
+      throw new Error(
+        'Invalid agent.default_workspace. Enabled agent command requires a known workspace key.',
+      );
+    }
+    if (!defaultAgentProfile || !profiles[defaultAgentProfile]) {
+      throw new Error(
+        'Invalid agent.default_agent_profile. Enabled agent command requires a known profile key.',
+      );
+    }
+  }
+
+  return {
+    enabled,
+    ...(defaultWorkspace ? { defaultWorkspace } : {}),
+    ...(defaultAgentProfile ? { defaultAgentProfile } : {}),
+    interactionTimeoutMs,
+    outputDebounceMs,
+    workspaces,
+    profiles,
+  };
 }
 
 function parsePermissionSubjectToken(raw: string, label: string): PermissionSubject {
@@ -781,9 +1125,11 @@ export function loadWorkerConfig(): WorkerConfig {
   const copilotToml = getTomlTable(toml.copilot, 'copilot');
   const codexToml = getTomlTable(toml.codex, 'codex');
   const opencodeToml = getTomlTable(toml.opencode, 'opencode');
+  const acpToml = getTomlTable(toml.acp, 'acp');
   const githubToml = getTomlTable(toml.github, 'github');
   const gitlabToml = getTomlTable(toml.gitlab, 'gitlab');
   const runToml = getTomlTable(toml.run, 'run');
+  const agentToml = getTomlTable(toml.agent, 'agent');
 
   const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
   const jobWorkRoot = resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
@@ -800,6 +1146,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const primaryAgent = resolvePrimaryAgent(workerToml?.primary_agent);
   const copilotExecutionMode = resolveCopilotExecutionMode(copilotToml?.execution_mode);
   const copilotIdleRetries = resolveCopilotIdleRetries(copilotToml?.idle_retries);
+  const copilotIdleTimeoutMs = resolveCopilotIdleTimeoutMs(copilotToml?.idle_timeout_ms);
   const copilotDockerfilePath = resolveStringValue(
     'GH_COPILOT_DOCKERFILE_PATH',
     copilotToml?.dockerfile_path,
@@ -876,6 +1223,8 @@ export function loadWorkerConfig(): WorkerConfig {
     opencodeToml?.docker_build_context,
   );
   const runActions = parseWorkerRunActions(runToml);
+  const agent = parseWorkerAgentCommandConfig(agentToml);
+  const acp = parseAcpLaunchConfig(acpToml, 'acp');
 
   const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
   const worktreeSetupCommand = resolveStringValue(
@@ -947,6 +1296,7 @@ export function loadWorkerConfig(): WorkerConfig {
     copilot: {
       executionMode: copilotExecutionMode,
       idleRetries: copilotIdleRetries,
+      idleTimeoutMs: copilotIdleTimeoutMs,
       ...(copilotDockerfilePath && { dockerfilePath: copilotDockerfilePath }),
       ...(copilotDockerImage && { dockerImage: copilotDockerImage }),
       ...(copilotDockerBuildContext && { dockerBuildContext: copilotDockerBuildContext }),
@@ -978,6 +1328,8 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(cleanupMaxAge && { cleanupMaxAge }),
     ...(cleanupMaxEntries !== undefined && { cleanupMaxEntries }),
     includeRawRequestInMr,
+    agent,
+    ...(acp ? { acp } : {}),
     ...(runActions ? { run: { actions: runActions } } : {}),
     codex: {
       executionMode: executionMode,

@@ -20,6 +20,7 @@ function buildConfig(): WorkerConfig {
     copilot: {
       executionMode: 'local',
       idleRetries: 2,
+      idleTimeoutMs: 300_000,
     },
     codex: {
       executionMode: 'local',

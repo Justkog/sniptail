@@ -15,8 +15,8 @@ export const CONTEXT_FILE_EXTENSIONS = [
 ] as const;
 
 export const MAX_CONTEXT_FILES = 3;
-export const MAX_CONTEXT_FILE_BYTES = 2 * 1024 * 1024;
-export const MAX_CONTEXT_TOTAL_BYTES = 6 * 1024 * 1024;
+export const MAX_CONTEXT_FILE_BYTES = 6 * 1024 * 1024;
+export const MAX_CONTEXT_TOTAL_BYTES = 18 * 1024 * 1024;
 
 const allowedContextMimeTypes = new Set([
   'application/json',
