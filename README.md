@@ -140,10 +140,25 @@ Roadmap detail tables are in `docs/project-roadmap.md`.
 
 ## How it works (high level)
 
+There are two ways to use Sniptail:
+
+### 1) Agent command sessions
+
+This is the most direct, interactive way to use Sniptail. It opens a live coding-agent session in a chat thread and keeps the conversation going turn by turn.
+
+1. A user starts an agent session from chat, picks a workspace/profile if needed, and sends a freeform prompt.
+2. Sniptail starts the selected agent in an interactive session tied to that thread.
+3. The user can keep working with the same session through follow-up prompts, plus stop or steer the active turn.
+4. When the agent asks for permissions or more input, Sniptail relays those interactions back into the chat flow when the provider supports it.
+
+### 2) Managed job commands
+
+This is the queue-backed job flow used by the ASK / PLAN / EXPLORE / REVIEW / IMPLEMENT style commands and bot mentions. It is better suited to structured requests that should run as tracked jobs and optionally produce code-change artifacts.
+
 1. A user triggers a slash command or mentions the bot in Slack or Discord, or sends a Telegram command/message to the bot.
-2. The bot queues a job via the configured transport (`redis` or in-process `inproc`) and records metadata in the configured job registry.
-3. A worker pulls the job, prepares repo worktrees, and runs the configured coding agent (Codex, Copilot, OpenCode, or an ACP-backed agent).
-4. Results are posted back to Slack, Discord, or Telegram as a report and (for IMPLEMENT jobs) a GitLab MR or GitHub PR.
+2. The bot validates the request, queues a job via the configured transport (`redis` or in-process `inproc`), and records metadata in the job registry.
+3. A worker pulls the job, prepares repo worktrees when needed, and runs the configured coding agent (Codex, Copilot, OpenCode, or an ACP-backed agent).
+4. Results are posted back to Slack, Discord, or Telegram as a report and, for IMPLEMENT jobs, a GitLab MR or GitHub PR.
 
 ## Why not just use Copilot, Codex, or OpenCode?
 
