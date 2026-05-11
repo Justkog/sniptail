@@ -494,6 +494,35 @@ describe('ACP runtime wrapper', () => {
     proc.exitCode = 2;
     proc.emit('exit', 2, null);
 
+    await expect(promise).rejects.toThrow('ACP runtime failed');
+    await expect(promise).rejects.toThrow('command: mock-acp');
     await expect(promise).rejects.toThrow('bad startup');
+  });
+
+  it('adds source and agent identity context to session override failures', async () => {
+    const { connection } = queueRuntime();
+    connection.newSession.mockResolvedValue({
+      sessionId: 'session-1',
+      modes: {
+        currentModeId: 'ask',
+        availableModes: [{ id: 'ask', name: 'Ask' }],
+      },
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: {
+        agent: 'opencode',
+        command: ['mock-acp'],
+        profile: 'build',
+      },
+      diagnostics: {
+        configSource: 'agent.profiles.build',
+      },
+    });
+
+    await expect(runtime.createSession()).rejects.toThrow(
+      'ACP runtime failed (agent.profiles.build, command: mock-acp, configured agent: opencode, ACP agent: Mock ACP): ACP profile is not supported by this agent: build',
+    );
   });
 });

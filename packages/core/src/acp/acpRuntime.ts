@@ -17,6 +17,7 @@ import {
   type SetSessionConfigOptionResponse,
 } from '@agentclientprotocol/sdk';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { basename } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import type { AcpLaunchConfig } from '../config/types.js';
 import type {
@@ -50,6 +51,9 @@ export type AcpRuntimeOptions = {
   launch: AcpLaunchConfig;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  diagnostics?: {
+    configSource?: string;
+  };
   clientInfo?: Implementation;
   clientCapabilities?: ClientCapabilities;
   onSessionUpdate?: (notification: SessionNotification) => void | Promise<void>;
@@ -74,6 +78,27 @@ export type AcpRuntimeHandle = {
 };
 
 type AcpSessionResponse = NewSessionResponse | LoadSessionResponse;
+
+function buildRuntimeContext(options: AcpRuntimeOptions, agentInfo?: Implementation): string {
+  const parts = [
+    options.diagnostics?.configSource,
+    `command: ${basename(options.launch.command[0] ?? 'unknown')}`,
+    options.launch.agent ? `configured agent: ${options.launch.agent}` : undefined,
+    agentInfo?.name ? `ACP agent: ${agentInfo.name}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join(', ');
+}
+
+function wrapRuntimeError(
+  options: AcpRuntimeOptions,
+  err: unknown,
+  agentInfo?: Implementation,
+): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  const context = buildRuntimeContext(options, agentInfo);
+  return new Error(context ? `ACP runtime failed (${context}): ${message}` : message);
+}
 
 async function initializeAcpConnection(
   connection: ClientSideConnection,
@@ -367,12 +392,13 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
   } catch (err) {
     await terminateProcess(proc);
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`${message}${formatOutput(stderr)}`);
+    throw wrapRuntimeError(options, `${message}${formatOutput(stderr)}`);
   }
   void startupFailure.catch(() => undefined);
 
   let sessionId: string | undefined;
   let closed = false;
+  const runtimeAgentInfo = initialized.agentInfo ?? undefined;
 
   const startOptions = (sessionOptions?: AcpSessionStartOptions) => ({
     cwd: sessionOptions?.cwd ?? options.cwd,
@@ -385,41 +411,69 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
   const handle: AcpRuntimeHandle = {
     connection,
     capabilities: initialized.agentCapabilities ?? {},
-    ...(initialized.agentInfo ? { agentInfo: initialized.agentInfo } : {}),
+    ...(runtimeAgentInfo ? { agentInfo: runtimeAgentInfo } : {}),
     async createSession(sessionOptions) {
-      const session = await createAcpSession(connection, startOptions(sessionOptions));
+      let session: NewSessionResponse;
+      try {
+        session = await createAcpSession(connection, startOptions(sessionOptions));
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
       sessionId = session.sessionId;
       handle.sessionId = session.sessionId;
-      await applySessionOverrides(connection, options.launch, session.sessionId, session);
+      try {
+        await applySessionOverrides(connection, options.launch, session.sessionId, session);
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
       return session;
     },
     async loadSession(existingSessionId, sessionOptions) {
       if (!initialized.agentCapabilities?.loadSession) {
-        throw new Error(
+        throw wrapRuntimeError(
+          options,
           `ACP agent does not support session/load; cannot load session ${existingSessionId}.`,
+          runtimeAgentInfo,
         );
       }
-      const session = await loadAcpSession(connection, {
-        ...startOptions(sessionOptions),
-        sessionId: existingSessionId,
-      });
+      let session: LoadSessionResponse;
+      try {
+        session = await loadAcpSession(connection, {
+          ...startOptions(sessionOptions),
+          sessionId: existingSessionId,
+        });
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
       sessionId = existingSessionId;
       handle.sessionId = existingSessionId;
-      await applySessionOverrides(connection, options.launch, existingSessionId, session);
+      try {
+        await applySessionOverrides(connection, options.launch, existingSessionId, session);
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
       return session;
     },
     async prompt(promptOptions) {
       if (!sessionId) {
         throw new Error('ACP session has not been created or loaded.');
       }
-      return await promptAcpSession(connection, {
-        sessionId,
-        prompt: [{ type: 'text', text: promptOptions.prompt }],
-      });
+      try {
+        return await promptAcpSession(connection, {
+          sessionId,
+          prompt: [{ type: 'text', text: promptOptions.prompt }],
+        });
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
     },
     async cancel() {
       if (!sessionId) return;
-      await connection.cancel({ sessionId });
+      try {
+        await connection.cancel({ sessionId });
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
     },
     async close() {
       if (closed) return;

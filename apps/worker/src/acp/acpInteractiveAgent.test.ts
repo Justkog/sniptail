@@ -11,6 +11,9 @@ import { clearActiveAcpRuntimes, getActiveAcpRuntime } from './acpInteractionSta
 type MockLaunchOptions = {
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  diagnostics?: {
+    configSource?: string;
+  };
   launch: {
     provider: 'acp';
     agent?: string;
@@ -194,6 +197,9 @@ describe('ACP interactive agent', () => {
     expect(launchOptions).toMatchObject({
       cwd: tempRoot,
       env: { ACP_TOKEN: 'secret' },
+      diagnostics: {
+        configSource: 'agent.profiles.acp',
+      },
       launch: {
         provider: 'acp',
         agent: 'opencode',
@@ -313,6 +319,9 @@ describe('ACP interactive agent', () => {
       .calls[0]?.[0] as unknown as MockLaunchOptions;
     expect(launchOptions).toMatchObject({
       cwd: tempRoot,
+      diagnostics: {
+        configSource: 'agent.profiles.acp',
+      },
       launch: {
         provider: 'acp',
         agent: 'opencode',

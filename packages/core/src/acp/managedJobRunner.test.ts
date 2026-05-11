@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { logger } from '../logger.js';
 import type { JobSpec } from '../types/job.js';
+import type { AcpRequestPermissionRequest } from './types.js';
 
 const hoisted = vi.hoisted(() => ({
   launchAcpRuntime: vi.fn(),
@@ -7,6 +9,12 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('./acpRuntime.js', () => ({
   launchAcpRuntime: hoisted.launchAcpRuntime,
+}));
+
+vi.mock('../logger.js', () => ({
+  logger: {
+    warn: vi.fn(),
+  },
 }));
 
 import { runAcp } from './managedJobRunner.js';
@@ -22,6 +30,23 @@ function buildJob(type: JobSpec['type'] = 'ASK'): JobSpec {
       provider: 'slack',
       channelId: 'C123',
       userId: 'U123',
+    },
+  };
+}
+
+function buildPermissionRequest(
+  optionKinds: Array<'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'>,
+): AcpRequestPermissionRequest {
+  return {
+    sessionId: 'acp-session-1',
+    options: optionKinds.map((kind) => ({
+      optionId: `${kind}-id`,
+      name: kind,
+      kind,
+    })),
+    toolCall: {
+      toolCallId: 'tool-1',
+      title: 'Read README',
     },
   };
 }
@@ -82,11 +107,15 @@ describe('runAcp', () => {
       cwd: string;
       env: NodeJS.ProcessEnv;
       launch: { agent?: string; command: string[]; profile?: string };
+      diagnostics?: { configSource?: string };
       onSessionUpdate?: unknown;
     };
     expect(launchCall).toMatchObject({
       cwd: '/tmp/work',
       env: { ACP_TOKEN: 'abc' },
+      diagnostics: {
+        configSource: '[acp]',
+      },
       launch: {
         agent: 'opencode',
         command: ['opencode', 'acp'],
@@ -131,6 +160,102 @@ describe('runAcp', () => {
       prompt: 'Use this exact prompt.',
     });
     expect(loadSession).not.toHaveBeenCalled();
+  });
+
+  it('auto-approves managed ACP permissions by preferring allow_always', async () => {
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const prompt = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+    hoisted.launchAcpRuntime.mockResolvedValue({
+      createSession,
+      prompt,
+      close,
+    });
+
+    await runAcp(buildJob(), '/tmp/work', {}, {
+      acp: {
+        command: ['opencode', 'acp'],
+      },
+    });
+
+    const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
+      onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
+    };
+
+    await expect(
+      launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once', 'allow_always'])),
+    ).resolves.toEqual({
+      outcome: {
+        outcome: 'selected',
+        optionId: 'allow_always-id',
+      },
+    });
+  });
+
+  it('falls back to allow_once when allow_always is unavailable', async () => {
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const prompt = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+    hoisted.launchAcpRuntime.mockResolvedValue({
+      createSession,
+      prompt,
+      close,
+    });
+
+    await runAcp(buildJob(), '/tmp/work', {}, {
+      acp: {
+        command: ['opencode', 'acp'],
+      },
+    });
+
+    const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
+      onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
+    };
+
+    await expect(launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once']))).resolves
+      .toEqual({
+        outcome: {
+          outcome: 'selected',
+          optionId: 'allow_once-id',
+        },
+      });
+  });
+
+  it('cancels managed ACP permissions when no allow option exists', async () => {
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const prompt = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+    hoisted.launchAcpRuntime.mockResolvedValue({
+      createSession,
+      prompt,
+      close,
+    });
+
+    await runAcp(buildJob(), '/tmp/work', {}, {
+      acp: {
+        command: ['opencode', 'acp'],
+      },
+    });
+
+    const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
+      onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
+    };
+
+    await expect(launchCall.onRequestPermission?.(buildPermissionRequest(['reject_once']))).resolves
+      .toEqual({
+        outcome: {
+          outcome: 'cancelled',
+        },
+      });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'acp-session-1',
+        toolCallId: 'tool-1',
+        toolTitle: 'Read README',
+        optionKinds: ['reject_once'],
+      }),
+      'ACP managed job permission request did not provide an allow option',
+    );
   });
 
   it('loads an existing ACP session for managed-job continuation', async () => {

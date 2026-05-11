@@ -184,6 +184,9 @@ export async function runAcpAgentTurn({
       launch: profile,
       cwd: resolved.resolvedCwd,
       env,
+      diagnostics: {
+        configSource: `agent.profiles.${profile.key}`,
+      },
       onRequestPermission: buildAcpPermissionHandler({
         sessionId,
         response: turn.response,
