@@ -140,7 +140,7 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # label = "Build"
 # description = "OpenCode Build primary agent"
 
-[acp]
+# [acp]
 # Managed-job ACP agent config.
 # Optional. Required when [worker].primary_agent = "acp".
 #
