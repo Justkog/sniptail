@@ -26,6 +26,13 @@ vi.mock('@sniptail/core/agents/agentRegistry.js', () => ({
       shouldIncludeRepoCache: () => false,
       buildRunOptions: () => ({}),
     },
+    acp: {
+      id: 'acp',
+      adapter: { run: hoisted.run },
+      resolveModelConfig: () => undefined,
+      shouldIncludeRepoCache: () => false,
+      buildRunOptions: () => ({}),
+    },
   },
 }));
 

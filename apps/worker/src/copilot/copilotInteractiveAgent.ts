@@ -82,7 +82,7 @@ function buildCopilotRunOptions(
       ...(turn.additionalDirectories ?? []),
     ]),
   );
-  const usesNamedAgent = Boolean(turn.profile.name);
+  const usesNamedAgent = Boolean(turn.profile.profile);
   const model =
     turn.profile.model ?? (usesNamedAgent ? undefined : config.copilot.defaultModel?.model);
   const modelProvider = usesNamedAgent ? undefined : config.copilot.defaultModel?.modelProvider;
@@ -103,7 +103,7 @@ function buildCopilotRunOptions(
     ...(additionalDirectories?.length ? { additionalDirectories } : {}),
     copilot: {
       streaming: true,
-      ...(turn.profile.name ? { agent: turn.profile.name } : {}),
+      ...(turn.profile.profile ? { agent: turn.profile.profile } : {}),
       ...(config.copilot.executionMode === 'docker'
         ? {
             cliPath: resolveWorkerAgentScriptPath('copilot-docker.sh'),
@@ -209,7 +209,7 @@ export async function runCopilotAgentTurn({
         sessionId,
         workspaceKey,
         profileKey: profile.key,
-        ...(profile.name ? { copilotAgent: profile.name } : {}),
+        ...(profile.profile ? { copilotAgent: profile.profile } : {}),
         ...(profile.model ? { copilotModel: profile.model } : {}),
         ...(profile.reasoningEffort ? { copilotReasoningEffort: profile.reasoningEffort } : {}),
         resolvedCwd: resolved.resolvedCwd,

@@ -9,7 +9,7 @@ vi.mock('./resolveWorkerAgentScriptPath.js', () => ({
   resolveWorkerAgentScriptPath: hoisted.resolveWorkerAgentScriptPath,
 }));
 
-import { AGENT_DESCRIPTORS } from './agentRegistry.js';
+import { AGENT_DESCRIPTORS, getDockerModeAgents } from './agentRegistry.js';
 
 function buildConfig(): WorkerConfig {
   return {
@@ -44,6 +44,11 @@ function buildConfig(): WorkerConfig {
       dockerfilePath: './Dockerfile.opencode',
       dockerImage: 'snatch-opencode:local',
       dockerBuildContext: '.',
+    },
+    acp: {
+      agent: 'opencode',
+      command: ['opencode', 'acp'],
+      profile: 'build',
     },
   };
 }
@@ -139,5 +144,36 @@ describe('AGENT_DESCRIPTORS.opencode', () => {
         },
       },
     });
+  });
+});
+
+describe('AGENT_DESCRIPTORS.acp', () => {
+  it('is never treated as docker mode and forwards [acp] launch config', () => {
+    const config = buildConfig();
+
+    expect(AGENT_DESCRIPTORS.acp.isDockerMode(config)).toBe(false);
+    expect(AGENT_DESCRIPTORS.acp.buildRunOptions(config)).toEqual({
+      acp: {
+        agent: 'opencode',
+        command: ['opencode', 'acp'],
+        profile: 'build',
+      },
+    });
+  });
+
+  it('does not resolve a separate model override and is not discovered as docker mode', () => {
+    const config = buildConfig();
+
+    expect(AGENT_DESCRIPTORS.acp.resolveModelConfig(config, 'ASK')).toBeUndefined();
+    expect(getDockerModeAgents(config)).not.toContain('acp');
+  });
+
+  it('fails clearly when [acp] config is missing', () => {
+    const config = buildConfig();
+    delete config.acp;
+
+    expect(() => AGENT_DESCRIPTORS.acp.buildRunOptions(config)).toThrow(
+      'ACP managed jobs require an [acp] worker config with an ACP launch command or preset.',
+    );
   });
 });

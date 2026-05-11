@@ -16,13 +16,15 @@ Sniptail is a PNPM monorepo with two apps and two shared packages:
 - PNPM (workspace tooling; only needed when running from source)
 - Git + SSH access to your repos
 - Codex CLI in `PATH` (required when `sniptail.worker.toml` sets `[codex].execution_mode = "local"`, e.g. `npm install -g @openai/codex`)
-- Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"`, e.g. `npm install -g @github/copilot`)
-- OpenCode CLI in `PATH` (required when `sniptail.worker.toml` sets `[opencode].execution_mode = "local"`, e.g. `npm install -g opencode-ai`)
+- Copilot CLI in `PATH` (required when `sniptail.worker.toml` sets `[copilot].execution_mode = "local"` or ACP uses `agent = "copilot"`, e.g. `npm install -g @github/copilot`)
+- OpenCode CLI in `PATH` (required when `sniptail.worker.toml` sets `[opencode].execution_mode = "local"` or ACP uses `agent = "opencode"`, e.g. `npm install -g opencode-ai`)
+- ACP-compatible stdio agent command in `PATH` when using ACP with a custom command
 - Docker (required when `[codex].execution_mode = "docker"`, `[copilot].execution_mode = "docker"`, or `[opencode].execution_mode = "docker"`)
 
 When Codex runs in local mode, Sniptail always resolves `codex` from the worker process `PATH`. There is no fallback to the bundled `@openai/codex-sdk` vendor binary.
 When Copilot runs in local mode, Sniptail always resolves `copilot` from the worker process `PATH`. There is no fallback to bundled `@github/copilot*` package binaries.
 When OpenCode runs in local mode, Sniptail starts a per-job OpenCode server by resolving `opencode` from the worker process `PATH`. There is no fallback to bundled OpenCode CLI binaries.
+When ACP is used, Sniptail launches the configured ACP stdio command from the worker process `PATH`.
 
 ## Installation
 
@@ -36,7 +38,7 @@ This path is intended for people who want to run Sniptail, not hack on it locall
 - Redis (required only when using `queue_driver = "redis"`)
 - Git + SSH access to your repos (worker needs this)
 - One of:
-  - Codex, Copilot, or OpenCode CLI in `PATH` (when using `execution_mode = "local"`), or
+  - Codex, Copilot, OpenCode, or another ACP-compatible CLI in `PATH` (when using local execution or ACP), or
   - an already-running OpenCode server (when `[opencode].execution_mode = "server"`), or
   - Docker (when using `execution_mode = "docker"`)
 
@@ -107,12 +109,29 @@ In `sniptail.worker.toml`, configure:
 - `[codex].execution_mode = "local"` or `"docker"`
 - `[copilot].execution_mode = "local"` or `"docker"`
 - `[opencode].execution_mode = "local"`, `"server"`, or `"docker"`
+- `[acp]` when `primary_agent = "acp"` for managed ASK/EXPLORE/PLAN/REVIEW/IMPLEMENT jobs
 
 When using `"local"`, install the corresponding CLI (`codex` / `copilot` / `opencode`) so it's available in `PATH`. When using `"server"` for OpenCode, set `[opencode].server_url` and make sure the OpenCode server can access the job work directories by the same absolute paths the worker uses. When using `"docker"`, ensure Docker is available and configure the relevant docker settings in the TOML.
 
 OpenCode model selection uses `[opencode].provider` plus `[opencode].model`, with optional `[opencode.models.<JOB_TYPE>]` overrides using the same fields. If the persistent server requires authentication, set `[opencode].server_auth_header_env` to the name of an env var containing the complete `Authorization` header value.
 
-Prebuilt release artifacts prune `@openai/codex-sdk/vendor`, bundled `@github/copilot*` packages, and known OpenCode CLI packages during packaging, so local Codex, Copilot, and OpenCode execution require system-installed CLIs.
+Managed ACP jobs use the top-level `[acp]` table. The built-in presets are `opencode` (`opencode acp`) and `copilot` (`copilot --acp --stdio`), or you can provide an explicit command:
+
+```toml
+[worker]
+primary_agent = "acp"
+
+[acp]
+agent = "opencode"
+profile = "build"
+
+# Alternative for a custom ACP-compatible stdio agent:
+# command = ["/usr/local/bin/my-acp-agent", "--stdio"]
+```
+
+ACP managed jobs automatically approve ACP permission prompts exposed by the agent. ACP form elicitations are currently supported in interactive agent-command sessions, but managed jobs do not currently route agent questions back to users.
+
+Prebuilt release artifacts prune `@openai/codex-sdk/vendor`, bundled `@github/copilot*` packages, and known OpenCode CLI packages during packaging, so local Codex, Copilot, OpenCode, and ACP preset execution require system-installed CLIs.
 
 #### 5) Slack / Discord / Telegram setup
 

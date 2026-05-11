@@ -106,7 +106,7 @@ describe('handleAgentStart', () => {
       defaultWorkspace: 'snatch',
       defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'opencode', name: 'build' }],
+      profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
     hoisted.authorizeDiscordPrecheckAndRespond.mockResolvedValue(true);
@@ -244,7 +244,7 @@ describe('handleAgentStart', () => {
       defaultWorkspace: 'snatch',
       defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'codex', name: 'deep-review' }],
+      profiles: [{ key: 'build', provider: 'codex', profile: 'deep-review' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
     hoisted.loadDiscordContextFiles.mockResolvedValue([
@@ -353,8 +353,8 @@ describe('handleAgentStart', () => {
       defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }, { key: 'tools' }],
       profiles: [
-        { key: 'build', provider: 'opencode', name: 'build' },
-        { key: 'plan', provider: 'opencode', name: 'plan' },
+        { key: 'build', provider: 'opencode', profile: 'build' },
+        { key: 'plan', provider: 'opencode', profile: 'plan' },
       ],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -430,7 +430,7 @@ describe('handleAgentStart', () => {
       cwd: 'apps/worker',
     });
     hoisted.buildWorkspaceAutocompleteChoices.mockReturnValue([
-      { name: 'Snatch', value: 'snatch' },
+      { name: 'snatch', value: 'snatch' },
     ]);
     const interaction = {
       user: { id: 'user-1' },
@@ -445,7 +445,7 @@ describe('handleAgentStart', () => {
     await handleAgentAutocomplete(interaction as never);
 
     expect(hoisted.buildWorkspaceAutocompleteChoices).toHaveBeenCalledWith('', 'snatch');
-    expect(interaction.respond).toHaveBeenCalledWith([{ name: 'Snatch', value: 'snatch' }]);
+    expect(interaction.respond).toHaveBeenCalledWith([{ name: 'snatch', value: 'snatch' }]);
   });
 
   it('suppresses sticky cwd autocomplete when another workspace is selected', async () => {

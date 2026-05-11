@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 
 const hoisted = vi.hoisted(() => ({
+  assertAcpPreflight: vi.fn(() => Promise.resolve(undefined)),
   assertLocalCopilotPreflight: vi.fn(() => Promise.resolve(undefined)),
   assertLocalCodexPreflight: vi.fn(() => Promise.resolve(undefined)),
   assertOpenCodePreflight: vi.fn(() => Promise.resolve(undefined)),
+}));
+
+vi.mock('../acp/acpPreflight.js', () => ({
+  assertAcpPreflight: hoisted.assertAcpPreflight,
 }));
 
 vi.mock('../copilot/copilotPreflight.js', () => ({
@@ -62,6 +67,7 @@ describe('agent preflight dispatcher', () => {
     await assertLocalAgentPreflight(config, 'codex');
     expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalCodexPreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertAcpPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
   });
@@ -71,6 +77,7 @@ describe('agent preflight dispatcher', () => {
     await assertLocalAgentPreflight(config, 'copilot');
     expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalCopilotPreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertAcpPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
   });
@@ -80,6 +87,17 @@ describe('agent preflight dispatcher', () => {
     await assertLocalAgentPreflight(config, 'opencode');
     expect(hoisted.assertOpenCodePreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertOpenCodePreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertAcpPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
+    expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
+  });
+
+  it('runs ACP preflight when selected agent is acp', async () => {
+    const config = buildConfig('acp');
+    await assertLocalAgentPreflight(config, 'acp');
+    expect(hoisted.assertAcpPreflight).toHaveBeenCalledTimes(1);
+    expect(hoisted.assertAcpPreflight).toHaveBeenCalledWith(config);
+    expect(hoisted.assertOpenCodePreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCopilotPreflight).not.toHaveBeenCalled();
     expect(hoisted.assertLocalCodexPreflight).not.toHaveBeenCalled();
   });

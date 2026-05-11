@@ -23,6 +23,7 @@
     "db:migrate:pg": "DOTENV_CONFIG_PATH=../../.env drizzle-kit migrate --config drizzle.config.pg.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.21.0",
     "@github/copilot-sdk": "^0.3.0",
     "@openai/codex-sdk": "^0.124.0",
     "@opencode-ai/sdk": "^1.14.22",

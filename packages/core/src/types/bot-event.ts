@@ -25,8 +25,9 @@ export type BotAgentWorkspaceMetadata = {
 
 export type BotAgentProfileMetadata = {
   key: string;
-  provider: 'codex' | 'opencode' | 'copilot';
-  name?: string;
+  provider: 'codex' | 'opencode' | 'copilot' | 'acp';
+  agent?: string;
+  profile?: string;
   model?: string;
   modelProvider?: string;
   reasoningEffort?: ModelReasoningEffort;

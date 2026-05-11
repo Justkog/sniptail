@@ -21,7 +21,7 @@ description = "Main checkout"
 
 [agent.profiles.build]
 provider = "opencode"
-name = "build"
+profile = "build"
 label = "Build"
 description = "General purpose build agent"
 ```
@@ -61,8 +61,8 @@ Each profile selects the underlying coding-agent provider and its provider-speci
 
 Shared fields:
 
-- `provider`: required, one of `codex`, `copilot`, or `opencode`
-- `name`: optional provider-native agent/profile name
+- `provider`: required, one of `codex`, `copilot`, `opencode`, or `acp`
+- `profile`: optional provider-native agent/profile name
 - `model`: optional explicit model override
 - `reasoning_effort`: optional explicit reasoning override; requires `model`
 - `label`: optional display label for UI/autocomplete
@@ -72,77 +72,116 @@ OpenCode-only field:
 
 - `model_provider`: required when `provider = "opencode"` and `model` is set
 
+ACP-only fields:
+
+- `agent`: optional preset, currently `opencode` or `copilot`
+- `command`: optional explicit ACP stdio command array, required when `agent = "custom"` and useful for other ACP-compatible agents
+- `env`: optional table of environment variables added when launching the ACP command
+- `model_provider`: optional ACP session config override when the launched ACP agent exposes a compatible provider option
+
 Restrictions:
 
 - `model_provider` is not supported for `codex` profiles
 - `model_provider` is not supported for `copilot` profiles
-- every profile must define at least one of `name` or `model`
+- non-ACP profiles must define at least one of `profile` or `model`
+- ACP profiles must define at least one of `agent` or `command`
 
 ## Provider behavior
 
 ### Codex profiles
 
-`name` maps to Codex SDK constructor `config.profile`.
+`profile` maps to Codex SDK constructor `config.profile`.
 
 Example:
 
 ```toml
 [agent.profiles.codex-readonly]
 provider = "codex"
-name = "readonly"
+profile = "readonly"
 label = "Codex Readonly"
 ```
 
 Precedence:
 
 - explicit `model` / `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the Codex CLI profile supplies missing defaults
+- otherwise, when `profile` is set, the Codex CLI profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[codex]` default model settings
 
-When a Codex profile `name` is set, Sniptail does not inject its normal default `sandboxMode = "workspace-write"` or `approvalPolicy = "never"`. That allows the selected Codex CLI profile to own `sandbox_mode`, `approval_policy`, and similar config unless the worker passes explicit overrides.
+When a Codex profile `profile` is set, Sniptail does not inject its normal default `sandboxMode = "workspace-write"` or `approvalPolicy = "never"`. That allows the selected Codex CLI profile to own `sandbox_mode`, `approval_policy`, and similar config unless the worker passes explicit overrides.
 
 ### Copilot profiles
 
-`name` maps to the Copilot session `agent`.
+`profile` maps to the Copilot session `agent`.
 
 Example:
 
 ```toml
 [agent.profiles.copilot-review]
 provider = "copilot"
-name = "reviewer"
+profile = "reviewer"
 label = "Copilot Reviewer"
 ```
 
 Precedence:
 
 - explicit `model` / `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the named Copilot agent supplies missing defaults
+- otherwise, when `profile` is set, the selected Copilot profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[copilot]` default model settings
 
 ### OpenCode profiles
 
-`name` maps to the OpenCode prompt `agent`.
+`profile` maps to the OpenCode prompt `agent`.
 
 Example:
 
 ```toml
 [agent.profiles.opencode-build]
 provider = "opencode"
-name = "build"
+profile = "build"
 label = "OpenCode Build"
 ```
 
 Precedence:
 
 - explicit `model`, `model_provider`, and `reasoning_effort` in the Sniptail agent profile win
-- otherwise, when `name` is set, the named OpenCode agent supplies missing defaults
+- otherwise, when `profile` is set, the selected OpenCode profile supplies missing defaults
 - otherwise, Sniptail falls back to global `[opencode]` default model settings
+
+### ACP profiles
+
+ACP profiles launch an Agent Client Protocol stdio agent and use its session APIs for interactive turns.
+
+Preset examples:
+
+```toml
+[agent.profiles.acp-opencode]
+provider = "acp"
+agent = "opencode"
+profile = "build"
+label = "OpenCode ACP"
+
+[agent.profiles.acp-copilot]
+provider = "acp"
+agent = "copilot"
+label = "Copilot ACP"
+```
+
+Custom command example:
+
+```toml
+[agent.profiles.acp-custom]
+provider = "acp"
+command = ["/usr/local/bin/my-acp-agent", "--stdio"]
+label = "Custom ACP"
+```
+
+For ACP profiles, `profile`, `model`, `model_provider`, and `reasoning_effort` are forwarded as ACP session overrides when the launched agent exposes compatible options. Permission requests and form elicitations are rendered through Sniptail's interactive permission and question UI.
 
 ## Runtime behavior summary
 
 - Codex: stop aborts the active turn; steer aborts the current turn and runs the steered prompt next
 - Copilot: stop aborts the active session; steer and active queue use native SDK `immediate` / `enqueue` modes
 - OpenCode: stop aborts the active session; steer is worker-managed by aborting and running the steered prompt next
+- ACP: stop cancels the active ACP prompt; steer is worker-managed by cancelling the active prompt and running the steered message next
 
 Pending permission or question interactions are cleared when a session ends, fails, or stops.

@@ -14,6 +14,7 @@ import {
   setActiveCopilotRuntime,
 } from '../copilot/copilotInteractionState.js';
 import { clearActiveCodexRuntimes, setActiveCodexRuntime } from '../codex/codexInteractionState.js';
+import { clearActiveAcpRuntimes, setActiveAcpRuntime } from '../acp/acpInteractionState.js';
 import { stopAgentPrompt } from './stopAgentPrompt.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -74,7 +75,7 @@ function buildConfig(
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
           label: 'Build',
         },
       },
@@ -153,6 +154,7 @@ describe('stopAgentPrompt', () => {
   });
 
   afterEach(async () => {
+    clearActiveAcpRuntimes();
     clearActiveOpenCodeRuntimes();
     clearActiveCopilotRuntimes();
     clearActiveCodexRuntimes();
@@ -179,6 +181,97 @@ describe('stopAgentPrompt', () => {
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: 'thread-1' }),
       'Codex prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+  });
+
+  it('reports unreachable active runtime for ACP profiles without an active runtime', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'acp',
+      agent: 'opencode',
+      profile: 'build',
+      command: ['opencode', 'acp'],
+      label: 'Build',
+    };
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'ACP prompt cannot be stopped: active runtime is no longer reachable.',
+    );
+  });
+
+  it('stops an active ACP prompt through the active runtime ref', async () => {
+    const notifier = buildNotifier();
+    const cancel = vi.fn(() => Promise.resolve());
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'acp',
+      agent: 'opencode',
+      profile: 'build',
+      command: ['opencode', 'acp'],
+      label: 'Build',
+    };
+    setActiveAcpRuntime('session-1', {
+      sessionId: 'session-1',
+      codingAgentSessionId: 'acp-session-1',
+      directory: tempRoot,
+      cancel,
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(cancel).toHaveBeenCalled();
+    expect(hoisted.updateAgentSessionStatus).toHaveBeenCalledWith('session-1', 'stopped');
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'ACP prompt stopped.',
+    );
+  });
+
+  it('reports ACP cancel failures without marking stopped', async () => {
+    const notifier = buildNotifier();
+    const config = buildConfig(tempRoot);
+    config.agent.profiles.build = {
+      provider: 'acp',
+      agent: 'opencode',
+      profile: 'build',
+      command: ['opencode', 'acp'],
+      label: 'Build',
+    };
+    setActiveAcpRuntime('session-1', {
+      sessionId: 'session-1',
+      codingAgentSessionId: 'acp-session-1',
+      directory: tempRoot,
+      cancel: vi.fn(() => Promise.reject(new Error('abort failed'))),
+    });
+
+    await stopAgentPrompt({
+      event: buildEvent(),
+      config,
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(hoisted.updateAgentSessionStatus).not.toHaveBeenCalled();
+    expect(notifier.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: 'thread-1' }),
+      'Failed to stop ACP prompt: abort failed',
     );
   });
 
@@ -247,7 +340,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
 
@@ -272,7 +365,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     setActiveCopilotRuntime('session-1', {
@@ -303,7 +396,7 @@ describe('stopAgentPrompt', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     setActiveCopilotRuntime('session-1', {

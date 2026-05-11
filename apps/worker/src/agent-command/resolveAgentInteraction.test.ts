@@ -31,6 +31,7 @@ vi.mock('@sniptail/core/opencode/prompt.js', () => ({
 }));
 
 import { resolveAgentInteraction } from './resolveAgentInteraction.js';
+import { requestAcpPermission } from '../acp/acpPermissionBridge.js';
 
 function buildConfig(): WorkerConfig {
   return {
@@ -60,7 +61,7 @@ function buildConfig(): WorkerConfig {
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
         },
       },
     },
@@ -198,7 +199,7 @@ describe('resolve OpenCode agent interactions', () => {
     config.agent.profiles = {
       build: {
         provider: 'copilot',
-        name: 'build',
+        profile: 'build',
       },
     };
     hoisted.loadAgentSession.mockResolvedValueOnce({
@@ -232,6 +233,66 @@ describe('resolve OpenCode agent interactions', () => {
 
     await expect(pending).resolves.toMatchObject({ kind: 'approve-for-session' });
     expect(hoisted.replyOpenCodePermission).not.toHaveBeenCalled();
+    expect(notifier.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('resolves ACP permission requests through the ACP bridge', async () => {
+    const notifier = buildNotifier();
+    const botEvents = buildBotEvents();
+    const config = buildConfig();
+    config.agent.profiles = {
+      build: {
+        provider: 'acp',
+        command: ['opencode', 'acp'],
+      },
+    };
+    hoisted.loadAgentSession.mockResolvedValueOnce({
+      status: 'active',
+      agentProfileKey: 'build',
+    });
+    const pending = requestAcpPermission({
+      sessionId: 'session-1',
+      response: buildEvent().payload.response,
+      workspaceKey: 'snatch',
+      timeoutMs: 60_000,
+      botEvents,
+      request: {
+        sessionId: 'acp-session-1',
+        options: [
+          { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' },
+          { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+          { optionId: 'reject_once', name: 'Reject', kind: 'reject_once' },
+        ],
+        toolCall: {
+          toolCallId: 'tool-1',
+          title: 'Read README',
+          kind: 'read',
+        },
+      },
+    });
+    await vi.waitFor(() => expect(botEvents.publish).toHaveBeenCalledTimes(1));
+    const interactionId = getPublishedInteractionId(botEvents);
+
+    await resolveAgentInteraction({
+      event: {
+        ...buildEvent('always'),
+        payload: {
+          ...buildEvent('always').payload,
+          interactionId,
+        },
+      },
+      config,
+      notifier,
+      botEvents,
+      env: {},
+    });
+
+    await expect(pending).resolves.toEqual({
+      outcome: {
+        outcome: 'selected',
+        optionId: 'allow_always',
+      },
+    });
     expect(notifier.postMessage).not.toHaveBeenCalled();
   });
 

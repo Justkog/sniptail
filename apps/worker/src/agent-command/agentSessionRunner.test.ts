@@ -99,7 +99,7 @@ function buildConfig(workspacePath: string): WorkerConfig {
       profiles: {
         build: {
           provider: 'opencode',
-          name: 'build',
+          profile: 'build',
           label: 'Build',
         },
       },
@@ -263,7 +263,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
 
@@ -318,7 +318,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
 
@@ -372,7 +372,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.runCopilot.mockImplementationOnce(
@@ -435,7 +435,7 @@ describe('OpenCode agent prompt runner', () => {
     expect(profileCopilotOptions?.copilot?.agent).toBeUndefined();
   });
 
-  it('lets named Copilot agents supply default model settings', async () => {
+  it('lets selected Copilot profiles supply default model settings', async () => {
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);
     config.copilot.defaultModel = {
@@ -445,7 +445,7 @@ describe('OpenCode agent prompt runner', () => {
     };
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'reviewer',
+      profile: 'reviewer',
       label: 'Reviewer',
     };
 
@@ -472,7 +472,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
@@ -531,7 +531,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
@@ -590,7 +590,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
@@ -647,7 +647,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
@@ -697,7 +697,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'copilot',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
     hoisted.loadAgentSession.mockResolvedValueOnce(
@@ -731,7 +731,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'codex',
-      name: 'deep-review',
+      profile: 'deep-review',
       model: 'gpt-5',
       reasoningEffort: 'high',
       label: 'Build',
@@ -778,7 +778,7 @@ describe('OpenCode agent prompt runner', () => {
     const config = buildConfig(tempRoot);
     config.agent.profiles.build = {
       provider: 'codex',
-      name: 'deep-review',
+      profile: 'deep-review',
       label: 'Build',
     };
 
@@ -832,7 +832,7 @@ describe('OpenCode agent prompt runner', () => {
     };
     config.agent.profiles.build = {
       provider: 'codex',
-      name: 'readonly',
+      profile: 'readonly',
       label: 'Readonly',
     };
 
@@ -996,7 +996,7 @@ describe('OpenCode agent prompt runner', () => {
     );
   });
 
-  it('lets named OpenCode agents supply default model settings', async () => {
+  it('lets selected OpenCode profiles supply default model settings', async () => {
     const notifier = buildNotifier();
     const config = buildConfig(tempRoot);
     config.opencode.defaultModel = {
@@ -1005,7 +1005,7 @@ describe('OpenCode agent prompt runner', () => {
     };
     config.agent.profiles.build = {
       provider: 'opencode',
-      name: 'build',
+      profile: 'build',
       label: 'Build',
     };
 

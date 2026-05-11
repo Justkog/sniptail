@@ -3,6 +3,7 @@ import type { ModelReasoningEffort } from '@openai/codex-sdk';
 import type { WorkerConfig, JobModelConfig } from '../config/types.js';
 import type { JobType } from '../types/job.js';
 import type { PermissionHandler, SessionConfig } from '@github/copilot-sdk';
+import type { AcpLaunchConfig } from '../config/types.js';
 
 export type AgentRunResult = {
   finalResponse: string;
@@ -88,6 +89,7 @@ export type AgentRunOptions = {
       buildContext?: string;
     };
   };
+  acp?: AcpLaunchConfig;
 };
 
 export type AgentAdapter = {

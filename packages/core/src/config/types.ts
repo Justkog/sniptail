@@ -39,15 +39,38 @@ export type WorkerAgentCommandWorkspaceConfig = {
   description?: string;
 };
 
-export type WorkerAgentCommandProfileConfig = {
+export type AcpLaunchConfig = {
+  agent?: string;
+  profile?: string;
+  command: string[];
+  env?: Record<string, string>;
+  model?: string;
+  modelProvider?: string;
+  reasoningEffort?: ModelReasoningEffort;
+};
+
+export type WorkerAgentCommandNativeProfileConfig = {
   provider: 'codex' | 'opencode' | 'copilot';
-  name?: string;
+  profile?: string;
+  agent?: never;
+  command?: never;
+  env?: never;
   model?: string;
   modelProvider?: string;
   reasoningEffort?: ModelReasoningEffort;
   label?: string;
   description?: string;
 };
+
+export type WorkerAgentCommandAcpProfileConfig = AcpLaunchConfig & {
+  provider: 'acp';
+  label?: string;
+  description?: string;
+};
+
+export type WorkerAgentCommandProfileConfig =
+  | WorkerAgentCommandNativeProfileConfig
+  | WorkerAgentCommandAcpProfileConfig;
 
 export type WorkerAgentCommandConfig = {
   enabled: boolean;
@@ -152,6 +175,7 @@ export type WorkerConfig = CoreConfig & {
   run?: {
     actions: Record<string, WorkerRunActionConfig>;
   };
+  acp?: AcpLaunchConfig;
   codex: {
     executionMode: 'local' | 'docker';
     dockerfilePath?: string;

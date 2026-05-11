@@ -17,6 +17,7 @@
 | OpenAI Codex | Supported | SDK-backed CLI execution |
 | GitHub Copilot CLI | Supported | SDK-backed CLI execution |
 | OpenCode | Supported | Local, server, and Docker execution |
+| Agent Client Protocol (ACP) | Supported | Stdio ACP agents for managed jobs and interactive agent-command profiles |
 | Claude Code | Planned | |
 | Gemini CLI | Planned | |
 | Aider | Planned | |

@@ -37,8 +37,8 @@ job_registry_db = "redis"
 # Optional. Default: "Sniptail". Example: "Sniptail Worker"
 bot_name = "Sniptail"
 
-# Primary agent for jobs: "codex", "copilot" or "opencode".
-# Optional. Default: "codex". Example: "copilot"
+# Primary agent for jobs: "codex", "copilot", "opencode" or "acp".
+# Optional. Default: "codex". Example: "acp"
 primary_agent = "codex"
 
 # Redis connection URL.
@@ -124,21 +124,43 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # optional provider-native agent/profile names and explicit model overrides.
 # Precedence:
 # - explicit profile fields here (model/model_provider/reasoning_effort) win
-# - otherwise, if name is set, the provider-native agent/profile supplies missing defaults
+# - otherwise, if profile is set, the provider-native agent/profile supplies missing defaults
 # - otherwise, Sniptail falls back to global [codex], [copilot], or [opencode] default model settings
 # Notes:
-# - for codex, name maps to Codex config.profile
-# - for copilot, name maps to the Copilot session agent
-# - for opencode, name maps to the OpenCode prompt agent
+# - for codex, profile maps to Codex config.profile
+# - for copilot, profile maps to the Copilot session agent
+# - for opencode, profile maps to the OpenCode prompt agent
 #
 # [agent.profiles.build]
 # provider = "opencode"
-# name = "build" # optional provider-native agent/profile
+# profile = "build" # optional provider-native agent/profile
 # model = "claude-sonnet" # optional model id
 # model_provider = "anthropic" # required with model for opencode profiles
 # reasoning_effort = "high" # optional; requires model
 # label = "Build"
 # description = "OpenCode Build primary agent"
+
+[acp]
+# Managed-job ACP agent config.
+# Optional. Required when [worker].primary_agent = "acp".
+#
+# Known ACP presets resolve the launch command automatically:
+# - agent = "opencode" -> ["opencode", "acp"]
+# - agent = "copilot" -> ["copilot", "--acp", "--stdio"]
+#
+# Use either a known preset:
+# agent = "opencode"
+# profile = "build" # optional provider-native ACP profile/mode
+# model = "gpt-5" # optional explicit ACP model override
+# model_provider = "openai" # optional explicit ACP provider override
+# reasoning_effort = "high" # optional explicit ACP reasoning override
+#
+# Or an explicit command for a custom ACP server:
+# command = ["/usr/local/bin/my-acp-agent", "--stdio"]
+#
+# Optional per-process environment for the ACP command:
+# [acp.env]
+# ACP_API_KEY = "example"
 
 [copilot]
 # Execution mode for GitHub Copilot agent.

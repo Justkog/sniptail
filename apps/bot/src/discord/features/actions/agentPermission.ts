@@ -11,6 +11,7 @@ import {
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import { getDiscordAgentPermissionMessageState } from '../../discordBotChannelAdapter.js';
 
 function getMessageThreadId(message: ButtonInteraction['message']): string | undefined {
   const thread = message.thread;
@@ -101,6 +102,7 @@ export async function handleAgentPermissionButton(
   });
 
   let denied = false;
+  const messageState = getDiscordAgentPermissionMessageState(input.sessionId, input.interactionId);
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
     botName: config.botName,
@@ -131,7 +133,7 @@ export async function handleAgentPermissionButton(
     if (!denied) {
       await interaction.update({
         content: appendDecisionText(
-          interaction.message.content,
+          messageState?.requestText ?? interaction.message.content,
           interaction.user.id,
           input.decision,
         ),
@@ -143,7 +145,11 @@ export async function handleAgentPermissionButton(
 
   await enqueueWorkerEvent(workerEventQueue, event);
   await interaction.update({
-    content: appendDecisionText(interaction.message.content, interaction.user.id, input.decision),
+    content: appendDecisionText(
+      messageState?.requestText ?? interaction.message.content,
+      interaction.user.id,
+      input.decision,
+    ),
     components: [],
   });
 }

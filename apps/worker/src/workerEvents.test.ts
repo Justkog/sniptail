@@ -11,7 +11,7 @@ const hoisted = vi.hoisted(() => ({
         snatch: { label: 'Snatch' },
       },
       profiles: {
-        build: { provider: 'opencode', name: 'build', label: 'Build' },
+        build: { provider: 'opencode', profile: 'build', label: 'Build' },
       },
     },
   },

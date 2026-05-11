@@ -11,10 +11,13 @@ export type DebouncedAgentOutputOptions = {
 
 const DEFAULT_MAX_MESSAGE_LENGTH = 1900;
 
-function normalizeLine(text: string, isError: boolean): string | undefined {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-  return isError ? `Error: ${trimmed}` : trimmed;
+function normalizeLine(
+  text: string,
+  options: { isError: boolean; preserveWhitespace: boolean },
+): string | undefined {
+  const normalized = options.preserveWhitespace ? text : text.trim();
+  if (!normalized.trim()) return undefined;
+  return options.isError ? `Error: ${normalized.trim()}` : normalized;
 }
 
 function splitLongLine(line: string, maxLength: number): string[] {
@@ -79,12 +82,21 @@ export class DebouncedAgentOutputBuffer {
     this.maxMessageLength = maxMessageLength;
   }
 
-  push(text: string, options: { isError?: boolean } = {}): void {
-    const line = normalizeLine(text, options.isError ?? false);
+  push(text: string, options: { isError?: boolean; preserveWhitespace?: boolean } = {}): void {
+    const line = normalizeLine(text, {
+      isError: options.isError ?? false,
+      preserveWhitespace: options.preserveWhitespace ?? false,
+    });
     if (!line || line === this.lastLine) return;
     this.lastLine = line;
+
+    if (!this.timer) {
+      this.flushLeadingLine(line);
+      this.scheduleFlush();
+      return;
+    }
+
     this.pending.push(line);
-    this.scheduleFlush();
   }
 
   flush(): Promise<void> {
@@ -114,6 +126,16 @@ export class DebouncedAgentOutputBuffer {
         logger.warn({ err }, 'Failed to flush debounced agent output');
       });
     }, this.debounceMs);
+  }
+
+  private flushLeadingLine(line: string): void {
+    this.flushQueue = this.flushQueue.then(
+      () => this.postLines([line]),
+      () => this.postLines([line]),
+    );
+    void this.flushQueue.catch((err) => {
+      logger.warn({ err }, 'Failed to flush debounced agent output');
+    });
   }
 
   private async flushNow(): Promise<void> {

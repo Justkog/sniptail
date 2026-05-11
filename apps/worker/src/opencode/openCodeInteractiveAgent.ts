@@ -105,7 +105,7 @@ function buildOpenCodeRunOptions(
   config: WorkerConfig,
   profile: RunInteractiveAgentTurnInput['turn']['profile'],
 ) {
-  const usesNamedAgent = Boolean(profile.name);
+  const usesNamedAgent = Boolean(profile.profile);
   const model = profile.model ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.model);
   const modelProvider =
     profile.modelProvider ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.provider);
@@ -120,7 +120,7 @@ function buildOpenCodeRunOptions(
       ...(config.opencode.serverAuthHeaderEnv
         ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
         : {}),
-      ...(profile.name ? { agent: profile.name } : {}),
+      ...(profile.profile ? { agent: profile.profile } : {}),
       ...(variant ? { variant } : {}),
       startupTimeoutMs: config.opencode.startupTimeoutMs,
       dockerStreamLogs: config.opencode.dockerStreamLogs,
@@ -468,7 +468,7 @@ export async function runOpenCodeAgentTurn({
         sessionId,
         workspaceKey,
         profileKey: profile.key,
-        ...(profile.name ? { opencodeAgent: profile.name } : {}),
+        ...(profile.profile ? { opencodeAgent: profile.profile } : {}),
         ...(profile.model ? { opencodeModel: profile.model } : {}),
         ...(profile.reasoningEffort ? { opencodeVariant: profile.reasoningEffort } : {}),
         resolvedCwd: resolved.resolvedCwd,

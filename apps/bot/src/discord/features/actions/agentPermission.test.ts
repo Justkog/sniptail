@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
   enqueueWorkerEvent: vi.fn(),
+  getDiscordAgentPermissionMessageState: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -18,6 +19,10 @@ vi.mock('@sniptail/core/queue/queue.js', () => ({
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
   authorizeDiscordOperationAndRespond: hoisted.authorizeDiscordOperationAndRespond,
+}));
+
+vi.mock('../../discordBotChannelAdapter.js', () => ({
+  getDiscordAgentPermissionMessageState: hoisted.getDiscordAgentPermissionMessageState,
 }));
 
 function buildSession(overrides: Record<string, unknown> = {}) {
@@ -66,6 +71,7 @@ describe('handleAgentPermissionButton', () => {
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
     hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.getDiscordAgentPermissionMessageState.mockReturnValue(undefined);
   });
 
   it('authorizes and enqueues permission resolution events', async () => {
@@ -99,6 +105,33 @@ describe('handleAgentPermissionButton', () => {
     );
     expect(interaction.update).toHaveBeenCalledWith({
       content: '**Permission requested**\n\nTool: `bash`\n\nAlways allow selected by <@user-2>.',
+      components: [],
+    });
+  });
+
+  it('uses the stored canonical permission request text for optimistic updates', async () => {
+    const interaction = buildInteraction({
+      message: {
+        id: 'message-1',
+        content: '**Permission requested** Tool: `bash`',
+      },
+    });
+    hoisted.getDiscordAgentPermissionMessageState.mockReturnValue({
+      messageId: 'message-1',
+      requestText: '**Permission requested**\n\nTool: `bash`\n\nAction: `run command`',
+    });
+
+    await handleAgentPermissionButton(
+      interaction as never,
+      { sessionId: 'session-1', interactionId: 'interaction-1', decision: 'always' },
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(interaction.update).toHaveBeenCalledWith({
+      content:
+        '**Permission requested**\n\nTool: `bash`\n\nAction: `run command`\n\nAlways allow selected by <@user-2>.',
       components: [],
     });
   });

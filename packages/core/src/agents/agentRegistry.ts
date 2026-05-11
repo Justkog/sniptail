@@ -1,5 +1,7 @@
 import type { AgentDescriptorRegistry } from './types.js';
 import type { WorkerConfig } from '../config/types.js';
+import { runAcp } from '../acp/managedJobRunner.js';
+import { formatAcpEvent, summarizeAcpEvent } from '../acp/acpEventMapping.js';
 import { runCodex } from '../codex/codex.js';
 import { resolveWorkerAgentScriptPath } from './resolveWorkerAgentScriptPath.js';
 import { formatCodexEvent, summarizeCodexEvent } from '../codex/logging.js';
@@ -122,6 +124,29 @@ export const AGENT_DESCRIPTORS: AgentDescriptorRegistry = {
           : {}),
       },
     }),
+  },
+  acp: {
+    id: 'acp',
+    adapter: {
+      run: runAcp,
+      formatEvent: formatAcpEvent as (event: unknown) => string,
+      summarizeEvent: summarizeAcpEvent as (
+        event: unknown,
+      ) => { text: string; isError: boolean } | null,
+    },
+    isDockerMode: () => false,
+    resolveModelConfig: () => undefined,
+    shouldIncludeRepoCache: (_config: WorkerConfig, jobType: JobType) => jobType !== 'MENTION',
+    buildRunOptions: (config: WorkerConfig) => {
+      if (!config.acp) {
+        throw new Error(
+          'ACP managed jobs require an [acp] worker config with an ACP launch command or preset.',
+        );
+      }
+      return {
+        acp: config.acp,
+      };
+    },
   },
 };
 
