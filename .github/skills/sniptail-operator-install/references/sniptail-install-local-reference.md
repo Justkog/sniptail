@@ -24,6 +24,8 @@ For the local runtime, interpret them conservatively:
 - local Codex execution requires `codex --version` to succeed
 - local Copilot execution requires `copilot --version` to succeed
 - local OpenCode execution requires `opencode --version` to succeed
+- ACP preset execution requires the preset command to succeed (`opencode --version` for `agent = "opencode"`, `copilot --version` for `agent = "copilot"`)
+- custom ACP execution requires the configured stdio command to be available
 - Docker execution requires `docker --version` to succeed
 - repository linking requires `git ls-remote <ssh-url> HEAD` to succeed for each remote repository
 
@@ -77,12 +79,20 @@ Typical first edits:
 - enable Slack and or Discord under `[channels.*]`
 - set Discord `app_id` when Discord is enabled
 - choose `[codex].execution_mode`, `[copilot].execution_mode`, and `[opencode].execution_mode`
+- configure `[worker].primary_agent = "acp"` plus `[acp]` when using ACP-backed managed jobs
 
 ## Worker Execution Modes
 
 Local mode:
 
 - requires system `codex`, `copilot`, or `opencode` binaries in `PATH`
+
+ACP-backed mode:
+
+- set `[worker].primary_agent = "acp"` for managed jobs
+- configure `[acp]` with `agent = "opencode"`, `agent = "copilot"`, or an explicit `command = [...]`
+- requires the configured ACP command or preset CLI in `PATH`
+- managed ACP jobs auto-approve ACP permission prompts; ACP form elicitations are currently for interactive `/sniptail-agent` sessions
 
 OpenCode server mode:
 

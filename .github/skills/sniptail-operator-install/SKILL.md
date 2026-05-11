@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | 
 - Default to `sniptail local --migrate-if-needed` unless the user clearly needs bot and worker on different machines.
 - Use the CLI for repository catalog management. Do not tell the user to hand-edit allowlist data unless they explicitly want that workflow.
 - Ask the user which chat provider they want enabled: Slack, Discord, or both.
-- Ask which coding agent runtime they want available on the worker: Codex, Copilot, OpenCode, or a combination.
+- Ask which coding agent runtime they want available on the worker: Codex, Copilot, OpenCode, ACP-backed agents, or a combination.
 
 ## Minimum Inputs To Collect
 
@@ -62,6 +62,10 @@ Then apply the path-specific rules:
   - require `copilot --version` to succeed
 - local OpenCode worker:
   - require `opencode --version` to succeed
+- ACP-backed worker:
+  - require the configured ACP command to be available on the worker host
+  - for `agent = "opencode"`, require `opencode --version` to succeed
+  - for `agent = "copilot"`, require `copilot --version` to succeed
 - Docker worker:
   - require `docker --version` to succeed
 - split deployment:
@@ -75,7 +79,7 @@ Then apply the path-specific rules:
 - Discord bot:
   - require `DISCORD_BOT_TOKEN`
 
-Important runtime fact: prebuilt Sniptail releases do not bundle fallback `codex`, `copilot`, or `opencode` binaries. Local agent execution requires system-installed CLIs.
+Important runtime fact: prebuilt Sniptail releases do not bundle fallback `codex`, `copilot`, `opencode`, or ACP preset binaries. Local and ACP-backed agent execution requires system-installed commands.
 
 ### 2. Install Sniptail
 
@@ -134,7 +138,7 @@ If the user wants both, configure both channel blocks and collect both sets of c
 
 ### 6. Configure the worker runtime
 
-Use `~/.sniptail/current/sniptail.worker.toml` to choose local, server, or Docker execution for Codex, Copilot, or OpenCode.
+Use `~/.sniptail/current/sniptail.worker.toml` to choose local, server, Docker, or ACP-backed execution for Codex, Copilot, OpenCode, or ACP-compatible agents.
 
 Local execution:
 
@@ -146,6 +150,15 @@ OpenCode server execution:
 
 - `[opencode].execution_mode = "server"`
 - set `[opencode].server_url`
+
+ACP-backed managed jobs:
+
+- set `[worker].primary_agent = "acp"`
+- configure `[acp]`
+- use `agent = "opencode"` for the built-in `opencode acp` preset
+- use `agent = "copilot"` for the built-in `copilot --acp --stdio` preset
+- use `command = [...]` for a custom ACP-compatible stdio agent
+- note that managed ACP jobs auto-approve ACP permission prompts, while ACP form elicitations are currently for interactive `/sniptail-agent` sessions
 
 Docker execution:
 

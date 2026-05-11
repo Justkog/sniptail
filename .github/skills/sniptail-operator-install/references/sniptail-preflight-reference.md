@@ -38,6 +38,9 @@ Interpretation:
 - use local Codex execution only when `codex --version` succeeds
 - use local Copilot execution only when `copilot --version` succeeds
 - use local OpenCode execution only when `opencode --version` succeeds
+- use ACP `agent = "opencode"` only when `opencode --version` succeeds
+- use ACP `agent = "copilot"` only when `copilot --version` succeeds
+- use custom ACP commands only when the configured executable is present on the worker host
 - use Docker execution only when `docker --version` succeeds
 
 ## Repository Access Checks

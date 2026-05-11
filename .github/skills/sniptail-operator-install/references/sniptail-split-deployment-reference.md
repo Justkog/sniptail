@@ -24,6 +24,7 @@ For split deployment, interpret them strictly:
 - local Codex worker mode requires `codex --version` to succeed on the worker host
 - local Copilot worker mode requires `copilot --version` to succeed on the worker host
 - local OpenCode worker mode requires `opencode --version` to succeed on the worker host
+- ACP worker mode requires the configured ACP command or preset CLI to be available on the worker host
 - Docker worker mode requires `docker --version` to succeed on the worker host
 - repository provider requirements come from [Repository provider reference](./sniptail-repo-providers-reference.md)
 
