@@ -250,7 +250,7 @@ export async function runAcpAgentTurn({
     isCapturingAssistantOutput = true;
     await runtime.prompt({
       prompt: turn.prompt,
-      ...turn.currentTurnAttachments && { attachments: turn.currentTurnAttachments },
+      ...(turn.currentTurnAttachments && { attachments: turn.currentTurnAttachments }),
     });
     isCapturingAssistantOutput = false;
 

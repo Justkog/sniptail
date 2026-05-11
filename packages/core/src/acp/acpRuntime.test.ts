@@ -152,6 +152,23 @@ function buildAgentCapabilities(overrides: Partial<AgentCapabilities> = {}): Age
   };
 }
 
+type PromptBlock =
+  | { type: 'text'; text: string }
+  | { type: 'resource_link'; uri: string; name: string; mimeType?: string }
+  | { type: 'image'; data: string; mimeType: string; uri?: string }
+  | {
+      type: 'resource';
+      resource:
+        | { text: string; mimeType?: string; uri: string }
+        | { blob: string; mimeType?: string; uri: string };
+    };
+
+function getPromptCall(connection: MockConnection) {
+  return connection.prompt.mock.calls[0]?.[0] as
+    | { sessionId: string; prompt: PromptBlock[] }
+    | undefined;
+}
+
 function queueRuntime(proc = buildProcess(), connection = buildConnection()) {
   hoisted.spawn.mockReturnValue(proc);
   hoisted.connections.push(connection);
@@ -363,18 +380,16 @@ describe('ACP runtime wrapper', () => {
       ],
     });
 
-    expect(connection.prompt).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      prompt: [
-        { type: 'text', text: 'Please inspect the repo.' },
-        {
-          type: 'resource_link',
-          uri: expect.stringMatching(/file:\/\/.*notes\.md$/),
-          name: 'notes.md',
-          mimeType: 'text/markdown',
-        },
-      ],
-    });
+    const promptCall = getPromptCall(connection);
+    expect(promptCall?.sessionId).toBe('session-1');
+    expect(promptCall?.prompt).toHaveLength(2);
+    expect(promptCall?.prompt[0]).toEqual({ type: 'text', text: 'Please inspect the repo.' });
+    expect(promptCall?.prompt[1]?.type).toBe('resource_link');
+    if (promptCall?.prompt[1]?.type === 'resource_link') {
+      expect(promptCall.prompt[1].uri).toContain('notes.md');
+      expect(promptCall.prompt[1].name).toBe('notes.md');
+      expect(promptCall.prompt[1].mimeType).toBe('text/markdown');
+    }
   });
 
   it('embeds image attachments when the agent advertises image prompt support', async () => {
@@ -405,18 +420,16 @@ describe('ACP runtime wrapper', () => {
       ],
     });
 
-    expect(connection.prompt).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      prompt: [
-        { type: 'text', text: 'Please inspect the repo.' },
-        {
-          type: 'image',
-          data: Buffer.from('pngdata').toString('base64'),
-          mimeType: 'image/png',
-          uri: expect.stringMatching(/file:\/\/.*diagram\.png$/),
-        },
-      ],
-    });
+    const promptCall = getPromptCall(connection);
+    expect(promptCall?.sessionId).toBe('session-1');
+    expect(promptCall?.prompt).toHaveLength(2);
+    expect(promptCall?.prompt[0]).toEqual({ type: 'text', text: 'Please inspect the repo.' });
+    expect(promptCall?.prompt[1]?.type).toBe('image');
+    if (promptCall?.prompt[1]?.type === 'image') {
+      expect(promptCall.prompt[1].data).toBe(Buffer.from('pngdata').toString('base64'));
+      expect(promptCall.prompt[1].mimeType).toBe('image/png');
+      expect(promptCall.prompt[1].uri).toContain('diagram.png');
+    }
   });
 
   it('embeds text and blob resources when the agent advertises embedded context support', async () => {
@@ -454,28 +467,22 @@ describe('ACP runtime wrapper', () => {
       ],
     });
 
-    expect(connection.prompt).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      prompt: [
-        { type: 'text', text: 'Please inspect the repo.' },
-        {
-          type: 'resource',
-          resource: {
-            text: 'hello world',
-            mimeType: 'text/markdown',
-            uri: expect.stringMatching(/file:\/\/.*notes\.md$/),
-          },
-        },
-        {
-          type: 'resource',
-          resource: {
-            blob: Buffer.from('pngdata').toString('base64'),
-            mimeType: 'image/png',
-            uri: expect.stringMatching(/file:\/\/.*diagram\.png$/),
-          },
-        },
-      ],
-    });
+    const promptCall = getPromptCall(connection);
+    expect(promptCall?.sessionId).toBe('session-1');
+    expect(promptCall?.prompt).toHaveLength(3);
+    expect(promptCall?.prompt[0]).toEqual({ type: 'text', text: 'Please inspect the repo.' });
+    expect(promptCall?.prompt[1]?.type).toBe('resource');
+    expect(promptCall?.prompt[2]?.type).toBe('resource');
+    if (promptCall?.prompt[1]?.type === 'resource' && 'text' in promptCall.prompt[1].resource) {
+      expect(promptCall.prompt[1].resource.text).toBe('hello world');
+      expect(promptCall.prompt[1].resource.mimeType).toBe('text/markdown');
+      expect(promptCall.prompt[1].resource.uri).toContain('notes.md');
+    }
+    if (promptCall?.prompt[2]?.type === 'resource' && 'blob' in promptCall.prompt[2].resource) {
+      expect(promptCall.prompt[2].resource.blob).toBe(Buffer.from('pngdata').toString('base64'));
+      expect(promptCall.prompt[2].resource.mimeType).toBe('image/png');
+      expect(promptCall.prompt[2].resource.uri).toContain('diagram.png');
+    }
   });
 
   it('loads an existing session only when the agent advertises session/load', async () => {

@@ -9,9 +9,7 @@ export async function assertAcpPreflight(config: WorkerConfig): Promise<void> {
     );
   }
 
-  let runtime:
-    | Awaited<ReturnType<typeof launchAcpRuntime>>
-    | undefined;
+  let runtime: Awaited<ReturnType<typeof launchAcpRuntime>> | undefined;
 
   try {
     runtime = await launchAcpRuntime({
@@ -23,8 +21,10 @@ export async function assertAcpPreflight(config: WorkerConfig): Promise<void> {
     });
   } catch (err) {
     throw new Error(
-      ['ACP preflight failed: local stdio ACP launch did not reach initialize.', stringifyError(err)]
-        .join('\n'),
+      [
+        'ACP preflight failed: local stdio ACP launch did not reach initialize.',
+        stringifyError(err),
+      ].join('\n'),
     );
   } finally {
     await runtime?.close().catch(() => undefined);

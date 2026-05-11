@@ -18,8 +18,7 @@ function findAllowOption(
 function allowManagedJobPermission(
   request: AcpRequestPermissionRequest,
 ): AcpRequestPermissionResponse {
-  const option =
-    findAllowOption(request, 'allow_always') ?? findAllowOption(request, 'allow_once');
+  const option = findAllowOption(request, 'allow_always') ?? findAllowOption(request, 'allow_once');
 
   if (!option) {
     logger.warn(
@@ -88,14 +87,14 @@ export async function runAcp(
     };
     const threadId = options.resumeThreadId
       ? options.resumeThreadId
-      : (await runtime.createSession(sessionOptions) as AcpSessionHandle).sessionId;
+      : ((await runtime.createSession(sessionOptions)) as AcpSessionHandle).sessionId;
     if (options.resumeThreadId) {
       await runtime.loadSession(options.resumeThreadId, sessionOptions);
     }
     isCapturingAssistantOutput = true;
     await runtime.prompt({
       prompt,
-      ...options.currentTurnAttachments && { attachments: options.currentTurnAttachments },
+      ...(options.currentTurnAttachments && { attachments: options.currentTurnAttachments }),
     });
     isCapturingAssistantOutput = false;
 

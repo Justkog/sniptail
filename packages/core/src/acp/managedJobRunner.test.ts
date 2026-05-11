@@ -93,16 +93,21 @@ describe('runAcp', () => {
     });
     const onEvent = vi.fn();
 
-    const result = await runAcp(buildJob(), '/tmp/work', { ACP_TOKEN: 'abc' }, {
-      botName: 'Sniptail',
-      additionalDirectories: ['/tmp/repo-cache'],
-      acp: {
-        agent: 'opencode',
-        command: ['opencode', 'acp'],
-        profile: 'build',
+    const result = await runAcp(
+      buildJob(),
+      '/tmp/work',
+      { ACP_TOKEN: 'abc' },
+      {
+        botName: 'Sniptail',
+        additionalDirectories: ['/tmp/repo-cache'],
+        acp: {
+          agent: 'opencode',
+          command: ['opencode', 'acp'],
+          profile: 'build',
+        },
+        onEvent,
       },
-      onEvent,
-    });
+    );
 
     const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
       cwd: string;
@@ -150,12 +155,17 @@ describe('runAcp', () => {
       close,
     });
 
-    await runAcp(buildJob(), '/tmp/work', {}, {
-      promptOverride: 'Use this exact prompt.',
-      acp: {
-        command: ['opencode', 'acp'],
+    await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        promptOverride: 'Use this exact prompt.',
+        acp: {
+          command: ['opencode', 'acp'],
+        },
       },
-    });
+    );
 
     expect(prompt).toHaveBeenCalledWith({
       prompt: 'Use this exact prompt.',
@@ -180,17 +190,23 @@ describe('runAcp', () => {
       },
     ];
 
-    await runAcp(buildJob(), '/tmp/work', {}, {
-      acp: {
-        command: ['opencode', 'acp'],
+    await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        acp: {
+          command: ['opencode', 'acp'],
+        },
+        currentTurnAttachments: attachments,
       },
-      currentTurnAttachments: attachments,
-    });
+    );
 
-    expect(prompt).toHaveBeenCalledWith({
-      prompt: expect.stringContaining('Inspect the repository.'),
-      attachments,
-    });
+    const promptCall = prompt.mock.calls[0]?.[0] as
+      | { prompt: string; attachments?: AgentAttachment[] }
+      | undefined;
+    expect(promptCall?.prompt).toContain('Inspect the repository.');
+    expect(promptCall?.attachments).toEqual(attachments);
   });
 
   it('auto-approves managed ACP permissions by preferring allow_always', async () => {
@@ -203,17 +219,24 @@ describe('runAcp', () => {
       close,
     });
 
-    await runAcp(buildJob(), '/tmp/work', {}, {
-      acp: {
-        command: ['opencode', 'acp'],
+    await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        acp: {
+          command: ['opencode', 'acp'],
+        },
       },
-    });
+    );
 
     const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
     };
 
-    expect(launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once', 'allow_always']))).toEqual({
+    expect(
+      launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once', 'allow_always'])),
+    ).toEqual({
       outcome: {
         outcome: 'selected',
         optionId: 'allow_always-id',
@@ -231,11 +254,16 @@ describe('runAcp', () => {
       close,
     });
 
-    await runAcp(buildJob(), '/tmp/work', {}, {
-      acp: {
-        command: ['opencode', 'acp'],
+    await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        acp: {
+          command: ['opencode', 'acp'],
+        },
       },
-    });
+    );
 
     const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
@@ -259,11 +287,16 @@ describe('runAcp', () => {
       close,
     });
 
-    await runAcp(buildJob(), '/tmp/work', {}, {
-      acp: {
-        command: ['opencode', 'acp'],
+    await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        acp: {
+          command: ['opencode', 'acp'],
+        },
       },
-    });
+    );
 
     const launchCall = hoisted.launchAcpRuntime.mock.calls[0]?.[0] as {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
@@ -308,13 +341,18 @@ describe('runAcp', () => {
       close,
     });
 
-    const result = await runAcp(buildJob(), '/tmp/work', {}, {
-      resumeThreadId: 'acp-session-9',
-      additionalDirectories: ['/tmp/repo-cache'],
-      acp: {
-        command: ['opencode', 'acp'],
+    const result = await runAcp(
+      buildJob(),
+      '/tmp/work',
+      {},
+      {
+        resumeThreadId: 'acp-session-9',
+        additionalDirectories: ['/tmp/repo-cache'],
+        acp: {
+          command: ['opencode', 'acp'],
+        },
       },
-    });
+    );
 
     expect(createSession).not.toHaveBeenCalled();
     expect(loadSession).toHaveBeenCalledWith('acp-session-9', {
@@ -343,11 +381,16 @@ describe('runAcp', () => {
     });
 
     await expect(
-      runAcp(buildJob(), '/tmp/work', {}, {
-        acp: {
-          command: ['opencode', 'acp'],
+      runAcp(
+        buildJob(),
+        '/tmp/work',
+        {},
+        {
+          acp: {
+            command: ['opencode', 'acp'],
+          },
         },
-      }),
+      ),
     ).rejects.toThrow('prompt failed');
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -369,12 +412,17 @@ describe('runAcp', () => {
     });
 
     await expect(
-      runAcp(buildJob(), '/tmp/work', {}, {
-        resumeThreadId: 'acp-session-9',
-        acp: {
-          command: ['opencode', 'acp'],
+      runAcp(
+        buildJob(),
+        '/tmp/work',
+        {},
+        {
+          resumeThreadId: 'acp-session-9',
+          acp: {
+            command: ['opencode', 'acp'],
+          },
         },
-      }),
+      ),
     ).rejects.toThrow(
       'ACP agent does not support session/load; cannot load session acp-session-9.',
     );
