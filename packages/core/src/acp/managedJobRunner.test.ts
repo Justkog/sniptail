@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { logger } from '../logger.js';
+import type { AgentAttachment } from '../agents/types.js';
 import type { JobSpec } from '../types/job.js';
 import type { AcpRequestPermissionRequest } from './types.js';
 
@@ -162,6 +163,36 @@ describe('runAcp', () => {
     expect(loadSession).not.toHaveBeenCalled();
   });
 
+  it('forwards current-turn attachments to the ACP runtime prompt request', async () => {
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    hoisted.launchAcpRuntime.mockResolvedValue({
+      createSession,
+      prompt,
+      close,
+    });
+    const attachments: AgentAttachment[] = [
+      {
+        path: '/tmp/context/notes.md',
+        displayName: 'notes.md',
+        mediaType: 'text/markdown',
+      },
+    ];
+
+    await runAcp(buildJob(), '/tmp/work', {}, {
+      acp: {
+        command: ['opencode', 'acp'],
+      },
+      currentTurnAttachments: attachments,
+    });
+
+    expect(prompt).toHaveBeenCalledWith({
+      prompt: expect.stringContaining('Inspect the repository.'),
+      attachments,
+    });
+  });
+
   it('auto-approves managed ACP permissions by preferring allow_always', async () => {
     const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
     const prompt = vi.fn();
@@ -182,9 +213,7 @@ describe('runAcp', () => {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
     };
 
-    await expect(
-      launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once', 'allow_always'])),
-    ).resolves.toEqual({
+    expect(launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once', 'allow_always']))).toEqual({
       outcome: {
         outcome: 'selected',
         optionId: 'allow_always-id',
@@ -212,13 +241,12 @@ describe('runAcp', () => {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
     };
 
-    await expect(launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once']))).resolves
-      .toEqual({
-        outcome: {
-          outcome: 'selected',
-          optionId: 'allow_once-id',
-        },
-      });
+    expect(launchCall.onRequestPermission?.(buildPermissionRequest(['allow_once']))).toEqual({
+      outcome: {
+        outcome: 'selected',
+        optionId: 'allow_once-id',
+      },
+    });
   });
 
   it('cancels managed ACP permissions when no allow option exists', async () => {
@@ -241,12 +269,11 @@ describe('runAcp', () => {
       onRequestPermission?: (request: AcpRequestPermissionRequest) => Promise<unknown>;
     };
 
-    await expect(launchCall.onRequestPermission?.(buildPermissionRequest(['reject_once']))).resolves
-      .toEqual({
-        outcome: {
-          outcome: 'cancelled',
-        },
-      });
+    expect(launchCall.onRequestPermission?.(buildPermissionRequest(['reject_once']))).toEqual({
+      outcome: {
+        outcome: 'cancelled',
+      },
+    });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'acp-session-1',

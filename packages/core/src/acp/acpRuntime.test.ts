@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { PassThrough } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  AgentCapabilities,
   Client,
   CreateElicitationRequest,
   CreateElicitationResponse,
@@ -140,6 +144,14 @@ function buildConnection(): MockConnection {
   };
 }
 
+function buildAgentCapabilities(overrides: Partial<AgentCapabilities> = {}): AgentCapabilities {
+  return {
+    loadSession: true,
+    sessionCapabilities: { close: {} },
+    ...overrides,
+  };
+}
+
 function queueRuntime(proc = buildProcess(), connection = buildConnection()) {
   hoisted.spawn.mockReturnValue(proc);
   hoisted.connections.push(connection);
@@ -147,11 +159,21 @@ function queueRuntime(proc = buildProcess(), connection = buildConnection()) {
 }
 
 describe('ACP runtime wrapper', () => {
+  let tempRoot: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.connections = [];
     hoisted.lastClient = undefined;
     hoisted.lastStream = undefined;
+  });
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), 'sniptail-acp-runtime-'));
+  });
+
+  afterEach(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
   });
 
   it('spawns the configured stdio command and initializes the ACP connection', async () => {
@@ -313,6 +335,147 @@ describe('ACP runtime wrapper', () => {
     expect(connection.closeSession).toHaveBeenCalledWith({ sessionId: 'session-1' });
     expect(proc.kill).toHaveBeenCalledTimes(1);
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('falls back to resource links for attachments when the agent only supports baseline prompt blocks', async () => {
+    const { connection } = queueRuntime();
+    connection.initialize.mockResolvedValue({
+      protocolVersion: 1,
+      agentCapabilities: buildAgentCapabilities(),
+    });
+    const filePath = join(tempRoot, 'notes.md');
+    await writeFile(filePath, 'hello world');
+
+    const runtime = await launchAcpRuntime({
+      cwd: tempRoot,
+      launch: { command: ['mock-acp'] },
+    });
+
+    await runtime.createSession();
+    await runtime.prompt({
+      prompt: 'Please inspect the repo.',
+      attachments: [
+        {
+          path: filePath,
+          displayName: 'notes.md',
+          mediaType: 'text/markdown',
+        },
+      ],
+    });
+
+    expect(connection.prompt).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      prompt: [
+        { type: 'text', text: 'Please inspect the repo.' },
+        {
+          type: 'resource_link',
+          uri: expect.stringMatching(/file:\/\/.*notes\.md$/),
+          name: 'notes.md',
+          mimeType: 'text/markdown',
+        },
+      ],
+    });
+  });
+
+  it('embeds image attachments when the agent advertises image prompt support', async () => {
+    const { connection } = queueRuntime();
+    connection.initialize.mockResolvedValue({
+      protocolVersion: 1,
+      agentCapabilities: buildAgentCapabilities({
+        promptCapabilities: { image: true },
+      }),
+    });
+    const filePath = join(tempRoot, 'diagram.png');
+    await writeFile(filePath, Buffer.from('pngdata'));
+
+    const runtime = await launchAcpRuntime({
+      cwd: tempRoot,
+      launch: { command: ['mock-acp'] },
+    });
+
+    await runtime.createSession();
+    await runtime.prompt({
+      prompt: 'Please inspect the repo.',
+      attachments: [
+        {
+          path: filePath,
+          displayName: 'diagram.png',
+          mediaType: 'image/png',
+        },
+      ],
+    });
+
+    expect(connection.prompt).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      prompt: [
+        { type: 'text', text: 'Please inspect the repo.' },
+        {
+          type: 'image',
+          data: Buffer.from('pngdata').toString('base64'),
+          mimeType: 'image/png',
+          uri: expect.stringMatching(/file:\/\/.*diagram\.png$/),
+        },
+      ],
+    });
+  });
+
+  it('embeds text and blob resources when the agent advertises embedded context support', async () => {
+    const { connection } = queueRuntime();
+    connection.initialize.mockResolvedValue({
+      protocolVersion: 1,
+      agentCapabilities: buildAgentCapabilities({
+        promptCapabilities: { embeddedContext: true },
+      }),
+    });
+    const textPath = join(tempRoot, 'notes.md');
+    const blobPath = join(tempRoot, 'diagram.png');
+    await writeFile(textPath, 'hello world');
+    await writeFile(blobPath, Buffer.from('pngdata'));
+
+    const runtime = await launchAcpRuntime({
+      cwd: tempRoot,
+      launch: { command: ['mock-acp'] },
+    });
+
+    await runtime.createSession();
+    await runtime.prompt({
+      prompt: 'Please inspect the repo.',
+      attachments: [
+        {
+          path: textPath,
+          displayName: 'notes.md',
+          mediaType: 'text/markdown',
+        },
+        {
+          path: blobPath,
+          displayName: 'diagram.png',
+          mediaType: 'image/png',
+        },
+      ],
+    });
+
+    expect(connection.prompt).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      prompt: [
+        { type: 'text', text: 'Please inspect the repo.' },
+        {
+          type: 'resource',
+          resource: {
+            text: 'hello world',
+            mimeType: 'text/markdown',
+            uri: expect.stringMatching(/file:\/\/.*notes\.md$/),
+          },
+        },
+        {
+          type: 'resource',
+          resource: {
+            blob: Buffer.from('pngdata').toString('base64'),
+            mimeType: 'image/png',
+            uri: expect.stringMatching(/file:\/\/.*diagram\.png$/),
+          },
+        },
+      ],
+    });
   });
 
   it('loads an existing session only when the agent advertises session/load', async () => {

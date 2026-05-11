@@ -228,6 +228,42 @@ describe('ACP interactive agent', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it('forwards current-turn attachments to the ACP prompt request', async () => {
+    const notifier = buildNotifier();
+    const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });
+    const prompt = vi.fn().mockResolvedValue({});
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    hoisted.launchAcpRuntime.mockResolvedValueOnce({
+      createSession,
+      loadSession: vi.fn(),
+      cancel: vi.fn().mockResolvedValue(undefined),
+      prompt,
+      close,
+    });
+
+    const attachments = [
+      {
+        path: join(tempRoot, 'notes.md'),
+        displayName: 'notes.md',
+        mediaType: 'text/markdown',
+      },
+    ];
+
+    await runAcpAgentTurn({
+      turn: buildTurn({ currentTurnAttachments: attachments }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: { publish: vi.fn() },
+      env: {},
+    });
+
+    expect(prompt).toHaveBeenCalledWith({
+      prompt: 'inspect this',
+      attachments,
+    });
+  });
+
   it('streams only new assistant text snapshots during a single prompt turn', async () => {
     const notifier = buildNotifier();
     const createSession = vi.fn().mockResolvedValue({ sessionId: 'acp-session-1' });

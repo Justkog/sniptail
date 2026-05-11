@@ -5,10 +5,12 @@ import {
   type AgentCapabilities,
   type Client,
   type ClientCapabilities,
+  type ContentBlock,
   type Implementation,
   type InitializeResponse,
   type LoadSessionResponse,
   type NewSessionResponse,
+  type PromptCapabilities,
   type PromptResponse,
   type SessionConfigOption,
   type SessionConfigSelectOption,
@@ -17,8 +19,11 @@ import {
   type SetSessionConfigOptionResponse,
 } from '@agentclientprotocol/sdk';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { basename } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { basename, extname, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
+import type { AgentAttachment } from '../agents/types.js';
 import type { AcpLaunchConfig } from '../config/types.js';
 import type {
   AcpCreateElicitationRequest,
@@ -45,6 +50,7 @@ export type AcpSessionStartOptions = {
 
 export type AcpPromptOptions = {
   prompt: string;
+  attachments?: AgentAttachment[];
 };
 
 export type AcpRuntimeOptions = {
@@ -263,6 +269,112 @@ function isReasoningOption(option: SessionConfigOption): boolean {
   );
 }
 
+function isTextAttachment(mediaType: string): boolean {
+  const normalized = mediaType.trim().toLowerCase();
+  return (
+    normalized.startsWith('text/') ||
+    normalized === 'application/json' ||
+    normalized === 'application/x-yaml' ||
+    normalized === 'application/yaml'
+  );
+}
+
+function guessAttachmentMediaType(attachment: AgentAttachment): string {
+  const mediaType = attachment.mediaType.trim();
+  if (mediaType) {
+    return mediaType;
+  }
+
+  const extension = extname(attachment.displayName || attachment.path).toLowerCase();
+  switch (extension) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    case '.json':
+      return 'application/json';
+    case '.yaml':
+    case '.yml':
+      return 'application/yaml';
+    case '.md':
+    case '.markdown':
+      return 'text/markdown';
+    case '.txt':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+async function buildAttachmentBlock(
+  attachment: AgentAttachment,
+  promptCapabilities: PromptCapabilities | undefined,
+): Promise<ContentBlock> {
+  const absolutePath = resolve(attachment.path);
+  const uri = pathToFileURL(absolutePath).href;
+  const name = attachment.displayName || basename(absolutePath);
+  const mediaType = guessAttachmentMediaType(attachment);
+
+  if (mediaType.startsWith('image/') && promptCapabilities?.image) {
+    const image = await readFile(absolutePath);
+    return {
+      type: 'image',
+      data: image.toString('base64'),
+      mimeType: mediaType,
+      uri,
+    };
+  }
+
+  if (promptCapabilities?.embeddedContext) {
+    const content = await readFile(absolutePath);
+    return isTextAttachment(mediaType)
+      ? {
+          type: 'resource',
+          resource: {
+            text: content.toString('utf8'),
+            mimeType: mediaType,
+            uri,
+          },
+        }
+      : {
+          type: 'resource',
+          resource: {
+            blob: content.toString('base64'),
+            mimeType: mediaType,
+            uri,
+          },
+        };
+  }
+
+  return {
+    type: 'resource_link',
+    uri,
+    name,
+    mimeType: mediaType,
+  };
+}
+
+async function buildPromptBlocks(
+  prompt: string,
+  attachments: AgentAttachment[] | undefined,
+  promptCapabilities: PromptCapabilities | undefined,
+): Promise<ContentBlock[]> {
+  const blocks: ContentBlock[] = [{ type: 'text', text: prompt }];
+  if (!attachments?.length) {
+    return blocks;
+  }
+
+  const attachmentBlocks = await Promise.all(
+    attachments.map((attachment) => buildAttachmentBlock(attachment, promptCapabilities)),
+  );
+  return [...blocks, ...attachmentBlocks];
+}
+
 async function applySessionOverrides(
   connection: ClientSideConnection,
   launch: AcpLaunchConfig,
@@ -459,9 +571,14 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
         throw new Error('ACP session has not been created or loaded.');
       }
       try {
+        const promptBlocks = await buildPromptBlocks(
+          promptOptions.prompt,
+          promptOptions.attachments,
+          initialized.agentCapabilities?.promptCapabilities,
+        );
         return await promptAcpSession(connection, {
           sessionId,
-          prompt: [{ type: 'text', text: promptOptions.prompt }],
+          prompt: promptBlocks,
         });
       } catch (err) {
         throw wrapRuntimeError(options, err, runtimeAgentInfo);

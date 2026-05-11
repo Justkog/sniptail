@@ -93,7 +93,10 @@ export async function runAcp(
       await runtime.loadSession(options.resumeThreadId, sessionOptions);
     }
     isCapturingAssistantOutput = true;
-    await runtime.prompt({ prompt });
+    await runtime.prompt({
+      prompt,
+      ...options.currentTurnAttachments && { attachments: options.currentTurnAttachments },
+    });
     isCapturingAssistantOutput = false;
 
     return {
