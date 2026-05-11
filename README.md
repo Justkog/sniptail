@@ -68,9 +68,31 @@ sniptail local --migrate-if-needed
 
 This quickstart uses the single-process local runtime. For split bot/worker deployments, see `docs/setup-and-operations.md`.
 
-### 5) End-to-end check in Discord
+### 5) End-to-end check the agent command in Discord
 
 In a Discord server where the bot is installed, run:
+
+```text
+/sniptail-agent
+```
+
+Then provide the initial prompt in the command, for example:
+
+```text
+Walk me through the main request flow from chat command to final response.
+```
+
+After the thread is created, send follow-up prompts as simple messages in that thread.
+The thread can also surface permission requests and elicitation questions from the agent when the provider supports them.
+
+Expected result:
+
+- Sniptail starts an interactive agent session in the thread.
+- Follow-up prompts sent in the thread stay attached to the same session.
+- Permission requests and elicitation questions appear in the thread when supported.
+- Bot posts the agent replies back into the same thread.
+
+### 6) Optional: test the ASK command
 
 ```text
 /sniptail-ask
