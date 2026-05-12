@@ -1,6 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerAgentSubmitView } from './agentSubmit.js';
 
+type SlackViewHandlerArgs = {
+  ack: () => Promise<void> | void;
+  body: {
+    user: {
+      id: string;
+    };
+  };
+  view: {
+    private_metadata: string;
+    state: {
+      values: ReturnType<typeof buildViewState>;
+    };
+  };
+  client: Record<string, unknown>;
+};
+
+type SlackViewHandler = (args: SlackViewHandlerArgs) => Promise<void>;
+
 const hoisted = vi.hoisted(() => ({
   getAgentCommandMetadata: vi.fn(),
   loadSlackModalContextFiles: vi.fn(),
@@ -44,10 +62,10 @@ vi.mock('../../../lib/requestAudit.js', () => ({
 }));
 
 function buildContext() {
-  const handlers = new Map<string, Function>();
+  const handlers = new Map<string, SlackViewHandler>();
   const app = {
     client: {},
-    view: vi.fn((id: string, handler: Function) => {
+    view: vi.fn((id: string, handler: SlackViewHandler) => {
       handlers.set(id, handler);
     }),
   };
@@ -69,7 +87,7 @@ function buildContext() {
   registerAgentSubmitView(context);
 
   return {
-    handler: handlers.get('agent-submit') as Function,
+    handler: handlers.get('agent-submit') as SlackViewHandler,
     context,
   };
 }
@@ -83,7 +101,7 @@ function buildViewState(prompt = 'inspect the failing tests') {
   };
 }
 
-function buildArgs(overrides: Record<string, unknown> = {}) {
+function buildArgs(overrides: Partial<SlackViewHandlerArgs> = {}): SlackViewHandlerArgs {
   return {
     ack: vi.fn(),
     body: {

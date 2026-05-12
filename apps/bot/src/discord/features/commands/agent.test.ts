@@ -174,7 +174,6 @@ describe('handleAgentStart', () => {
     expect(hoisted.auditAgentSessionStart).toHaveBeenCalledWith(
       config,
       expect.objectContaining({
-        sessionId: expect.any(String),
         provider: 'discord',
         channelId: 'channel-1',
         threadId: 'thread-1',
@@ -187,6 +186,14 @@ describe('handleAgentStart', () => {
         cwd: 'apps/bot',
       }),
       'accepted',
+    );
+    const auditCall = hoisted.auditAgentSessionStart.mock.calls[0];
+    expect(auditCall?.[1]).toEqual(
+      expect.objectContaining({
+        sessionId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        ) as unknown,
+      }),
     );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
   });
@@ -393,10 +400,12 @@ describe('handleAgentStart', () => {
   it('audits denied starts as stopped', async () => {
     const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
     hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
-    hoisted.authorizeDiscordOperationAndRespond.mockImplementationOnce(async (input) => {
-      await input.onDeny();
-      return false;
-    });
+    hoisted.authorizeDiscordOperationAndRespond.mockImplementationOnce(
+      async (input: { onDeny: () => Promise<void> }) => {
+        await input.onDeny();
+        return false;
+      },
+    );
     const interaction = buildInteraction();
 
     await handleAgentStart(
