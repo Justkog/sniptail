@@ -214,7 +214,7 @@ describe('registerAgentSubmitView', () => {
       context.config,
       expect.objectContaining({
         provider: 'slack',
-        channelId: 'unknown',
+        channelId: 'missing-channel-id',
         threadId: 'T1',
         userId: 'U1',
       }),

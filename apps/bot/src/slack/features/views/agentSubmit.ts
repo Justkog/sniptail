@@ -84,7 +84,7 @@ export function registerAgentSubmitView({
     const prompt = state.prompt?.prompt?.value?.trim();
     const baseAuditInput = {
       provider: 'slack' as const,
-      channelId: channelId ?? 'unknown',
+      channelId: channelId ?? 'missing-channel-id',
       userId,
       requestText: prompt ?? '',
       contextFileCount: 0,
