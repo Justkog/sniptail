@@ -261,13 +261,17 @@ export async function handleAgentStart(
   permissions: PermissionsRuntimeService,
 ) {
   const prompt = interaction.options.getString('prompt', true).trim();
+  const isThreadChannel = interaction.channel?.isThread() ?? false;
+  const auditChannelId = isThreadChannel
+    ? (interaction.channel?.parentId ?? interaction.channelId)
+    : interaction.channelId;
   const baseAuditInput = {
     provider: 'discord' as const,
-    channelId: interaction.channelId,
+    channelId: auditChannelId,
     userId: interaction.user.id,
     requestText: prompt,
     contextFileCount: 0,
-    ...(interaction.channel?.isThread() ? { threadId: interaction.channelId } : {}),
+    ...(isThreadChannel ? { threadId: interaction.channelId } : {}),
     ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
   };
 
