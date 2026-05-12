@@ -60,6 +60,8 @@ function resolveAgentMessageReactionName(provider: AgentMessageResponseProvider)
       return '💭';
     case 'slack':
       return 'thought_balloon';
+    case 'telegram':
+      return undefined;
     default:
       return undefined;
   }
