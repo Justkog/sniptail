@@ -9,7 +9,7 @@ type SlackViewHandlerArgs = {
     };
   };
   view: {
-    private_metadata: string;
+    private_metadata?: string;
     state: {
       values: ReturnType<typeof buildViewState>;
     };
@@ -196,6 +196,31 @@ describe('registerAgentSubmitView', () => {
       }),
       'invalid',
     );
+    expect(hoisted.createAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('treats missing channel metadata as invalid submission', async () => {
+    const { handler, context } = buildContext();
+    const args = buildArgs({
+      view: {
+        private_metadata: JSON.stringify({ userId: 'U1', threadId: 'T1', workspaceId: 'W1' }),
+        state: { values: buildViewState() },
+      },
+    });
+
+    await handler(args);
+
+    expect(hoisted.auditAgentSessionStart).toHaveBeenCalledWith(
+      context.config,
+      expect.objectContaining({
+        provider: 'slack',
+        channelId: 'unknown',
+        threadId: 'T1',
+        userId: 'U1',
+      }),
+      'invalid',
+    );
+    expect(hoisted.postMessage).not.toHaveBeenCalled();
     expect(hoisted.createAgentSession).not.toHaveBeenCalled();
   });
 });

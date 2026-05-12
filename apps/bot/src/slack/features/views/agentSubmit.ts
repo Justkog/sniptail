@@ -16,6 +16,13 @@ import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 import { auditAgentSessionStart } from '../../../lib/requestAudit.js';
 
+type SlackAgentPrivateMetadata = {
+  channelId?: string;
+  userId?: string;
+  threadId?: string;
+  workspaceId?: string;
+};
+
 function normalizeOptionalString(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
@@ -33,6 +40,30 @@ function validateRelativeCwd(cwd: string | undefined): string | undefined {
   return cwd;
 }
 
+function parsePrivateMetadata(
+  privateMetadata: string | undefined,
+): SlackAgentPrivateMetadata | undefined {
+  if (!privateMetadata) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(privateMetadata) as SlackAgentPrivateMetadata;
+    const channelId = normalizeOptionalString(parsed.channelId);
+    const userId = normalizeOptionalString(parsed.userId);
+    const threadId = normalizeOptionalString(parsed.threadId);
+    const workspaceId = normalizeOptionalString(parsed.workspaceId);
+    return {
+      ...(channelId ? { channelId } : {}),
+      ...(userId ? { userId } : {}),
+      ...(threadId ? { threadId } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
+    };
+  } catch (err) {
+    logger.warn({ err }, 'Failed to parse Slack agent submit private metadata');
+    return undefined;
+  }
+}
+
 export function registerAgentSubmitView({
   app,
   slackIds,
@@ -44,15 +75,8 @@ export function registerAgentSubmitView({
     await ack();
 
     const metadata = getAgentCommandMetadata();
-    const privateMetadata = view.private_metadata
-      ? (JSON.parse(view.private_metadata) as {
-          channelId: string;
-          userId: string;
-          threadId?: string;
-          workspaceId?: string;
-        })
-      : undefined;
-    const channelId = privateMetadata?.channelId ?? body.user.id;
+    const privateMetadata = parsePrivateMetadata(view.private_metadata);
+    const channelId = privateMetadata?.channelId;
     const userId = privateMetadata?.userId ?? body.user.id;
     const existingThreadId = privateMetadata?.threadId;
     const workspaceId = privateMetadata?.workspaceId;
@@ -60,13 +84,19 @@ export function registerAgentSubmitView({
     const prompt = state.prompt?.prompt?.value?.trim();
     const baseAuditInput = {
       provider: 'slack' as const,
-      channelId,
+      channelId: channelId ?? 'unknown',
       userId,
       requestText: prompt ?? '',
       contextFileCount: 0,
       ...(existingThreadId ? { threadId: existingThreadId } : {}),
       ...(workspaceId ? { workspaceId } : {}),
     };
+
+    if (!channelId) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      logger.warn({ userId }, 'Missing Slack channelId in agent submit private metadata');
+      return;
+    }
 
     if (!metadata?.enabled) {
       auditAgentSessionStart(config, baseAuditInput, 'invalid');
