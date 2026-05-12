@@ -4,28 +4,55 @@ import type { ChannelContext } from '@sniptail/core/types/channel.js';
 import type { JobSpec, JobType } from '@sniptail/core/types/job.js';
 import type { NormalizedJobRequestInput } from '../job-requests/types.js';
 
-type RequestAuditOutcome = 'invalid' | 'stopped' | 'persist_failed' | 'accepted';
+type RequestAuditOutcome = 'invalid' | 'pending' | 'stopped' | 'persist_failed' | 'accepted';
 
 type RequestAuditRecord = {
-  event: 'job.request';
+  event: 'job.request' | 'agent.session.start';
   outcome: RequestAuditOutcome;
-  jobId?: string;
-  jobType: JobType;
   provider: ChannelContext['provider'];
   channelId: string;
   threadId?: string;
   userId?: string;
-  requestId?: string;
   requestText: string;
-  repoKeys: string[];
-  primaryRepoKey?: string;
-  gitRef?: string;
-  agent?: JobSpec['agent'];
-  resumeFromJobId?: string;
   contextFileCount: number;
-  runActionId?: string;
   metadata?: Record<string, unknown>;
   guildId?: string;
+  workspaceId?: string;
+} & (
+  | {
+      event: 'job.request';
+      jobId?: string;
+      jobType: JobType;
+      requestId?: string;
+      repoKeys: string[];
+      primaryRepoKey?: string;
+      gitRef?: string;
+      agent?: JobSpec['agent'];
+      resumeFromJobId?: string;
+      runActionId?: string;
+    }
+  | {
+      event: 'agent.session.start';
+      sessionId?: string;
+      workspaceKey?: string;
+      agentProfileKey?: string;
+      cwd?: string;
+    }
+);
+
+export type AgentSessionStartAuditInput = {
+  sessionId?: string;
+  provider: ChannelContext['provider'];
+  channelId: string;
+  threadId?: string;
+  userId?: string;
+  requestText: string;
+  contextFileCount: number;
+  workspaceId?: string;
+  guildId?: string;
+  workspaceKey?: string;
+  agentProfileKey?: string;
+  cwd?: string;
 };
 
 const auditLoggerCache = new Map<string, Logger | null>();
@@ -73,6 +100,28 @@ function toAuditRecordFromJob(job: JobSpec, outcome: RequestAuditOutcome): Reque
     ...(job.run?.actionId ? { runActionId: job.run.actionId } : {}),
     ...(job.channel.metadata ? { metadata: job.channel.metadata } : {}),
     ...('guildId' in job.channel && job.channel.guildId ? { guildId: job.channel.guildId } : {}),
+  };
+}
+
+function toAuditRecordFromAgentSessionStart(
+  input: AgentSessionStartAuditInput,
+  outcome: RequestAuditOutcome,
+): RequestAuditRecord {
+  return {
+    event: 'agent.session.start',
+    outcome,
+    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    provider: input.provider,
+    channelId: input.channelId,
+    ...(input.threadId ? { threadId: input.threadId } : {}),
+    ...(input.userId ? { userId: input.userId } : {}),
+    requestText: input.requestText,
+    contextFileCount: input.contextFileCount,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.guildId ? { guildId: input.guildId } : {}),
+    ...(input.workspaceKey ? { workspaceKey: input.workspaceKey } : {}),
+    ...(input.agentProfileKey ? { agentProfileKey: input.agentProfileKey } : {}),
+    ...(input.cwd ? { cwd: input.cwd } : {}),
   };
 }
 
@@ -133,4 +182,12 @@ export function auditJobRequest(
   outcome: Exclude<RequestAuditOutcome, 'invalid'>,
 ): void {
   writeAuditRecord(config, toAuditRecordFromJob(job, outcome));
+}
+
+export function auditAgentSessionStart(
+  config: BotConfig,
+  input: AgentSessionStartAuditInput,
+  outcome: RequestAuditOutcome,
+): void {
+  writeAuditRecord(config, toAuditRecordFromAgentSessionStart(input, outcome));
 }

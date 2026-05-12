@@ -14,6 +14,7 @@ import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
 import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
+import { auditAgentSessionStart } from '../../../lib/requestAudit.js';
 
 function normalizeOptionalString(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -55,8 +56,20 @@ export function registerAgentSubmitView({
     const userId = privateMetadata?.userId ?? body.user.id;
     const existingThreadId = privateMetadata?.threadId;
     const workspaceId = privateMetadata?.workspaceId;
+    const state = view.state.values;
+    const prompt = state.prompt?.prompt?.value?.trim();
+    const baseAuditInput = {
+      provider: 'slack' as const,
+      channelId,
+      userId,
+      requestText: prompt ?? '',
+      contextFileCount: 0,
+      ...(existingThreadId ? { threadId: existingThreadId } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
+    };
 
     if (!metadata?.enabled) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
       await postMessage(app, {
         channel: channelId,
         text: 'Agent sessions are not available yet. Please try again in a few seconds.',
@@ -65,13 +78,12 @@ export function registerAgentSubmitView({
       return;
     }
 
-    const state = view.state.values;
-    const prompt = state.prompt?.prompt?.value?.trim();
     const workspaceKey = state.workspace?.workspace_key?.selected_option?.value?.trim();
     const profileKey = state.profile?.agent_profile_key?.selected_option?.value?.trim();
     const cwd = validateRelativeCwd(normalizeOptionalString(state.cwd?.cwd?.value));
 
     if (!prompt) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
       await postMessage(app, {
         channel: channelId,
         text: 'The prompt cannot be empty.',
@@ -80,6 +92,7 @@ export function registerAgentSubmitView({
       return;
     }
     if (!workspaceKey || !metadata.workspaces.some((workspace) => workspace.key === workspaceKey)) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
       await postMessage(app, {
         channel: channelId,
         text: 'Please choose a valid workspace.',
@@ -88,6 +101,7 @@ export function registerAgentSubmitView({
       return;
     }
     if (!profileKey || !metadata.profiles.some((profile) => profile.key === profileKey)) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
       await postMessage(app, {
         channel: channelId,
         text: 'Please choose a valid agent profile.',
@@ -105,6 +119,16 @@ export function registerAgentSubmitView({
       });
       contextFiles = uploadedFiles.length ? uploadedFiles : undefined;
     } catch (err) {
+      auditAgentSessionStart(
+        config,
+        {
+          ...baseAuditInput,
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        'persist_failed',
+      );
       logger.warn({ err }, 'Failed to load Slack modal context files for agent session');
       await postMessage(app, {
         channel: channelId,
@@ -148,6 +172,18 @@ export function registerAgentSubmitView({
       });
       controlMessageTs = controlMessage.ts;
     } catch (err) {
+      auditAgentSessionStart(
+        config,
+        {
+          ...baseAuditInput,
+          sessionId,
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+          contextFileCount: contextFiles?.length ?? 0,
+        },
+        'persist_failed',
+      );
       logger.error({ err }, 'Failed to post Slack agent control message');
       await postMessage(app, {
         channel: channelId,
@@ -159,6 +195,18 @@ export function registerAgentSubmitView({
 
     const threadId = existingThreadId ?? controlMessageTs;
     if (!threadId) {
+      auditAgentSessionStart(
+        config,
+        {
+          ...baseAuditInput,
+          sessionId,
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+          contextFileCount: contextFiles?.length ?? 0,
+        },
+        'persist_failed',
+      );
       await postMessage(app, {
         channel: channelId,
         text: 'Failed to determine the Slack thread for this agent session.',
@@ -196,6 +244,23 @@ export function registerAgentSubmitView({
         status: 'pending',
       });
     } catch (err) {
+      auditAgentSessionStart(
+        config,
+        {
+          sessionId,
+          provider: 'slack',
+          channelId,
+          threadId,
+          userId,
+          requestText: prompt,
+          contextFileCount: contextFiles?.length ?? 0,
+          ...(workspaceId ? { workspaceId } : {}),
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        'persist_failed',
+      );
       logger.error({ err, sessionId }, 'Failed to create Slack agent session record');
       await postMessage(app, {
         channel: channelId,
@@ -205,6 +270,7 @@ export function registerAgentSubmitView({
       return;
     }
 
+    let denied = false;
     const authorized = await authorizeSlackOperationAndRespond({
       permissions,
       client: app.client,
@@ -222,6 +288,7 @@ export function registerAgentSubmitView({
         ...(workspaceId ? { workspaceId } : {}),
       },
       onDeny: async () => {
+        denied = true;
         await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
           logger.warn(
             { err: updateErr, sessionId },
@@ -238,6 +305,23 @@ export function registerAgentSubmitView({
       approvalPresentation: 'approval_only',
     });
     if (!authorized) {
+      auditAgentSessionStart(
+        config,
+        {
+          sessionId,
+          provider: 'slack',
+          channelId,
+          threadId,
+          userId,
+          requestText: prompt,
+          contextFileCount: contextFiles?.length ?? 0,
+          ...(workspaceId ? { workspaceId } : {}),
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        denied ? 'stopped' : 'pending',
+      );
       return;
     }
 
@@ -253,11 +337,45 @@ export function registerAgentSubmitView({
         logger.warn({ err, sessionId, userId }, 'Failed to persist Slack agent defaults');
       });
       await updateAgentSessionStatus(sessionId, 'active');
+      auditAgentSessionStart(
+        config,
+        {
+          sessionId,
+          provider: 'slack',
+          channelId,
+          threadId,
+          userId,
+          requestText: prompt,
+          contextFileCount: contextFiles?.length ?? 0,
+          ...(workspaceId ? { workspaceId } : {}),
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        'accepted',
+      );
     } catch (err) {
       logger.error({ err, sessionId }, 'Failed to enqueue Slack agent session start event');
       await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
         logger.warn({ err: updateErr, sessionId }, 'Failed to mark Slack agent session as failed');
       });
+      auditAgentSessionStart(
+        config,
+        {
+          sessionId,
+          provider: 'slack',
+          channelId,
+          threadId,
+          userId,
+          requestText: prompt,
+          contextFileCount: contextFiles?.length ?? 0,
+          ...(workspaceId ? { workspaceId } : {}),
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        'persist_failed',
+      );
       await postMessage(app, {
         channel: channelId,
         text: `Failed to start the session: ${(err as Error).message}`,

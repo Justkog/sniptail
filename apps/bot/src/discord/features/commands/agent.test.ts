@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
   buildWorkspaceAutocompleteChoices: vi.fn(),
   postDiscordMessage: vi.fn(),
   loadDiscordContextFiles: vi.fn(),
+  auditAgentSessionStart: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-defaults/registry.js', () => ({
@@ -47,6 +48,10 @@ vi.mock('../../../agentCommandMetadataCache.js', () => ({
 vi.mock('../../helpers.js', () => ({
   isSendableTextChannel: vi.fn(() => true),
   postDiscordMessage: hoisted.postDiscordMessage,
+}));
+
+vi.mock('../../../lib/requestAudit.js', () => ({
+  auditAgentSessionStart: hoisted.auditAgentSessionStart,
 }));
 
 type DiscordContextFilesModule = Record<string, unknown> & {
@@ -120,6 +125,7 @@ describe('handleAgentStart', () => {
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
     hoisted.loadDiscordContextFiles.mockResolvedValue([]);
+    hoisted.auditAgentSessionStart.mockReset();
   });
 
   it('uses the thread starter message as the agent control surface', async () => {
@@ -164,6 +170,23 @@ describe('handleAgentStart', () => {
         agentProfileKey: 'build',
         cwd: 'apps/bot',
       }),
+    );
+    expect(hoisted.auditAgentSessionStart).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        sessionId: expect.any(String),
+        provider: 'discord',
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+        requestText: 'inspect the failing tests',
+        contextFileCount: 0,
+        guildId: 'guild-1',
+        workspaceKey: 'snatch',
+        agentProfileKey: 'build',
+        cwd: 'apps/bot',
+      }),
+      'accepted',
     );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
   });
@@ -337,6 +360,62 @@ describe('handleAgentStart', () => {
       }),
     );
     expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
+  });
+
+  it('audits pending approval separately from denied starts', async () => {
+    const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+    hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
+    hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(false);
+    const interaction = buildInteraction();
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.auditAgentSessionStart).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        provider: 'discord',
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+      }),
+      'pending',
+    );
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      'Session request is pending approval in <#thread-1>.',
+    );
+  });
+
+  it('audits denied starts as stopped', async () => {
+    const startThread = vi.fn().mockResolvedValue({ id: 'thread-1' });
+    hoisted.postDiscordMessage.mockResolvedValue({ id: 'message-1', startThread });
+    hoisted.authorizeDiscordOperationAndRespond.mockImplementationOnce(async (input) => {
+      await input.onDeny();
+      return false;
+    });
+    const interaction = buildInteraction();
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(hoisted.auditAgentSessionStart).toHaveBeenCalledWith(
+      config,
+      expect.objectContaining({
+        provider: 'discord',
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+      }),
+      'stopped',
+    );
   });
 
   it('uses persisted defaults when command options are omitted', async () => {
