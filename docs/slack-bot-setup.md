@@ -35,6 +35,12 @@ From the repo root:
 pnpm run slack:manifest "My Bot"
 ```
 
+If you have the Sniptail CLI installed, the equivalent command is:
+
+```bash
+sniptail slack-manifest --name "My Bot"
+```
+
 This writes `slack-app-manifest.yaml` in the repo root.
 
 ## 3) Create the Slack app from the manifest
