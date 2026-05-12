@@ -51,14 +51,7 @@ enabled = true
 app_id = "YOUR_DISCORD_APPLICATION_ID"
 ```
 
-### 3) Add the `sniptail` repo to the catalog
-
-```bash
-sniptail repos add sniptail --ssh-url git@github.com:Justkog/sniptail.git
-sniptail repos list
-```
-
-### 4) Start Sniptail
+### 3) Start Sniptail
 
 Run:
 
@@ -68,7 +61,7 @@ sniptail local --migrate-if-needed
 
 This quickstart uses the single-process local runtime. For split bot/worker deployments, see `docs/setup-and-operations.md`.
 
-### 5) End-to-end check the agent command in Discord
+### 4) End-to-end check the agent command in Discord
 
 In a Discord server where the bot is installed, run:
 
@@ -92,7 +85,14 @@ Expected result:
 - Permission requests and elicitation questions appear in the thread when supported.
 - Bot posts the agent replies back into the same thread.
 
-### 6) Optional: test the ASK command
+### 5) Optional: add the `sniptail` repo to the catalog and test the ASK command
+
+First add the repository:
+
+```bash
+sniptail repos add sniptail --ssh-url git@github.com:Justkog/sniptail.git
+sniptail repos list
+```
 
 ```text
 /sniptail-ask

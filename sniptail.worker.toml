@@ -94,15 +94,15 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 [agent]
 # Enable the Discord /sniptail-agent command.
 # Optional. Default: false. Example: true
-# enabled = false
+enabled = true
 
 # Default workspace key for /sniptail-agent sessions. Required when enabled=true.
 # Optional. No default. Example: "snatch"
-# default_workspace = "snatch"
+default_workspace = "home"
 
 # Default coding-agent profile key for /sniptail-agent sessions. Required when enabled=true.
 # Optional. No default. Example: "build"
-# default_agent_profile = "build"
+default_agent_profile = "build"
 
 # Timeout for pending agent permission/question interactions, in milliseconds.
 # Optional. Default: 1800000 (30 minutes). Example: 1800000
@@ -115,10 +115,10 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # /sniptail-agent workspaces are worker-local directories. Paths must be absolute after
 # $HOME/~ expansion.
 #
-# [agent.workspaces.snatch]
-# path = "$HOME/Perso/snatch"
-# label = "snatch"
-# description = "Main Sniptail checkout"
+[agent.workspaces.home]
+path = "$HOME"
+label = "Home"
+description = "User home directory"
 
 # /sniptail-agent coding-agent profiles select the underlying provider plus
 # optional provider-native agent/profile names and explicit model overrides.
@@ -131,14 +131,11 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # - for copilot, profile maps to the Copilot session agent
 # - for opencode, profile maps to the OpenCode prompt agent
 #
-# [agent.profiles.build]
-# provider = "opencode"
-# profile = "build" # optional provider-native agent/profile
-# model = "claude-sonnet" # optional model id
-# model_provider = "anthropic" # required with model for opencode profiles
-# reasoning_effort = "high" # optional; requires model
-# label = "Build"
-# description = "OpenCode Build primary agent"
+[agent.profiles.build]
+provider = "codex"
+model = "gpt-5.4"
+label = "Build"
+description = "General purpose Codex agent"
 
 # [acp]
 # Managed-job ACP agent config.
