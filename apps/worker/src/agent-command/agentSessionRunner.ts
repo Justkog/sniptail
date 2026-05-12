@@ -51,6 +51,51 @@ function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['r
   };
 }
 
+function resolveAgentMessageReactionName(provider: string): string | undefined {
+  if (provider === 'discord') {
+    return '💭';
+  }
+  if (provider === 'slack') {
+    return 'thought_balloon';
+  }
+  return undefined;
+}
+
+async function addAgentMessageProcessingReaction(
+  notifier: Notifier,
+  input: {
+    sessionId: string;
+    response: CoreWorkerEvent<'agent.session.message'>['payload']['response'];
+    messageId?: string;
+  },
+): Promise<void> {
+  if (!input.messageId) {
+    return;
+  }
+
+  const reactionName = resolveAgentMessageReactionName(input.response.provider);
+  if (!reactionName) {
+    return;
+  }
+
+  try {
+    await notifier.addReaction(
+      {
+        provider: input.response.provider,
+        channelId: input.response.channelId,
+        ...(input.response.threadId ? { threadId: input.response.threadId } : {}),
+      },
+      reactionName,
+      { messageId: input.messageId },
+    );
+  } catch (err) {
+    logger.warn(
+      { err, sessionId: input.sessionId, messageId: input.messageId },
+      'Failed to add agent session message reaction before processing',
+    );
+  }
+}
+
 function resolveAgentProfile(
   config: WorkerConfig,
   agentProfileKey: string,
@@ -289,6 +334,14 @@ export async function runAgentSessionMessage({
   const adapter = getInteractiveAgentAdapter(profile.provider);
 
   if (isAgentPromptTurnActive(sessionId)) {
+    if (mode === 'queue' || mode === 'steer') {
+      await addAgentMessageProcessingReaction(notifier, {
+        sessionId,
+        response,
+        ...(messageId ? { messageId } : {}),
+      });
+    }
+
     let handledByAdapter = false;
     try {
       handledByAdapter =
@@ -360,6 +413,12 @@ export async function runAgentSessionMessage({
     await notifier.postMessage(ref, 'This agent session already has an active prompt.');
     return;
   }
+
+  await addAgentMessageProcessingReaction(notifier, {
+    sessionId,
+    response,
+    ...(messageId ? { messageId } : {}),
+  });
 
   await runAgentTurnLoop({
     turn: {

@@ -172,11 +172,21 @@ function buildSession(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildNotifier(): Notifier & { postMessage: ReturnType<typeof vi.fn> } {
+type MockNotifier = Notifier & {
+  postMessage: ReturnType<typeof vi.fn<Notifier['postMessage']>>;
+  uploadFile: ReturnType<typeof vi.fn<Notifier['uploadFile']>>;
+  addReaction: ReturnType<typeof vi.fn<Notifier['addReaction']>>;
+};
+
+function buildNotifier(): MockNotifier {
+  const postMessage = vi.fn<Notifier['postMessage']>();
+  const uploadFile = vi.fn<Notifier['uploadFile']>();
+  const addReaction = vi.fn<Notifier['addReaction']>();
+
   return {
-    postMessage: vi.fn(),
-    uploadFile: vi.fn(),
-    addReaction: vi.fn(),
+    postMessage,
+    uploadFile,
+    addReaction,
   };
 }
 
@@ -1781,6 +1791,7 @@ describe('OpenCode agent prompt runner', () => {
   it('runs follow-up messages against the stored OpenCode session id', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
+    const addReaction = notifier.addReaction;
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
 
     await runAgentSessionMessage({
@@ -1804,15 +1815,87 @@ describe('OpenCode agent prompt runner', () => {
       | OpenCodePromptRunOptions
       | undefined;
     expect(openCodeOptions?.currentTurnAttachments).toBeUndefined();
+    expect(addReaction).toHaveBeenCalledWith(
+      {
+        provider: 'discord',
+        channelId: 'thread-1',
+        threadId: 'thread-1',
+      },
+      '💭',
+      { messageId: 'message-1' },
+    );
+    expect(addReaction.mock.invocationCallOrder[0]).toBeLessThan(
+      hoisted.runOpenCodePrompt.mock.invocationCallOrder[0],
+    );
     expect(notifier.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'assistant progress text',
     );
   });
 
+  it('adds a Slack thought balloon reaction before processing follow-up turns', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const addReaction = notifier.addReaction;
+    hoisted.loadAgentSession.mockResolvedValue(
+      buildSession({
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: '1712345678.000100',
+        workspaceId: 'W1',
+      }),
+    );
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({
+        response: {
+          provider: 'slack',
+          channelId: 'C1',
+          threadId: '1712345678.000100',
+          userId: 'user-1',
+          workspaceId: 'snatch',
+        },
+        messageId: '1712345999.000200',
+      }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(addReaction).toHaveBeenCalledWith(
+      {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: '1712345678.000100',
+      },
+      'thought_balloon',
+      { messageId: '1712345999.000200' },
+    );
+  });
+
+  it('skips follow-up reactions when the source message id is unavailable', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const addReaction = notifier.addReaction;
+    hoisted.loadAgentSession.mockResolvedValue(buildSession());
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent({ messageId: undefined }),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(addReaction).not.toHaveBeenCalled();
+    expect(hoisted.runOpenCodePrompt).toHaveBeenCalledTimes(1);
+  });
+
   it('queues follow-up messages while a prompt is active', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
+    const addReaction = notifier.addReaction;
     let releaseFirstPrompt!: () => void;
     hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'completed' }));
     hoisted.runOpenCodePrompt
@@ -1870,9 +1953,41 @@ describe('OpenCode agent prompt runner', () => {
       {},
       expect.objectContaining({ sessionId: 'opencode-session-1' }),
     );
+    expect(addReaction).toHaveBeenCalledWith(
+      {
+        provider: 'discord',
+        channelId: 'thread-1',
+        threadId: 'thread-1',
+      },
+      '💭',
+      { messageId: 'message-1' },
+    );
     expect(notifier.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
       'Follow-up queued for the next agent turn.',
+    );
+  });
+
+  it('continues follow-up processing when adding the reaction fails', async () => {
+    await mkdir(tempRoot, { recursive: true });
+    const notifier = buildNotifier();
+    const addReaction = notifier.addReaction;
+    addReaction.mockRejectedValueOnce(new Error('reaction failed'));
+    hoisted.loadAgentSession.mockResolvedValue(buildSession());
+
+    await runAgentSessionMessage({
+      event: buildMessageEvent(),
+      config: buildConfig(tempRoot),
+      notifier,
+      botEvents: buildBotEvents(),
+      env: {},
+    });
+
+    expect(addReaction).toHaveBeenCalledTimes(1);
+    expect(hoisted.runOpenCodePrompt).toHaveBeenCalledTimes(1);
+    expect(notifier.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider: 'discord', channelId: 'thread-1' }),
+      'assistant progress text',
     );
   });
 
