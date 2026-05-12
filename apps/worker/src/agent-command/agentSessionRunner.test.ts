@@ -1853,7 +1853,7 @@ describe('OpenCode agent prompt runner', () => {
           channelId: 'C1',
           threadId: '1712345678.000100',
           userId: 'user-1',
-          workspaceId: 'snatch',
+          workspaceId: 'W1',
         },
         messageId: '1712345999.000200',
       }),
