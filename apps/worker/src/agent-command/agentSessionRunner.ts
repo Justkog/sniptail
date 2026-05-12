@@ -60,10 +60,8 @@ function resolveAgentMessageReactionName(provider: AgentMessageResponseProvider)
       return '💭';
     case 'slack':
       return 'thought_balloon';
-    default: {
-      const exhaustiveCheck: never = provider;
-      return exhaustiveCheck;
-    }
+    default:
+      return undefined;
   }
 }
 
