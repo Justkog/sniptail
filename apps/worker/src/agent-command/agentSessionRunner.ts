@@ -51,14 +51,20 @@ function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['r
   };
 }
 
-function resolveAgentMessageReactionName(provider: string): string | undefined {
-  if (provider === 'discord') {
-    return '💭';
+type AgentMessageResponseProvider =
+  CoreWorkerEvent<'agent.session.message'>['payload']['response']['provider'];
+
+function resolveAgentMessageReactionName(provider: AgentMessageResponseProvider): string | undefined {
+  switch (provider) {
+    case 'discord':
+      return '💭';
+    case 'slack':
+      return 'thought_balloon';
+    default: {
+      const exhaustiveCheck: never = provider;
+      return exhaustiveCheck;
+    }
   }
-  if (provider === 'slack') {
-    return 'thought_balloon';
-  }
-  return undefined;
 }
 
 async function addAgentMessageProcessingReaction(
