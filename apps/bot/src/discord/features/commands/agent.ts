@@ -33,6 +33,7 @@ import {
 } from '../../lib/discordContextFiles.js';
 import { isSendableTextChannel, postDiscordMessage } from '../../helpers.js';
 import { truncateRequestSummary } from '../../../lib/jobs.js';
+import { auditAgentSessionStart } from '../../../lib/requestAudit.js';
 
 type ResolvedAgentThread = {
   channelId: string;
@@ -259,8 +260,27 @@ export async function handleAgentStart(
   workerEventQueue: QueuePublisher<WorkerEvent>,
   permissions: PermissionsRuntimeService,
 ) {
+  const prompt = interaction.options.getString('prompt', true).trim();
+  const interactionChannel = interaction.channel;
+  let auditChannelId = interaction.channelId;
+  let auditThreadId: string | undefined;
+  if (interactionChannel?.isThread()) {
+    auditChannelId = interactionChannel.parentId ?? interaction.channelId;
+    auditThreadId = interaction.channelId;
+  }
+  const baseAuditInput = {
+    provider: 'discord' as const,
+    channelId: auditChannelId,
+    userId: interaction.user.id,
+    requestText: prompt,
+    contextFileCount: 0,
+    ...(auditThreadId ? { threadId: auditThreadId } : {}),
+    ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+  };
+
   const metadata = getDiscordAgentCommandMetadata();
   if (!metadata || !metadata.enabled) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
     await interaction.reply({
       content: 'Agent sessions are not available yet. Please try again in a few seconds.',
       ephemeral: true,
@@ -268,8 +288,8 @@ export async function handleAgentStart(
     return;
   }
 
-  const prompt = interaction.options.getString('prompt', true).trim();
   if (!prompt) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
     await interaction.reply({
       content: 'The prompt cannot be empty.',
       ephemeral: true,
@@ -281,6 +301,7 @@ export async function handleAgentStart(
   try {
     resolvedSelections = await resolveAgentSelections(interaction, metadata);
   } catch (err) {
+    auditAgentSessionStart(config, baseAuditInput, 'persist_failed');
     await interaction.reply({
       content: `Failed to resolve agent defaults: ${(err as Error).message}`,
       ephemeral: true,
@@ -288,6 +309,7 @@ export async function handleAgentStart(
     return;
   }
   if ('error' in resolvedSelections) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
     await interaction.reply({
       content: resolvedSelections.error,
       ephemeral: true,
@@ -326,6 +348,16 @@ export async function handleAgentStart(
       const loadedFiles = await loadDiscordContextFiles(contextAttachments);
       contextFiles = loadedFiles.length ? loadedFiles : undefined;
     } catch (err) {
+      auditAgentSessionStart(
+        config,
+        {
+          ...baseAuditInput,
+          workspaceKey,
+          agentProfileKey: profileKey,
+          ...(cwd ? { cwd } : {}),
+        },
+        'persist_failed',
+      );
       logger.warn({ err, profileKey }, 'Failed to load Discord command context files for /agent');
       await interaction.editReply(`I couldn't use the attached files: ${(err as Error).message}`);
       return;
@@ -343,6 +375,18 @@ export async function handleAgentStart(
       ...(cwd ? { cwd } : {}),
     });
   } catch (err) {
+    auditAgentSessionStart(
+      config,
+      {
+        ...baseAuditInput,
+        sessionId,
+        workspaceKey,
+        agentProfileKey: profileKey,
+        ...(cwd ? { cwd } : {}),
+        contextFileCount: contextFiles?.length ?? 0,
+      },
+      'persist_failed',
+    );
     logger.error({ err }, 'Failed to create or resolve Discord thread for /agent');
     await interaction.editReply('Failed to create a thread for this agent session.');
     return;
@@ -378,6 +422,23 @@ export async function handleAgentStart(
       status: 'pending',
     });
   } catch (err) {
+    auditAgentSessionStart(
+      config,
+      {
+        sessionId,
+        provider: 'discord',
+        channelId: thread.channelId,
+        threadId: thread.threadId,
+        userId: interaction.user.id,
+        requestText: prompt,
+        contextFileCount: contextFiles?.length ?? 0,
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+        workspaceKey,
+        agentProfileKey: profileKey,
+        ...(cwd ? { cwd } : {}),
+      },
+      'persist_failed',
+    );
     logger.error({ err, sessionId }, 'Failed to create Discord agent session record');
     await interaction.editReply(`Failed to create the session record: ${(err as Error).message}`);
     return;
@@ -420,6 +481,23 @@ export async function handleAgentStart(
     },
   });
   if (!authorized) {
+    auditAgentSessionStart(
+      config,
+      {
+        sessionId,
+        provider: 'discord',
+        channelId: thread.channelId,
+        threadId: thread.threadId,
+        userId: interaction.user.id,
+        requestText: prompt,
+        contextFileCount: contextFiles?.length ?? 0,
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+        workspaceKey,
+        agentProfileKey: profileKey,
+        ...(cwd ? { cwd } : {}),
+      },
+      denied ? 'stopped' : 'pending',
+    );
     if (!denied) {
       await interaction.editReply(`Session request is pending approval in <#${thread.threadId}>.`);
     }
@@ -441,12 +519,46 @@ export async function handleAgentStart(
       );
     });
     await updateAgentSessionStatus(sessionId, 'active');
+    auditAgentSessionStart(
+      config,
+      {
+        sessionId,
+        provider: 'discord',
+        channelId: thread.channelId,
+        threadId: thread.threadId,
+        userId: interaction.user.id,
+        requestText: prompt,
+        contextFileCount: contextFiles?.length ?? 0,
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+        workspaceKey,
+        agentProfileKey: profileKey,
+        ...(cwd ? { cwd } : {}),
+      },
+      'accepted',
+    );
     await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
   } catch (err) {
     logger.error({ err, sessionId }, 'Failed to enqueue agent session start event');
     await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {
       logger.warn({ err: updateErr, sessionId }, 'Failed to mark agent session as failed');
     });
+    auditAgentSessionStart(
+      config,
+      {
+        sessionId,
+        provider: 'discord',
+        channelId: thread.channelId,
+        threadId: thread.threadId,
+        userId: interaction.user.id,
+        requestText: prompt,
+        contextFileCount: contextFiles?.length ?? 0,
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+        workspaceKey,
+        agentProfileKey: profileKey,
+        ...(cwd ? { cwd } : {}),
+      },
+      'persist_failed',
+    );
     await interaction.editReply(`Failed to start the session: ${(err as Error).message}`);
   }
 }
