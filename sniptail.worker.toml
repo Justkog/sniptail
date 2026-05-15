@@ -16,21 +16,26 @@ job_work_root = "$HOME/.sniptail/jobs"
 # Optional. Default: "redis". Use "inproc" with `sniptail local` only.
 queue_driver = "redis"
 
-# Path to the job registry file/directory (used for sqlite).
-# Required when job_registry_db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/job-registry"
-job_registry_path = "$HOME/.sniptail/job-registry"
+[registry]
+# Path to the shared registry file/directory (used for sqlite).
+# Required when db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/registry"
+path = "$HOME/.sniptail/registry"
 
 # Registry backend: "sqlite", "pg", or "redis".
 # Optional. Default: "redis". Example: "redis"
-job_registry_db = "redis"
+db = "redis"
 
-# When job_registry_db is "pg", set JOB_REGISTRY_PG_URL in env.
+# Shared registry namespace.
+# Optional. Default: "default". Example: "prod"
+# namespace = "default"
+
+# When db is "pg", set SNIPTAIL_REGISTRY_PG_URL in env.
 # Optional. No default. Example: "postgres://user:pass@host:5432/db"
-# job_registry_pg_url is read from env only.
+# pg_url is typically read from env.
 
-# When job_registry_db is "redis", configure this or set JOB_REGISTRY_REDIS_URL/REDIS_URL.
+# When db is "redis", configure this or set SNIPTAIL_REGISTRY_REDIS_URL/REDIS_URL.
 # Optional. No default. Example: "redis://localhost:6379/1"
-# job_registry_redis_url = "redis://localhost:6379/1"
+# redis_url = "redis://localhost:6379/1"
 
 [worker]
 # Friendly bot name shown in UIs.
@@ -95,14 +100,6 @@ repo_cache_root = "$HOME/.sniptail/repo-cache"
 # Enable the Discord /sniptail-agent command.
 # Optional. Default: false. Example: true
 enabled = true
-
-# Default workspace key for /sniptail-agent sessions. Required when enabled=true.
-# Optional. No default. Example: "snatch"
-default_workspace = "home"
-
-# Default coding-agent profile key for /sniptail-agent sessions. Required when enabled=true.
-# Optional. No default. Example: "build"
-default_agent_profile = "build"
 
 # Timeout for pending agent permission/question interactions, in milliseconds.
 # Optional. Default: 1800000 (30 minutes). Example: 1800000
