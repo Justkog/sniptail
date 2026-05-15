@@ -86,7 +86,8 @@ For single-machine mode without Redis queueing, use:
 
 - `sniptail local` command
 - `QUEUE_DRIVER=inproc`
-- `JOB_REGISTRY_DB=sqlite` (durable local job registry)
+- `SNIPTAIL_REGISTRY_DB=sqlite` (durable local registry)
+- `SNIPTAIL_REGISTRY_PATH=...`
 
 For distributed mode, keep Redis queue transport:
 
@@ -95,7 +96,7 @@ For distributed mode, keep Redis queue transport:
 - set `REDIS_URL` in your `.env` (recommended), or
 - edit `redis_url` in both `sniptail.bot.toml` (`[bot].redis_url`) and `sniptail.worker.toml` (`[worker].redis_url`).
 
-Optional: if you want the job registry to use a different Redis than the queue, set `JOB_REGISTRY_REDIS_URL` (or set `[core].job_registry_redis_url` in TOML).
+Optional: if you want the registry to use a different Redis than the queue, set `SNIPTAIL_REGISTRY_REDIS_URL` (or set `[registry].redis_url` in TOML).
 
 If you want to keep the TOML files somewhere else (for example so upgrades don't overwrite them), pass `--config` or set:
 
@@ -166,7 +167,7 @@ This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manif
 
 #### 6) Seed the repository catalog
 
-The repo allowlist is stored in the configured job registry backend (sqlite/pg/redis). With the default Redis registry, this also means bot + worker can run on different machines without any shared filesystem.
+The repo allowlist is stored in the configured registry backend (sqlite/pg/redis). With the default Redis registry, this also means bot + worker can run on different machines without any shared filesystem.
 
 The quickest way to seed entries is with the CLI:
 
@@ -254,22 +255,22 @@ pnpm install
 cp .env.example .env
 ```
 
-#### 2) Configure queue transport + job registry backend
+#### 2) Configure queue transport + registry backend
 
 For queue transport:
 
 - use Redis (`[core].queue_driver = "redis"`) for multi-process/multi-machine setups, or
 - use in-process (`[core].queue_driver = "inproc"`) for single-machine `sniptail local` runs.
 
-For the job registry, you can:
+For the shared registry, you can:
 
-- use the same Redis instance (recommended, set `[core].job_registry_db = "redis"`), or
-- use sqlite for single-machine/local experiments (`[core].job_registry_db = "sqlite"`), or
-- use Postgres for shared state (`[core].job_registry_db = "pg"` + `JOB_REGISTRY_PG_URL`)
+- use the same Redis instance (recommended, set `[registry].db = "redis"`), or
+- use sqlite for single-machine/local experiments (`[registry].db = "sqlite"` plus `[registry].path`), or
+- use Postgres for shared state (`[registry].db = "pg"` + `SNIPTAIL_REGISTRY_PG_URL`)
 
 #### 3) Postgres migrations (optional)
 
-If you use Postgres for the job registry, apply migrations:
+If you use Postgres for the registry, apply migrations:
 
 ```bash
 pnpm run db:migrate:pg
