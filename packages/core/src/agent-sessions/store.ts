@@ -5,7 +5,7 @@ import { createSqliteAgentSessionStore } from './sqliteStore.js';
 
 export async function getAgentSessionStore(): Promise<AgentSessionStore> {
   const config = loadCoreConfig();
-  switch (config.jobRegistryDriver) {
+  switch (config.registryDriver) {
     case 'sqlite': {
       const client = await getJobRegistryDb();
       if (client.kind !== 'sqlite') {
@@ -14,12 +14,14 @@ export async function getAgentSessionStore(): Promise<AgentSessionStore> {
       return createSqliteAgentSessionStore(client);
     }
     case 'pg':
-      throw new Error('Agent session registry is not supported yet when JOB_REGISTRY_DB=pg');
+      throw new Error('Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=pg');
     case 'redis':
-      throw new Error('Agent session registry is not supported yet when JOB_REGISTRY_DB=redis');
+      throw new Error(
+        'Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=redis',
+      );
     default: {
-      const exhaustive: never = config.jobRegistryDriver;
-      throw new Error(`Unsupported JOB_REGISTRY_DB: ${String(exhaustive)}`);
+      const exhaustive: never = config.registryDriver;
+      throw new Error(`Unsupported SNIPTAIL_REGISTRY_DB: ${String(exhaustive)}`);
     }
   }
 }

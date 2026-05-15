@@ -86,17 +86,18 @@ export type BotAgentCommandConfig = {
 };
 
 export type QueueDriver = 'redis' | 'inproc';
-export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
+export type RegistryDriver = 'sqlite' | 'pg' | 'redis';
 
 export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot?: string;
   queueDriver: QueueDriver;
-  jobRegistryPath?: string;
-  jobRegistryDriver: JobRegistryDriver;
-  jobRegistryPgUrl?: string;
-  jobRegistryRedisUrl?: string;
+  registryPath?: string;
+  registryDriver: RegistryDriver;
+  registryPgUrl?: string;
+  registryRedisUrl?: string;
+  registryNamespace: string;
 };
 
 export type BotConfig = CoreConfig & {

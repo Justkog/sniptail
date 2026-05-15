@@ -47,7 +47,7 @@ describe('agent session registry', () => {
   }
 
   it('creates, loads, finds, and updates sqlite agent sessions', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentSessionsTable();
 
     const created = await createAgentSession({
@@ -93,7 +93,7 @@ describe('agent session registry', () => {
   });
 
   it('stores and finds slack agent sessions by provider and thread', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentSessionsTable();
 
     await createAgentSession({
@@ -123,20 +123,20 @@ describe('agent session registry', () => {
 
   it('rejects pg and redis drivers for now', async () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'pg',
-      JOB_REGISTRY_PG_URL: 'postgres://user:pass@localhost:5432/sniptail',
+      SNIPTAIL_REGISTRY_DB: 'pg',
+      SNIPTAIL_REGISTRY_PG_URL: 'postgres://user:pass@localhost:5432/sniptail',
     });
     await expect(loadAgentSession('session-1')).rejects.toThrow(
-      'Agent session registry is not supported yet when JOB_REGISTRY_DB=pg',
+      'Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=pg',
     );
     resetConfigCaches();
 
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: 'redis://localhost:6379/1',
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: 'redis://localhost:6379/1',
     });
     await expect(loadAgentSession('session-1')).rejects.toThrow(
-      'Agent session registry is not supported yet when JOB_REGISTRY_DB=redis',
+      'Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=redis',
     );
   });
 });

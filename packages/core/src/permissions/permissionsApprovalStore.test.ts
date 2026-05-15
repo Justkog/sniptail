@@ -32,7 +32,7 @@ describe('permissionsApprovalStore', () => {
   }
 
   it('creates and loads pending approvals', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {
@@ -66,7 +66,7 @@ describe('permissionsApprovalStore', () => {
   });
 
   it('updates request state only once', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {
@@ -105,7 +105,7 @@ describe('permissionsApprovalStore', () => {
   });
 
   it('supports cancel and expire flows', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {
@@ -179,7 +179,7 @@ describe('permissionsApprovalStore', () => {
   });
 
   it('is idempotent under concurrent approvals', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {
@@ -220,7 +220,7 @@ describe('permissionsApprovalStore', () => {
   });
 
   it('reassigns approval context only while pending', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {
@@ -288,7 +288,7 @@ describe('permissionsApprovalStore', () => {
   });
 
   it('can reassign approval resolution context without changing deferred operation routing', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureJobsTable();
     const request = await createApprovalRequest({
       base: {

@@ -4,13 +4,13 @@ import { DbJobRegistry } from './dbJobRegistry.js';
 
 export function createJobRegistry(config: WorkerConfig): JobRegistry {
   // Driver-specific store selection is handled in @sniptail/core/jobs/registry.
-  switch (config.jobRegistryDriver) {
+  switch (config.registryDriver) {
     case 'pg':
     case 'sqlite':
     case 'redis':
       return new DbJobRegistry();
     default: {
-      const exhaustive: never = config.jobRegistryDriver;
+      const exhaustive: never = config.registryDriver;
       throw new Error(`Unsupported job registry driver: ${String(exhaustive)}`);
     }
   }

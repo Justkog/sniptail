@@ -45,10 +45,20 @@ export async function startBotRuntime(
   debugSlack(
     {
       queueDriver: queueRuntime.driver,
+      registryDriver: config.registryDriver,
+      registryNamespace: config.registryNamespace,
       pid: process.pid,
       host: hostname(),
       nodeEnv: process.env.NODE_ENV,
       botName: config.botName,
+    },
+    'Starting bot runtime',
+  );
+  logger.info(
+    {
+      queueDriver: config.queueDriver,
+      registryDriver: config.registryDriver,
+      registryNamespace: config.registryNamespace,
     },
     'Starting bot runtime',
   );

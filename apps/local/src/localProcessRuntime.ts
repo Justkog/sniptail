@@ -20,27 +20,27 @@ function validateLocalConfig(): void {
     );
   }
 
-  if (botConfig.jobRegistryDriver !== 'sqlite' || workerConfig.jobRegistryDriver !== 'sqlite') {
+  if (botConfig.registryDriver !== 'sqlite' || workerConfig.registryDriver !== 'sqlite') {
     throw new Error(
       [
-        'sniptail local requires JOB_REGISTRY_DB=sqlite for both bot and worker.',
-        `Resolved: bot=${botConfig.jobRegistryDriver}, worker=${workerConfig.jobRegistryDriver}`,
+        'sniptail local requires registry.db=sqlite for both bot and worker.',
+        `Resolved: bot=${botConfig.registryDriver}, worker=${workerConfig.registryDriver}`,
       ].join(' '),
     );
   }
 
-  if (!botConfig.jobRegistryPath || !workerConfig.jobRegistryPath) {
+  if (!botConfig.registryPath || !workerConfig.registryPath) {
     throw new Error(
-      'sniptail local requires JOB_REGISTRY_PATH (or core.job_registry_path) to be set for both bot and worker.',
+      'sniptail local requires registry.path (or SNIPTAIL_REGISTRY_PATH) to be set for both bot and worker.',
     );
   }
 
-  if (botConfig.jobRegistryPath !== workerConfig.jobRegistryPath) {
+  if (botConfig.registryPath !== workerConfig.registryPath) {
     throw new Error(
       [
         'sniptail local requires bot and worker to share the same sqlite registry path.',
-        `bot=${botConfig.jobRegistryPath}`,
-        `worker=${workerConfig.jobRegistryPath}`,
+        `bot=${botConfig.registryPath}`,
+        `worker=${workerConfig.registryPath}`,
       ].join(' '),
     );
   }

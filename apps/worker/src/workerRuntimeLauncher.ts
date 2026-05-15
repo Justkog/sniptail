@@ -37,6 +37,15 @@ export async function startWorkerRuntime(
   }
 
   await mkdir(config.repoCacheRoot, { recursive: true });
+  logger.info(
+    {
+      workerId: config.workerId,
+      queueDriver: config.queueDriver,
+      registryDriver: config.registryDriver,
+      registryNamespace: config.registryNamespace,
+    },
+    'Starting worker runtime',
+  );
   await assertDockerPreflight(config);
   await assertLocalAgentPreflight(config, config.primaryAgent);
   await assertGitCommitIdentityPreflight();

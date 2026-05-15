@@ -20,8 +20,9 @@ describe('config loaders', () => {
       '[core]',
       `job_work_root = "${join(configDir, 'jobs')}"`,
       'queue_driver = "inproc"',
-      `job_registry_path = "${join(configDir, 'job-registry')}"`,
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      `path = "${join(configDir, 'job-registry')}"`,
+      'db = "sqlite"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -41,8 +42,9 @@ describe('config loaders', () => {
     const botToml = [
       '[core]',
       `job_work_root = "${join(configDir, 'jobs')}"`,
-      `job_registry_path = "${join(configDir, 'job-registry')}"`,
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      `path = "${join(configDir, 'job-registry')}"`,
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -104,8 +106,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -155,8 +158,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -197,8 +201,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -249,8 +254,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -293,8 +299,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -335,8 +342,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -376,8 +384,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -414,8 +423,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -493,8 +503,9 @@ describe('config loaders', () => {
     const botToml = [
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -540,10 +551,24 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Invalid QUEUE_DRIVER: invalid-driver');
   });
 
-  it('requires a redis registry URL when JOB_REGISTRY_DB=redis and no fallback exists', () => {
+  it('rejects legacy registry env vars', () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+
+    expect(() => loadCoreConfig()).toThrow(
+      'Invalid JOB_REGISTRY_DB. Use SNIPTAIL_REGISTRY_* environment variables and the [registry] config block instead.',
+    );
+  });
+
+  it('rejects invalid registry namespaces', () => {
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_NAMESPACE: 'bad namespace' });
+
+    expect(() => loadCoreConfig()).toThrow('Invalid registry.namespace');
+  });
+
+  it('requires a redis registry URL when SNIPTAIL_REGISTRY_DB=redis and no fallback exists', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: undefined,
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: undefined,
       REDIS_URL: undefined,
     });
 
@@ -552,8 +577,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -573,7 +599,7 @@ describe('config loaders', () => {
     process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
 
     expect(() => loadCoreConfig()).toThrow(
-      'JOB_REGISTRY_REDIS_URL or REDIS_URL is required when JOB_REGISTRY_DB=redis',
+      'SNIPTAIL_REGISTRY_REDIS_URL or REDIS_URL is required when SNIPTAIL_REGISTRY_DB=redis',
     );
   });
 
@@ -590,8 +616,9 @@ describe('config loaders', () => {
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
       'queue_driver = "inproc"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -615,27 +642,49 @@ describe('config loaders', () => {
     expect(config.redisUrl).toBeUndefined();
   });
 
-  it('falls back to worker.toml redis_url when JOB_REGISTRY_DB=redis', () => {
+  it('falls back to worker.toml redis_url when SNIPTAIL_REGISTRY_DB=redis', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: undefined,
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: undefined,
       REDIS_URL: undefined,
     });
 
     const config = loadWorkerConfig();
-    expect(config.jobRegistryDriver).toBe('redis');
-    expect(config.jobRegistryRedisUrl).toBe('redis://localhost:6379/0');
+    expect(config.registryDriver).toBe('redis');
+    expect(config.registryRedisUrl).toBe('redis://localhost:6379/0');
   });
 
-  it('accepts JOB_REGISTRY_REDIS_URL when JOB_REGISTRY_DB=redis', () => {
+  it('accepts SNIPTAIL_REGISTRY_REDIS_URL when SNIPTAIL_REGISTRY_DB=redis', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: 'redis://localhost:6379/3',
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: 'redis://localhost:6379/3',
     });
 
     const config = loadWorkerConfig();
-    expect(config.jobRegistryDriver).toBe('redis');
-    expect(config.jobRegistryRedisUrl).toBe('redis://localhost:6379/3');
+    expect(config.registryDriver).toBe('redis');
+    expect(config.registryRedisUrl).toBe('redis://localhost:6379/3');
+  });
+
+  it('rejects sqlite registry for redis agent workers', () => {
+    applyRequiredEnv({
+      QUEUE_DRIVER: 'redis',
+    });
+    writeWorkerConfig([
+      'worker.id = "worker-one"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[agent]',
+      'enabled = true',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid registry.db');
   });
 
   it('defaults dockerfile paths when not configured', () => {
@@ -646,8 +695,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -735,8 +785,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -771,8 +822,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1044,6 +1096,7 @@ describe('config loaders', () => {
   it('requires an explicit worker id for redis agent workers', () => {
     applyRequiredEnv({
       QUEUE_DRIVER: 'redis',
+      SNIPTAIL_REGISTRY_DB: 'redis',
     });
     writeWorkerConfig([
       'redis_url = "redis://localhost:6379/0"',
@@ -1409,8 +1462,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1457,8 +1511,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1497,8 +1552,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1539,8 +1595,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -1575,8 +1632,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1621,8 +1679,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1656,8 +1715,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',

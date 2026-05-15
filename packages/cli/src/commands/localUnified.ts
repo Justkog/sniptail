@@ -40,7 +40,7 @@ function buildLocalDbRuntimeOptions(options: LocalOptions, scope: Scope): Runtim
     ...(options.root ? { root: options.root } : {}),
     envOverrides: {
       QUEUE_DRIVER: 'inproc',
-      JOB_REGISTRY_DB: 'sqlite',
+      SNIPTAIL_REGISTRY_DB: 'sqlite',
     },
   };
 }
@@ -108,7 +108,7 @@ export function registerLocalUnifiedCommand(program: Command) {
       const baseCwd = resolve(options.cwd ?? process.cwd());
       const envOverrides: NodeJS.ProcessEnv = {
         QUEUE_DRIVER: 'inproc',
-        JOB_REGISTRY_DB: 'sqlite',
+        SNIPTAIL_REGISTRY_DB: 'sqlite',
         ...(options.botConfig
           ? { SNIPTAIL_BOT_CONFIG_PATH: resolve(baseCwd, options.botConfig) }
           : {}),
