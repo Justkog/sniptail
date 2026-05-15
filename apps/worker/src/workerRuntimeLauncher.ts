@@ -11,7 +11,6 @@ import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
-import { publishAgentMetadataUpdate } from './agent-command/metadata.js';
 import { startWorkerCapabilityPublisher } from './agent-command/workerCapabilityPublisher.js';
 import { createJobRegistry } from './job/createJobRegistry.js';
 import { assertDockerPreflight } from './docker/dockerPreflight.js';
@@ -78,9 +77,6 @@ export async function startWorkerRuntime(
   const closeQueueRuntimeOnShutdown = !options.queueRuntime;
   const botEvents = new BullMqBotEventSink(queueRuntime.queues.botEvents);
   const workerCapabilityPublisher = await startWorkerCapabilityPublisher(config);
-  await publishAgentMetadataUpdate(botEvents).catch((err) => {
-    logger.warn({ err }, 'Failed to publish initial agent metadata update');
-  });
   const jobRegistry = createJobRegistry(config);
   const consumers: QueueConsumerHandle[] = [];
 

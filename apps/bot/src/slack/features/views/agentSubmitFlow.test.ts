@@ -20,7 +20,9 @@ type SlackViewHandlerArgs = {
 type SlackViewHandler = (args: SlackViewHandlerArgs) => Promise<void>;
 
 const hoisted = vi.hoisted(() => ({
-  getAgentCommandMetadata: vi.fn(),
+  loadAgentCommandMetadata: vi.fn(),
+  findAgentProfileMetadata: vi.fn(),
+  hasEligibleWorkerForSelection: vi.fn(),
   loadSlackModalContextFiles: vi.fn(),
   postMessage: vi.fn(),
   createAgentSession: vi.fn(),
@@ -32,7 +34,9 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../agentCommandMetadataCache.js', () => ({
-  getAgentCommandMetadata: hoisted.getAgentCommandMetadata,
+  loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
+  findAgentProfileMetadata: hoisted.findAgentProfileMetadata,
+  hasEligibleWorkerForSelection: hoisted.hasEligibleWorkerForSelection,
 }));
 
 vi.mock('../../helpers.js', () => ({
@@ -126,11 +130,18 @@ function buildArgs(overrides: Partial<SlackViewHandlerArgs> = {}): SlackViewHand
 describe('registerAgentSubmitView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hoisted.getAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'codex', profile: 'default' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'codex', profile: 'default' }],
     });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'codex',
+      profile: 'default',
+    });
+    hoisted.hasEligibleWorkerForSelection.mockReturnValue(true);
     hoisted.loadSlackModalContextFiles.mockResolvedValue([]);
     hoisted.postMessage.mockResolvedValue({ ts: 'T1' });
     hoisted.createAgentSession.mockResolvedValue(undefined);
@@ -182,7 +193,7 @@ describe('registerAgentSubmitView', () => {
 
   it('audits invalid metadata/state failures before session creation', async () => {
     const { handler, context } = buildContext();
-    hoisted.getAgentCommandMetadata.mockReturnValue(undefined);
+    hoisted.loadAgentCommandMetadata.mockResolvedValue(undefined);
 
     await handler(buildArgs());
 
@@ -221,6 +232,27 @@ describe('registerAgentSubmitView', () => {
       'invalid',
     );
     expect(hoisted.postMessage).not.toHaveBeenCalled();
+    expect(hoisted.createAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicted profiles before session creation', async () => {
+    const { handler } = buildContext();
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'conflicted',
+    });
+
+    await handler(buildArgs());
+
+    expect(hoisted.postMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        text:
+          'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
+        threadTs: 'T1',
+      }),
+    );
     expect(hoisted.createAgentSession).not.toHaveBeenCalled();
   });
 });

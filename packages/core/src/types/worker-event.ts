@@ -99,9 +99,6 @@ export type WorkerEventPayloadMap = {
   'repos.add': WorkerRepoAddPayload;
   'repos.remove': WorkerRepoRemovePayload;
   'status.codexUsage': WorkerCodexUsagePayload;
-  'agent.metadata.request': {
-    provider: ChannelProvider;
-  };
   'agent.session.start': WorkerAgentSessionStartPayload;
   'agent.session.message': WorkerAgentSessionMessagePayload;
   'agent.prompt.stop': WorkerAgentPromptStopPayload;

@@ -4,7 +4,11 @@ import { dedupe } from '../../lib/dedupe.js';
 import { buildAgentModal } from '../../modals.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
-import { getAgentCommandMetadata } from '../../../agentCommandMetadataCache.js';
+import {
+  hasEligibleWorkerForSelection,
+  listSelectableAgentProfiles,
+  loadAgentCommandMetadata,
+} from '../../../agentCommandMetadataCache.js';
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -27,7 +31,7 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
       return;
     }
 
-    const metadata = getAgentCommandMetadata();
+    const metadata = await loadAgentCommandMetadata().catch(() => undefined);
     if (!metadata?.enabled) {
       await client.chat.postEphemeral({
         channel: body.channel_id,
@@ -63,6 +67,15 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
       userId: body.user_id,
       workspaceId: body.team_id,
     }).catch(() => undefined);
+    const selectableProfiles = listSelectableAgentProfiles(metadata);
+    if (!metadata.workspaces.length || !selectableProfiles.length) {
+      await client.chat.postEphemeral({
+        channel: body.channel_id,
+        user: body.user_id,
+        text: 'No non-conflicted agent profiles are available right now. Please try again later.',
+      });
+      return;
+    }
     const selectedWorkspaceKey =
       defaults?.workspaceKey &&
       metadata.workspaces.some((workspace) => workspace.key === defaults.workspaceKey)
@@ -70,7 +83,7 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
         : config.agentCommand?.defaultWorkspace;
     const selectedProfileKey =
       defaults?.agentProfileKey &&
-      metadata.profiles.some((profile) => profile.key === defaults.agentProfileKey)
+      selectableProfiles.some((profile) => profile.key === defaults.agentProfileKey)
         ? defaults.agentProfileKey
         : config.agentCommand?.defaultAgentProfile;
     const initialCwd = validateRelativeCwd(normalizeOptionalString(defaults?.cwd));
@@ -88,7 +101,7 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
         }),
         {
           workspaces: metadata.workspaces,
-          profiles: metadata.profiles,
+          profiles: selectableProfiles,
           ...(selectedWorkspaceKey ? { selectedWorkspaceKey } : {}),
           ...(selectedProfileKey ? { selectedProfileKey } : {}),
           ...(initialCwd ? { initialCwd } : {}),

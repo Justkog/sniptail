@@ -43,7 +43,6 @@ const hoisted = vi.hoisted(() => ({
       close: vi.fn(() => Promise.resolve(undefined)),
     }),
   ),
-  publishAgentMetadataUpdate: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@sniptail/core/config/config.js', () => ({
@@ -104,10 +103,6 @@ vi.mock('./agent-command/workerCapabilityPublisher.js', () => ({
   startWorkerCapabilityPublisher: hoisted.startWorkerCapabilityPublisher,
 }));
 
-vi.mock('./agent-command/metadata.js', () => ({
-  publishAgentMetadataUpdate: hoisted.publishAgentMetadataUpdate,
-}));
-
 vi.mock('./git/gitPreflight.js', () => ({
   assertGitCommitIdentityPreflight: vi.fn(() => Promise.resolve(undefined)),
 }));
@@ -140,7 +135,6 @@ describe('workerRuntimeLauncher', () => {
     hoisted.startWorkerCapabilityPublisher.mockResolvedValue({
       close: vi.fn(() => Promise.resolve(undefined)),
     });
-    hoisted.publishAgentMetadataUpdate.mockResolvedValue(undefined);
     hoisted.config.primaryAgent = 'codex';
     hoisted.config.agent.enabled = false;
   });
@@ -193,26 +187,6 @@ describe('workerRuntimeLauncher', () => {
 
     expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledTimes(1);
     expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledWith(hoisted.config, 'copilot');
-  });
-
-  it('publishes initial agent metadata updates on startup', async () => {
-    const consumerClose = vi.fn(() => Promise.resolve(undefined));
-    const queueRuntime = {
-      consumeJobs: vi.fn(() => ({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
-      close: vi.fn(() => Promise.resolve(undefined)),
-      queues: {
-        botEvents: {
-          add: vi.fn(() => Promise.resolve(undefined)),
-        },
-      },
-    } as const;
-
-    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
-    await runtime.close();
-
-    expect(hoisted.publishAgentMetadataUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('starts and closes the worker capability publisher', async () => {

@@ -10,7 +10,10 @@ const hoisted = vi.hoisted(() => ({
   enqueueWorkerEvent: vi.fn(),
   authorizeDiscordPrecheckAndRespond: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  getDiscordAgentCommandMetadata: vi.fn(),
+  loadAgentCommandMetadata: vi.fn(),
+  findAgentWorkspaceMetadata: vi.fn(),
+  findAgentProfileMetadata: vi.fn(),
+  hasEligibleWorkerForSelection: vi.fn(),
   buildCwdAutocompleteChoices: vi.fn(),
   buildProfileAutocompleteChoices: vi.fn(),
   buildWorkspaceAutocompleteChoices: vi.fn(),
@@ -42,7 +45,11 @@ vi.mock('../../../agentCommandMetadataCache.js', () => ({
   buildCwdAutocompleteChoices: hoisted.buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices: hoisted.buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices: hoisted.buildWorkspaceAutocompleteChoices,
-  getAgentCommandMetadata: hoisted.getDiscordAgentCommandMetadata,
+  loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
+  findAgentWorkspaceMetadata: hoisted.findAgentWorkspaceMetadata,
+  findAgentProfileMetadata: hoisted.findAgentProfileMetadata,
+  hasEligibleWorkerForSelection: hoisted.hasEligibleWorkerForSelection,
+  listSelectableAgentProfiles: vi.fn(),
 }));
 
 vi.mock('../../helpers.js', () => ({
@@ -112,12 +119,20 @@ const permissions = {};
 describe('handleAgentStart', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'opencode', profile: 'build' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
+    hoisted.findAgentWorkspaceMetadata.mockReturnValue({ key: 'snatch', status: 'available' });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'opencode',
+      profile: 'build',
+    });
+    hoisted.hasEligibleWorkerForSelection.mockReturnValue(true);
     hoisted.authorizeDiscordPrecheckAndRespond.mockResolvedValue(true);
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
     hoisted.buildCwdAutocompleteChoices.mockReturnValue([]);
@@ -273,11 +288,17 @@ describe('handleAgentStart', () => {
   });
 
   it('allows non-image attachments for Codex profiles and enqueues the session', async () => {
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'codex', profile: 'deep-review' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'codex', profile: 'deep-review' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'codex',
+      profile: 'deep-review',
     });
     hoisted.loadDiscordContextFiles.mockResolvedValue([
       {
@@ -437,15 +458,25 @@ describe('handleAgentStart', () => {
       agentProfileKey: 'plan',
       cwd: 'apps/worker',
     });
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
       workspaces: [{ key: 'snatch' }, { key: 'tools' }],
       profiles: [
-        { key: 'build', provider: 'opencode', profile: 'build' },
-        { key: 'plan', provider: 'opencode', profile: 'plan' },
+        { key: 'build', status: 'available', provider: 'opencode', profile: 'build' },
+        { key: 'plan', status: 'available', provider: 'opencode', profile: 'plan' },
       ],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
+    hoisted.findAgentWorkspaceMetadata.mockImplementation((_metadata: unknown, key: string) => ({
+      key,
+      status: 'available',
+    }));
+    hoisted.findAgentProfileMetadata.mockImplementation((_metadata: unknown, key: string) => ({
+      key,
+      status: 'available',
+      provider: 'opencode',
+      profile: key,
+    }));
     const interaction = buildInteraction({
       options: {
         getString: vi.fn((name: string) => {
@@ -509,6 +540,39 @@ describe('handleAgentStart', () => {
         cwd: 'apps/worker',
       }),
     );
+  });
+
+  it('rejects conflicted profiles before session creation', async () => {
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'conflicted',
+    });
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          if (name === 'agent_profile') return 'build';
+          if (name === 'workspace') return 'snatch';
+          if (name === 'cwd') return 'apps/bot';
+          return null;
+        }),
+        getAttachment: vi.fn(() => null),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queue as never,
+      permissions as never,
+    );
+
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content:
+        'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
+      ephemeral: true,
+    });
+    expect(hoisted.createAgentSession).not.toHaveBeenCalled();
   });
 
   it('uses persisted defaults to bias autocomplete choices', async () => {

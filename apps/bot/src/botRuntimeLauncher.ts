@@ -1,16 +1,10 @@
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { debugFor, isDebugNamespaceEnabled, logger } from '@sniptail/core/logger.js';
 import { createQueueTransportRuntime } from '@sniptail/core/queue/queueTransportFactory.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type {
   QueueConsumerHandle,
   QueueTransportRuntime,
 } from '@sniptail/core/queue/queueTransportTypes.js';
-import {
-  WORKER_EVENT_SCHEMA_VERSION,
-  type WorkerEvent,
-} from '@sniptail/core/types/worker-event.js';
-import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import { hostname } from 'node:os';
 import { createSlackApp } from './slack/app.js';
 import { startDiscordBot } from './discord/app.js';
@@ -88,7 +82,6 @@ export async function startBotRuntime(
       await slackApp.start();
       await debugLogSlackRuntimeIdentity(slackApp);
       logger.info(`⚡️ ${config.botName} Slack bot is running (Socket Mode)`);
-      await enqueueInitialAgentMetadataRequest(queueRuntime, 'slack');
     }
 
     if (config.discordEnabled) {
@@ -97,7 +90,6 @@ export async function startBotRuntime(
         queueRuntime.queues.bootstrap,
         queueRuntime.queues.workerEvents,
       );
-      await enqueueInitialAgentMetadataRequest(queueRuntime, 'discord');
     }
 
     if (config.telegramEnabled) {
@@ -191,19 +183,3 @@ async function debugLogSlackRuntimeIdentity(
 }
 
 const debugSlack = debugFor('slack');
-
-async function enqueueInitialAgentMetadataRequest(
-  queueRuntime: QueueTransportRuntime,
-  provider: Extract<ChannelProvider, 'slack' | 'discord'>,
-): Promise<void> {
-  const metadataRequestEvent: WorkerEvent = {
-    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
-    type: 'agent.metadata.request',
-    payload: {
-      provider,
-    },
-  };
-  await enqueueWorkerEvent(queueRuntime.queues.workerEvents, metadataRequestEvent).catch((err) => {
-    logger.warn({ err, provider }, 'Failed to enqueue initial agent metadata request');
-  });
-}

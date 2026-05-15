@@ -8,7 +8,11 @@ import { upsertSlackAgentDefaults } from '@sniptail/core/agent-defaults/registry
 import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { JobContextFile } from '@sniptail/core/types/job.js';
-import { getAgentCommandMetadata } from '../../../agentCommandMetadataCache.js';
+import {
+  findAgentProfileMetadata,
+  hasEligibleWorkerForSelection,
+  loadAgentCommandMetadata,
+} from '../../../agentCommandMetadataCache.js';
 import { buildSlackAgentStopBlocks } from '../../agentCommandState.js';
 import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
 import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
@@ -74,7 +78,10 @@ export function registerAgentSubmitView({
   app.view(slackIds.actions.agentSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
-    const metadata = getAgentCommandMetadata();
+    const metadata = await loadAgentCommandMetadata().catch((err) => {
+      logger.error({ err }, 'Failed to load agent command metadata from the registry');
+      return undefined;
+    });
     const privateMetadata = parsePrivateMetadata(view.private_metadata);
     const channelId = privateMetadata?.channelId;
     const userId = privateMetadata?.userId ?? body.user.id;
@@ -135,6 +142,25 @@ export function registerAgentSubmitView({
       await postMessage(app, {
         channel: channelId,
         text: 'Please choose a valid agent profile.',
+        ...(existingThreadId ? { threadTs: existingThreadId } : {}),
+      });
+      return;
+    }
+    const profile = findAgentProfileMetadata(metadata, profileKey);
+    if (profile?.status === 'conflicted') {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: `Agent profile key: \`${profileKey}\` is currently conflicted across live workers. Please ask an operator to fix worker configuration.`,
+        ...(existingThreadId ? { threadTs: existingThreadId } : {}),
+      });
+      return;
+    }
+    if (!hasEligibleWorkerForSelection(metadata, workspaceKey, profileKey)) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: `No live worker can run workspace \`${workspaceKey}\` with agent profile \`${profileKey}\` right now.`,
         ...(existingThreadId ? { threadTs: existingThreadId } : {}),
       });
       return;
