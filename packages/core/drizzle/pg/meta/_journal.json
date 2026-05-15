@@ -17,6 +17,12 @@
       "when": 1760000100000,
       "tag": "0002_add_provider_data",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "when": 1760000200000,
+      "tag": "0003_create_agent_session_and_worker_registry_state",
+      "breakpoints": true
     }
   ]
 }
