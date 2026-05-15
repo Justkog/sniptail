@@ -39,9 +39,7 @@ describe('pg registry migration', () => {
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "agent_sessions_thread_idx"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "agent_sessions_status_idx"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "agent_sessions_owner_worker_idx"');
-    expect(sql).toContain(
-      'CREATE INDEX IF NOT EXISTS "agent_sessions_owner_worker_status_idx"',
-    );
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS "agent_sessions_owner_worker_status_idx"');
 
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS "worker_agent_capabilities"');
     expect(sql).toContain('"enabled" boolean NOT NULL');
@@ -50,9 +48,7 @@ describe('pg registry migration', () => {
     expect(sql).toContain('"last_seen_at" timestamptz NOT NULL');
     expect(sql).toContain('"active_runtime_count" integer');
     expect(sql).toContain('"max_active_sessions" integer');
-    expect(sql).toContain(
-      'CREATE INDEX IF NOT EXISTS "worker_agent_capabilities_last_seen_idx"',
-    );
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS "worker_agent_capabilities_last_seen_idx"');
     expect(sql).toContain(
       'CREATE INDEX IF NOT EXISTS "worker_agent_capabilities_enabled_last_seen_idx"',
     );

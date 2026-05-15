@@ -48,10 +48,7 @@ export const agentSessions = pgTable(
     index('agent_sessions_thread_idx').on(table.provider, table.threadId),
     index('agent_sessions_status_idx').on(table.status),
     index('agent_sessions_owner_worker_idx').on(table.ownerWorkerId),
-    index('agent_sessions_owner_worker_status_idx').on(
-      table.ownerWorkerId,
-      table.status,
-    ),
+    index('agent_sessions_owner_worker_status_idx').on(table.ownerWorkerId, table.status),
   ],
 );
 
@@ -69,9 +66,6 @@ export const workerAgentCapabilities = pgTable(
   },
   (table) => [
     index('worker_agent_capabilities_last_seen_idx').on(table.lastSeenAt),
-    index('worker_agent_capabilities_enabled_last_seen_idx').on(
-      table.enabled,
-      table.lastSeenAt,
-    ),
+    index('worker_agent_capabilities_enabled_last_seen_idx').on(table.enabled, table.lastSeenAt),
   ],
 );
