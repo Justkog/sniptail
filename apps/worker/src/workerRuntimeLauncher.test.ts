@@ -27,10 +27,23 @@ const hoisted = vi.hoisted(() => ({
       startupTimeoutMs: 10_000,
       dockerStreamLogs: false,
     },
+    agent: {
+      enabled: false,
+      interactionTimeoutMs: 300_000,
+      outputDebounceMs: 1_000,
+      workspaces: {},
+      profiles: {},
+    },
   },
   seedRepoCatalogFromAllowlistFile: vi.fn(),
   syncRunActionMetadata: vi.fn(),
   assertLocalAgentPreflight: vi.fn(() => Promise.resolve(undefined)),
+  startWorkerCapabilityPublisher: vi.fn(() =>
+    Promise.resolve({
+      close: vi.fn(() => Promise.resolve(undefined)),
+    }),
+  ),
+  publishAgentMetadataUpdate: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@sniptail/core/config/config.js', () => ({
@@ -41,8 +54,42 @@ vi.mock('@sniptail/core/repos/catalog.js', () => ({
   seedRepoCatalogFromAllowlistFile: hoisted.seedRepoCatalogFromAllowlistFile,
 }));
 
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock('@sniptail/core/queue/queueTransportFactory.js', () => ({
+  createQueueTransportRuntime: vi.fn(),
+}));
+
 vi.mock('./repos/syncRunActionMetadata.js', () => ({
   syncRunActionMetadata: hoisted.syncRunActionMetadata,
+}));
+
+vi.mock('./bootstrap.js', () => ({
+  runBootstrap: vi.fn(() => Promise.resolve(undefined)),
+}));
+
+vi.mock('./pipeline.js', () => ({
+  runJob: vi.fn(() => Promise.resolve(undefined)),
+}));
+
+vi.mock('./workerEvents.js', () => ({
+  handleWorkerEvent: vi.fn(() => Promise.resolve(undefined)),
+}));
+
+vi.mock('./channels/botEventSink.js', () => ({
+  BullMqBotEventSink: class {
+    constructor(private readonly queue: { add: (...args: unknown[]) => Promise<unknown> }) {}
+
+    async publish(event: { type: string }): Promise<void> {
+      await this.queue.add(event.type, event, {});
+    }
+  },
 }));
 
 vi.mock('./docker/dockerPreflight.js', () => ({
@@ -51,6 +98,14 @@ vi.mock('./docker/dockerPreflight.js', () => ({
 
 vi.mock('./preflight/agentPreflight.js', () => ({
   assertLocalAgentPreflight: hoisted.assertLocalAgentPreflight,
+}));
+
+vi.mock('./agent-command/workerCapabilityPublisher.js', () => ({
+  startWorkerCapabilityPublisher: hoisted.startWorkerCapabilityPublisher,
+}));
+
+vi.mock('./agent-command/metadata.js', () => ({
+  publishAgentMetadataUpdate: hoisted.publishAgentMetadataUpdate,
 }));
 
 vi.mock('./git/gitPreflight.js', () => ({
@@ -82,7 +137,12 @@ describe('workerRuntimeLauncher', () => {
       failures: [],
     });
     hoisted.assertLocalAgentPreflight.mockResolvedValue(undefined);
+    hoisted.startWorkerCapabilityPublisher.mockResolvedValue({
+      close: vi.fn(() => Promise.resolve(undefined)),
+    });
+    hoisted.publishAgentMetadataUpdate.mockResolvedValue(undefined);
     hoisted.config.primaryAgent = 'codex';
+    hoisted.config.agent.enabled = false;
   });
 
   it('fails fast when queue_driver=inproc without a shared runtime', async () => {
@@ -135,9 +195,8 @@ describe('workerRuntimeLauncher', () => {
     expect(hoisted.assertLocalAgentPreflight).toHaveBeenCalledWith(hoisted.config, 'copilot');
   });
 
-  it('publishes initial agent metadata updates for Slack and Discord on startup', async () => {
+  it('publishes initial agent metadata updates on startup', async () => {
     const consumerClose = vi.fn(() => Promise.resolve(undefined));
-    const add = vi.fn(() => Promise.resolve(undefined));
     const queueRuntime = {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
       consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
@@ -145,7 +204,7 @@ describe('workerRuntimeLauncher', () => {
       close: vi.fn(() => Promise.resolve(undefined)),
       queues: {
         botEvents: {
-          add,
+          add: vi.fn(() => Promise.resolve(undefined)),
         },
       },
     } as const;
@@ -153,24 +212,30 @@ describe('workerRuntimeLauncher', () => {
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(add).toHaveBeenCalledTimes(2);
-    expect(add).toHaveBeenNthCalledWith(
-      1,
-      'agent.metadata.update',
-      expect.objectContaining({
-        provider: 'slack',
-        type: 'agent.metadata.update',
-      }),
-      expect.any(Object),
-    );
-    expect(add).toHaveBeenNthCalledWith(
-      2,
-      'agent.metadata.update',
-      expect.objectContaining({
-        provider: 'discord',
-        type: 'agent.metadata.update',
-      }),
-      expect.any(Object),
-    );
+    expect(hoisted.publishAgentMetadataUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts and closes the worker capability publisher', async () => {
+    hoisted.config.agent.enabled = true;
+    const publisherClose = vi.fn(() => Promise.resolve(undefined));
+    hoisted.startWorkerCapabilityPublisher.mockResolvedValue({ close: publisherClose });
+    const consumerClose = vi.fn(() => Promise.resolve(undefined));
+    const queueRuntime = {
+      consumeJobs: vi.fn(() => ({ close: consumerClose })),
+      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add: vi.fn(() => Promise.resolve(undefined)),
+        },
+      },
+    } as const;
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(hoisted.startWorkerCapabilityPublisher).toHaveBeenCalledWith(hoisted.config);
+    expect(publisherClose).toHaveBeenCalledTimes(1);
   });
 });
