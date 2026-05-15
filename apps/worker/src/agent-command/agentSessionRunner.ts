@@ -54,7 +54,9 @@ function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['r
 type AgentMessageResponseProvider =
   CoreWorkerEvent<'agent.session.message'>['payload']['response']['provider'];
 
-function resolveAgentMessageReactionName(provider: AgentMessageResponseProvider): string | undefined {
+function resolveAgentMessageReactionName(
+  provider: AgentMessageResponseProvider,
+): string | undefined {
   switch (provider) {
     case 'discord':
       return '💭';

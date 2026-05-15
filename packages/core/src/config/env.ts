@@ -778,9 +778,7 @@ function parseWorkerIdentity(workerToml: TomlTable | undefined): {
   }) as string;
   const workerLabel = resolveStringValue('SNIPTAIL_WORKER_LABEL', workerToml?.label);
   if (!/^[A-Za-z0-9._-]+$/.test(workerId)) {
-    throw new Error(
-      'Invalid worker.id. Expected only letters, numbers, ".", "_", or "-".',
-    );
+    throw new Error('Invalid worker.id. Expected only letters, numbers, ".", "_", or "-".');
   }
 
   return {

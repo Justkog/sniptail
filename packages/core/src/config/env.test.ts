@@ -1003,10 +1003,7 @@ describe('config loaders', () => {
 
   it('parses worker identity from TOML', () => {
     applyRequiredEnv();
-    writeWorkerConfig([
-      'id = "linux-build-1"',
-      'label = "Linux Build 1"',
-    ]);
+    writeWorkerConfig(['id = "linux-build-1"', 'label = "Linux Build 1"']);
 
     const config = loadWorkerConfig();
 
@@ -1019,10 +1016,7 @@ describe('config loaders', () => {
       SNIPTAIL_WORKER_ID: 'worker-from-env',
       SNIPTAIL_WORKER_LABEL: 'Worker From Env',
     });
-    writeWorkerConfig([
-      'id = "worker-from-toml"',
-      'label = "Worker From TOML"',
-    ]);
+    writeWorkerConfig(['id = "worker-from-toml"', 'label = "Worker From TOML"']);
 
     const config = loadWorkerConfig();
 
