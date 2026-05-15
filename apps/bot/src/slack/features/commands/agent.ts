@@ -67,12 +67,12 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
       defaults?.workspaceKey &&
       metadata.workspaces.some((workspace) => workspace.key === defaults.workspaceKey)
         ? defaults.workspaceKey
-        : metadata.defaultWorkspace;
+        : config.agentCommand?.defaultWorkspace;
     const selectedProfileKey =
       defaults?.agentProfileKey &&
       metadata.profiles.some((profile) => profile.key === defaults.agentProfileKey)
         ? defaults.agentProfileKey
-        : metadata.defaultAgentProfile;
+        : config.agentCommand?.defaultAgentProfile;
     const initialCwd = validateRelativeCwd(normalizeOptionalString(defaults?.cwd));
 
     await client.views.open({

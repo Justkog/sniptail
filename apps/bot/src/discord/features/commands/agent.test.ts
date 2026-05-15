@@ -99,7 +99,13 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const config = { botName: 'Sniptail' };
+const config = {
+  botName: 'Sniptail',
+  agentCommand: {
+    defaultWorkspace: 'snatch',
+    defaultAgentProfile: 'build',
+  },
+};
 const queue = {};
 const permissions = {};
 
@@ -108,8 +114,6 @@ describe('handleAgentStart', () => {
     vi.clearAllMocks();
     hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
       profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
@@ -271,8 +275,6 @@ describe('handleAgentStart', () => {
   it('allows non-image attachments for Codex profiles and enqueues the session', async () => {
     hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
       profiles: [{ key: 'build', provider: 'codex', profile: 'deep-review' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
@@ -437,8 +439,6 @@ describe('handleAgentStart', () => {
     });
     hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }, { key: 'tools' }],
       profiles: [
         { key: 'build', provider: 'opencode', profile: 'build' },

@@ -16,6 +16,7 @@ vi.mock('@sniptail/core/queue/queue.js', () => ({
 
 function makeConfig(): BotConfig {
   return {
+    agentCommand: {},
     primaryAgent: 'codex',
     repoAllowlist: {},
   } as BotConfig;

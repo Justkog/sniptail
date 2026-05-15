@@ -4,8 +4,6 @@ import {
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
   clearAgentCommandMetadata,
-  resolveAgentProfileSelection,
-  resolveAgentWorkspaceSelection,
   setAgentCommandMetadata,
 } from '../agentCommandMetadataCache.js';
 
@@ -22,8 +20,6 @@ describe('agentCommandMetadataCache', () => {
   it('builds autocomplete choices when metadata is enabled', () => {
     setAgentCommandMetadata({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [
         { key: 'snatch', label: 'Snatch' },
         { key: 'tools', label: 'Tools' },
@@ -73,23 +69,5 @@ describe('agentCommandMetadataCache', () => {
       { name: 'apps/worker', value: 'apps/worker' },
     ]);
     expect(buildCwdAutocompleteChoices('bot', 'apps/worker')).toEqual([]);
-  });
-
-  it('resolves explicit and default selections', () => {
-    setAgentCommandMetadata({
-      enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
-      workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
-      receivedAt: new Date().toISOString(),
-    });
-
-    expect(resolveAgentWorkspaceSelection()).toBe('snatch');
-    expect(resolveAgentProfileSelection()).toBe('build');
-    expect(resolveAgentWorkspaceSelection('snatch')).toBe('snatch');
-    expect(resolveAgentProfileSelection('build')).toBe('build');
-    expect(resolveAgentWorkspaceSelection('missing')).toBeUndefined();
-    expect(resolveAgentProfileSelection('missing')).toBeUndefined();
   });
 });

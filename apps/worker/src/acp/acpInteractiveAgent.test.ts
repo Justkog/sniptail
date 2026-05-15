@@ -48,6 +48,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 function buildConfig(workspacePath: string): WorkerConfig {
   return {
     botName: 'Sniptail',
+    workerId: 'default',
     queueDriver: 'inproc',
     jobRegistryDriver: 'sqlite',
     jobRegistryPath: ':memory:',
@@ -71,8 +72,6 @@ function buildConfig(workspacePath: string): WorkerConfig {
     includeRawRequestInMr: false,
     agent: {
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'acp',
       interactionTimeoutMs: 1_800_000,
       outputDebounceMs: 1,
       workspaces: {

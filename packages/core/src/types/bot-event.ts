@@ -123,8 +123,6 @@ export type BotEventPayloadMap = {
   };
   'agent.metadata.update': {
     enabled: boolean;
-    defaultWorkspace?: string;
-    defaultAgentProfile?: string;
     workspaces: BotAgentWorkspaceMetadata[];
     profiles: BotAgentProfileMetadata[];
     receivedAt: string;

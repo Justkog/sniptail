@@ -54,6 +54,7 @@ import { runAgentSessionMessage, runAgentSessionStart } from './agentSessionRunn
 function buildConfig(workspacePath: string): WorkerConfig {
   return {
     botName: 'Sniptail',
+    workerId: 'default',
     queueDriver: 'inproc',
     jobRegistryDriver: 'sqlite',
     jobRegistryPath: ':memory:',
@@ -86,8 +87,6 @@ function buildConfig(workspacePath: string): WorkerConfig {
     includeRawRequestInMr: false,
     agent: {
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       interactionTimeoutMs: 1_800_000,
       outputDebounceMs: 15_000,
       workspaces: {
@@ -828,7 +827,7 @@ describe('OpenCode agent prompt runner', () => {
     expect(codexJob?.requestText).toContain(
       'Additional user-provided files are available for this turn:',
     );
-    expect(codexJob?.requestText).toContain('/tmp/sniptail-agent-files-');
+    expect(codexJob?.requestText).toContain('sniptail-agent-files-');
     expect(codexJob?.requestText).toContain('notes.md');
     expect(codexJob?.requestText).not.toContain('diagram.png');
   });

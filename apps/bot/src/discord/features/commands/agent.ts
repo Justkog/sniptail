@@ -161,6 +161,7 @@ function resolveKnownProfileKey(
 async function resolveAgentSelections(
   interaction: Pick<ChatInputCommandInteraction, 'options' | 'user' | 'guildId'>,
   metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  config: BotConfig,
 ): Promise<ResolvedAgentSelections | { error: string }> {
   const persistedDefaults = await loadDiscordAgentDefaults({
     userId: interaction.user.id,
@@ -186,7 +187,7 @@ async function resolveAgentSelections(
   const workspaceKey =
     explicitWorkspace ??
     resolveKnownWorkspaceKey(metadata, persistedDefaults?.workspaceKey) ??
-    resolveKnownWorkspaceKey(metadata, metadata.defaultWorkspace);
+    resolveKnownWorkspaceKey(metadata, config.agentCommand?.defaultWorkspace);
   if (!workspaceKey) {
     return { error: 'No workspace was provided and no valid default workspace is configured.' };
   }
@@ -194,7 +195,7 @@ async function resolveAgentSelections(
   const profileKey =
     explicitProfile ??
     resolveKnownProfileKey(metadata, persistedDefaults?.agentProfileKey) ??
-    resolveKnownProfileKey(metadata, metadata.defaultAgentProfile);
+    resolveKnownProfileKey(metadata, config.agentCommand?.defaultAgentProfile);
   if (!profileKey) {
     return { error: 'No agent profile was provided and no valid default profile is configured.' };
   }
@@ -299,7 +300,7 @@ export async function handleAgentStart(
 
   let resolvedSelections: ResolvedAgentSelections | { error: string };
   try {
-    resolvedSelections = await resolveAgentSelections(interaction, metadata);
+    resolvedSelections = await resolveAgentSelections(interaction, metadata, config);
   } catch (err) {
     auditAgentSessionStart(config, baseAuditInput, 'persist_failed');
     await interaction.reply({

@@ -5,8 +5,6 @@ const hoisted = vi.hoisted(() => ({
     repoAllowlistPath: undefined,
     agent: {
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: {
         snatch: { label: 'Snatch' },
       },

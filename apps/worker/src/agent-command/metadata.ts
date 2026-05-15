@@ -37,10 +37,6 @@ function buildAgentMetadataPayload(): BotEventPayloadMap['agent.metadata.update'
 
   return {
     enabled: agentConfig.enabled,
-    ...(agentConfig.defaultWorkspace ? { defaultWorkspace: agentConfig.defaultWorkspace } : {}),
-    ...(agentConfig.defaultAgentProfile
-      ? { defaultAgentProfile: agentConfig.defaultAgentProfile }
-      : {}),
     workspaces,
     profiles,
     receivedAt: new Date().toISOString(),

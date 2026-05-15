@@ -38,6 +38,7 @@ function buildConfig(
 ): WorkerConfig {
   return {
     botName: 'Sniptail',
+    workerId: 'default',
     queueDriver: 'inproc',
     jobRegistryDriver: 'sqlite',
     jobRegistryPath: ':memory:',
@@ -62,8 +63,6 @@ function buildConfig(
     includeRawRequestInMr: false,
     agent: {
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       interactionTimeoutMs: 1_800_000,
       outputDebounceMs: 15_000,
       workspaces: {

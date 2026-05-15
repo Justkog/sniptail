@@ -13,6 +13,7 @@ vi.mock('@sniptail/core/logger.js', () => ({
 
 function makeConfig(): BotConfig {
   return {
+    agentCommand: {},
     auditLogPath: '/tmp/request-audit.jsonl',
   } as BotConfig;
 }

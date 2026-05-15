@@ -34,6 +34,7 @@ function buildConfig(primaryAgent: WorkerConfig['primaryAgent']): WorkerConfig {
     jobRegistryDriver: 'redis',
     jobRegistryRedisUrl: 'redis://localhost:6379/1',
     botName: 'Sniptail',
+    workerId: 'default',
     redisUrl: 'redis://localhost:6379/0',
     primaryAgent,
     jobConcurrency: 2,

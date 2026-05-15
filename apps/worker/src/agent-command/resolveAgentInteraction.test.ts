@@ -36,6 +36,7 @@ import { requestAcpPermission } from '../acp/acpPermissionBridge.js';
 function buildConfig(): WorkerConfig {
   return {
     botName: 'Sniptail',
+    workerId: 'default',
     queueDriver: 'inproc',
     jobRegistryDriver: 'sqlite',
     jobRegistryPath: ':memory:',

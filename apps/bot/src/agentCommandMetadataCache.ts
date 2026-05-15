@@ -115,29 +115,3 @@ export function buildCwdAutocompleteChoices(
   }
   return [{ name: cwd, value: cwd }].slice(0, limit);
 }
-
-export function resolveAgentWorkspaceSelection(explicitWorkspaceKey?: string): string | undefined {
-  const metadata = cachedMetadata;
-  if (!metadata || !metadata.enabled) {
-    return undefined;
-  }
-  const workspaceKey = normalizeOptionalToken(explicitWorkspaceKey) ?? metadata.defaultWorkspace;
-  if (!workspaceKey) {
-    return undefined;
-  }
-  return metadata.workspaces.some((workspace) => workspace.key === workspaceKey)
-    ? workspaceKey
-    : undefined;
-}
-
-export function resolveAgentProfileSelection(explicitProfileKey?: string): string | undefined {
-  const metadata = cachedMetadata;
-  if (!metadata || !metadata.enabled) {
-    return undefined;
-  }
-  const profileKey = normalizeOptionalToken(explicitProfileKey) ?? metadata.defaultAgentProfile;
-  if (!profileKey) {
-    return undefined;
-  }
-  return metadata.profiles.some((profile) => profile.key === profileKey) ? profileKey : undefined;
-}

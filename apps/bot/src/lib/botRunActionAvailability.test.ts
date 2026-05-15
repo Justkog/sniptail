@@ -35,6 +35,7 @@ function makeConfig(): BotConfig {
     jobRegistryDriver: 'sqlite',
     jobRegistryPath: '/tmp/registry',
     botName: 'Sniptail',
+    agentCommand: {},
     debugJobSpecMessages: false,
     primaryAgent: 'codex',
     bootstrapServices: [],

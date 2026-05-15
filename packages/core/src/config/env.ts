@@ -18,6 +18,7 @@ import type {
   BotRunActionReference,
   WorkerRunActionConfig,
   WorkerAgentCommandConfig,
+  BotAgentCommandConfig,
 } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
@@ -704,14 +705,16 @@ function parseWorkerAgentCommandConfig(agentToml: TomlTable | undefined): Worker
     agentToml?.enabled,
     false,
   );
-  const defaultWorkspace = resolveStringValue(
-    'AGENT_COMMAND_DEFAULT_WORKSPACE',
-    agentToml?.default_workspace,
-  );
-  const defaultAgentProfile = resolveStringValue(
-    'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
-    agentToml?.default_agent_profile,
-  );
+  if (agentToml?.default_workspace !== undefined) {
+    throw new Error(
+      'Invalid agent.default_workspace. Agent command defaults must be configured in [agent_command] within the bot config.',
+    );
+  }
+  if (agentToml?.default_agent_profile !== undefined) {
+    throw new Error(
+      'Invalid agent.default_agent_profile. Agent command defaults must be configured in [agent_command] within the bot config.',
+    );
+  }
   const interactionTimeoutMs = resolvePositiveIntegerFromSources(
     'AGENT_COMMAND_INTERACTION_TIMEOUT_MS',
     agentToml?.interaction_timeout_ms,
@@ -734,26 +737,56 @@ function parseWorkerAgentCommandConfig(agentToml: TomlTable | undefined): Worker
     if (!Object.keys(profiles).length) {
       throw new Error('Invalid agent config. enabled=true requires at least one profile.');
     }
-    if (!defaultWorkspace || !workspaces[defaultWorkspace]) {
-      throw new Error(
-        'Invalid agent.default_workspace. Enabled agent command requires a known workspace key.',
-      );
-    }
-    if (!defaultAgentProfile || !profiles[defaultAgentProfile]) {
-      throw new Error(
-        'Invalid agent.default_agent_profile. Enabled agent command requires a known profile key.',
-      );
-    }
   }
 
   return {
     enabled,
-    ...(defaultWorkspace ? { defaultWorkspace } : {}),
-    ...(defaultAgentProfile ? { defaultAgentProfile } : {}),
     interactionTimeoutMs,
     outputDebounceMs,
     workspaces,
     profiles,
+  };
+}
+
+function parseBotAgentCommandConfig(
+  agentCommandToml: TomlTable | undefined,
+): BotAgentCommandConfig {
+  const defaultWorkspace = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_WORKSPACE',
+    agentCommandToml?.default_workspace,
+  );
+  const defaultAgentProfile = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
+    agentCommandToml?.default_agent_profile,
+  );
+
+  return {
+    ...(defaultWorkspace ? { defaultWorkspace } : {}),
+    ...(defaultAgentProfile ? { defaultAgentProfile } : {}),
+  };
+}
+
+function parseWorkerIdentity(workerToml: TomlTable | undefined): {
+  workerId: string;
+  workerIdExplicit: boolean;
+  workerLabel?: string;
+} {
+  const workerIdEnv = process.env.SNIPTAIL_WORKER_ID;
+  const workerIdToml = getTomlString(workerToml?.id, 'worker.id');
+  const workerId = resolveStringValue('SNIPTAIL_WORKER_ID', workerToml?.id, {
+    defaultValue: 'default',
+  }) as string;
+  const workerLabel = resolveStringValue('SNIPTAIL_WORKER_LABEL', workerToml?.label);
+  if (!/^[A-Za-z0-9._-]+$/.test(workerId)) {
+    throw new Error(
+      'Invalid worker.id. Expected only letters, numbers, ".", "_", or "-".',
+    );
+  }
+
+  return {
+    workerId,
+    workerIdExplicit: (workerIdEnv?.trim() ?? '') !== '' || workerIdToml !== undefined,
+    ...(workerLabel ? { workerLabel } : {}),
   };
 }
 
@@ -996,6 +1029,7 @@ export function loadBotConfig(): BotConfig {
   const toml = loadTomlConfig(BOT_CONFIG_PATH_ENV, DEFAULT_BOT_CONFIG_PATH, 'bot');
   const coreToml = getTomlTable(toml.core, 'core');
   const botToml = getTomlTable(toml.bot, 'bot');
+  const agentCommandToml = getTomlTable(toml.agent_command, 'agent_command');
   const channelsToml = getTomlTable(toml.channels, 'channels');
   const permissionsToml = getTomlTable(toml.permissions, 'permissions');
   const runToml = getTomlTable(toml.run, 'run');
@@ -1018,6 +1052,7 @@ export function loadBotConfig(): BotConfig {
     'BOOTSTRAP_SERVICES',
     botToml?.bootstrap_services,
   );
+  const agentCommand = parseBotAgentCommandConfig(agentCommandToml);
   const hasRuntimeChannelOverride = process.env.SNIPTAIL_CHANNELS !== undefined;
   const runtimeEnabledChannels = uniqueProviderList(
     resolveStringArrayFromSources('SNIPTAIL_CHANNELS', undefined),
@@ -1089,6 +1124,7 @@ export function loadBotConfig(): BotConfig {
     slackEnabled,
     discordEnabled,
     telegramEnabled,
+    agentCommand,
     ...(slackEnabled && {
       slack: {
         botToken: requireEnv('SLACK_BOT_TOKEN'),
@@ -1224,6 +1260,7 @@ export function loadWorkerConfig(): WorkerConfig {
   );
   const runActions = parseWorkerRunActions(runToml);
   const agent = parseWorkerAgentCommandConfig(agentToml);
+  const workerIdentity = parseWorkerIdentity(workerToml);
   const acp = parseAcpLaunchConfig(acpToml, 'acp');
 
   const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
@@ -1282,11 +1319,18 @@ export function loadWorkerConfig(): WorkerConfig {
     required: core.queueDriver === 'redis',
   });
   const localRepoRoot = resolvePathValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
+  if (core.queueDriver === 'redis' && agent.enabled && !workerIdentity.workerIdExplicit) {
+    throw new Error(
+      'Invalid worker.id. Redis queue mode with enabled agent command requires SNIPTAIL_WORKER_ID or worker.id.',
+    );
+  }
 
   workerConfigCache = {
     ...core,
     jobWorkRoot,
     botName,
+    workerId: workerIdentity.workerId,
+    ...(workerIdentity.workerLabel ? { workerLabel: workerIdentity.workerLabel } : {}),
     ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,
     jobConcurrency,

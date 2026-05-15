@@ -74,12 +74,15 @@ export type WorkerAgentCommandProfileConfig =
 
 export type WorkerAgentCommandConfig = {
   enabled: boolean;
-  defaultWorkspace?: string;
-  defaultAgentProfile?: string;
   interactionTimeoutMs: number;
   outputDebounceMs: number;
   workspaces: Record<string, WorkerAgentCommandWorkspaceConfig>;
   profiles: Record<string, WorkerAgentCommandProfileConfig>;
+};
+
+export type BotAgentCommandConfig = {
+  defaultWorkspace?: string;
+  defaultAgentProfile?: string;
 };
 
 export type QueueDriver = 'redis' | 'inproc';
@@ -126,12 +129,15 @@ export type BotConfig = CoreConfig & {
   run?: {
     actions: Record<string, BotRunActionReference>;
   };
+  agentCommand: BotAgentCommandConfig;
   redisUrl?: string;
 };
 
 export type WorkerConfig = CoreConfig & {
   jobWorkRoot: string;
   botName: string;
+  workerId: string;
+  workerLabel?: string;
   redisUrl?: string;
   openAiKey?: string;
   primaryAgent: AgentId;

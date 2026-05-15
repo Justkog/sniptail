@@ -1,6 +1,7 @@
 # Agent Command Configuration
 
-The worker-side agent command is configured under `[agent]` in `sniptail.worker.toml`.
+Worker-side agent execution is configured under `[agent]` in `sniptail.worker.toml`.
+Bot-side agent command defaults are configured under `[agent_command]` in `sniptail.bot.toml`.
 
 This feature currently powers the Discord `/sniptail-agent` command. It starts an interactive coding-agent session in a Discord thread, supports follow-up messages, stop/steer controls, and provider-specific permission or question prompts when available.
 
@@ -9,10 +10,12 @@ This feature currently powers the Discord `/sniptail-agent` command. It starts a
 ```toml
 [agent]
 enabled = true
-default_workspace = "snatch"
-default_agent_profile = "build"
 interaction_timeout_ms = 1800000
 output_debounce_ms = 15000
+
+[worker]
+id = "linux-build-1"
+label = "Linux Build 1"
 
 [agent.workspaces.snatch]
 path = "$HOME/Perso/snatch"
@@ -29,12 +32,30 @@ description = "General purpose build agent"
 ## `[agent]`
 
 - `enabled`: enables the Discord agent command flow on the worker. Default: `false`.
-- `default_workspace`: default workspace key used when the user does not choose one explicitly. Required when `enabled = true`.
-- `default_agent_profile`: default profile key used when the user does not choose one explicitly. Required when `enabled = true`.
 - `interaction_timeout_ms`: timeout for pending permission requests and question prompts. Default: `1800000` (30 minutes).
 - `output_debounce_ms`: debounce interval for streamed agent output updates posted back to Discord. Default: `15000`.
 
 When `enabled = true`, at least one workspace and one profile must be configured.
+
+## `[worker]`
+
+- `id`: stable worker identity used by agent-command multi-worker routing. Required when `queue_driver = "redis"` and `[agent].enabled = true`. Defaults to `default` for local or in-process mode.
+- `label`: optional operator-facing worker label.
+
+Environment overrides:
+
+- `SNIPTAIL_WORKER_ID`
+- `SNIPTAIL_WORKER_LABEL`
+
+## `[agent_command]` in `sniptail.bot.toml`
+
+- `default_workspace`: optional default workspace key used when the user does not choose one explicitly.
+- `default_agent_profile`: optional default profile key used when the user does not choose one explicitly.
+
+Environment overrides:
+
+- `AGENT_COMMAND_DEFAULT_WORKSPACE`
+- `AGENT_COMMAND_DEFAULT_AGENT_PROFILE`
 
 ## `[agent.workspaces.<key>]`
 
