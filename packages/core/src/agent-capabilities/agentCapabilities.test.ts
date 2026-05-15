@@ -40,7 +40,8 @@ function buildWorker(
 }
 
 function buildEligibleWorker(
-  overrides: Partial<EligibleAgentWorker> & Pick<EligibleAgentWorker, 'workerId' | 'workspace' | 'profile'>,
+  overrides: Partial<EligibleAgentWorker> &
+    Pick<EligibleAgentWorker, 'workerId' | 'workspace' | 'profile'>,
 ): EligibleAgentWorker {
   return {
     workerId: overrides.workerId,

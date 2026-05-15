@@ -192,14 +192,14 @@ function buildAggregatedWorkspaces(
         sortedWorkers,
         `Workspace capability aggregation produced an empty worker list for key "${key}".`,
       );
-      const ambiguous = sortedWorkers.some((worker) => !matchesWorkspaceMetadata(firstWorker, worker));
+      const ambiguous = sortedWorkers.some(
+        (worker) => !matchesWorkspaceMetadata(firstWorker, worker),
+      );
       return {
         key,
         status: ambiguous ? 'ambiguous' : 'available',
         ...(!ambiguous && firstWorker.label ? { label: firstWorker.label } : {}),
-        ...(!ambiguous && firstWorker.description
-          ? { description: firstWorker.description }
-          : {}),
+        ...(!ambiguous && firstWorker.description ? { description: firstWorker.description } : {}),
         workerIds: sortedWorkers.map((worker) => worker.workerId),
         workers: sortedWorkers,
       };
@@ -234,7 +234,9 @@ function buildAggregatedProfiles(
         sortedWorkers,
         `Profile capability aggregation produced an empty worker list for key "${key}".`,
       );
-      const conflicted = sortedWorkers.some((worker) => !matchesProfileDefinition(firstWorker, worker));
+      const conflicted = sortedWorkers.some(
+        (worker) => !matchesProfileDefinition(firstWorker, worker),
+      );
       return {
         key,
         status: conflicted ? 'conflicted' : 'available',
@@ -249,9 +251,7 @@ function buildAggregatedProfiles(
           ? { reasoningEffort: firstWorker.reasoningEffort }
           : {}),
         ...(!conflicted && firstWorker.label ? { label: firstWorker.label } : {}),
-        ...(!conflicted && firstWorker.description
-          ? { description: firstWorker.description }
-          : {}),
+        ...(!conflicted && firstWorker.description ? { description: firstWorker.description } : {}),
         workerIds: sortedWorkers.map((worker) => worker.workerId),
         workers: sortedWorkers,
       };
