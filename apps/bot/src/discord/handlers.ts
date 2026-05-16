@@ -130,7 +130,8 @@ async function replyToInteractionError(
 }
 
 export function registerDiscordHandlers(context: DiscordHandlerContext): void {
-  const { client, config, queue, bootstrapQueue, workerEventQueue, permissions } = context;
+  const { client, config, queue, bootstrapQueue, workerEventQueue, queueRuntime, permissions } =
+    context;
   const prefix = toSlackCommandPrefix(config.botName);
   const commandNames = buildCommandNames(prefix);
 
@@ -384,7 +385,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.agent) {
       try {
-        await handleAgentStart(interaction, config, workerEventQueue, permissions);
+        await handleAgentStart(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         if (interaction.deferred || interaction.replied) {

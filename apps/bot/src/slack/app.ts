@@ -1,5 +1,8 @@
 import { App } from '@slack/bolt';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type {
+  QueuePublisher,
+  QueueTransportRuntime,
+} from '@sniptail/core/queue/queueTransportTypes.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
@@ -13,6 +16,7 @@ export function createSlackApp(
   queue: QueuePublisher<JobSpec>,
   bootstrapQueue: QueuePublisher<BootstrapRequest>,
   workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
 ) {
   const config = loadBotConfig();
   if (!config.slack) {
@@ -26,6 +30,7 @@ export function createSlackApp(
     queue,
     bootstrapQueue,
     workerEventQueue,
+    queueRuntime,
   });
   const app = new App({
     token: config.slack.botToken,
@@ -41,6 +46,7 @@ export function createSlackApp(
     queue,
     bootstrapQueue,
     workerEventQueue,
+    queueRuntime,
     permissions,
   };
 

@@ -2,6 +2,7 @@ import { isAbsolute } from 'node:path';
 import { loadSlackAgentDefaults } from '@sniptail/core/agent-defaults/registry.js';
 import { dedupe } from '../../lib/dedupe.js';
 import { buildAgentModal } from '../../modals.js';
+import { buildAgentWorkerChoices } from '../../../agentCommandWorkerRouting.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 import {
@@ -86,6 +87,15 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
         ? defaults.agentProfileKey
         : config.agentCommand?.defaultAgentProfile;
     const initialCwd = validateRelativeCwd(normalizeOptionalString(defaults?.cwd));
+    const workerChoices = buildAgentWorkerChoices(
+      metadata,
+      selectedWorkspaceKey,
+      selectedProfileKey,
+    ).map((choice) => ({
+      key: choice.value,
+      label: choice.name,
+      value: choice.value,
+    }));
 
     await client.views.open({
       trigger_id: body.trigger_id,
@@ -101,6 +111,7 @@ export function registerAgentCommand({ app, slackIds, config, permissions }: Sla
         {
           workspaces: metadata.workspaces,
           profiles: selectableProfiles,
+          ...(workerChoices.length ? { workers: workerChoices } : {}),
           ...(selectedWorkspaceKey ? { selectedWorkspaceKey } : {}),
           ...(selectedProfileKey ? { selectedProfileKey } : {}),
           ...(initialCwd ? { initialCwd } : {}),

@@ -78,6 +78,7 @@ export async function startBotRuntime(
         queueRuntime.queues.jobs,
         queueRuntime.queues.bootstrap,
         queueRuntime.queues.workerEvents,
+        queueRuntime,
       );
       await slackApp.start();
       await debugLogSlackRuntimeIdentity(slackApp);
@@ -89,6 +90,7 @@ export async function startBotRuntime(
         queueRuntime.queues.jobs,
         queueRuntime.queues.bootstrap,
         queueRuntime.queues.workerEvents,
+        queueRuntime,
       );
     }
 

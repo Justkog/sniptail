@@ -17,6 +17,7 @@ export type DeferredPermissionOperation =
   | {
       kind: 'enqueueWorkerEvent';
       event: WorkerEvent;
+      targetWorkerId?: string;
     };
 
 export type ApprovalResolution = 'approved' | 'denied' | 'cancelled' | 'expired';

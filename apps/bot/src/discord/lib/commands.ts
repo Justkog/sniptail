@@ -149,6 +149,13 @@ export function buildDiscordCommandDefinitions(botName: string) {
           required: false,
           autocomplete: true,
         },
+        {
+          name: 'worker',
+          description: 'Optional worker id when multiple workers are eligible',
+          type: 3,
+          required: false,
+          autocomplete: true,
+        },
       ],
     },
     {

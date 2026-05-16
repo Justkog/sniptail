@@ -150,6 +150,7 @@ describe('workerRuntimeLauncher', () => {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
       consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
       consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
       close: vi.fn(() => Promise.resolve(undefined)),
       queues: {
         botEvents: {
@@ -174,6 +175,7 @@ describe('workerRuntimeLauncher', () => {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
       consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
       consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
       close: vi.fn(() => Promise.resolve(undefined)),
       queues: {
         botEvents: {
@@ -198,6 +200,7 @@ describe('workerRuntimeLauncher', () => {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
       consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
       consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
       close: vi.fn(() => Promise.resolve(undefined)),
       queues: {
         botEvents: {
@@ -210,6 +213,40 @@ describe('workerRuntimeLauncher', () => {
     await runtime.close();
 
     expect(hoisted.startWorkerCapabilityPublisher).toHaveBeenCalledWith(hoisted.config);
+    expect(queueRuntime.consumeWorkerMailbox).not.toHaveBeenCalled();
     expect(publisherClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a mailbox consumer when agent mode exposes workspaces and profiles', async () => {
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+
+    const consumerClose = vi.fn(() => Promise.resolve(undefined));
+    const queueRuntime = {
+      consumeJobs: vi.fn(() => ({ close: consumerClose })),
+      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add: vi.fn(() => Promise.resolve(undefined)),
+        },
+      },
+    } as const;
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(queueRuntime.consumeWorkerMailbox).toHaveBeenCalledWith(
+      'worker-a',
+      expect.objectContaining({ concurrency: 1 }),
+    );
   });
 });

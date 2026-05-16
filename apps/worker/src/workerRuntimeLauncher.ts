@@ -79,6 +79,10 @@ export async function startWorkerRuntime(
   const workerCapabilityPublisher = await startWorkerCapabilityPublisher(config);
   const jobRegistry = createJobRegistry(config);
   const consumers: QueueConsumerHandle[] = [];
+  const shouldConsumeAgentMailbox =
+    config.agent.enabled &&
+    Object.keys(config.agent.workspaces).length > 0 &&
+    Object.keys(config.agent.profiles).length > 0;
 
   consumers.push(
     queueRuntime.consumeJobs({
@@ -133,6 +137,38 @@ export async function startWorkerRuntime(
       },
     }),
   );
+
+  if (shouldConsumeAgentMailbox) {
+    consumers.push(
+      queueRuntime.consumeWorkerMailbox(config.workerId, {
+        concurrency: 1,
+        handler: async (job) => {
+          logger.info(
+            { workerId: config.workerId, requestId: job.data.requestId, type: job.data.type },
+            'Worker mailbox event received',
+          );
+          await handleWorkerEvent(job.data, jobRegistry, botEvents);
+        },
+        onFailed: (job, err) => {
+          logger.error(
+            {
+              workerId: config.workerId,
+              requestId: job?.data?.requestId,
+              type: job?.data?.type,
+              err,
+            },
+            'Worker mailbox event failed',
+          );
+        },
+        onCompleted: (job) => {
+          logger.info(
+            { workerId: config.workerId, requestId: job.data.requestId, type: job.data.type },
+            'Worker mailbox event completed',
+          );
+        },
+      }),
+    );
+  }
 
   return {
     async close() {

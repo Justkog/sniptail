@@ -1,9 +1,17 @@
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type {
+  QueuePublisher,
+  QueueTransportRuntime,
+} from '@sniptail/core/queue/queueTransportTypes.js';
 import { updateAgentSessionStatus } from '@sniptail/core/agent-sessions/registry.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueBootstrap, enqueueJob, enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import {
+  enqueueBootstrap,
+  enqueueJob,
+  enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent,
+} from '@sniptail/core/queue/queue.js';
 import {
   approveIfPending,
   assignApprovalContextIfPending,
@@ -37,6 +45,7 @@ type RuntimeDeps = {
   queue: QueuePublisher<JobSpec>;
   bootstrapQueue: QueuePublisher<BootstrapRequest>;
   workerEventQueue: QueuePublisher<WorkerEvent>;
+  queueRuntime?: Pick<QueueTransportRuntime, 'publishWorkerEventToMailbox'>;
 };
 
 type AuthorizationInput = {
@@ -75,12 +84,14 @@ export class PermissionsRuntimeService {
   readonly #queue: QueuePublisher<JobSpec>;
   readonly #bootstrapQueue: QueuePublisher<BootstrapRequest>;
   readonly #workerEventQueue: QueuePublisher<WorkerEvent>;
+  readonly #queueRuntime: Pick<QueueTransportRuntime, 'publishWorkerEventToMailbox'> | undefined;
 
   constructor(deps: RuntimeDeps) {
     this.#config = deps.config;
     this.#queue = deps.queue;
     this.#bootstrapQueue = deps.bootstrapQueue;
     this.#workerEventQueue = deps.workerEventQueue;
+    this.#queueRuntime = deps.queueRuntime;
   }
 
   getGroupCacheTtlMs(): number {
@@ -333,7 +344,20 @@ export class PermissionsRuntimeService {
         await enqueueBootstrap(this.#bootstrapQueue, operation.request);
         return;
       case 'enqueueWorkerEvent':
-        await enqueueWorkerEvent(this.#workerEventQueue, operation.event);
+        if (operation.targetWorkerId) {
+          if (!this.#queueRuntime) {
+            throw new Error(
+              `Cannot enqueue worker mailbox event for ${operation.targetWorkerId} without queue runtime support.`,
+            );
+          }
+          await enqueueWorkerMailboxEvent(
+            this.#queueRuntime,
+            operation.targetWorkerId,
+            operation.event,
+          );
+        } else {
+          await enqueueWorkerEvent(this.#workerEventQueue, operation.event);
+        }
         if (operation.event.type === 'agent.session.start') {
           await updateAgentSessionStatus(operation.event.payload.sessionId, 'active');
         }

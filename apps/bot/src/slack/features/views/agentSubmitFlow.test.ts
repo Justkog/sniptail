@@ -22,12 +22,13 @@ type SlackViewHandler = (args: SlackViewHandlerArgs) => Promise<void>;
 const hoisted = vi.hoisted(() => ({
   loadAgentCommandMetadata: vi.fn(),
   findAgentProfileMetadata: vi.fn(),
-  hasEligibleWorkerForSelection: vi.fn(),
+  buildAgentWorkerSelectionError: vi.fn(),
+  resolveAgentStartWorker: vi.fn(),
   loadSlackModalContextFiles: vi.fn(),
   postMessage: vi.fn(),
   createAgentSession: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
   upsertSlackAgentDefaults: vi.fn(),
   authorizeSlackOperationAndRespond: vi.fn(),
   auditAgentSessionStart: vi.fn(),
@@ -36,7 +37,11 @@ const hoisted = vi.hoisted(() => ({
 vi.mock('../../../agentCommandMetadataCache.js', () => ({
   loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
   findAgentProfileMetadata: hoisted.findAgentProfileMetadata,
-  hasEligibleWorkerForSelection: hoisted.hasEligibleWorkerForSelection,
+}));
+
+vi.mock('../../../agentCommandWorkerRouting.js', () => ({
+  buildAgentWorkerSelectionError: hoisted.buildAgentWorkerSelectionError,
+  resolveAgentStartWorker: hoisted.resolveAgentStartWorker,
 }));
 
 vi.mock('../../helpers.js', () => ({
@@ -50,7 +55,22 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('../../../agentCommandShared.js', () => ({
+  buildAgentSessionStartWorkerEvent: vi.fn((input: { session: { sessionId: string } }) => ({
+    type: 'agent.session.start',
+    payload: { sessionId: input.session.sessionId },
+  })),
 }));
 
 vi.mock('@sniptail/core/agent-defaults/registry.js', () => ({
@@ -84,7 +104,7 @@ function buildContext() {
     config: {
       botName: 'Sniptail',
     },
-    workerEventQueue: {},
+    queueRuntime: {},
     permissions: {},
   } as never;
 
@@ -141,12 +161,16 @@ describe('registerAgentSubmitView', () => {
       provider: 'codex',
       profile: 'default',
     });
-    hoisted.hasEligibleWorkerForSelection.mockReturnValue(true);
+    hoisted.buildAgentWorkerSelectionError.mockReturnValue(undefined);
+    hoisted.resolveAgentStartWorker.mockReturnValue({
+      workerId: 'worker-a',
+      workerLabel: 'Worker A',
+    });
     hoisted.loadSlackModalContextFiles.mockResolvedValue([]);
     hoisted.postMessage.mockResolvedValue({ ts: 'T1' });
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
     hoisted.upsertSlackAgentDefaults.mockResolvedValue(undefined);
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(true);
   });

@@ -1,5 +1,8 @@
 import type { Client } from 'discord.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type {
+  QueuePublisher,
+  QueueTransportRuntime,
+} from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
@@ -12,5 +15,6 @@ export type DiscordHandlerContext = {
   queue: QueuePublisher<JobSpec>;
   bootstrapQueue: QueuePublisher<BootstrapRequest>;
   workerEventQueue: QueuePublisher<WorkerEvent>;
+  queueRuntime: QueueTransportRuntime;
   permissions: PermissionsRuntimeService;
 };

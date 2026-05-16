@@ -6,6 +6,7 @@ const saveJobQueuedMock = vi.hoisted(() => vi.fn());
 const enqueueJobMock = vi.hoisted(() => vi.fn());
 const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
+const enqueueWorkerMailboxEventMock = vi.hoisted(() => vi.fn());
 const updateAgentSessionStatusMock = vi.hoisted(() => vi.fn());
 const loadApprovalRequestMock = vi.hoisted(() => vi.fn());
 const approveIfPendingMock = vi.hoisted(() => vi.fn());
@@ -22,6 +23,15 @@ vi.mock('@sniptail/core/queue/queue.js', () => ({
   enqueueJob: enqueueJobMock,
   enqueueBootstrap: enqueueBootstrapMock,
   enqueueWorkerEvent: enqueueWorkerEventMock,
+  enqueueWorkerMailboxEvent: enqueueWorkerMailboxEventMock,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -77,6 +87,9 @@ function createService() {
     queue: { add: vi.fn() } as never,
     bootstrapQueue: { add: vi.fn() } as never,
     workerEventQueue: { add: vi.fn() } as never,
+    queueRuntime: {
+      publishWorkerEventToMailbox: vi.fn(),
+    } as never,
   });
 }
 
@@ -126,6 +139,7 @@ function createPendingAgentStartRequest(overrides?: Partial<ApprovalRequest>): A
     action: 'agent.start',
     operation: {
       kind: 'enqueueWorkerEvent',
+      targetWorkerId: 'worker-a',
       event: {
         schemaVersion: 1,
         type: 'agent.session.start',
@@ -156,6 +170,7 @@ describe('approval execution persistence', () => {
     enqueueJobMock.mockResolvedValue(undefined);
     enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
+    enqueueWorkerMailboxEventMock.mockResolvedValue(undefined);
     updateAgentSessionStatusMock.mockResolvedValue(undefined);
     expireIfPendingMock.mockResolvedValue({ changed: false, reason: 'not_pending' });
     denyIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
@@ -346,6 +361,7 @@ describe('approval execution persistence', () => {
     expect(enqueueJobMock).not.toHaveBeenCalled();
     expect(enqueueBootstrapMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
+    expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
 
   it('marks pending agent sessions failed when agent start approvals are denied, cancelled, or expired', async () => {
@@ -448,7 +464,7 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    enqueueWorkerEventMock.mockRejectedValueOnce(new Error('enqueue failed'));
+    enqueueWorkerMailboxEventMock.mockRejectedValueOnce(new Error('enqueue failed'));
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',

@@ -2,7 +2,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AgentAttachment } from '@sniptail/core/agents/types.js';
-import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
+import {
+  loadAgentSession,
+  updateAgentSessionStatus,
+} from '@sniptail/core/agent-sessions/registry.js';
 import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -236,6 +239,7 @@ export async function runAgentSessionStart({
 }: RunAgentSessionStartOptions): Promise<void> {
   const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd, contextFiles } =
     event.payload;
+  const ref = buildRef(response);
 
   if (!config.agent.enabled) {
     logger.warn(
@@ -245,17 +249,39 @@ export async function runAgentSessionStart({
     return;
   }
 
-  const profile = resolveAgentProfile(config, agentProfileKey);
+  const session = await loadAgentSession(sessionId);
+  if (!session) {
+    await notifier.postMessage(ref, 'Agent session not found.');
+    return;
+  }
+  if (session.status === 'stopped' || session.status === 'failed') {
+    return;
+  }
+  if (session.ownerWorkerId !== config.workerId) {
+    await updateAgentSessionStatus(sessionId, 'failed');
+    await notifier.postMessage(
+      ref,
+      `This agent session is assigned to worker \`${session.ownerWorkerId ?? 'unknown'}\` and cannot start on worker \`${config.workerId}\`.`,
+    );
+    return;
+  }
+  if (!config.agent.workspaces[session.workspaceKey]) {
+    await updateAgentSessionStatus(sessionId, 'failed');
+    await notifier.postMessage(
+      ref,
+      `Worker \`${config.workerId}\` does not expose workspace \`${session.workspaceKey}\`.`,
+    );
+    return;
+  }
+  const profile = resolveAgentProfile(config, session.agentProfileKey);
   if (!profile) {
-    await notifier.postMessage(buildRef(response), `Unknown agent profile key: ${agentProfileKey}`);
+    await updateAgentSessionStatus(sessionId, 'failed');
+    await notifier.postMessage(ref, `Unknown agent profile key: ${session.agentProfileKey}`);
     return;
   }
 
   if (!beginAgentPromptTurn(sessionId)) {
-    await notifier.postMessage(
-      buildRef(response),
-      'This agent session already has an active prompt.',
-    );
+    await notifier.postMessage(ref, 'This agent session already has an active prompt.');
     return;
   }
 
@@ -279,9 +305,9 @@ export async function runAgentSessionStart({
         sessionId,
         response,
         prompt: codexNote ? `${prompt}${codexNote}` : prompt,
-        workspaceKey,
+        workspaceKey: session.workspaceKey,
         profile,
-        ...(cwd ? { cwd } : {}),
+        ...((session.cwd ?? cwd) ? { cwd: session.cwd ?? cwd } : {}),
         ...(filteredAttachments?.length ? { currentTurnAttachments: filteredAttachments } : {}),
         ...(tempContextDirectory ? { additionalDirectories: [tempContextDirectory] } : {}),
       },
