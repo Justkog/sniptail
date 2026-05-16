@@ -8,7 +8,7 @@ export function registerAppMentionEvent({
   app,
   config,
   queue,
-  workerEventQueue,
+  queueRuntime,
   permissions,
   slackIds,
 }: SlackHandlerContext) {
@@ -39,7 +39,7 @@ export function registerAppMentionEvent({
       {
         app,
         config,
-        workerEventQueue,
+        queueRuntime,
         permissions,
         slackIds,
       },

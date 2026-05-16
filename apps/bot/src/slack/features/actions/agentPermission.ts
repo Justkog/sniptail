@@ -1,5 +1,5 @@
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import {
   appendSlackAgentPermissionDecision,
   parseSlackAgentActionValue,
@@ -7,13 +7,14 @@ import {
 import { getSlackAgentPermissionMessageState } from '../../slackBotChannelAdapter.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
 function registerPermissionAction(actionId: string, context: SlackHandlerContext) {
-  const { app, slackIds, workerEventQueue, permissions } = context;
+  const { app, slackIds, queueRuntime, permissions } = context;
   app.action(actionId, async ({ ack, body, client, action }) => {
     await ack();
     const value = parseSlackAgentActionValue<{
@@ -75,6 +76,15 @@ function registerPermissionAction(actionId: string, context: SlackHandlerContext
         decision,
       },
     });
+    const route = await resolveAgentSessionOwnerMailboxRoute(session);
+    if (!route.ok) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: route.errorMessage,
+      });
+      return;
+    }
 
     const authorized = await authorizeSlackOperationAndRespond({
       permissions,
@@ -85,6 +95,7 @@ function registerPermissionAction(actionId: string, context: SlackHandlerContext
       operation: {
         kind: 'enqueueWorkerEvent',
         event,
+        targetWorkerId: route.targetWorkerId,
       },
       actor: {
         userId,
@@ -105,7 +116,7 @@ function registerPermissionAction(actionId: string, context: SlackHandlerContext
       return;
     }
 
-    await enqueueWorkerEvent(workerEventQueue, event);
+    await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
     const messageState = getSlackAgentPermissionMessageState(sessionId, interactionId);
     await client.chat.update({
       channel: channelId,

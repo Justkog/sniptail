@@ -1,8 +1,7 @@
 import type { ButtonInteraction, Message } from 'discord.js';
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { DiscordAgentFollowUpAction } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
@@ -10,6 +9,7 @@ import { truncateRequestSummary } from '../../../lib/jobs.js';
 import {
   buildAgentSessionMessageWorkerEvent,
   resolveAgentFollowUpMode,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
@@ -64,7 +64,7 @@ export async function handleAgentFollowUpButton(
     action: DiscordAgentFollowUpAction;
   },
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const session = await loadAgentSession(input.sessionId);
@@ -113,6 +113,14 @@ export async function handleAgentFollowUpButton(
     messageId: input.messageId,
     mode: resolveAgentFollowUpMode(session.status, input.action),
   });
+  const route = await resolveAgentSessionOwnerMailboxRoute(session);
+  if (!route.ok) {
+    await interaction.reply({
+      content: route.errorMessage,
+      ephemeral: true,
+    });
+    return;
+  }
 
   let denied = false;
   const authorized = await authorizeDiscordOperationAndRespond({
@@ -125,6 +133,7 @@ export async function handleAgentFollowUpButton(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: interaction.user.id,
@@ -157,7 +166,7 @@ export async function handleAgentFollowUpButton(
     return;
   }
 
-  await enqueueWorkerEvent(workerEventQueue, event);
+  await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
   await interaction.update({
     content: appendFollowUpActionText(
       interaction.message.content,

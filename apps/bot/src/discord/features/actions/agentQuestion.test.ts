@@ -8,10 +8,38 @@ import {
   setPendingDiscordAgentQuestion,
 } from './agentQuestion.js';
 
+type AgentSessionMock = {
+  sessionId: string;
+  threadId: string;
+  channelId: string;
+  status: 'active' | 'completed' | 'failed';
+};
+
+type BuildAgentInteractionResolveWorkerEventInput = {
+  session: AgentSessionMock;
+  actor: {
+    userId: string;
+    guildId?: string;
+  };
+  interactionId: string;
+  resolution: {
+    kind: 'question';
+    answers: string[][];
+  };
+};
+
+type ValidateAgentSessionForThreadInput = {
+  session: AgentSessionMock | undefined;
+  threadId: string;
+  allowedStatuses: AgentSessionMock['status'][];
+  wrongThreadMessage: string;
+};
+
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -19,12 +47,58 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
   authorizeDiscordOperationAndRespond: hoisted.authorizeDiscordOperationAndRespond,
 }));
+
+vi.mock('@sniptail/core/discord/components.js', () => ({
+  buildDiscordAgentQuestionModalCustomId: (sessionId: string, interactionId: string) =>
+    `agent-question-modal:${sessionId}:${interactionId}`,
+  buildDiscordAgentQuestionTextInputCustomId: (index: number) => `qtext:${index}`,
+  parseDiscordAgentQuestionTextInputCustomId: (value: string) => {
+    if (!value.startsWith('qtext:')) return undefined;
+    return Number.parseInt(value.slice('qtext:'.length), 10);
+  },
+}));
+
+vi.mock('../../../agentCommandShared.js', () => {
+  return {
+    buildAgentInteractionResolveWorkerEvent: ({
+      session,
+      actor,
+      interactionId,
+      resolution,
+    }: BuildAgentInteractionResolveWorkerEventInput) => ({
+      type: 'agent.interaction.resolve',
+      payload: {
+        sessionId: session.sessionId,
+        response: {
+          channelId: session.threadId,
+          threadId: session.threadId,
+          userId: actor.userId,
+        },
+        interactionId,
+        resolution,
+      },
+    }),
+    validateAgentSessionForThread: ({
+      session,
+      threadId,
+      allowedStatuses,
+      wrongThreadMessage,
+    }: ValidateAgentSessionForThreadInput) => {
+      if (!session) return 'Agent session not found.';
+      if (session.threadId !== threadId) return wrongThreadMessage;
+      if (!allowedStatuses.includes(session.status))
+        return `This agent session is ${session.status}.`;
+      return undefined;
+    },
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
 
 function buildSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -92,7 +166,7 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
 }
 
 const config = { botName: 'Sniptail' };
-const queue = {};
+const queueRuntime = {};
 const permissions = {};
 
 describe('handleAgentQuestion interactions', () => {
@@ -101,7 +175,11 @@ describe('handleAgentQuestion interactions', () => {
     clearPendingDiscordAgentQuestion('session-1', 'interaction-1');
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
   });
 
   it('enqueues ordered answers for a single-question select', async () => {
@@ -112,12 +190,12 @@ describe('handleAgentQuestion interactions', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', questionIndex: 0 },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
     const authInput = hoisted.authorizeDiscordOperationAndRespond.mock.calls[0]?.[0] as
-      | { operation: { event: WorkerEvent } }
+      | { operation: { event: WorkerEvent; targetWorkerId?: string } }
       | undefined;
     expect(authInput?.operation.event.payload).toMatchObject({
       sessionId: 'session-1',
@@ -127,8 +205,10 @@ describe('handleAgentQuestion interactions', () => {
         answers: [['Bot']],
       },
     });
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.interaction.resolve' }),
     );
     expect(interaction.update).toHaveBeenCalledWith({
@@ -161,14 +241,14 @@ describe('handleAgentQuestion interactions', () => {
       buildInteraction({ values: ['0'] }) as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', questionIndex: 0 },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
     await handleAgentQuestionSelect(
       buildInteraction({ values: ['0', '1'] }) as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', questionIndex: 1 },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
     const submitInteraction = buildInteraction();
@@ -176,11 +256,11 @@ describe('handleAgentQuestion interactions', () => {
       submitInteraction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', action: 'submit' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    const event = hoisted.enqueueWorkerEvent.mock.calls[0]?.[1] as WorkerEvent | undefined;
+    const event = hoisted.enqueueWorkerMailboxEvent.mock.calls[0]?.[2] as WorkerEvent | undefined;
     expect(event?.payload.resolution).toEqual({
       kind: 'question',
       answers: [['Worker'], ['Tests', 'Build']],
@@ -203,11 +283,11 @@ describe('handleAgentQuestion interactions', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    const event = hoisted.enqueueWorkerEvent.mock.calls[0]?.[1] as WorkerEvent | undefined;
+    const event = hoisted.enqueueWorkerMailboxEvent.mock.calls[0]?.[2] as WorkerEvent | undefined;
     expect(event?.payload.resolution).toEqual({
       kind: 'question',
       answers: [['Use the worker package']],
@@ -223,11 +303,11 @@ describe('handleAgentQuestion interactions', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', action: 'reject' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    const event = hoisted.enqueueWorkerEvent.mock.calls[0]?.[1] as WorkerEvent | undefined;
+    const event = hoisted.enqueueWorkerMailboxEvent.mock.calls[0]?.[2] as WorkerEvent | undefined;
     expect(event?.payload.resolution).toEqual({
       kind: 'question',
       reject: true,

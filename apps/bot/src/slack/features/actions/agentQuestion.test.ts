@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
 import {
   clearPendingSlackAgentQuestion,
   setPendingSlackAgentQuestion,
 } from '../../agentCommandState.js';
 import { registerAgentQuestionActions } from './agentQuestion.js';
+import type * as AgentCommandShared from '../../../agentCommandShared.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
   authorizeSlackOperationAndRespond: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -16,12 +19,21 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/slackPermissionGuards.js', () => ({
   authorizeSlackOperationAndRespond: hoisted.authorizeSlackOperationAndRespond,
 }));
+
+vi.mock('../../../agentCommandShared.js', async () => {
+  const actual = await vi.importActual<typeof AgentCommandShared>('../../../agentCommandShared.js');
+
+  return {
+    ...actual,
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
 
 type ActionHandler = (args: {
   ack: () => Promise<void>;
@@ -50,7 +62,7 @@ type ActionHandler = (args: {
   };
 }) => Promise<void>;
 
-function buildSession() {
+function buildSession(): AgentSessionRecord {
   return {
     sessionId: 'session-1',
     provider: 'slack',
@@ -76,6 +88,7 @@ function createContext() {
     client: {},
   };
   const workerEventQueue = {};
+  const queueRuntime = {};
   const permissions = {};
   const slackIds = {
     actions: {
@@ -92,10 +105,11 @@ function createContext() {
     slackIds,
     config: { botName: 'Sniptail' },
     workerEventQueue,
+    queueRuntime,
     permissions,
   } as never);
 
-  return { handlers, workerEventQueue };
+  return { handlers, workerEventQueue, queueRuntime };
 }
 
 function buildClient() {
@@ -115,8 +129,12 @@ describe('registerAgentQuestionActions select flow', () => {
     vi.clearAllMocks();
     clearPendingSlackAgentQuestion('session-1', 'interaction-1');
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(true);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
   });
 
   it('posts Selection recorded as a thread-scoped ephemeral message for multi-question prompts', async () => {
@@ -168,11 +186,11 @@ describe('registerAgentQuestionActions select flow', () => {
       thread_ts: 'thread-1',
     });
     expect(client.chat.update).not.toHaveBeenCalled();
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
   });
 
   it('resolves single-question selections immediately without posting Selection recorded', async () => {
-    const { handlers, workerEventQueue } = createContext();
+    const { handlers, queueRuntime } = createContext();
     const handler = handlers.get('agent-question-select');
     if (!handler) throw new Error('Expected select handler.');
     const client = buildClient();
@@ -209,8 +227,8 @@ describe('registerAgentQuestionActions select flow', () => {
     });
 
     expect(hoisted.authorizeSlackOperationAndRespond).toHaveBeenCalledTimes(1);
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledTimes(1);
-    const enqueuedEvent = hoisted.enqueueWorkerEvent.mock.calls[0]?.[1] as
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledTimes(1);
+    const enqueuedEvent = hoisted.enqueueWorkerMailboxEvent.mock.calls[0]?.[2] as
       | {
           type?: string;
           payload?: {
@@ -219,7 +237,11 @@ describe('registerAgentQuestionActions select flow', () => {
           };
         }
       | undefined;
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(workerEventQueue, enqueuedEvent);
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
+      enqueuedEvent,
+    );
     expect(enqueuedEvent?.type).toBe('agent.interaction.resolve');
     expect(enqueuedEvent?.payload?.sessionId).toBe('session-1');
     expect(enqueuedEvent?.payload?.interactionId).toBe('interaction-1');

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type * as AgentCommandShared from '../../../agentCommandShared.js';
 import { handleAgentStopButton } from './agentStop.js';
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -13,12 +15,21 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
   authorizeDiscordOperationAndRespond: hoisted.authorizeDiscordOperationAndRespond,
 }));
+
+vi.mock('../../../agentCommandShared.js', async () => {
+  const actual = await vi.importActual<typeof AgentCommandShared>('../../../agentCommandShared.js');
+
+  return {
+    ...actual,
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
 
 function buildSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -57,7 +68,7 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
 }
 
 const config = { botName: 'Sniptail' };
-const queue = {};
+const queueRuntime = {};
 const permissions = {};
 
 describe('handleAgentStopButton', () => {
@@ -65,7 +76,11 @@ describe('handleAgentStopButton', () => {
     vi.clearAllMocks();
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
   });
 
   it('authorizes and enqueues stop events for active agent sessions', async () => {
@@ -75,12 +90,12 @@ describe('handleAgentStopButton', () => {
       interaction as never,
       'session-1',
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
     const authInput = hoisted.authorizeDiscordOperationAndRespond.mock.calls[0]?.[0] as
-      | { action: string; operation: { event: WorkerEvent } }
+      | { action: string; operation: { event: WorkerEvent; targetWorkerId: string } }
       | undefined;
     expect(authInput?.action).toBe('agent.stop');
     expect(authInput?.operation.event.type).toBe('agent.prompt.stop');
@@ -93,8 +108,10 @@ describe('handleAgentStopButton', () => {
         userId: 'user-2',
       },
     });
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.prompt.stop' }),
     );
     expect(interaction.update).toHaveBeenCalledWith({
@@ -121,12 +138,13 @@ describe('handleAgentStopButton', () => {
       interaction as never,
       'session-1',
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.prompt.stop' }),
     );
     expect(interaction.update).toHaveBeenCalledWith({
@@ -144,11 +162,11 @@ describe('handleAgentStopButton', () => {
       interaction as never,
       'session-1',
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content: 'This agent session is completed.',
       ephemeral: true,
@@ -162,11 +180,11 @@ describe('handleAgentStopButton', () => {
       interaction as never,
       'session-1',
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content: 'This stop control does not belong to this agent session thread.',
       ephemeral: true,

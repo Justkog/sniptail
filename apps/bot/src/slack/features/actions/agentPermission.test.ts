@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
 import { registerAgentPermissionActions } from './agentPermission.js';
+import type * as AgentCommandShared from '../../../agentCommandShared.js';
 
 type SlackActionHandlerArgs = {
   ack: () => Promise<void>;
@@ -20,8 +22,9 @@ type SlackActionHandlerArgs = {
 
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
   authorizeSlackOperationAndRespond: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
   getSlackAgentPermissionMessageState: vi.fn(),
 }));
 
@@ -30,7 +33,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/slackPermissionGuards.js', () => ({
@@ -41,7 +44,16 @@ vi.mock('../../slackBotChannelAdapter.js', () => ({
   getSlackAgentPermissionMessageState: hoisted.getSlackAgentPermissionMessageState,
 }));
 
-function buildSession(overrides: Record<string, unknown> = {}) {
+vi.mock('../../../agentCommandShared.js', async () => {
+  const actual = await vi.importActual<typeof AgentCommandShared>('../../../agentCommandShared.js');
+
+  return {
+    ...actual,
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
+
+function buildSession(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRecord {
   return {
     sessionId: 'session-1',
     provider: 'slack',
@@ -61,8 +73,12 @@ describe('registerAgentPermissionActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(true);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
     hoisted.getSlackAgentPermissionMessageState.mockReturnValue(undefined);
   });
 
@@ -89,6 +105,7 @@ describe('registerAgentPermissionActions', () => {
       queue: {} as never,
       bootstrapQueue: {} as never,
       workerEventQueue: {} as never,
+      queueRuntime: {} as never,
       permissions: {} as never,
     });
 

@@ -421,7 +421,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           interaction,
           parsedAgentPermission,
           config,
-          workerEventQueue,
+          queueRuntime,
           permissions,
         );
         return;
@@ -433,7 +433,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           interaction,
           parsedAgentFollowUp,
           config,
-          workerEventQueue,
+          queueRuntime,
           permissions,
         );
         return;
@@ -445,7 +445,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           interaction,
           parsedAgentStop.sessionId,
           config,
-          workerEventQueue,
+          queueRuntime,
           permissions,
         );
         return;
@@ -459,7 +459,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
           interaction,
           parsedAgentQuestionAction,
           config,
-          workerEventQueue,
+          queueRuntime,
           permissions,
         );
         return;
@@ -819,7 +819,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             interaction,
             parsedAgentQuestionSelect,
             config,
-            workerEventQueue,
+            queueRuntime,
             permissions,
           );
         } catch (err) {
@@ -902,7 +902,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             interaction,
             parsedAgentQuestionModal,
             config,
-            workerEventQueue,
+            queueRuntime,
             permissions,
           );
         } catch (err) {
@@ -929,7 +929,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       const handledAgentThreadMessage = await handleAgentThreadMessage(
         message,
         config,
-        workerEventQueue,
+        queueRuntime,
         permissions,
       );
       if (handledAgentThreadMessage) {

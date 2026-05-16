@@ -7,6 +7,7 @@ const enqueueJobMock = vi.hoisted(() => vi.fn());
 const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerMailboxEventMock = vi.hoisted(() => vi.fn());
+const loadAgentSessionMock = vi.hoisted(() => vi.fn());
 const updateAgentSessionStatusMock = vi.hoisted(() => vi.fn());
 const loadApprovalRequestMock = vi.hoisted(() => vi.fn());
 const approveIfPendingMock = vi.hoisted(() => vi.fn());
@@ -14,6 +15,8 @@ const denyIfPendingMock = vi.hoisted(() => vi.fn());
 const cancelIfPendingMock = vi.hoisted(() => vi.fn());
 const expireIfPendingMock = vi.hoisted(() => vi.fn());
 const evaluatePermissionDecisionMock = vi.hoisted(() => vi.fn());
+const enqueueAgentSessionOwnerMailboxEventMock = vi.hoisted(() => vi.fn());
+const isOwnerRoutedAgentEventMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@sniptail/core/jobs/registry.js', () => ({
   saveJobQueued: saveJobQueuedMock,
@@ -35,6 +38,7 @@ vi.mock('@sniptail/core/logger.js', () => ({
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
+  loadAgentSession: loadAgentSessionMock,
   updateAgentSessionStatus: updateAgentSessionStatusMock,
 }));
 
@@ -51,6 +55,13 @@ vi.mock('@sniptail/core/permissions/permissionsApprovalStore.js', () => ({
 
 vi.mock('@sniptail/core/permissions/permissionsPolicyEngine.js', () => ({
   evaluatePermissionDecision: evaluatePermissionDecisionMock,
+}));
+
+vi.mock('../agentCommandShared.js', () => ({
+  enqueueAgentSessionOwnerMailboxEvent: enqueueAgentSessionOwnerMailboxEventMock,
+  getAgentSessionIdFromWorkerEvent: (event: { payload?: { sessionId?: string } }) =>
+    event.payload?.sessionId,
+  isOwnerRoutedAgentEvent: isOwnerRoutedAgentEventMock,
 }));
 
 function createService() {
@@ -163,6 +174,37 @@ function createPendingAgentStartRequest(overrides?: Partial<ApprovalRequest>): A
   });
 }
 
+function createPendingAgentQuestionRequest(overrides?: Partial<ApprovalRequest>): ApprovalRequest {
+  return createPendingRequest({
+    action: 'agent.interaction.resolve',
+    operation: {
+      kind: 'enqueueWorkerEvent',
+      targetWorkerId: 'worker-a',
+      event: {
+        schemaVersion: 1,
+        type: 'agent.interaction.resolve',
+        payload: {
+          sessionId: 'session-1',
+          response: {
+            provider: 'slack',
+            channelId: 'C1',
+            threadId: 'T1',
+            userId: 'U_REQ',
+            workspaceId: 'W1',
+          },
+          interactionId: 'interaction-1',
+          resolution: {
+            kind: 'question',
+            answers: [['yes']],
+          },
+        },
+      },
+    },
+    summary: 'Resolve agent interaction session-1',
+    ...overrides,
+  });
+}
+
 describe('approval execution persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -171,7 +213,27 @@ describe('approval execution persistence', () => {
     enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
     enqueueWorkerMailboxEventMock.mockResolvedValue(undefined);
+    enqueueAgentSessionOwnerMailboxEventMock.mockResolvedValue(undefined);
     updateAgentSessionStatusMock.mockResolvedValue(undefined);
+    loadAgentSessionMock.mockResolvedValue({
+      sessionId: 'session-1',
+      provider: 'slack',
+      channelId: 'C1',
+      threadId: 'T1',
+      userId: 'U_REQ',
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      ownerWorkerId: 'worker-a',
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    isOwnerRoutedAgentEventMock.mockImplementation(
+      (event: { type?: string }) =>
+        event.type === 'agent.session.message' ||
+        event.type === 'agent.prompt.stop' ||
+        event.type === 'agent.interaction.resolve',
+    );
     expireIfPendingMock.mockResolvedValue({ changed: false, reason: 'not_pending' });
     denyIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
     cancelIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
@@ -224,6 +286,70 @@ describe('approval execution persistence', () => {
     expect(
       saveJobQueuedMock.mock.invocationCallOrder[0] < enqueueJobMock.mock.invocationCallOrder[0],
     ).toBe(true);
+  });
+
+  it('approved owner-routed live agent events revalidate the session before mailbox enqueue', async () => {
+    const service = createService();
+    const pendingRequest = createPendingAgentQuestionRequest();
+    const approvedRequest = {
+      ...pendingRequest,
+      status: 'approved' as const,
+      resolution: 'approved' as const,
+      resolvedBy: { userId: 'U_APP' },
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+
+    loadApprovalRequestMock.mockResolvedValue(pendingRequest);
+    approveIfPendingMock.mockResolvedValue({
+      changed: true,
+      reason: 'updated',
+      request: approvedRequest,
+    });
+
+    const result = await service.resolveApprovalInteraction({
+      action: 'approval.grant',
+      resolutionAction: 'approval.grant',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_APP',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    expect(result.status).toBe('approved');
+    if (result.status !== 'approved') {
+      throw new Error('Expected approved status');
+    }
+    expect(result.executed).toBe(true);
+    expect(loadAgentSessionMock).toHaveBeenCalledWith('session-1');
+    const enqueueArgs = enqueueAgentSessionOwnerMailboxEventMock.mock.calls[0]?.[0] as
+      | {
+          session: {
+            sessionId: string;
+            ownerWorkerId?: string;
+          };
+          queueRuntime: {
+            publishWorkerEventToMailbox: () => Promise<void>;
+          };
+          event: typeof approvedRequest.operation.event;
+        }
+      | undefined;
+    expect(enqueueArgs).toMatchObject({
+      session: {
+        sessionId: 'session-1',
+        ownerWorkerId: 'worker-a',
+      },
+    });
+    expect(enqueueArgs?.event).toMatchObject({
+      schemaVersion: 1,
+      type: 'agent.interaction.resolve',
+      payload: {
+        sessionId: 'session-1',
+      },
+    });
+    expect(typeof enqueueArgs?.queueRuntime.publishWorkerEventToMailbox).toBe('function');
+    expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
 
   it('approved enqueueJob save failure reports execution failure and does not enqueue', async () => {

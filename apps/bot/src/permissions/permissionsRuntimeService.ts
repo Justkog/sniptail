@@ -2,7 +2,10 @@ import type {
   QueuePublisher,
   QueueTransportRuntime,
 } from '@sniptail/core/queue/queueTransportTypes.js';
-import { updateAgentSessionStatus } from '@sniptail/core/agent-sessions/registry.js';
+import {
+  loadAgentSession,
+  updateAgentSessionStatus,
+} from '@sniptail/core/agent-sessions/registry.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -39,6 +42,11 @@ import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import { resolvePermissionsProviderCapabilities } from './permissionsProviderCapabilities.js';
 import { auditJobRequest } from '../lib/requestAudit.js';
+import {
+  enqueueAgentSessionOwnerMailboxEvent,
+  getAgentSessionIdFromWorkerEvent,
+  isOwnerRoutedAgentEvent,
+} from '../agentCommandShared.js';
 
 type RuntimeDeps = {
   config: BotConfig;
@@ -350,11 +358,27 @@ export class PermissionsRuntimeService {
               `Cannot enqueue worker mailbox event for ${operation.targetWorkerId} without queue runtime support.`,
             );
           }
-          await enqueueWorkerMailboxEvent(
-            this.#queueRuntime,
-            operation.targetWorkerId,
-            operation.event,
-          );
+          if (isOwnerRoutedAgentEvent(operation.event)) {
+            const sessionId = getAgentSessionIdFromWorkerEvent(operation.event);
+            if (!sessionId) {
+              throw new Error('Agent session id is required for owner-routed worker events.');
+            }
+            const session = await loadAgentSession(sessionId);
+            if (!session) {
+              throw new Error('Agent session not found.');
+            }
+            await enqueueAgentSessionOwnerMailboxEvent({
+              session,
+              queueRuntime: this.#queueRuntime,
+              event: operation.event,
+            });
+          } else {
+            await enqueueWorkerMailboxEvent(
+              this.#queueRuntime,
+              operation.targetWorkerId,
+              operation.event,
+            );
+          }
         } else {
           await enqueueWorkerEvent(this.#workerEventQueue, operation.event);
         }

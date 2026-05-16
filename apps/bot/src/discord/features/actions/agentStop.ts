@@ -1,12 +1,12 @@
 import type { ButtonInteraction } from 'discord.js';
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import {
   buildAgentPromptStopWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
@@ -38,7 +38,7 @@ export async function handleAgentStopButton(
   interaction: ButtonInteraction,
   sessionId: string,
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const session = await loadAgentSession(sessionId);
@@ -75,6 +75,14 @@ export async function handleAgentStopButton(
     reason: `Requested by Discord user ${interaction.user.id}`,
     messageId: interaction.message.id,
   });
+  const route = await resolveAgentSessionOwnerMailboxRoute(session);
+  if (!route.ok) {
+    await interaction.reply({
+      content: route.errorMessage,
+      ephemeral: true,
+    });
+    return;
+  }
 
   let denied = false;
   const authorized = await authorizeDiscordOperationAndRespond({
@@ -85,6 +93,7 @@ export async function handleAgentStopButton(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: interaction.user.id,
@@ -113,7 +122,7 @@ export async function handleAgentStopButton(
     return;
   }
 
-  await enqueueWorkerEvent(workerEventQueue, event);
+  await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
   await interaction.update({
     content: appendStopRequestedText(interaction.message.content, interaction.user.id),
     components: [],

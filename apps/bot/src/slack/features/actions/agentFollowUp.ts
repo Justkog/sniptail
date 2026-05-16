@@ -1,5 +1,5 @@
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import {
   appendSlackAgentFollowUpAction,
   parseSlackAgentActionValue,
@@ -7,6 +7,7 @@ import {
 import {
   buildAgentSessionMessageWorkerEvent,
   resolveAgentFollowUpMode,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
@@ -38,7 +39,7 @@ function registerFollowUpAction(
   mode: 'queue' | 'steer',
   context: SlackHandlerContext,
 ) {
-  const { app, slackIds, workerEventQueue, permissions } = context;
+  const { app, slackIds, queueRuntime, permissions } = context;
   app.action(actionId, async ({ ack, body, client, action }) => {
     await ack();
     const value = parseSlackAgentActionValue<{ sessionId?: string; messageTs?: string }>(
@@ -97,6 +98,15 @@ function registerFollowUpAction(
       messageId: sourceMessageTs,
       mode: resolveAgentFollowUpMode(session.status, mode),
     });
+    const route = await resolveAgentSessionOwnerMailboxRoute(session);
+    if (!route.ok) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: route.errorMessage,
+      });
+      return;
+    }
 
     const authorized = await authorizeSlackOperationAndRespond({
       permissions,
@@ -107,6 +117,7 @@ function registerFollowUpAction(
       operation: {
         kind: 'enqueueWorkerEvent',
         event,
+        targetWorkerId: route.targetWorkerId,
       },
       actor: {
         userId,
@@ -127,7 +138,7 @@ function registerFollowUpAction(
       return;
     }
 
-    await enqueueWorkerEvent(workerEventQueue, event);
+    await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
