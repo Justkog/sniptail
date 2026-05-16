@@ -17,7 +17,7 @@ import {
   loadAgentCommandMetadata,
 } from '../../../agentCommandMetadataCache.js';
 import { buildSlackAgentStopBlocks } from '../../agentCommandState.js';
-import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
+import { loadSlackModalContextFiles, postEphemeral, postMessage } from '../../helpers.js';
 import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -461,8 +461,9 @@ export function registerAgentSubmitView({
         },
         'accepted',
       );
-      await postMessage(app, {
+      await postEphemeral(app, {
         channel: channelId,
+        user: userId,
         text: `Agent session started on worker \`${ownerWorker.workerId}\`.`,
         ...(threadId ? { threadTs: threadId } : {}),
       });

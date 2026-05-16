@@ -25,6 +25,7 @@ const hoisted = vi.hoisted(() => ({
   buildAgentWorkerSelectionError: vi.fn(),
   resolveAgentStartWorker: vi.fn(),
   loadSlackModalContextFiles: vi.fn(),
+  postEphemeral: vi.fn(),
   postMessage: vi.fn(),
   createAgentSession: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
@@ -46,6 +47,7 @@ vi.mock('../../../agentCommandWorkerRouting.js', () => ({
 
 vi.mock('../../helpers.js', () => ({
   loadSlackModalContextFiles: hoisted.loadSlackModalContextFiles,
+  postEphemeral: hoisted.postEphemeral,
   postMessage: hoisted.postMessage,
 }));
 
@@ -168,6 +170,7 @@ describe('registerAgentSubmitView', () => {
     });
     hoisted.loadSlackModalContextFiles.mockResolvedValue([]);
     hoisted.postMessage.mockResolvedValue({ ts: 'T1' });
+    hoisted.postEphemeral.mockResolvedValue({});
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
     hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
@@ -194,6 +197,30 @@ describe('registerAgentSubmitView', () => {
         cwd: 'apps/bot',
       }),
       'accepted',
+    );
+  });
+
+  it('posts the start acknowledgment ephemerally', async () => {
+    const { handler } = buildContext();
+
+    await handler(buildArgs());
+
+    expect(hoisted.postEphemeral).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        user: 'U1',
+        text: 'Agent session started on worker `worker-a`.',
+        threadTs: 'T1',
+      }),
+    );
+    expect(hoisted.postMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        text: expect.stringContaining('Agent session requested by <@U1>.'),
+        threadTs: 'T1',
+      }),
     );
   });
 
