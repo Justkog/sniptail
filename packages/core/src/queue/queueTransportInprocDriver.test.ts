@@ -45,16 +45,14 @@ describe('queueTransportInprocDriver', () => {
 
     const jobsHandle = runtime.consumeJobs({
       concurrency: 1,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      handler: async (job) => {
+      handler: (job) => {
         seenJobs.push(job.data.jobId);
       },
     });
 
     const workerEventsHandle = runtime.consumeWorkerEvents({
       concurrency: 1,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      handler: async (job) => {
+      handler: (job) => {
         seenWorkerEvents.push(job.data.type);
       },
     });
@@ -75,12 +73,77 @@ describe('queueTransportInprocDriver', () => {
     await workerEventsHandle.close();
   });
 
+  it('routes targeted worker events only to the matching mailbox', async () => {
+    const sharedWorkerEvents: string[] = [];
+    const workerAMailbox: string[] = [];
+    const workerBMailbox: string[] = [];
+
+    const sharedHandle = runtime.consumeWorkerEvents({
+      concurrency: 1,
+      handler: (job) => {
+        sharedWorkerEvents.push(job.data.requestId ?? job.data.type);
+      },
+    });
+    const workerAHandle = runtime.consumeWorkerMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        workerAMailbox.push(job.data.requestId ?? job.data.type);
+      },
+    });
+    const workerBHandle = runtime.consumeWorkerMailbox('worker-b', {
+      concurrency: 1,
+      handler: (job) => {
+        workerBMailbox.push(job.data.requestId ?? job.data.type);
+      },
+    });
+
+    await runtime.queues.workerEvents.add('jobs.clear', {
+      schemaVersion: 1,
+      requestId: 'shared-1',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-1', ttlMs: 60_000 },
+    });
+    await runtime.publishWorkerEventToMailbox(
+      'worker-a',
+      {
+        schemaVersion: 1,
+        requestId: 'mail-a-1',
+        type: 'jobs.clear',
+        payload: { jobId: 'job-2', ttlMs: 60_000 },
+      },
+      { jobId: 'mailbox-job-a-1' },
+    );
+    await runtime.publishWorkerEventToMailbox(
+      'worker-b',
+      {
+        schemaVersion: 1,
+        requestId: 'mail-b-1',
+        type: 'jobs.clear',
+        payload: { jobId: 'job-3', ttlMs: 60_000 },
+      },
+      { jobId: 'mailbox-job-b-1' },
+    );
+
+    await waitFor(
+      () =>
+        sharedWorkerEvents.length === 1 &&
+        workerAMailbox.length === 1 &&
+        workerBMailbox.length === 1,
+    );
+    expect(sharedWorkerEvents).toEqual(['shared-1']);
+    expect(workerAMailbox).toEqual(['mail-a-1']);
+    expect(workerBMailbox).toEqual(['mail-b-1']);
+
+    await sharedHandle.close();
+    await workerAHandle.close();
+    await workerBHandle.close();
+  });
+
   it('preserves fifo ordering for a single channel', async () => {
     const seen: string[] = [];
     runtime.consumeJobs({
       concurrency: 1,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      handler: async (job) => {
+      handler: (job) => {
         seen.push(job.data.jobId);
       },
     });
@@ -117,6 +180,38 @@ describe('queueTransportInprocDriver', () => {
     expect(maxRunning).toBe(2);
   });
 
+  it('preserves fifo ordering for a single mailbox', async () => {
+    const seen: string[] = [];
+    runtime.consumeWorkerMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        seen.push(job.data.requestId ?? job.data.type);
+      },
+    });
+
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-1',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-1', ttlMs: 60_000 },
+    });
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-2',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-2', ttlMs: 60_000 },
+    });
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-3',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-3', ttlMs: 60_000 },
+    });
+
+    await waitFor(() => seen.length === 3);
+    expect(seen).toEqual(['mail-1', 'mail-2', 'mail-3']);
+  });
+
   it('rejects duplicate jobId while an item is pending/running', async () => {
     runtime.consumeJobs({
       concurrency: 1,
@@ -147,5 +242,96 @@ describe('queueTransportInprocDriver', () => {
     await expect(
       runtime.queues.jobs.add('ASK', createJob('job-auto'), { jobId: 'sniptail-jobs-1' }),
     ).rejects.toThrow('Duplicate inproc job id "sniptail-jobs-1"');
+  });
+
+  it('scopes duplicate mailbox job IDs to a single mailbox channel', async () => {
+    runtime.consumeWorkerMailbox('worker-a', {
+      concurrency: 1,
+      handler: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    });
+    runtime.consumeWorkerMailbox('worker-b', {
+      concurrency: 1,
+      handler: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    });
+
+    await runtime.publishWorkerEventToMailbox(
+      'worker-a',
+      {
+        schemaVersion: 1,
+        requestId: 'mail-a-1',
+        type: 'jobs.clear',
+        payload: { jobId: 'job-a', ttlMs: 60_000 },
+      },
+      { jobId: 'shared-mailbox-job' },
+    );
+
+    await expect(
+      runtime.publishWorkerEventToMailbox(
+        'worker-a',
+        {
+          schemaVersion: 1,
+          requestId: 'mail-a-2',
+          type: 'jobs.clear',
+          payload: { jobId: 'job-a-2', ttlMs: 60_000 },
+        },
+        { jobId: 'shared-mailbox-job' },
+      ),
+    ).rejects.toThrow('Duplicate inproc job id "shared-mailbox-job"');
+
+    await expect(
+      runtime.publishWorkerEventToMailbox(
+        'worker-b',
+        {
+          schemaVersion: 1,
+          requestId: 'mail-b-1',
+          type: 'jobs.clear',
+          payload: { jobId: 'job-b', ttlMs: 60_000 },
+        },
+        { jobId: 'shared-mailbox-job' },
+      ),
+    ).resolves.toMatchObject({ id: 'shared-mailbox-job' });
+  });
+
+  it('delivers mailbox events published before a consumer subscribes', async () => {
+    const seen: string[] = [];
+
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-early',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-early', ttlMs: 60_000 },
+    });
+
+    runtime.consumeWorkerMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        seen.push(job.data.requestId ?? job.data.type);
+      },
+    });
+
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual(['mail-early']);
+  });
+
+  it('rejects invalid worker ids for mailbox publish and consume', () => {
+    expect(() =>
+      runtime.publishWorkerEventToMailbox('worker/a', {
+        schemaVersion: 1,
+        requestId: 'bad-worker',
+        type: 'jobs.clear',
+        payload: { jobId: 'job-bad', ttlMs: 60_000 },
+      }),
+    ).toThrow('Invalid worker.id');
+
+    expect(() =>
+      runtime.consumeWorkerMailbox('worker a', {
+        concurrency: 1,
+        handler: () => undefined,
+      }),
+    ).toThrow('Invalid worker.id');
   });
 });

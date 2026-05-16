@@ -1,7 +1,9 @@
 import {
+  assertValidWorkerId,
   botEventQueueName,
   bootstrapQueueName,
   jobQueueName,
+  workerMailboxQueueName,
   workerEventQueueName,
 } from './queue.js';
 import type {
@@ -173,6 +175,17 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     workerEvents: new InprocQueueChannel<WorkerEvent>(workerEventQueueName),
     botEvents: new InprocQueueChannel<BotEvent>(botEventQueueName),
   };
+  const mailboxChannels = new Map<string, InprocQueueChannel<WorkerEvent>>();
+
+  function getMailboxChannel(workerId: string): InprocQueueChannel<WorkerEvent> {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let channel = mailboxChannels.get(normalizedWorkerId);
+    if (!channel) {
+      channel = new InprocQueueChannel<WorkerEvent>(workerMailboxQueueName(normalizedWorkerId));
+      mailboxChannels.set(normalizedWorkerId, channel);
+    }
+    return channel;
+  }
 
   return {
     driver: 'inproc',
@@ -191,6 +204,12 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     consumeWorkerEvents(options) {
       return channels.workerEvents.subscribe(options);
     },
+    publishWorkerEventToMailbox(workerId, event, options) {
+      return getMailboxChannel(workerId).createPublisher().add(event.type, event, options);
+    },
+    consumeWorkerMailbox(workerId, options) {
+      return getMailboxChannel(workerId).subscribe(options);
+    },
     consumeBotEvents(options) {
       return channels.botEvents.subscribe(options);
     },
@@ -199,6 +218,11 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
       await channels.bootstrap.close();
       await channels.workerEvents.close();
       await channels.botEvents.close();
+      const activeMailboxChannels = [...mailboxChannels.values()];
+      mailboxChannels.clear();
+      for (const channel of activeMailboxChannels) {
+        await channel.close();
+      }
     },
   };
 }

@@ -56,6 +56,15 @@ export interface QueueTransportRuntime {
   consumeJobs(options: QueueConsumerOptions<JobSpec>): QueueConsumerHandle;
   consumeBootstrap(options: QueueConsumerOptions<BootstrapRequest>): QueueConsumerHandle;
   consumeWorkerEvents(options: QueueConsumerOptions<WorkerEvent>): QueueConsumerHandle;
+  publishWorkerEventToMailbox(
+    workerId: string,
+    event: WorkerEvent,
+    options?: QueueAddOptions,
+  ): Promise<QueueJob<WorkerEvent>>;
+  consumeWorkerMailbox(
+    workerId: string,
+    options: QueueConsumerOptions<WorkerEvent>,
+  ): QueueConsumerHandle;
   consumeBotEvents(options: QueueConsumerOptions<BotEvent>): QueueConsumerHandle;
   close(): Promise<void>;
 }

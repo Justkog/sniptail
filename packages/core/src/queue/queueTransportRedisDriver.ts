@@ -1,10 +1,12 @@
 import { Queue, Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import {
+  assertValidWorkerId,
   botEventQueueName,
   bootstrapQueueName,
   createConnectionOptions,
   jobQueueName,
+  workerMailboxQueueName,
   workerEventQueueName,
 } from './queue.js';
 import type {
@@ -90,7 +92,20 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
     connection,
   });
   const botEventQueue = new Queue<BotEvent, unknown, string>(botEventQueueName, { connection });
+  const workerMailboxQueues = new Map<string, Queue<WorkerEvent, unknown, string>>();
   const consumers: Array<QueueConsumerHandle & { worker: Worker<unknown> }> = [];
+
+  function getWorkerMailboxQueue(workerId: string): Queue<WorkerEvent, unknown, string> {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let queue = workerMailboxQueues.get(normalizedWorkerId);
+    if (!queue) {
+      queue = new Queue<WorkerEvent, unknown, string>(workerMailboxQueueName(normalizedWorkerId), {
+        connection,
+      });
+      workerMailboxQueues.set(normalizedWorkerId, queue);
+    }
+    return queue;
+  }
 
   return {
     driver: 'redis',
@@ -115,6 +130,22 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
       consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
       return consumer;
     },
+    async publishWorkerEventToMailbox(workerId, event, options) {
+      return createPublisher<WorkerEvent>(getWorkerMailboxQueue(workerId)).add(
+        event.type,
+        event,
+        options,
+      );
+    },
+    consumeWorkerMailbox(workerId, options) {
+      const consumer = createConsumer<WorkerEvent>(
+        workerMailboxQueueName(assertValidWorkerId(workerId)),
+        redisUrl,
+        options,
+      );
+      consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
+      return consumer;
+    },
     consumeBotEvents(options) {
       const consumer = createConsumer<BotEvent>(botEventQueueName, redisUrl, options);
       consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
@@ -130,7 +161,9 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
         bootstrapQueue.close(),
         workerEventQueue.close(),
         botEventQueue.close(),
+        ...[...workerMailboxQueues.values()].map((queue) => queue.close()),
       ]);
+      workerMailboxQueues.clear();
     },
   };
 }
