@@ -27,8 +27,20 @@ describe('agentCommandMetadataCache', () => {
         staleWorkers: [],
         disabledWorkers: [],
         workspaces: [
-          { key: 'snatch', status: 'available', label: 'Snatch', workerIds: ['worker-a'], workers: [] },
-          { key: 'tools', status: 'available', label: 'Tools', workerIds: ['worker-a'], workers: [] },
+          {
+            key: 'snatch',
+            status: 'available',
+            label: 'Snatch',
+            workerIds: ['worker-a'],
+            workers: [],
+          },
+          {
+            key: 'tools',
+            status: 'available',
+            label: 'Tools',
+            workerIds: ['worker-a'],
+            workers: [],
+          },
         ],
         profiles: [
           {
@@ -109,7 +121,15 @@ describe('agentCommandMetadataCache', () => {
         workspaces: [{ key: 'snatch', status: 'available', workerIds: ['worker-a'], workers: [] }],
         profiles: [
           { key: 'build', status: 'conflicted', workerIds: ['worker-a'], workers: [] },
-          { key: 'plan', status: 'available', provider: 'opencode', profile: 'plan', label: 'Plan', workerIds: ['worker-a'], workers: [] },
+          {
+            key: 'plan',
+            status: 'available',
+            provider: 'opencode',
+            profile: 'plan',
+            label: 'Plan',
+            workerIds: ['worker-a'],
+            workers: [],
+          },
         ],
       },
       activeSessionCounts: {},

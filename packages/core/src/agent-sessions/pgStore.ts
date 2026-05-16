@@ -1,6 +1,6 @@
-import { eq, and, desc } from 'drizzle-orm';
-import type { SqliteJobRegistryClient } from '../db/index.js';
-import { agentSessions } from '../db/sqlite/schema.js';
+import { and, desc, eq } from 'drizzle-orm';
+import type { PgJobRegistryClient } from '../db/index.js';
+import { agentSessions } from '../db/pg/schema.js';
 import type {
   AgentSessionRecord,
   AgentSessionStatus,
@@ -65,9 +65,9 @@ function fromRow(row: AgentSessionRow | undefined): AgentSessionRecord | undefin
   };
 }
 
-export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): AgentSessionStore {
+export function createPgAgentSessionStore(client: PgJobRegistryClient): AgentSessionStore {
   return {
-    kind: 'sqlite',
+    kind: 'pg',
     async createSession(input: CreateAgentSessionInput): Promise<AgentSessionRecord> {
       const now = input.now ?? new Date();
       const record: AgentSessionRecord = {
@@ -92,7 +92,17 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
       };
       await client.db
         .insert(agentSessions)
-        .values(record)
+        .values({
+          ...record,
+          guildId: record.guildId ?? null,
+          workspaceId: record.workspaceId ?? null,
+          codingAgentSessionId: record.codingAgentSessionId ?? null,
+          cwd: record.cwd ?? null,
+          ownerWorkerId: record.ownerWorkerId ?? null,
+          ownerWorkerLabel: record.ownerWorkerLabel ?? null,
+          workerClaimedAt: record.workerClaimedAt ?? null,
+          ownerStaleSince: record.ownerStaleSince ?? null,
+        })
         .onConflictDoUpdate({
           target: agentSessions.sessionId,
           set: {
@@ -100,16 +110,16 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
             channelId: record.channelId,
             threadId: record.threadId,
             userId: record.userId,
-            guildId: record.guildId,
-            workspaceId: record.workspaceId,
+            guildId: record.guildId ?? null,
+            workspaceId: record.workspaceId ?? null,
             workspaceKey: record.workspaceKey,
             agentProfileKey: record.agentProfileKey,
-            codingAgentSessionId: record.codingAgentSessionId,
-            cwd: record.cwd,
-            ownerWorkerId: record.ownerWorkerId,
-            ownerWorkerLabel: record.ownerWorkerLabel,
-            workerClaimedAt: record.workerClaimedAt,
-            ownerStaleSince: record.ownerStaleSince,
+            codingAgentSessionId: record.codingAgentSessionId ?? null,
+            cwd: record.cwd ?? null,
+            ownerWorkerId: record.ownerWorkerId ?? null,
+            ownerWorkerLabel: record.ownerWorkerLabel ?? null,
+            workerClaimedAt: record.workerClaimedAt ?? null,
+            ownerStaleSince: record.ownerStaleSince ?? null,
             status: record.status,
             updatedAt: record.updatedAt,
           },
@@ -177,10 +187,7 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
     },
     async updateSessionOwnership(
       sessionId: string,
-      ownership: Pick<
-        AgentSessionRecord,
-        'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
-      >,
+      ownership,
     ): Promise<AgentSessionRecord | undefined> {
       const existing = await this.loadSession(sessionId);
       if (!existing) return undefined;

@@ -1,8 +1,14 @@
-import type { WorkerAgentCapabilityProfile, WorkerAgentCapabilityWorkspace } from '@sniptail/core/agent-capabilities/agentCapabilities.js';
+import type {
+  WorkerAgentCapabilityProfile,
+  WorkerAgentCapabilityWorkspace,
+} from '@sniptail/core/agent-capabilities/agentCapabilities.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
 import { createWorkerCapabilityRegistryStore } from '@sniptail/core/registry/registryStoreFactory.js';
-import type { RegistryWorkerCapabilityRecord, RegistryWorkerHeartbeat } from '@sniptail/core/registry/types.js';
+import type {
+  RegistryWorkerCapabilityRecord,
+  RegistryWorkerHeartbeat,
+} from '@sniptail/core/registry/types.js';
 import { getActiveAgentPromptTurnCount } from './activeAgentPromptTurns.js';
 
 export const WORKER_CAPABILITY_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -69,7 +75,9 @@ export async function startWorkerCapabilityPublisher(
 ): Promise<WorkerCapabilityPublisher> {
   if (!config.agent.enabled) {
     return {
-      async close(): Promise<void> {},
+      close(): Promise<void> {
+        return Promise.resolve();
+      },
     };
   }
 
@@ -79,14 +87,18 @@ export async function startWorkerCapabilityPublisher(
 
   const timer = setInterval(() => {
     void store.refreshWorkerHeartbeat(buildHeartbeat(config, startedAt)).catch((err) => {
-      logger.warn({ err, workerId: config.workerId }, 'Failed to refresh worker capability heartbeat');
+      logger.warn(
+        { err, workerId: config.workerId },
+        'Failed to refresh worker capability heartbeat',
+      );
     });
   }, WORKER_CAPABILITY_HEARTBEAT_INTERVAL_MS);
   timer.unref?.();
 
   return {
-    async close(): Promise<void> {
+    close(): Promise<void> {
       clearInterval(timer);
+      return Promise.resolve();
     },
   };
 }

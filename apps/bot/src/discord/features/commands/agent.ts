@@ -28,7 +28,6 @@ import {
   findAgentProfileMetadata,
   findAgentWorkspaceMetadata,
   hasEligibleWorkerForSelection,
-  listSelectableAgentProfiles,
   loadAgentCommandMetadata,
   type AgentCommandMetadata,
 } from '../../../agentCommandMetadataCache.js';
@@ -127,17 +126,11 @@ function validateRelativeCwd(cwd: string | undefined): string | undefined {
   return cwd;
 }
 
-function hasWorkspaceKey(
-  metadata: AgentCommandMetadata,
-  key: string,
-): boolean {
+function hasWorkspaceKey(metadata: AgentCommandMetadata, key: string): boolean {
   return metadata.workspaces.some((workspace) => workspace.key === key);
 }
 
-function hasProfileKey(
-  metadata: AgentCommandMetadata,
-  key: string,
-): boolean {
+function hasProfileKey(metadata: AgentCommandMetadata, key: string): boolean {
   return metadata.profiles.some((profile) => profile.key === key);
 }
 

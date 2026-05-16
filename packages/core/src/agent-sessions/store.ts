@@ -1,6 +1,8 @@
 import { loadCoreConfig } from '../config/config.js';
 import { getJobRegistryDb } from '../db/index.js';
 import type { AgentSessionStore } from './types.js';
+import { createPgAgentSessionStore } from './pgStore.js';
+import { createRedisAgentSessionStore } from './redisStore.js';
 import { createSqliteAgentSessionStore } from './sqliteStore.js';
 
 export async function getAgentSessionStore(): Promise<AgentSessionStore> {
@@ -13,12 +15,24 @@ export async function getAgentSessionStore(): Promise<AgentSessionStore> {
       }
       return createSqliteAgentSessionStore(client);
     }
-    case 'pg':
-      throw new Error('Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=pg');
-    case 'redis':
-      throw new Error(
-        'Agent session registry is not supported yet when SNIPTAIL_REGISTRY_DB=redis',
-      );
+    case 'pg': {
+      if (!config.registryPgUrl) {
+        throw new Error('SNIPTAIL_REGISTRY_PG_URL is required when SNIPTAIL_REGISTRY_DB=pg');
+      }
+      const client = await getJobRegistryDb();
+      if (client.kind !== 'pg') {
+        throw new Error(`Expected pg agent session registry client, got ${client.kind}`);
+      }
+      return createPgAgentSessionStore(client);
+    }
+    case 'redis': {
+      if (!config.registryRedisUrl) {
+        throw new Error('SNIPTAIL_REGISTRY_REDIS_URL is required when SNIPTAIL_REGISTRY_DB=redis');
+      }
+      return createRedisAgentSessionStore(config.registryRedisUrl, {
+        namespace: config.registryNamespace,
+      });
+    }
     default: {
       const exhaustive: never = config.registryDriver;
       throw new Error(`Unsupported SNIPTAIL_REGISTRY_DB: ${String(exhaustive)}`);

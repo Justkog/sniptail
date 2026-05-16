@@ -6,7 +6,7 @@ describe('registryCapabilities', () => {
     const workerCapabilityStore = {
       upsertWorkerCapability: vi.fn(),
       loadWorkerCapability: vi.fn(),
-      listWorkerCapabilities: vi.fn(async () => [
+      listWorkerCapabilities: vi.fn(() => [
         {
           workerId: 'worker-a',
           enabled: true,
@@ -30,7 +30,7 @@ describe('registryCapabilities', () => {
     const agentSessionOwnershipStore = {
       loadSessionOwnership: vi.fn(),
       updateSessionOwnership: vi.fn(),
-      listActiveSessionCountsByWorkerIds: vi.fn(async (workerIds: string[]) =>
+      listActiveSessionCountsByWorkerIds: vi.fn((workerIds: string[]) =>
         Object.fromEntries(workerIds.map((workerId, index) => [workerId, index + 1])),
       ),
     };

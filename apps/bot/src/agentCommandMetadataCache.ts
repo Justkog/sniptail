@@ -107,7 +107,9 @@ function toProfileMetadata(profile: AggregatedProfileCapability): AgentCommandPr
   };
 }
 
-function buildMetadata(snapshot: Awaited<ReturnType<typeof loadAggregatedAgentCapabilitySnapshot>>): AgentCommandMetadata {
+function buildMetadata(
+  snapshot: Awaited<ReturnType<typeof loadAggregatedAgentCapabilitySnapshot>>,
+): AgentCommandMetadata {
   return {
     enabled: snapshot.aggregated.liveWorkers.length > 0,
     receivedAt: snapshot.aggregated.generatedAt,

@@ -248,8 +248,7 @@ describe('registerAgentSubmitView', () => {
       expect.anything(),
       expect.objectContaining({
         channel: 'C1',
-        text:
-          'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
+        text: 'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
         threadTs: 'T1',
       }),
     );

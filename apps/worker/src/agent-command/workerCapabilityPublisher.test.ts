@@ -15,15 +15,9 @@ vi.mock('@sniptail/core/logger.js', () => ({
   },
 }));
 
-vi.mock('./activeAgentPromptTurns.js', async () => {
-  const actual = await vi.importActual<typeof import('./activeAgentPromptTurns.js')>(
-    './activeAgentPromptTurns.js',
-  );
-  return {
-    ...actual,
-    getActiveAgentPromptTurnCount: hoisted.getActiveAgentPromptTurnCount,
-  };
-});
+vi.mock('./activeAgentPromptTurns.js', () => ({
+  getActiveAgentPromptTurnCount: hoisted.getActiveAgentPromptTurnCount,
+}));
 
 import {
   startWorkerCapabilityPublisher,

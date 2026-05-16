@@ -1,8 +1,14 @@
 import { loadCoreConfig } from '../config/config.js';
 import type { CoreConfig } from '../config/types.js';
 import { getJobRegistryDb } from '../db/index.js';
-import { createPgAgentSessionOwnershipRegistryStore, createPgWorkerCapabilityRegistryStore } from './pgRegistryStores.js';
-import { createRedisAgentSessionOwnershipRegistryStore, createRedisWorkerCapabilityRegistryStore } from './redisRegistryStores.js';
+import {
+  createPgAgentSessionOwnershipRegistryStore,
+  createPgWorkerCapabilityRegistryStore,
+} from './pgRegistryStores.js';
+import {
+  createRedisAgentSessionOwnershipRegistryStore,
+  createRedisWorkerCapabilityRegistryStore,
+} from './redisRegistryStores.js';
 import {
   createSqliteAgentSessionOwnershipRegistryStore,
   createSqliteWorkerCapabilityRegistryStore,
@@ -82,7 +88,9 @@ export async function createAgentSessionOwnershipRegistryStore(
       requireRegistryPath(config);
       const client = await getJobRegistryDb();
       if (client.kind !== 'sqlite') {
-        throw new Error(`Expected sqlite agent session ownership registry client, got ${client.kind}`);
+        throw new Error(
+          `Expected sqlite agent session ownership registry client, got ${client.kind}`,
+        );
       }
       return createSqliteAgentSessionOwnershipRegistryStore(client);
     }

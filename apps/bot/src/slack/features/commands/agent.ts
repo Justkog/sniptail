@@ -5,7 +5,6 @@ import { buildAgentModal } from '../../modals.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackPrecheckAndRespond } from '../../permissions/slackPermissionGuards.js';
 import {
-  hasEligibleWorkerForSelection,
   listSelectableAgentProfiles,
   loadAgentCommandMetadata,
 } from '../../../agentCommandMetadataCache.js';
