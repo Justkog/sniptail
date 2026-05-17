@@ -40,11 +40,13 @@ class InprocQueueChannel<T> {
   readonly #pending: QueueItem<T>[] = [];
   readonly #pendingJobIds = new Set<string>();
   #subscriber: QueueConsumerOptions<T> | undefined;
+  #subscriberPaused = false;
   #inFlight = 0;
   #scheduled = false;
   #closed = false;
   #idCounter = 0;
   #closeWaiter: Deferred | undefined;
+  readonly #jobAvailableListeners = new Set<() => void | Promise<void>>();
 
   constructor(name: string) {
     this.#name = name;
@@ -66,8 +68,32 @@ class InprocQueueChannel<T> {
       // eslint-disable-next-line @typescript-eslint/require-await
       close: async () => {
         this.#subscriber = undefined;
+        this.#subscriberPaused = false;
+      },
+      // eslint-disable-next-line @typescript-eslint/require-await
+      pause: async () => {
+        this.#subscriberPaused = true;
+      },
+      // eslint-disable-next-line @typescript-eslint/require-await
+      resume: async () => {
+        this.#subscriberPaused = false;
+        this.#schedule();
       },
     };
+  }
+
+  watchJobAvailable(listener: () => Promise<void> | void): QueueConsumerHandle {
+    this.#jobAvailableListeners.add(listener);
+    return {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      close: async () => {
+        this.#jobAvailableListeners.delete(listener);
+      },
+    };
+  }
+
+  countRunnableJobs(): number {
+    return this.#pending.length;
   }
 
   async close(): Promise<void> {
@@ -106,12 +132,15 @@ class InprocQueueChannel<T> {
     };
     this.#pendingJobIds.add(id);
     this.#pending.push({ job });
+    for (const listener of this.#jobAvailableListeners) {
+      void Promise.resolve(listener()).catch(() => undefined);
+    }
     this.#schedule();
     return job;
   }
 
   #schedule() {
-    if (this.#scheduled || this.#closed) {
+    if (this.#scheduled || this.#closed || this.#subscriberPaused) {
       return;
     }
     this.#scheduled = true;
@@ -124,7 +153,7 @@ class InprocQueueChannel<T> {
   // eslint-disable-next-line @typescript-eslint/require-await
   async #dispatch() {
     const subscriber = this.#subscriber;
-    if (!subscriber || this.#closed) {
+    if (!subscriber || this.#closed || this.#subscriberPaused) {
       return;
     }
     while (this.#inFlight < subscriber.concurrency && this.#pending.length > 0) {
@@ -209,6 +238,15 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     },
     consumeWorkerMailbox(workerId, options) {
       return getMailboxChannel(workerId).subscribe(options);
+    },
+    observeWorkerMailbox(workerId, options) {
+      return getMailboxChannel(workerId).watchJobAvailable(options.onJobAvailable);
+    },
+    countWorkerMailboxJobs(workerId) {
+      return Promise.resolve({
+        waiting: getMailboxChannel(workerId).countRunnableJobs(),
+        prioritized: 0,
+      });
     },
     consumeBotEvents(options) {
       return channels.botEvents.subscribe(options);

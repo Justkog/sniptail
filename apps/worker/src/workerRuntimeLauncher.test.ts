@@ -9,6 +9,7 @@ const hoisted = vi.hoisted(() => ({
     registryPath: '/tmp/registry',
     botName: 'Sniptail',
     primaryAgent: 'codex',
+    workerId: '',
     jobConcurrency: 2,
     bootstrapConcurrency: 2,
     workerEventConcurrency: 2,
@@ -38,6 +39,7 @@ const hoisted = vi.hoisted(() => ({
   seedRepoCatalogFromAllowlistFile: vi.fn(),
   syncRunActionMetadata: vi.fn(),
   assertLocalAgentPreflight: vi.fn(() => Promise.resolve(undefined)),
+  loadActiveSessionCountsByWorkerIds: vi.fn(),
   startWorkerCapabilityPublisher: vi.fn(() =>
     Promise.resolve({
       close: vi.fn(() => Promise.resolve(undefined)),
@@ -81,6 +83,14 @@ vi.mock('./workerEvents.js', () => ({
   handleWorkerEvent: vi.fn(() => Promise.resolve(undefined)),
 }));
 
+vi.mock('@sniptail/core/registry/registryStoreFactory.js', () => ({
+  createAgentSessionOwnershipRegistryStore: vi.fn(() =>
+    Promise.resolve({
+      listActiveSessionCountsByWorkerIds: hoisted.loadActiveSessionCountsByWorkerIds,
+    }),
+  ),
+}));
+
 vi.mock('./channels/botEventSink.js', () => ({
   BullMqBotEventSink: class {
     constructor(private readonly queue: { add: (...args: unknown[]) => Promise<unknown> }) {}
@@ -122,6 +132,51 @@ vi.mock('./job/createJobRegistry.js', () => ({
 
 import { startWorkerRuntime } from './workerRuntimeLauncher.js';
 
+function createConsumerHandle(
+  overrides: Partial<{
+    close: () => Promise<void>;
+    pause: () => Promise<void>;
+    resume: () => Promise<void>;
+  }> = {},
+) {
+  return {
+    close: overrides.close ?? vi.fn(() => Promise.resolve(undefined)),
+    pause: overrides.pause ?? vi.fn(() => Promise.resolve(undefined)),
+    resume: overrides.resume ?? vi.fn(() => Promise.resolve(undefined)),
+  };
+}
+
+function createQueueRuntimeStub() {
+  const jobsConsumer = createConsumerHandle();
+  const bootstrapConsumer = createConsumerHandle();
+  const workerEventsConsumer = createConsumerHandle();
+  const mailboxConsumer = createConsumerHandle();
+  const mailboxObserver = createConsumerHandle();
+  const countWorkerMailboxJobs = vi.fn(() => Promise.resolve({ waiting: 0, prioritized: 0 }));
+  return {
+    jobsConsumer,
+    bootstrapConsumer,
+    workerEventsConsumer,
+    mailboxConsumer,
+    mailboxObserver,
+    countWorkerMailboxJobs,
+    queueRuntime: {
+      consumeJobs: vi.fn(() => jobsConsumer),
+      consumeBootstrap: vi.fn(() => bootstrapConsumer),
+      consumeWorkerEvents: vi.fn(() => workerEventsConsumer),
+      consumeWorkerMailbox: vi.fn(() => mailboxConsumer),
+      observeWorkerMailbox: vi.fn(() => mailboxObserver),
+      countWorkerMailboxJobs,
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add: vi.fn(() => Promise.resolve(undefined)),
+        },
+      },
+    },
+  };
+}
+
 describe('workerRuntimeLauncher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -132,10 +187,12 @@ describe('workerRuntimeLauncher', () => {
       failures: [],
     });
     hoisted.assertLocalAgentPreflight.mockResolvedValue(undefined);
+    hoisted.loadActiveSessionCountsByWorkerIds.mockResolvedValue({});
     hoisted.startWorkerCapabilityPublisher.mockResolvedValue({
       close: vi.fn(() => Promise.resolve(undefined)),
     });
     hoisted.config.primaryAgent = 'codex';
+    hoisted.config.workerEventConcurrency = 2;
     hoisted.config.agent.enabled = false;
   });
 
@@ -145,19 +202,7 @@ describe('workerRuntimeLauncher', () => {
   });
 
   it('syncs run action metadata after repository seed on startup', async () => {
-    const consumerClose = vi.fn(() => Promise.resolve(undefined));
-    const queueRuntime = {
-      consumeJobs: vi.fn(() => ({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
-      close: vi.fn(() => Promise.resolve(undefined)),
-      queues: {
-        botEvents: {
-          add: vi.fn(() => Promise.resolve(undefined)),
-        },
-      },
-    } as const;
+    const { queueRuntime } = createQueueRuntimeStub();
 
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
@@ -170,19 +215,7 @@ describe('workerRuntimeLauncher', () => {
 
   it('preflights only the configured primary agent', async () => {
     hoisted.config.primaryAgent = 'copilot';
-    const consumerClose = vi.fn(() => Promise.resolve(undefined));
-    const queueRuntime = {
-      consumeJobs: vi.fn(() => ({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
-      close: vi.fn(() => Promise.resolve(undefined)),
-      queues: {
-        botEvents: {
-          add: vi.fn(() => Promise.resolve(undefined)),
-        },
-      },
-    } as const;
+    const { queueRuntime } = createQueueRuntimeStub();
 
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
@@ -195,19 +228,7 @@ describe('workerRuntimeLauncher', () => {
     hoisted.config.agent.enabled = true;
     const publisherClose = vi.fn(() => Promise.resolve(undefined));
     hoisted.startWorkerCapabilityPublisher.mockResolvedValue({ close: publisherClose });
-    const consumerClose = vi.fn(() => Promise.resolve(undefined));
-    const queueRuntime = {
-      consumeJobs: vi.fn(() => ({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
-      close: vi.fn(() => Promise.resolve(undefined)),
-      queues: {
-        botEvents: {
-          add: vi.fn(() => Promise.resolve(undefined)),
-        },
-      },
-    } as const;
+    const { queueRuntime } = createQueueRuntimeStub();
 
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
@@ -227,12 +248,59 @@ describe('workerRuntimeLauncher', () => {
       build: { provider: 'codex' },
     };
 
+    const { queueRuntime } = createQueueRuntimeStub();
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(queueRuntime.consumeWorkerMailbox).toHaveBeenCalledWith(
+      'worker-a',
+      expect.objectContaining({ concurrency: 1 }),
+    );
+    expect(queueRuntime.consumeWorkerEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ concurrency: 1 }),
+    );
+  });
+
+  it('preserves configured shared worker-event concurrency when mailbox mode is disabled', async () => {
+    hoisted.config.workerEventConcurrency = 4;
+    const { queueRuntime } = createQueueRuntimeStub();
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(queueRuntime.consumeWorkerMailbox).not.toHaveBeenCalled();
+    expect(queueRuntime.consumeWorkerEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ concurrency: 4 }),
+    );
+    expect(queueRuntime.observeWorkerMailbox).not.toHaveBeenCalled();
+  });
+
+  it('starts the mailbox consumer before the shared worker-event consumer', async () => {
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+
+    const calls: string[] = [];
     const consumerClose = vi.fn(() => Promise.resolve(undefined));
     const queueRuntime = {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
       consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerEvents: vi.fn(() => ({ close: consumerClose })),
-      consumeWorkerMailbox: vi.fn(() => ({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn(() => {
+        calls.push('shared');
+        return createConsumerHandle({ close: consumerClose });
+      }),
+      consumeWorkerMailbox: vi.fn(() => {
+        calls.push('mailbox');
+        return createConsumerHandle({ close: consumerClose });
+      }),
+      observeWorkerMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
+      countWorkerMailboxJobs: vi.fn(() => Promise.resolve({ waiting: 0, prioritized: 0 })),
       close: vi.fn(() => Promise.resolve(undefined)),
       queues: {
         botEvents: {
@@ -244,9 +312,190 @@ describe('workerRuntimeLauncher', () => {
     const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(queueRuntime.consumeWorkerMailbox).toHaveBeenCalledWith(
-      'worker-a',
-      expect.objectContaining({ concurrency: 1 }),
+    expect(calls).toEqual(['mailbox', 'shared']);
+  });
+
+  it('logs mailbox diagnostics with the queue name and active session count', async () => {
+    const { logger } = await import('@sniptail/core/logger.js');
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+    hoisted.loadActiveSessionCountsByWorkerIds.mockResolvedValue({ 'worker-a': 3 });
+
+    const { queueRuntime } = createQueueRuntimeStub();
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workerId: 'worker-a',
+        mailboxQueueName: 'sniptail-worker-mailbox:worker-a',
+        configuredWorkerEventConcurrency: 2,
+        effectiveWorkerEventConcurrency: 1,
+        activeSessionCount: 3,
+      }),
+      'Worker mailbox mode enabled',
     );
+  });
+
+  it('warns and continues startup when mailbox diagnostics fail', async () => {
+    const { logger } = await import('@sniptail/core/logger.js');
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+    hoisted.loadActiveSessionCountsByWorkerIds.mockRejectedValue(new Error('registry down'));
+
+    const { queueRuntime } = createQueueRuntimeStub();
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    await runtime.close();
+
+    expect(queueRuntime.consumeWorkerMailbox).toHaveBeenCalledTimes(1);
+    expect(queueRuntime.consumeWorkerEvents).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workerId: 'worker-a',
+        mailboxQueueName: 'sniptail-worker-mailbox:worker-a',
+        configuredWorkerEventConcurrency: 2,
+        effectiveWorkerEventConcurrency: 1,
+      }),
+      'Failed to load worker mailbox diagnostics',
+    );
+  });
+
+  it('serializes mailbox and shared worker events through the same lane', async () => {
+    const { handleWorkerEvent } = await import('./workerEvents.js');
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+
+    let releaseShared!: () => void;
+    const sharedStarted = new Promise<void>((resolve) => {
+      releaseShared = resolve;
+    });
+    const mailboxStarted = vi.fn();
+    const eventOrder: string[] = [];
+    vi.mocked(handleWorkerEvent).mockImplementation(async (event) => {
+      eventOrder.push(event.type);
+      if (event.type === 'repos.add') {
+        await sharedStarted;
+        return;
+      }
+      mailboxStarted();
+    });
+
+    const consumerClose = vi.fn(() => Promise.resolve(undefined));
+    let workerEventHandler!: (job: { data: { requestId: string; type: string } }) => Promise<void>;
+    let mailboxHandler!: (job: { data: { requestId: string; type: string } }) => Promise<void>;
+    const queueRuntime = {
+      consumeJobs: vi.fn(() => createConsumerHandle({ close: consumerClose })),
+      consumeBootstrap: vi.fn(() => createConsumerHandle({ close: consumerClose })),
+      consumeWorkerEvents: vi.fn((options: { handler: typeof workerEventHandler }) => {
+        workerEventHandler = options.handler;
+        return createConsumerHandle({ close: consumerClose });
+      }),
+      consumeWorkerMailbox: vi.fn((_: string, options: { handler: typeof mailboxHandler }) => {
+        mailboxHandler = options.handler;
+        return createConsumerHandle({ close: consumerClose });
+      }),
+      observeWorkerMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
+      countWorkerMailboxJobs: vi.fn(() => Promise.resolve({ waiting: 0, prioritized: 0 })),
+      close: vi.fn(() => Promise.resolve(undefined)),
+      queues: {
+        botEvents: {
+          add: vi.fn(() => Promise.resolve(undefined)),
+        },
+      },
+    } as const;
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+    const sharedPromise = workerEventHandler({
+      data: { requestId: '1', type: 'repos.add' },
+    });
+    await Promise.resolve();
+    const mailboxPromise = mailboxHandler({
+      data: { requestId: '2', type: 'agent.prompt.stop' },
+    });
+    await Promise.resolve();
+
+    expect(mailboxStarted).not.toHaveBeenCalled();
+
+    releaseShared();
+    await Promise.all([sharedPromise, mailboxPromise]);
+    await runtime.close();
+
+    expect(eventOrder).toEqual(['repos.add', 'agent.prompt.stop']);
+  });
+
+  it('pauses shared worker events when mailbox activity is observed and resumes after mailbox drains', async () => {
+    hoisted.config.agent.enabled = true;
+    hoisted.config.workerId = 'worker-a';
+    hoisted.config.agent.workspaces = {
+      snatch: { path: '/tmp/snatch' },
+    };
+    hoisted.config.agent.profiles = {
+      build: { provider: 'codex' },
+    };
+
+    const sharedWorkerEventsConsumer = createConsumerHandle();
+    let mailboxHandler!: (job: { data: { requestId: string; type: string } }) => Promise<void>;
+    let onJobAvailable!: () => Promise<void>;
+    const countWorkerMailboxJobs = vi
+      .fn<() => Promise<{ waiting: number; prioritized: number }>>()
+      .mockResolvedValueOnce({ waiting: 0, prioritized: 0 })
+      .mockResolvedValueOnce({ waiting: 0, prioritized: 0 });
+    const queueRuntime = {
+      ...createQueueRuntimeStub().queueRuntime,
+      consumeWorkerEvents: vi.fn(() => sharedWorkerEventsConsumer),
+      consumeWorkerMailbox: vi.fn((_: string, options: { handler: typeof mailboxHandler }) => {
+        mailboxHandler = options.handler;
+        return createConsumerHandle();
+      }),
+      observeWorkerMailbox: vi.fn(
+        (_: string, options: { onJobAvailable: typeof onJobAvailable }) => {
+          onJobAvailable = options.onJobAvailable;
+          return createConsumerHandle();
+        },
+      ),
+      countWorkerMailboxJobs,
+    };
+
+    const runtime = await startWorkerRuntime({ queueRuntime: queueRuntime as never });
+
+    expect(sharedWorkerEventsConsumer.pause).not.toHaveBeenCalled();
+
+    await onJobAvailable();
+    expect(sharedWorkerEventsConsumer.pause).toHaveBeenCalledTimes(1);
+
+    await mailboxHandler({
+      data: { requestId: 'mail-1', type: 'agent.prompt.stop' },
+    });
+
+    const mailboxOptions = queueRuntime.consumeWorkerMailbox.mock.calls[0]?.[1] as unknown as {
+      onCompleted: (job: { data: { requestId: string; type: string } }) => Promise<void>;
+    };
+    await mailboxOptions.onCompleted({
+      data: { requestId: 'mail-1', type: 'agent.prompt.stop' },
+    });
+
+    expect(sharedWorkerEventsConsumer.resume).toHaveBeenCalledTimes(1);
+
+    await runtime.close();
   });
 });

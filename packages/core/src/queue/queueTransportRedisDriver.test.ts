@@ -4,12 +4,21 @@ const hoisted = vi.hoisted(() => {
   const queueInstances: Array<{
     name: string;
     add: ReturnType<typeof vi.fn>;
+    getJobCounts: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
   }> = [];
   const workerInstances: Array<{
     name: string;
     close: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+    resume: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
+  }> = [];
+  const queueEventsInstances: Array<{
+    name: string;
+    close: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
   }> = [];
 
   class FakeQueue<T> {
@@ -19,6 +28,12 @@ const hoisted = vi.hoisted(() => {
         id: `${this.name}-${jobName}-1`,
         name: jobName,
         data,
+      }),
+    );
+    readonly getJobCounts = vi.fn(() =>
+      Promise.resolve({
+        waiting: 0,
+        prioritized: 0,
       }),
     );
     readonly close = vi.fn(() => Promise.resolve(undefined));
@@ -33,6 +48,8 @@ const hoisted = vi.hoisted(() => {
     readonly name: string;
     readonly process: (job: { id?: string; name: string; data: T }) => Promise<void>;
     readonly close = vi.fn(() => Promise.resolve(undefined));
+    readonly pause = vi.fn(() => Promise.resolve(undefined));
+    readonly resume = vi.fn(() => Promise.resolve(undefined));
     readonly on = vi.fn();
 
     constructor(
@@ -45,16 +62,31 @@ const hoisted = vi.hoisted(() => {
     }
   }
 
+  class FakeQueueEvents {
+    readonly name: string;
+    readonly close = vi.fn(() => Promise.resolve(undefined));
+    readonly on = vi.fn();
+    readonly off = vi.fn();
+
+    constructor(name: string) {
+      this.name = name;
+      queueEventsInstances.push(this);
+    }
+  }
+
   return {
     queueInstances,
     workerInstances,
+    queueEventsInstances,
     FakeQueue,
     FakeWorker,
+    FakeQueueEvents,
   };
 });
 
 vi.mock('bullmq', () => ({
   Queue: hoisted.FakeQueue,
+  QueueEvents: hoisted.FakeQueueEvents,
   Worker: hoisted.FakeWorker,
 }));
 
@@ -64,6 +96,7 @@ describe('queueTransportRedisDriver', () => {
   beforeEach(() => {
     hoisted.queueInstances.length = 0;
     hoisted.workerInstances.length = 0;
+    hoisted.queueEventsInstances.length = 0;
   });
 
   it('publishes targeted events to cached worker mailbox queues', async () => {
@@ -104,8 +137,40 @@ describe('queueTransportRedisDriver', () => {
 
     expect(hoisted.workerInstances).toHaveLength(1);
     expect(hoisted.workerInstances[0]?.name).toBe('sniptail-worker-mailbox:worker-b');
+    await consumer.pause?.();
+    await consumer.resume?.();
+    expect(hoisted.workerInstances[0]?.pause).toHaveBeenCalledWith(true);
+    expect(hoisted.workerInstances[0]?.resume).toHaveBeenCalledTimes(1);
 
     await consumer.close();
+    await runtime.close();
+  });
+
+  it('observes mailbox waiting events and counts runnable jobs', async () => {
+    const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
+    const onJobAvailable = vi.fn();
+
+    const observer = runtime.observeWorkerMailbox('worker-b', { onJobAvailable });
+
+    expect(hoisted.queueEventsInstances).toHaveLength(1);
+    expect(hoisted.queueEventsInstances[0]?.name).toBe('sniptail-worker-mailbox:worker-b');
+
+    const waitingHandler = hoisted.queueEventsInstances[0]?.on.mock.calls.find(
+      (call) => call[0] === 'waiting',
+    )?.[1] as (() => void) | undefined;
+    waitingHandler?.();
+    await Promise.resolve();
+    expect(onJobAvailable).toHaveBeenCalledTimes(1);
+
+    const counts = await runtime.countWorkerMailboxJobs('worker-b');
+    expect(counts).toEqual({ waiting: 0, prioritized: 0 });
+    const mailboxQueue = hoisted.queueInstances.find(
+      (queue) => queue.name === 'sniptail-worker-mailbox:worker-b',
+    );
+    expect(mailboxQueue?.getJobCounts).toHaveBeenCalledWith('waiting', 'prioritized');
+
+    await observer.close();
+    expect(hoisted.queueEventsInstances[0]?.off).toHaveBeenCalledWith('waiting', waitingHandler);
     await runtime.close();
   });
 
@@ -144,6 +209,9 @@ describe('queueTransportRedisDriver', () => {
       concurrency: 1,
       handler: () => Promise.resolve(undefined),
     });
+    runtime.observeWorkerMailbox('worker-a', {
+      onJobAvailable: () => Promise.resolve(undefined),
+    });
 
     await runtime.close();
 
@@ -153,7 +221,11 @@ describe('queueTransportRedisDriver', () => {
     const mailboxWorker = hoisted.workerInstances.find(
       (worker) => worker.name === 'sniptail-worker-mailbox:worker-a',
     );
+    const mailboxEvents = hoisted.queueEventsInstances.find(
+      (events) => events.name === 'sniptail-worker-mailbox:worker-a',
+    );
     expect(mailboxQueue?.close).toHaveBeenCalledTimes(1);
     expect(mailboxWorker?.close).toHaveBeenCalledTimes(1);
+    expect(mailboxEvents?.close).toHaveBeenCalledTimes(1);
   });
 });

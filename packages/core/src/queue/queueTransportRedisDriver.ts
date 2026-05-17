@@ -1,4 +1,4 @@
-import { Queue, Worker } from 'bullmq';
+import { Queue, QueueEvents, Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import {
   assertValidWorkerId,
@@ -41,7 +41,7 @@ function createPublisher<T>(queue: Queue): QueuePublisher<T> {
   const publishQueue = queue as Queue<unknown, unknown, string>;
   return {
     async add(name, payload, options) {
-      const job = await publishQueue.add(name, payload, options);
+      const job = await Promise.resolve(publishQueue.add(name, payload, options));
       return {
         ...(job.id ? { id: String(job.id) } : {}),
         name: String(job.name),
@@ -79,6 +79,12 @@ function createConsumer<T>(
     async close() {
       await worker.close();
     },
+    async pause() {
+      await worker.pause(true);
+    },
+    resume() {
+      return Promise.resolve(worker.resume());
+    },
   };
 }
 
@@ -93,6 +99,7 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
   });
   const botEventQueue = new Queue<BotEvent, unknown, string>(botEventQueueName, { connection });
   const workerMailboxQueues = new Map<string, Queue<WorkerEvent, unknown, string>>();
+  const workerMailboxEvents = new Map<string, QueueEvents>();
   const consumers: Array<QueueConsumerHandle & { worker: Worker<unknown> }> = [];
 
   function getWorkerMailboxQueue(workerId: string): Queue<WorkerEvent, unknown, string> {
@@ -105,6 +112,16 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
       workerMailboxQueues.set(normalizedWorkerId, queue);
     }
     return queue;
+  }
+
+  function getWorkerMailboxEvents(workerId: string): QueueEvents {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let events = workerMailboxEvents.get(normalizedWorkerId);
+    if (!events) {
+      events = new QueueEvents(workerMailboxQueueName(normalizedWorkerId), { connection });
+      workerMailboxEvents.set(normalizedWorkerId, events);
+    }
+    return events;
   }
 
   return {
@@ -146,6 +163,26 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
       consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
       return consumer;
     },
+    observeWorkerMailbox(workerId, options) {
+      const events = getWorkerMailboxEvents(workerId);
+      const onWaiting = () => {
+        publishAsyncHook(options.onJobAvailable);
+      };
+      events.on('waiting', onWaiting);
+      return {
+        close() {
+          events.off('waiting', onWaiting);
+          return Promise.resolve();
+        },
+      };
+    },
+    async countWorkerMailboxJobs(workerId) {
+      const counts = await getWorkerMailboxQueue(workerId).getJobCounts('waiting', 'prioritized');
+      return {
+        waiting: counts.waiting ?? 0,
+        prioritized: counts.prioritized ?? 0,
+      };
+    },
     consumeBotEvents(options) {
       const consumer = createConsumer<BotEvent>(botEventQueueName, redisUrl, options);
       consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
@@ -162,8 +199,10 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
         workerEventQueue.close(),
         botEventQueue.close(),
         ...[...workerMailboxQueues.values()].map((queue) => queue.close()),
+        ...[...workerMailboxEvents.values()].map((events) => events.close()),
       ]);
       workerMailboxQueues.clear();
+      workerMailboxEvents.clear();
     },
   };
 }

@@ -202,6 +202,7 @@ describe('registerAgentSubmitView', () => {
 
   it('posts the start acknowledgment ephemerally', async () => {
     const { handler } = buildContext();
+    const requestedByText: unknown = expect.stringContaining('Agent session requested by <@U1>.');
 
     await handler(buildArgs());
 
@@ -218,7 +219,7 @@ describe('registerAgentSubmitView', () => {
       expect.anything(),
       expect.objectContaining({
         channel: 'C1',
-        text: expect.stringContaining('Agent session requested by <@U1>.'),
+        text: requestedByText,
         threadTs: 'T1',
       }),
     );

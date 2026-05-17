@@ -139,6 +139,55 @@ describe('queueTransportInprocDriver', () => {
     await workerBHandle.close();
   });
 
+  it('pauses shared worker-event dispatch while mailbox jobs are pending', async () => {
+    const sharedSeen: string[] = [];
+    const mailboxSeen: string[] = [];
+    let releaseMailbox!: () => void;
+    const mailboxRunning = new Promise<void>((resolve) => {
+      releaseMailbox = resolve;
+    });
+
+    const sharedHandle = runtime.consumeWorkerEvents({
+      concurrency: 1,
+      handler: (job) => {
+        sharedSeen.push(job.data.requestId ?? job.data.type);
+      },
+    });
+    const mailboxHandle = runtime.consumeWorkerMailbox('worker-a', {
+      concurrency: 1,
+      handler: async (job) => {
+        mailboxSeen.push(job.data.requestId ?? job.data.type);
+        await mailboxRunning;
+      },
+    });
+
+    await sharedHandle.pause?.();
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-1',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-mail', ttlMs: 60_000 },
+    });
+    await runtime.queues.workerEvents.add('jobs.clear', {
+      schemaVersion: 1,
+      requestId: 'shared-1',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-shared', ttlMs: 60_000 },
+    });
+
+    await waitFor(() => mailboxSeen.length === 1);
+    expect(sharedSeen).toEqual([]);
+
+    releaseMailbox();
+    await waitFor(() => sharedSeen.length === 0);
+    await sharedHandle.resume?.();
+    await waitFor(() => sharedSeen.length === 1);
+    expect(sharedSeen).toEqual(['shared-1']);
+
+    await sharedHandle.close();
+    await mailboxHandle.close();
+  });
+
   it('preserves fifo ordering for a single channel', async () => {
     const seen: string[] = [];
     runtime.consumeJobs({
@@ -315,6 +364,30 @@ describe('queueTransportInprocDriver', () => {
 
     await waitFor(() => seen.length === 1);
     expect(seen).toEqual(['mail-early']);
+  });
+
+  it('observes mailbox availability and counts runnable mailbox jobs', async () => {
+    const seen: string[] = [];
+    const observer = runtime.observeWorkerMailbox('worker-a', {
+      onJobAvailable: () => {
+        seen.push('available');
+      },
+    });
+
+    await runtime.publishWorkerEventToMailbox('worker-a', {
+      schemaVersion: 1,
+      requestId: 'mail-1',
+      type: 'jobs.clear',
+      payload: { jobId: 'job-1', ttlMs: 60_000 },
+    });
+
+    await waitFor(() => seen.length === 1);
+    await expect(runtime.countWorkerMailboxJobs('worker-a')).resolves.toEqual({
+      waiting: 1,
+      prioritized: 0,
+    });
+
+    await observer.close();
   });
 
   it('rejects invalid worker ids for mailbox publish and consume', () => {
