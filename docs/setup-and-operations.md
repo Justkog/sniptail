@@ -333,6 +333,7 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
 - Worker parallelism is configurable per queue via `[worker].job_concurrency`, `[worker].bootstrap_concurrency`, and `[worker].worker_event_concurrency` (or env overrides `JOB_CONCURRENCY`, `BOOTSTRAP_CONCURRENCY`, `WORKER_EVENT_CONCURRENCY`), each defaulting to `2`.
+- Set `[worker].consume_shared_worker_events = false` on mailbox-focused workers that should skip the shared `sniptail-worker-events` queue and only handle jobs, bootstrap requests, and explicitly targeted mailbox events. Leave it `true` on at least one worker if you rely on generic shared worker events such as repo catalog mutations, usage checks, or job cleanup actions.
 - On workers with mailbox-enabled agent mode, live agent-session mailbox work is prioritized over shared worker events. Shared worker-event consumption is paused while mailbox work is pending, so `worker_event_concurrency` is effectively constrained for that worker path.
 - Worktree bootstrap is optional and configurable. Set `[worker].worktree_setup_command` (or `WORKTREE_SETUP_COMMAND`) to run a custom command in each worktree (for example `pnpm install`, `npm ci`, `poetry install`, etc.).
 - Repos can define a local setup contract script at `.sniptail/setup` (no extension). If present, it runs in the repo worktree after `worktree_setup_command`.

@@ -1346,6 +1346,11 @@ export function loadWorkerConfig(): WorkerConfig {
     'worker.bootstrap_concurrency',
     2,
   );
+  const consumeSharedWorkerEvents = resolveOptionalFlagFromSources(
+    'CONSUME_SHARED_WORKER_EVENTS',
+    workerToml?.consume_shared_worker_events,
+    true,
+  );
   const workerEventConcurrency = resolvePositiveIntegerFromSources(
     'WORKER_EVENT_CONCURRENCY',
     workerToml?.worker_event_concurrency,
@@ -1383,6 +1388,7 @@ export function loadWorkerConfig(): WorkerConfig {
     primaryAgent,
     jobConcurrency,
     bootstrapConcurrency,
+    consumeSharedWorkerEvents,
     workerEventConcurrency,
     ...(localRepoRoot ? { localRepoRoot } : {}),
     copilot: {

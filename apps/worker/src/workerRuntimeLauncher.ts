@@ -56,6 +56,7 @@ export async function startWorkerRuntime(
       queueDriver: config.queueDriver,
       registryDriver: config.registryDriver,
       registryNamespace: config.registryNamespace,
+      consumeSharedWorkerEvents: config.consumeSharedWorkerEvents,
     },
     'Starting worker runtime',
   );
@@ -96,10 +97,14 @@ export async function startWorkerRuntime(
     config.agent.enabled &&
     Object.keys(config.agent.workspaces).length > 0 &&
     Object.keys(config.agent.profiles).length > 0;
-  const effectiveWorkerEventConcurrency = shouldConsumeAgentMailbox
-    ? 1
-    : config.workerEventConcurrency;
+  const shouldConsumeSharedWorkerEvents = config.consumeSharedWorkerEvents;
+  const effectiveWorkerEventConcurrency = !shouldConsumeSharedWorkerEvents
+    ? 0
+    : shouldConsumeAgentMailbox
+      ? 1
+      : config.workerEventConcurrency;
   const workerEventMutex = shouldConsumeAgentMailbox ? new Mutex() : undefined;
+  let sharedWorkerEventConsumer: QueueConsumerHandle | undefined;
   async function pauseSharedWorkerEvents(): Promise<void> {
     if (!sharedWorkerEventConsumer?.pause) {
       return;
@@ -157,6 +162,7 @@ export async function startWorkerRuntime(
         {
           workerId: config.workerId,
           mailboxQueueName,
+          consumeSharedWorkerEvents: shouldConsumeSharedWorkerEvents,
           configuredWorkerEventConcurrency: config.workerEventConcurrency,
           effectiveWorkerEventConcurrency,
           activeSessionCount,
@@ -169,6 +175,7 @@ export async function startWorkerRuntime(
           err,
           workerId: config.workerId,
           mailboxQueueName,
+          consumeSharedWorkerEvents: shouldConsumeSharedWorkerEvents,
           configuredWorkerEventConcurrency: config.workerEventConcurrency,
           effectiveWorkerEventConcurrency,
         },
@@ -223,26 +230,34 @@ export async function startWorkerRuntime(
     );
   }
 
-  const sharedWorkerEventConsumer = queueRuntime.consumeWorkerEvents({
-    concurrency: effectiveWorkerEventConcurrency,
-    handler: async (job) => {
-      logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event received');
-      if (workerEventMutex) {
-        await workerEventMutex.runExclusive(() =>
-          handleWorkerEvent(job.data, jobRegistry, botEvents),
+  if (shouldConsumeSharedWorkerEvents) {
+    sharedWorkerEventConsumer = queueRuntime.consumeWorkerEvents({
+      concurrency: effectiveWorkerEventConcurrency,
+      handler: async (job) => {
+        logger.info(
+          { requestId: job.data.requestId, type: job.data.type },
+          'Worker event received',
         );
-        return;
-      }
-      await handleWorkerEvent(job.data, jobRegistry, botEvents);
-    },
-    onFailed: (job, err) => {
-      logger.error({ requestId: job?.data?.requestId, err }, 'Worker event failed');
-    },
-    onCompleted: (job) => {
-      logger.info({ requestId: job.data.requestId, type: job.data.type }, 'Worker event completed');
-    },
-  });
-  consumers.push(sharedWorkerEventConsumer);
+        if (workerEventMutex) {
+          await workerEventMutex.runExclusive(() =>
+            handleWorkerEvent(job.data, jobRegistry, botEvents),
+          );
+          return;
+        }
+        await handleWorkerEvent(job.data, jobRegistry, botEvents);
+      },
+      onFailed: (job, err) => {
+        logger.error({ requestId: job?.data?.requestId, err }, 'Worker event failed');
+      },
+      onCompleted: (job) => {
+        logger.info(
+          { requestId: job.data.requestId, type: job.data.type },
+          'Worker event completed',
+        );
+      },
+    });
+    consumers.push(sharedWorkerEventConsumer);
+  }
 
   if (shouldConsumeAgentMailbox) {
     consumers.push(

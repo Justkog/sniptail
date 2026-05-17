@@ -144,6 +144,7 @@ export type WorkerConfig = CoreConfig & {
   primaryAgent: AgentId;
   jobConcurrency: number;
   bootstrapConcurrency: number;
+  consumeSharedWorkerEvents: boolean;
   workerEventConcurrency: number;
   localRepoRoot?: string;
   copilot: {

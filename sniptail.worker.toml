@@ -58,6 +58,11 @@ redis_url = "redis://localhost:6379"
 # Optional. Default: 2. Example: 2
 # bootstrap_concurrency = 2
 
+# Whether this worker should consume shared worker events from
+# queue "sniptail-worker-events".
+# Optional. Default: true. Example: false
+# consume_shared_worker_events = true
+
 # Worker-event concurrency for queue "sniptail-worker-events".
 # Optional. Default: 2. Example: 4
 # worker_event_concurrency = 2

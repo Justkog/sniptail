@@ -1451,6 +1451,7 @@ describe('config loaders', () => {
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(2);
     expect(config.bootstrapConcurrency).toBe(2);
+    expect(config.consumeSharedWorkerEvents).toBe(true);
     expect(config.workerEventConcurrency).toBe(2);
   });
 
@@ -1473,6 +1474,7 @@ describe('config loaders', () => {
       'repo_cache_root = "/tmp/sniptail/repos"',
       'job_concurrency = 4',
       'bootstrap_concurrency = 3',
+      'consume_shared_worker_events = false',
       'worker_event_concurrency = 5',
       'job_root_copy_glob = ""',
       'include_raw_request_in_mr = false',
@@ -1490,7 +1492,43 @@ describe('config loaders', () => {
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(4);
     expect(config.bootstrapConcurrency).toBe(3);
+    expect(config.consumeSharedWorkerEvents).toBe(false);
     expect(config.workerEventConcurrency).toBe(5);
+  });
+
+  it('loads consume_shared_worker_events from TOML when set to true', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'consume_shared_worker_events = true',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.consumeSharedWorkerEvents).toBe(true);
   });
 
   it('throws when worker concurrency env values are invalid', () => {
