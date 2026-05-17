@@ -6,7 +6,7 @@ Use this reference only when the user needs bot and worker on different machines
 
 - the bot host and worker host are separate
 - Redis-backed queueing is required
-- shared state should live in Redis or Postgres instead of local sqlite
+- shared registry state should live in Redis or Postgres instead of local sqlite
 
 ## Main Rules
 
@@ -43,9 +43,13 @@ Worker side:
 - `sniptail worker`
 - `queue_driver = "redis"`
 - set `REDIS_URL`
-- choose `job_registry_db = "redis"` or `job_registry_db = "pg"`
+- choose a shared `[registry]` backend:
+  - `[registry].db = "redis"` with `SNIPTAIL_REGISTRY_REDIS_URL` or `REDIS_URL`
+  - `[registry].db = "pg"` with `SNIPTAIL_REGISTRY_PG_URL`
 
-If Postgres is used for the job registry, apply migrations before startup:
+Bot and worker must use the same registry backend and namespace for one deployment.
+
+If Postgres is used for the registry, apply migrations before startup:
 
 ```bash
 sniptail db migrate --scope bot

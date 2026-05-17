@@ -61,13 +61,15 @@ Why this is preferred:
 
 - runs bot and worker in one process
 - uses in-process queue transport
-- uses sqlite for the job registry
+- uses a local sqlite-backed registry
 - does not require Redis for the first successful install
 
 The local command automatically forces:
 
 - `QUEUE_DRIVER=inproc`
-- `JOB_REGISTRY_DB=sqlite`
+- `SNIPTAIL_REGISTRY_DB=sqlite`
+
+Set `SNIPTAIL_REGISTRY_PATH` in `.env` so the local registry has a durable sqlite file to use.
 
 ## Config Files To Review
 
