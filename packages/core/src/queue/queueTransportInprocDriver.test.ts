@@ -530,9 +530,9 @@ describe('queueTransportInprocDriver', () => {
       }),
     ).toThrow('Invalid worker.id');
 
-    expect(() =>
-      runtime.publishJobToWorkerMailbox('worker/a', createJob('job-bad')),
-    ).toThrow('Invalid worker.id');
+    expect(() => runtime.publishJobToWorkerMailbox('worker/a', createJob('job-bad'))).toThrow(
+      'Invalid worker.id',
+    );
 
     expect(() =>
       runtime.consumeWorkerJobMailbox('worker a', {

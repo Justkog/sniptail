@@ -1,5 +1,4 @@
 import { mkdir } from 'node:fs/promises';
-import { Mutex } from 'async-mutex';
 import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import { logger } from '@sniptail/core/logger.js';
@@ -19,6 +18,7 @@ import { createJobRegistry } from './job/createJobRegistry.js';
 import { assertDockerPreflight } from './docker/dockerPreflight.js';
 import { assertGitCommitIdentityPreflight } from './git/gitPreflight.js';
 import { assertLocalAgentPreflight } from './preflight/agentPreflight.js';
+import { createWorkerMailboxPriorityLane } from './queue/workerMailboxPriorityLane.js';
 import { syncRunActionMetadata } from './repos/syncRunActionMetadata.js';
 
 export type WorkerRuntimeHandle = {
@@ -31,6 +31,10 @@ export type StartWorkerRuntimeOptions = {
 
 function getWorkerMailboxQueueName(workerId: string): string {
   return `sniptail-worker-mailbox:${workerId}`;
+}
+
+function getWorkerJobMailboxQueueName(workerId: string): string {
+  return `sniptail-worker-jobs:${workerId}`;
 }
 
 async function loadWorkerActiveSessionCount(config: WorkerConfig): Promise<number> {
@@ -103,40 +107,106 @@ export async function startWorkerRuntime(
     : shouldConsumeAgentMailbox
       ? 1
       : config.workerEventConcurrency;
-  const workerEventMutex = shouldConsumeAgentMailbox ? new Mutex() : undefined;
   let sharedWorkerEventConsumer: QueueConsumerHandle | undefined;
-  async function pauseSharedWorkerEvents(): Promise<void> {
-    if (!sharedWorkerEventConsumer?.pause) {
-      return;
-    }
-    await sharedWorkerEventConsumer.pause();
-  }
+  const sharedJobConsumerRef: { current?: QueueConsumerHandle } = {};
+  const managedJobLane = createWorkerMailboxPriorityLane({
+    getSharedConsumer: () => sharedJobConsumerRef.current,
+    countMailboxJobs: () => queueRuntime.countWorkerJobMailboxJobs(config.workerId),
+  });
+  const workerEventLane = shouldConsumeAgentMailbox
+    ? createWorkerMailboxPriorityLane({
+        getSharedConsumer: () => sharedWorkerEventConsumer,
+        countMailboxJobs: () => queueRuntime.countWorkerMailboxJobs(config.workerId),
+      })
+    : undefined;
 
-  async function resumeSharedWorkerEventsIfMailboxIdle(): Promise<void> {
-    if (!shouldConsumeAgentMailbox || !sharedWorkerEventConsumer?.resume) {
-      return;
-    }
-    const counts = await queueRuntime.countWorkerMailboxJobs(config.workerId);
-    if (counts.waiting === 0 && counts.prioritized === 0) {
-      await sharedWorkerEventConsumer.resume();
-    }
-  }
+  const sharedJobConsumer = queueRuntime.consumeJobs({
+    concurrency: config.jobConcurrency,
+    handler: async (job) => {
+      logger.info({ jobId: job.data.jobId }, 'Worker picked up job');
+      await managedJobLane.runShared(() => runJob(botEvents, job.data, jobRegistry));
+    },
+    onFailed: (job, err) => {
+      logger.error({ jobId: job?.data?.jobId, err }, 'Job failed');
+    },
+    onCompleted: (job) => {
+      logger.info({ jobId: job.data.jobId }, 'Job completed');
+    },
+  });
+  sharedJobConsumerRef.current = sharedJobConsumer;
+  consumers.push(sharedJobConsumer);
 
+  const jobMailboxQueueName = getWorkerJobMailboxQueueName(config.workerId);
   consumers.push(
-    queueRuntime.consumeJobs({
+    queueRuntime.consumeWorkerJobMailbox(config.workerId, {
       concurrency: config.jobConcurrency,
       handler: async (job) => {
-        logger.info({ jobId: job.data.jobId }, 'Worker picked up job');
-        await runJob(botEvents, job.data, jobRegistry);
+        logger.info(
+          {
+            workerId: config.workerId,
+            jobId: job.data.jobId,
+            resumeFromJobId: job.data.resumeFromJobId,
+          },
+          'Worker picked up targeted job',
+        );
+        await managedJobLane.pauseShared().catch((err) => {
+          logger.warn({ err, workerId: config.workerId }, 'Failed to pause shared jobs');
+        });
+        await managedJobLane.runMailbox(() => runJob(botEvents, job.data, jobRegistry));
       },
-      onFailed: (job, err) => {
-        logger.error({ jobId: job?.data?.jobId, err }, 'Job failed');
+      onFailed: async (job, err) => {
+        logger.error(
+          {
+            workerId: config.workerId,
+            jobId: job?.data?.jobId,
+            resumeFromJobId: job?.data?.resumeFromJobId,
+            err,
+          },
+          'Targeted job failed',
+        );
+        await managedJobLane.resumeSharedIfMailboxIdle().catch((resumeErr) => {
+          logger.warn(
+            { err: resumeErr, workerId: config.workerId },
+            'Failed to resume shared jobs after targeted job failure',
+          );
+        });
       },
-      onCompleted: (job) => {
-        logger.info({ jobId: job.data.jobId }, 'Job completed');
+      onCompleted: async (job) => {
+        logger.info(
+          {
+            workerId: config.workerId,
+            jobId: job.data.jobId,
+            resumeFromJobId: job.data.resumeFromJobId,
+          },
+          'Targeted job completed',
+        );
+        await managedJobLane.resumeSharedIfMailboxIdle().catch((err) => {
+          logger.warn(
+            { err, workerId: config.workerId },
+            'Failed to resume shared jobs after targeted job completion',
+          );
+        });
       },
     }),
   );
+  consumers.push(
+    queueRuntime.observeWorkerJobMailbox(config.workerId, {
+      onJobAvailable: async () => {
+        await managedJobLane.pauseShared().catch((err) => {
+          logger.warn(
+            { err, workerId: config.workerId },
+            'Failed to pause shared jobs from targeted job mailbox observer',
+          );
+        });
+      },
+    }),
+  );
+  await managedJobLane.pauseSharedIfMailboxPendingOnStartup().catch((err) => {
+    logger.warn(
+      { err, workerId: config.workerId, jobMailboxQueueName },
+      'Failed to load initial targeted job mailbox counts',
+    );
+  });
 
   consumers.push(
     queueRuntime.consumeBootstrap({
@@ -190,10 +260,10 @@ export async function startWorkerRuntime(
             { workerId: config.workerId, requestId: job.data.requestId, type: job.data.type },
             'Worker mailbox event received',
           );
-          await pauseSharedWorkerEvents().catch((err) => {
+          await workerEventLane!.pauseShared().catch((err) => {
             logger.warn({ err, workerId: config.workerId }, 'Failed to pause shared worker events');
           });
-          await workerEventMutex!.runExclusive(() =>
+          await workerEventLane!.runMailbox(() =>
             handleWorkerEvent(job.data, jobRegistry, botEvents),
           );
         },
@@ -207,7 +277,7 @@ export async function startWorkerRuntime(
             },
             'Worker mailbox event failed',
           );
-          await resumeSharedWorkerEventsIfMailboxIdle().catch((resumeErr) => {
+          await workerEventLane!.resumeSharedIfMailboxIdle().catch((resumeErr) => {
             logger.warn(
               { err: resumeErr, workerId: config.workerId },
               'Failed to resume shared worker events after mailbox failure',
@@ -219,7 +289,7 @@ export async function startWorkerRuntime(
             { workerId: config.workerId, requestId: job.data.requestId, type: job.data.type },
             'Worker mailbox event completed',
           );
-          await resumeSharedWorkerEventsIfMailboxIdle().catch((err) => {
+          await workerEventLane!.resumeSharedIfMailboxIdle().catch((err) => {
             logger.warn(
               { err, workerId: config.workerId },
               'Failed to resume shared worker events after mailbox completion',
@@ -238,8 +308,8 @@ export async function startWorkerRuntime(
           { requestId: job.data.requestId, type: job.data.type },
           'Worker event received',
         );
-        if (workerEventMutex) {
-          await workerEventMutex.runExclusive(() =>
+        if (workerEventLane) {
+          await workerEventLane.runShared(() =>
             handleWorkerEvent(job.data, jobRegistry, botEvents),
           );
           return;
@@ -263,7 +333,7 @@ export async function startWorkerRuntime(
     consumers.push(
       queueRuntime.observeWorkerMailbox(config.workerId, {
         onJobAvailable: async () => {
-          await pauseSharedWorkerEvents().catch((err) => {
+          await workerEventLane!.pauseShared().catch((err) => {
             logger.warn(
               { err, workerId: config.workerId },
               'Failed to pause shared worker events from mailbox observer',
@@ -272,26 +342,12 @@ export async function startWorkerRuntime(
         },
       }),
     );
-    const initialMailboxCounts = await queueRuntime
-      .countWorkerMailboxJobs(config.workerId)
-      .catch((err) => {
-        logger.warn(
-          { err, workerId: config.workerId },
-          'Failed to load initial worker mailbox job counts',
-        );
-        return undefined;
-      });
-    if (
-      initialMailboxCounts &&
-      (initialMailboxCounts.waiting > 0 || initialMailboxCounts.prioritized > 0)
-    ) {
-      await pauseSharedWorkerEvents().catch((err) => {
-        logger.warn(
-          { err, workerId: config.workerId },
-          'Failed to pause shared worker events for pending mailbox jobs',
-        );
-      });
-    }
+    await workerEventLane!.pauseSharedIfMailboxPendingOnStartup().catch((err) => {
+      logger.warn(
+        { err, workerId: config.workerId },
+        'Failed to load initial worker mailbox job counts',
+      );
+    });
   }
 
   return {

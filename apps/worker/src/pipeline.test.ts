@@ -1101,7 +1101,10 @@ describe('worker/pipeline runJob', () => {
         type: 'file.upload',
       }),
     );
-    expect(asRecord(enqueueBotEventMock.mock.calls.at(-1)?.[1])?.payload).toMatchObject({
+    const exploreUploadEvent = enqueueBotEventMock.mock.calls
+      .map((call) => call[1])
+      .find((event) => asRecord(event)?.type === 'file.upload');
+    expect(asRecord(exploreUploadEvent)?.payload).toMatchObject({
       channelId: 'C1',
       title: 'sniptail-job-explore-report.md',
       threadId: '123.456',
