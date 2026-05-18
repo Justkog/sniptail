@@ -271,9 +271,16 @@ export async function runJob(
   const channelAdapter = resolveWorkerChannelAdapter(job.channel.provider);
   const botNamePrefix = toSlackCommandPrefix(config.botName);
 
-  await registry.updateJobRecord(job.jobId, { status: 'running' }).catch((err) => {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
-  });
+  await registry
+    .updateJobRecord(job.jobId, {
+      status: 'running',
+      ownerWorkerId: config.workerId,
+      ...(config.workerLabel ? { ownerWorkerLabel: config.workerLabel } : {}),
+      workerClaimedAt: new Date().toISOString(),
+    })
+    .catch((err) => {
+      logger.warn({ err, jobId: job.jobId }, 'Failed to mark job as running');
+    });
 
   const paths = buildJobPaths(config.jobWorkRoot, job.jobId);
   await ensureJobDirectories(paths);
