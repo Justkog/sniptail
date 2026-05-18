@@ -3,6 +3,7 @@ import {
   botEventQueueName,
   bootstrapQueueName,
   jobQueueName,
+  workerJobMailboxQueueName,
   workerMailboxQueueName,
   workerEventQueueName,
 } from './queue.js';
@@ -205,6 +206,7 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     botEvents: new InprocQueueChannel<BotEvent>(botEventQueueName),
   };
   const mailboxChannels = new Map<string, InprocQueueChannel<WorkerEvent>>();
+  const workerJobMailboxChannels = new Map<string, InprocQueueChannel<JobSpec>>();
 
   function getMailboxChannel(workerId: string): InprocQueueChannel<WorkerEvent> {
     const normalizedWorkerId = assertValidWorkerId(workerId);
@@ -212,6 +214,16 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     if (!channel) {
       channel = new InprocQueueChannel<WorkerEvent>(workerMailboxQueueName(normalizedWorkerId));
       mailboxChannels.set(normalizedWorkerId, channel);
+    }
+    return channel;
+  }
+
+  function getWorkerJobMailboxChannel(workerId: string): InprocQueueChannel<JobSpec> {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let channel = workerJobMailboxChannels.get(normalizedWorkerId);
+    if (!channel) {
+      channel = new InprocQueueChannel<JobSpec>(workerJobMailboxQueueName(normalizedWorkerId));
+      workerJobMailboxChannels.set(normalizedWorkerId, channel);
     }
     return channel;
   }
@@ -236,15 +248,30 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     publishWorkerEventToMailbox(workerId, event, options) {
       return getMailboxChannel(workerId).createPublisher().add(event.type, event, options);
     },
+    publishJobToWorkerMailbox(workerId, job, options) {
+      return getWorkerJobMailboxChannel(workerId).createPublisher().add(job.type, job, options);
+    },
     consumeWorkerMailbox(workerId, options) {
       return getMailboxChannel(workerId).subscribe(options);
+    },
+    consumeWorkerJobMailbox(workerId, options) {
+      return getWorkerJobMailboxChannel(workerId).subscribe(options);
     },
     observeWorkerMailbox(workerId, options) {
       return getMailboxChannel(workerId).watchJobAvailable(options.onJobAvailable);
     },
+    observeWorkerJobMailbox(workerId, options) {
+      return getWorkerJobMailboxChannel(workerId).watchJobAvailable(options.onJobAvailable);
+    },
     countWorkerMailboxJobs(workerId) {
       return Promise.resolve({
         waiting: getMailboxChannel(workerId).countRunnableJobs(),
+        prioritized: 0,
+      });
+    },
+    countWorkerJobMailboxJobs(workerId) {
+      return Promise.resolve({
+        waiting: getWorkerJobMailboxChannel(workerId).countRunnableJobs(),
         prioritized: 0,
       });
     },
@@ -259,6 +286,11 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
       const activeMailboxChannels = [...mailboxChannels.values()];
       mailboxChannels.clear();
       for (const channel of activeMailboxChannels) {
+        await channel.close();
+      }
+      const activeWorkerJobMailboxChannels = [...workerJobMailboxChannels.values()];
+      workerJobMailboxChannels.clear();
+      for (const channel of activeWorkerJobMailboxChannels) {
         await channel.close();
       }
     },

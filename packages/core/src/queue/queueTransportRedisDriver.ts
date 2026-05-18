@@ -6,6 +6,7 @@ import {
   bootstrapQueueName,
   createConnectionOptions,
   jobQueueName,
+  workerJobMailboxQueueName,
   workerMailboxQueueName,
   workerEventQueueName,
 } from './queue.js';
@@ -100,6 +101,8 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
   const botEventQueue = new Queue<BotEvent, unknown, string>(botEventQueueName, { connection });
   const workerMailboxQueues = new Map<string, Queue<WorkerEvent, unknown, string>>();
   const workerMailboxEvents = new Map<string, QueueEvents>();
+  const workerJobMailboxQueues = new Map<string, Queue<JobSpec, unknown, string>>();
+  const workerJobMailboxEvents = new Map<string, QueueEvents>();
   const consumers: Array<QueueConsumerHandle & { worker: Worker<unknown> }> = [];
 
   function getWorkerMailboxQueue(workerId: string): Queue<WorkerEvent, unknown, string> {
@@ -120,6 +123,28 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
     if (!events) {
       events = new QueueEvents(workerMailboxQueueName(normalizedWorkerId), { connection });
       workerMailboxEvents.set(normalizedWorkerId, events);
+    }
+    return events;
+  }
+
+  function getWorkerJobMailboxQueue(workerId: string): Queue<JobSpec, unknown, string> {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let queue = workerJobMailboxQueues.get(normalizedWorkerId);
+    if (!queue) {
+      queue = new Queue<JobSpec, unknown, string>(workerJobMailboxQueueName(normalizedWorkerId), {
+        connection,
+      });
+      workerJobMailboxQueues.set(normalizedWorkerId, queue);
+    }
+    return queue;
+  }
+
+  function getWorkerJobMailboxEvents(workerId: string): QueueEvents {
+    const normalizedWorkerId = assertValidWorkerId(workerId);
+    let events = workerJobMailboxEvents.get(normalizedWorkerId);
+    if (!events) {
+      events = new QueueEvents(workerJobMailboxQueueName(normalizedWorkerId), { connection });
+      workerJobMailboxEvents.set(normalizedWorkerId, events);
     }
     return events;
   }
@@ -154,9 +179,25 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
         options,
       );
     },
+    async publishJobToWorkerMailbox(workerId, job, options) {
+      return createPublisher<JobSpec>(getWorkerJobMailboxQueue(workerId)).add(
+        job.type,
+        job,
+        options,
+      );
+    },
     consumeWorkerMailbox(workerId, options) {
       const consumer = createConsumer<WorkerEvent>(
         workerMailboxQueueName(assertValidWorkerId(workerId)),
+        redisUrl,
+        options,
+      );
+      consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
+      return consumer;
+    },
+    consumeWorkerJobMailbox(workerId, options) {
+      const consumer = createConsumer<JobSpec>(
+        workerJobMailboxQueueName(assertValidWorkerId(workerId)),
         redisUrl,
         options,
       );
@@ -176,8 +217,31 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
         },
       };
     },
+    observeWorkerJobMailbox(workerId, options) {
+      const events = getWorkerJobMailboxEvents(workerId);
+      const onWaiting = () => {
+        publishAsyncHook(options.onJobAvailable);
+      };
+      events.on('waiting', onWaiting);
+      return {
+        close() {
+          events.off('waiting', onWaiting);
+          return Promise.resolve();
+        },
+      };
+    },
     async countWorkerMailboxJobs(workerId) {
       const counts = await getWorkerMailboxQueue(workerId).getJobCounts('waiting', 'prioritized');
+      return {
+        waiting: counts.waiting ?? 0,
+        prioritized: counts.prioritized ?? 0,
+      };
+    },
+    async countWorkerJobMailboxJobs(workerId) {
+      const counts = await getWorkerJobMailboxQueue(workerId).getJobCounts(
+        'waiting',
+        'prioritized',
+      );
       return {
         waiting: counts.waiting ?? 0,
         prioritized: counts.prioritized ?? 0,
@@ -200,9 +264,13 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
         botEventQueue.close(),
         ...[...workerMailboxQueues.values()].map((queue) => queue.close()),
         ...[...workerMailboxEvents.values()].map((events) => events.close()),
+        ...[...workerJobMailboxQueues.values()].map((queue) => queue.close()),
+        ...[...workerJobMailboxEvents.values()].map((events) => events.close()),
       ]);
       workerMailboxQueues.clear();
       workerMailboxEvents.clear();
+      workerJobMailboxQueues.clear();
+      workerJobMailboxEvents.clear();
     },
   };
 }

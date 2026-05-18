@@ -72,15 +72,29 @@ export interface QueueTransportRuntime {
     event: WorkerEvent,
     options?: QueueAddOptions,
   ): Promise<QueueJob<WorkerEvent>>;
+  publishJobToWorkerMailbox(
+    workerId: string,
+    job: JobSpec,
+    options?: QueueAddOptions,
+  ): Promise<QueueJob<JobSpec>>;
   consumeWorkerMailbox(
     workerId: string,
     options: QueueConsumerOptions<WorkerEvent>,
+  ): QueueConsumerHandle;
+  consumeWorkerJobMailbox(
+    workerId: string,
+    options: QueueConsumerOptions<JobSpec>,
   ): QueueConsumerHandle;
   observeWorkerMailbox(
     workerId: string,
     options: WorkerMailboxObserverOptions,
   ): QueueConsumerHandle;
+  observeWorkerJobMailbox(
+    workerId: string,
+    options: WorkerMailboxObserverOptions,
+  ): QueueConsumerHandle;
   countWorkerMailboxJobs(workerId: string): Promise<WorkerMailboxJobCounts>;
+  countWorkerJobMailboxJobs(workerId: string): Promise<WorkerMailboxJobCounts>;
   consumeBotEvents(options: QueueConsumerOptions<BotEvent>): QueueConsumerHandle;
   close(): Promise<void>;
 }

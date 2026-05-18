@@ -127,6 +127,38 @@ describe('queueTransportRedisDriver', () => {
     await runtime.close();
   });
 
+  it('publishes targeted jobs to cached worker job mailbox queues', async () => {
+    const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
+
+    const firstJob = await runtime.publishJobToWorkerMailbox('worker-a', {
+      jobId: 'job-1',
+      type: 'ASK',
+      repoKeys: ['repo'],
+      gitRef: 'main',
+      requestText: 'Test request',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+    });
+    const secondJob = await runtime.publishJobToWorkerMailbox('worker-a', {
+      jobId: 'job-2',
+      type: 'PLAN',
+      repoKeys: ['repo'],
+      gitRef: 'main',
+      requestText: 'Plan request',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+    });
+
+    expect(firstJob).toMatchObject({ name: 'ASK' });
+    expect(secondJob).toMatchObject({ name: 'PLAN' });
+    const mailboxQueues = hoisted.queueInstances.filter((queue) =>
+      queue.name.startsWith('sniptail-worker-jobs:'),
+    );
+    expect(mailboxQueues).toHaveLength(1);
+    expect(mailboxQueues[0]?.name).toBe('sniptail-worker-jobs:worker-a');
+    expect(mailboxQueues[0]?.add).toHaveBeenCalledTimes(2);
+
+    await runtime.close();
+  });
+
   it('creates mailbox consumers on worker-specific queue names', async () => {
     const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
 
@@ -137,6 +169,25 @@ describe('queueTransportRedisDriver', () => {
 
     expect(hoisted.workerInstances).toHaveLength(1);
     expect(hoisted.workerInstances[0]?.name).toBe('sniptail-worker-mailbox:worker-b');
+    await consumer.pause?.();
+    await consumer.resume?.();
+    expect(hoisted.workerInstances[0]?.pause).toHaveBeenCalledWith(true);
+    expect(hoisted.workerInstances[0]?.resume).toHaveBeenCalledTimes(1);
+
+    await consumer.close();
+    await runtime.close();
+  });
+
+  it('creates worker job mailbox consumers on worker-specific queue names', async () => {
+    const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
+
+    const consumer = runtime.consumeWorkerJobMailbox('worker-b', {
+      concurrency: 2,
+      handler: () => Promise.resolve(undefined),
+    });
+
+    expect(hoisted.workerInstances).toHaveLength(1);
+    expect(hoisted.workerInstances[0]?.name).toBe('sniptail-worker-jobs:worker-b');
     await consumer.pause?.();
     await consumer.resume?.();
     expect(hoisted.workerInstances[0]?.pause).toHaveBeenCalledWith(true);
@@ -174,6 +225,34 @@ describe('queueTransportRedisDriver', () => {
     await runtime.close();
   });
 
+  it('observes worker job mailbox waiting events and counts runnable jobs', async () => {
+    const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
+    const onJobAvailable = vi.fn();
+
+    const observer = runtime.observeWorkerJobMailbox('worker-b', { onJobAvailable });
+
+    expect(hoisted.queueEventsInstances).toHaveLength(1);
+    expect(hoisted.queueEventsInstances[0]?.name).toBe('sniptail-worker-jobs:worker-b');
+
+    const waitingHandler = hoisted.queueEventsInstances[0]?.on.mock.calls.find(
+      (call) => call[0] === 'waiting',
+    )?.[1] as (() => void) | undefined;
+    waitingHandler?.();
+    await Promise.resolve();
+    expect(onJobAvailable).toHaveBeenCalledTimes(1);
+
+    const counts = await runtime.countWorkerJobMailboxJobs('worker-b');
+    expect(counts).toEqual({ waiting: 0, prioritized: 0 });
+    const mailboxQueue = hoisted.queueInstances.find(
+      (queue) => queue.name === 'sniptail-worker-jobs:worker-b',
+    );
+    expect(mailboxQueue?.getJobCounts).toHaveBeenCalledWith('waiting', 'prioritized');
+
+    await observer.close();
+    expect(hoisted.queueEventsInstances[0]?.off).toHaveBeenCalledWith('waiting', waitingHandler);
+    await runtime.close();
+  });
+
   it('rejects invalid worker ids for mailbox publish and consume', async () => {
     const runtime = createRedisQueueTransportRuntime('redis://localhost:6379/0');
 
@@ -188,6 +267,24 @@ describe('queueTransportRedisDriver', () => {
 
     expect(() =>
       runtime.consumeWorkerMailbox('worker a', {
+        concurrency: 1,
+        handler: () => Promise.resolve(undefined),
+      }),
+    ).toThrow('Invalid worker.id');
+
+    await expect(
+      runtime.publishJobToWorkerMailbox('worker/a', {
+        jobId: 'job-invalid',
+        type: 'ASK',
+        repoKeys: ['repo'],
+        gitRef: 'main',
+        requestText: 'Invalid worker',
+        channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      }),
+    ).rejects.toThrow('Invalid worker.id');
+
+    expect(() =>
+      runtime.consumeWorkerJobMailbox('worker a', {
         concurrency: 1,
         handler: () => Promise.resolve(undefined),
       }),
@@ -212,6 +309,21 @@ describe('queueTransportRedisDriver', () => {
     runtime.observeWorkerMailbox('worker-a', {
       onJobAvailable: () => Promise.resolve(undefined),
     });
+    await runtime.publishJobToWorkerMailbox('worker-a', {
+      jobId: 'job-2',
+      type: 'ASK',
+      repoKeys: ['repo'],
+      gitRef: 'main',
+      requestText: 'Test request',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+    });
+    runtime.consumeWorkerJobMailbox('worker-a', {
+      concurrency: 1,
+      handler: () => Promise.resolve(undefined),
+    });
+    runtime.observeWorkerJobMailbox('worker-a', {
+      onJobAvailable: () => Promise.resolve(undefined),
+    });
 
     await runtime.close();
 
@@ -224,8 +336,20 @@ describe('queueTransportRedisDriver', () => {
     const mailboxEvents = hoisted.queueEventsInstances.find(
       (events) => events.name === 'sniptail-worker-mailbox:worker-a',
     );
+    const workerJobMailboxQueue = hoisted.queueInstances.find(
+      (queue) => queue.name === 'sniptail-worker-jobs:worker-a',
+    );
+    const workerJobMailboxWorker = hoisted.workerInstances.find(
+      (worker) => worker.name === 'sniptail-worker-jobs:worker-a',
+    );
+    const workerJobMailboxEvents = hoisted.queueEventsInstances.find(
+      (events) => events.name === 'sniptail-worker-jobs:worker-a',
+    );
     expect(mailboxQueue?.close).toHaveBeenCalledTimes(1);
     expect(mailboxWorker?.close).toHaveBeenCalledTimes(1);
     expect(mailboxEvents?.close).toHaveBeenCalledTimes(1);
+    expect(workerJobMailboxQueue?.close).toHaveBeenCalledTimes(1);
+    expect(workerJobMailboxWorker?.close).toHaveBeenCalledTimes(1);
+    expect(workerJobMailboxEvents?.close).toHaveBeenCalledTimes(1);
   });
 });

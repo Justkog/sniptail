@@ -139,6 +139,46 @@ describe('queueTransportInprocDriver', () => {
     await workerBHandle.close();
   });
 
+  it('routes targeted worker jobs only to the matching worker job mailbox', async () => {
+    const sharedJobs: string[] = [];
+    const workerAJobs: string[] = [];
+    const workerBJobs: string[] = [];
+
+    const sharedHandle = runtime.consumeJobs({
+      concurrency: 1,
+      handler: (job) => {
+        sharedJobs.push(job.data.jobId);
+      },
+    });
+    const workerAHandle = runtime.consumeWorkerJobMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        workerAJobs.push(job.data.jobId);
+      },
+    });
+    const workerBHandle = runtime.consumeWorkerJobMailbox('worker-b', {
+      concurrency: 1,
+      handler: (job) => {
+        workerBJobs.push(job.data.jobId);
+      },
+    });
+
+    await runtime.queues.jobs.add('ASK', createJob('shared-1'), { jobId: 'shared-1' });
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-a-1'), { jobId: 'job-a-1' });
+    await runtime.publishJobToWorkerMailbox('worker-b', createJob('job-b-1'), { jobId: 'job-b-1' });
+
+    await waitFor(
+      () => sharedJobs.length === 1 && workerAJobs.length === 1 && workerBJobs.length === 1,
+    );
+    expect(sharedJobs).toEqual(['shared-1']);
+    expect(workerAJobs).toEqual(['job-a-1']);
+    expect(workerBJobs).toEqual(['job-b-1']);
+
+    await sharedHandle.close();
+    await workerAHandle.close();
+    await workerBHandle.close();
+  });
+
   it('pauses shared worker-event dispatch while mailbox jobs are pending', async () => {
     const sharedSeen: string[] = [];
     const mailboxSeen: string[] = [];
@@ -261,6 +301,23 @@ describe('queueTransportInprocDriver', () => {
     expect(seen).toEqual(['mail-1', 'mail-2', 'mail-3']);
   });
 
+  it('preserves fifo ordering for a single worker job mailbox', async () => {
+    const seen: string[] = [];
+    runtime.consumeWorkerJobMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        seen.push(job.data.jobId);
+      },
+    });
+
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-1'), { jobId: 'job-1' });
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-2'), { jobId: 'job-2' });
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-3'), { jobId: 'job-3' });
+
+    await waitFor(() => seen.length === 3);
+    expect(seen).toEqual(['job-1', 'job-2', 'job-3']);
+  });
+
   it('rejects duplicate jobId while an item is pending/running', async () => {
     runtime.consumeJobs({
       concurrency: 1,
@@ -345,6 +402,37 @@ describe('queueTransportInprocDriver', () => {
     ).resolves.toMatchObject({ id: 'shared-mailbox-job' });
   });
 
+  it('scopes duplicate worker job mailbox IDs to a single mailbox channel', async () => {
+    runtime.consumeWorkerJobMailbox('worker-a', {
+      concurrency: 1,
+      handler: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    });
+    runtime.consumeWorkerJobMailbox('worker-b', {
+      concurrency: 1,
+      handler: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      },
+    });
+
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-a-1'), {
+      jobId: 'shared-worker-job',
+    });
+
+    await expect(
+      runtime.publishJobToWorkerMailbox('worker-a', createJob('job-a-2'), {
+        jobId: 'shared-worker-job',
+      }),
+    ).rejects.toThrow('Duplicate inproc job id "shared-worker-job"');
+
+    await expect(
+      runtime.publishJobToWorkerMailbox('worker-b', createJob('job-b-1'), {
+        jobId: 'shared-worker-job',
+      }),
+    ).resolves.toMatchObject({ id: 'shared-worker-job' });
+  });
+
   it('delivers mailbox events published before a consumer subscribes', async () => {
     const seen: string[] = [];
 
@@ -364,6 +452,22 @@ describe('queueTransportInprocDriver', () => {
 
     await waitFor(() => seen.length === 1);
     expect(seen).toEqual(['mail-early']);
+  });
+
+  it('delivers worker jobs published before a consumer subscribes', async () => {
+    const seen: string[] = [];
+
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-early'));
+
+    runtime.consumeWorkerJobMailbox('worker-a', {
+      concurrency: 1,
+      handler: (job) => {
+        seen.push(job.data.jobId);
+      },
+    });
+
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual(['job-early']);
   });
 
   it('observes mailbox availability and counts runnable mailbox jobs', async () => {
@@ -390,6 +494,25 @@ describe('queueTransportInprocDriver', () => {
     await observer.close();
   });
 
+  it('observes worker job mailbox availability and counts runnable jobs', async () => {
+    const seen: string[] = [];
+    const observer = runtime.observeWorkerJobMailbox('worker-a', {
+      onJobAvailable: () => {
+        seen.push('available');
+      },
+    });
+
+    await runtime.publishJobToWorkerMailbox('worker-a', createJob('job-1'));
+
+    await waitFor(() => seen.length === 1);
+    await expect(runtime.countWorkerJobMailboxJobs('worker-a')).resolves.toEqual({
+      waiting: 1,
+      prioritized: 0,
+    });
+
+    await observer.close();
+  });
+
   it('rejects invalid worker ids for mailbox publish and consume', () => {
     expect(() =>
       runtime.publishWorkerEventToMailbox('worker/a', {
@@ -402,6 +525,17 @@ describe('queueTransportInprocDriver', () => {
 
     expect(() =>
       runtime.consumeWorkerMailbox('worker a', {
+        concurrency: 1,
+        handler: () => undefined,
+      }),
+    ).toThrow('Invalid worker.id');
+
+    expect(() =>
+      runtime.publishJobToWorkerMailbox('worker/a', createJob('job-bad')),
+    ).toThrow('Invalid worker.id');
+
+    expect(() =>
+      runtime.consumeWorkerJobMailbox('worker a', {
         concurrency: 1,
         handler: () => undefined,
       }),

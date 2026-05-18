@@ -28,6 +28,10 @@ export function workerMailboxQueueName(workerId: string): string {
   return `sniptail-worker-mailbox:${assertValidWorkerId(workerId)}`;
 }
 
+export function workerJobMailboxQueueName(workerId: string): string {
+  return `sniptail-worker-jobs:${assertValidWorkerId(workerId)}`;
+}
+
 export async function enqueueJob(queue: QueuePublisher<JobSpec>, job: JobSpec) {
   return queue.add(job.type, job, {
     jobId: job.jobId,
@@ -69,5 +73,17 @@ export async function enqueueWorkerMailboxEvent(
   return queueRuntime.publishWorkerEventToMailbox(workerId, event, {
     removeOnComplete: 200,
     removeOnFail: 200,
+  });
+}
+
+export async function enqueueWorkerMailboxJob(
+  queueRuntime: Pick<QueueTransportRuntime, 'publishJobToWorkerMailbox'>,
+  workerId: string,
+  job: JobSpec,
+) {
+  return queueRuntime.publishJobToWorkerMailbox(workerId, job, {
+    jobId: job.jobId,
+    removeOnComplete: 100,
+    removeOnFail: 100,
   });
 }
