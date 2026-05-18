@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRedisJobRegistryStore } from './registryRedisStore.js';
 import type { JobRecord } from './registryTypes.js';
+import type * as BullMQ from 'bullmq';
 
 const hoisted = vi.hoisted(() => {
   class FakeRedisClient {
@@ -62,7 +63,7 @@ const hoisted = vi.hoisted(() => {
 });
 
 vi.mock('bullmq', async () => {
-  const actual = await vi.importActual<typeof import('bullmq')>('bullmq');
+  const actual = await vi.importActual<typeof BullMQ>('bullmq');
   return {
     ...actual,
     RedisConnection: hoisted.FakeRedisConnection,

@@ -6,23 +6,28 @@ const hoisted = vi.hoisted(() => {
   const records = new Map<string, JobRecord>();
   const store: JobRegistryStore = {
     kind: 'redis',
-    loadAllRecordsByPrefix: vi.fn(async (prefix: string) =>
-      Array.from(records.entries())
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([, record]) => record),
+    loadAllRecordsByPrefix: vi.fn((prefix: string) =>
+      Promise.resolve(
+        Array.from(records.entries())
+          .filter(([key]) => key.startsWith(prefix))
+          .map(([, record]) => record),
+      ),
     ),
-    loadRecordByKey: vi.fn(async (key: string) => records.get(key)),
-    upsertRecord: vi.fn(async (key: string, record: JobRecord) => {
+    loadRecordByKey: vi.fn((key: string) => Promise.resolve(records.get(key))),
+    upsertRecord: vi.fn((key: string, record: JobRecord) => {
       records.set(key, record);
+      return Promise.resolve();
     }),
-    conditionalUpdateRecord: vi.fn(async () => false),
-    deleteRecordsByKeys: vi.fn(async (keys: string[]) => {
+    conditionalUpdateRecord: vi.fn(() => Promise.resolve(false)),
+    deleteRecordsByKeys: vi.fn((keys: string[]) => {
       for (const key of keys) {
         records.delete(key);
       }
+      return Promise.resolve();
     }),
-    deleteRecordByKey: vi.fn(async (key: string) => {
+    deleteRecordByKey: vi.fn((key: string) => {
       records.delete(key);
+      return Promise.resolve();
     }),
   };
 
@@ -33,7 +38,7 @@ const hoisted = vi.hoisted(() => {
 });
 
 vi.mock('./registryStore.js', () => ({
-  getJobRegistryStore: vi.fn(async () => hoisted.store),
+  getJobRegistryStore: vi.fn(() => hoisted.store),
 }));
 
 describe('jobs/registry ownership fields', () => {

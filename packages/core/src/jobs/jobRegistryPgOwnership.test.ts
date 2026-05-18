@@ -9,9 +9,11 @@ type StoredRow = {
 
 function createAwaitableRows(rows: Array<{ record: JobRecord }>) {
   return {
-    limit: async (count: number) => rows.slice(0, count),
+    limit: (count: number) => Promise.resolve(rows.slice(0, count)),
     then<TResult1 = Array<{ record: JobRecord }>, TResult2 = never>(
-      onfulfilled?: ((value: Array<{ record: JobRecord }>) => TResult1 | PromiseLike<TResult1>) | null,
+      onfulfilled?:
+        | ((value: Array<{ record: JobRecord }>) => TResult1 | PromiseLike<TResult1>)
+        | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
     ) {
       return Promise.resolve(rows).then(onfulfilled, onrejected);
@@ -35,25 +37,26 @@ class FakePgClient {
     }),
     insert: () => ({
       values: ({ jobId, record }: StoredRow) => ({
-        onConflictDoUpdate: async () => {
+        onConflictDoUpdate: () => {
           this.rows.set(jobId, record);
+          return Promise.resolve();
         },
       }),
     }),
     update: () => ({
       set: ({ record }: { record: JobRecord }) => ({
         where: () => ({
-          returning: async () => {
+          returning: () => {
             const firstKey = this.rows.keys().next().value;
-            if (!firstKey) return [];
+            if (!firstKey) return Promise.resolve([]);
             this.rows.set(firstKey, record);
-            return [{ jobId: firstKey }];
+            return Promise.resolve([{ jobId: firstKey }]);
           },
         }),
       }),
     }),
     delete: () => ({
-      where: async () => undefined,
+      where: () => Promise.resolve(undefined),
     }),
   };
 }

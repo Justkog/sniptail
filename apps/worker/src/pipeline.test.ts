@@ -866,27 +866,22 @@ describe('worker/pipeline runJob', () => {
         schemaVersion: 1,
         provider: 'slack',
         type: 'message.post',
-        payload: expect.objectContaining({
-          channelId: 'C1',
-          text: 'Hello there!',
-          threadId: '123.456',
-        }) as {
-          channelId: string;
-          text: string;
-          threadId?: string;
-          blocks?: unknown[];
-        },
       }),
     );
-    expect(updateJobRecordMock).toHaveBeenCalledWith(
-      'job-mention',
-      expect.objectContaining({
-        status: 'running',
-        ownerWorkerId: 'worker-a',
-        ownerWorkerLabel: 'Worker A',
-        workerClaimedAt: expect.any(String),
-      }),
-    );
+    expect(asRecord(enqueueBotEventMock.mock.calls.at(-1)?.[1])?.payload).toMatchObject({
+      channelId: 'C1',
+      text: 'Hello there!',
+      threadId: '123.456',
+    });
+    const mentionRunningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
+    expect(mentionRunningPatch).toMatchObject({
+      status: 'running',
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+    });
+    expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-mention',
       expect.objectContaining({ status: 'ok', summary: 'Hello there!' }),
@@ -1002,14 +997,14 @@ describe('worker/pipeline runJob', () => {
 
     await runJob(new BullMqBotEventSink({} as QueuePublisher<BotEvent>), job, registry);
 
-    const runningPatch = updateJobRecordMock.mock.calls.find(
-      (call) => call[0] === 'job-no-label' && call[1]?.status === 'running',
-    )?.[1];
+    const runningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
     expect(runningPatch).toMatchObject({
       status: 'running',
       ownerWorkerId: 'worker-a',
-      workerClaimedAt: expect.any(String),
     });
+    expect(typeof runningPatch?.workerClaimedAt).toBe('string');
     expect(runningPatch).not.toHaveProperty('ownerWorkerLabel');
   });
 
@@ -1104,34 +1099,25 @@ describe('worker/pipeline runJob', () => {
       expect.objectContaining({
         provider: 'slack',
         type: 'file.upload',
-        payload: expect.objectContaining({
-          channelId: 'C1',
-          title: 'sniptail-job-explore-report.md',
-          threadId: '123.456',
-        }) as {
-          channelId: string;
-          title: string;
-          threadId?: string;
-          filePath?: string;
-          fileContent?: string;
-        },
       }),
     );
+    expect(asRecord(enqueueBotEventMock.mock.calls.at(-1)?.[1])?.payload).toMatchObject({
+      channelId: 'C1',
+      title: 'sniptail-job-explore-report.md',
+      threadId: '123.456',
+    });
+    const exploreRunningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
+    expect(exploreRunningPatch).toMatchObject({
+      status: 'running',
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+    });
+    expect(typeof exploreRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-explore',
-      expect.objectContaining({
-        status: 'running',
-        ownerWorkerId: 'worker-a',
-        ownerWorkerLabel: 'Worker A',
-        workerClaimedAt: expect.any(String),
-      }),
-    );
-    expect(updateJobRecordMock).toHaveBeenCalledWith(
-      'job-explore',
-      expect.objectContaining({
-        status: 'ok',
-        summary: '# Explore report\n\nOption A\n',
-      }),
+      expect.objectContaining({ status: 'ok', summary: '# Explore report\n\nOption A\n' }),
     );
   });
 
