@@ -7,6 +7,10 @@ export type JobRecord = {
   status: JobStatus;
   createdAt: string;
   updatedAt: string;
+  ownerWorkerId?: string;
+  ownerWorkerLabel?: string;
+  workerClaimedAt?: string;
+  ownerStaleSince?: string;
   branchByRepo?: Record<string, string>;
   originBranchByRepo?: Record<string, string>;
   lineageTipShaByRepo?: Record<string, string>;
