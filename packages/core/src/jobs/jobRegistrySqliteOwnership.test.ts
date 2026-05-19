@@ -67,4 +67,94 @@ describe('jobs/sqlite ownership persistence', () => {
     await expect(store.loadRecordByKey('job:job-sqlite')).resolves.toEqual(updated);
     await expect(store.loadAllRecordsByPrefix('job:')).resolves.toEqual([updated]);
   });
+
+  it('pushes latest thread lookup and cleanup queries into sqlite', async () => {
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
+    const client = await ensureJobsTable();
+    const store = createSqliteJobRegistryStore(client);
+
+    await store.upsertRecord('job:job-older', {
+      job: {
+        jobId: 'job-older',
+        type: 'EXPLORE',
+        repoKeys: ['repo-1'],
+        gitRef: 'main',
+        requestText: 'Older',
+        channel: {
+          provider: 'discord',
+          channelId: 'parent-1',
+          threadId: 'thread-1',
+        },
+        agentThreadIds: {
+          codex: 'agent-thread-older',
+        },
+      },
+      status: 'ok',
+      createdAt: '2026-05-18T10:00:00.000Z',
+      updatedAt: '2026-05-18T10:00:00.000Z',
+    });
+    await store.upsertRecord('job:job-latest', {
+      job: {
+        jobId: 'job-latest',
+        type: 'EXPLORE',
+        repoKeys: ['repo-1'],
+        gitRef: 'main',
+        requestText: 'Latest',
+        channel: {
+          provider: 'discord',
+          channelId: 'thread-1',
+          threadId: 'thread-1',
+        },
+        agentThreadIds: {
+          codex: 'agent-thread-latest',
+        },
+      },
+      status: 'ok',
+      createdAt: '2026-05-18T11:00:00.000Z',
+      updatedAt: '2026-05-18T11:00:00.000Z',
+    });
+    await store.upsertRecord('job:job-implement', {
+      job: {
+        jobId: 'job-implement',
+        type: 'IMPLEMENT',
+        repoKeys: ['repo-1'],
+        gitRef: 'main',
+        requestText: 'Implement',
+        channel: {
+          provider: 'slack',
+          channelId: 'C1',
+          threadId: 'T1',
+          userId: 'U1',
+        },
+      },
+      status: 'ok',
+      createdAt: '2026-05-18T12:00:00.000Z',
+      updatedAt: '2026-05-18T12:00:00.000Z',
+    });
+
+    await expect(
+      store.findLatestJobRecordByChannelThread({
+        provider: 'discord',
+        channelId: 'parent-1',
+        threadId: 'thread-1',
+        types: ['EXPLORE'],
+      }),
+    ).resolves.toMatchObject({
+      job: {
+        jobId: 'job-latest',
+      },
+    });
+
+    await expect(store.listJobKeysCreatedBefore('2026-05-18T11:30:00.000Z')).resolves.toEqual([
+      'job:job-older',
+      'job:job-latest',
+    ]);
+    await expect(store.countJobRecordsByTypes(['EXPLORE', 'IMPLEMENT'])).resolves.toBe(3);
+    await expect(
+      store.listJobRecordsForCleanup({
+        types: ['EXPLORE', 'IMPLEMENT'],
+        limit: 2,
+      }),
+    ).resolves.toMatchObject([{ job: { jobId: 'job-older' } }, { job: { jobId: 'job-latest' } }]);
+  });
 });

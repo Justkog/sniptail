@@ -39,27 +39,6 @@ async function loadAllRecords(): Promise<JobRecord[]> {
   return store.loadAllRecordsByPrefix(JOB_KEY_PREFIX);
 }
 
-function matchesChannelThread(
-  provider: ChannelProvider,
-  record: JobRecord,
-  channelId: string,
-  threadId: string,
-): boolean {
-  const channel = record?.job?.channel;
-  if (!channel || channel.provider !== provider) {
-    return false;
-  }
-
-  if (provider === 'discord') {
-    return (
-      channel.threadId === threadId &&
-      (channel.channelId === channelId || channel.channelId === threadId || channelId === threadId)
-    );
-  }
-
-  return channel.channelId === channelId && channel.threadId === threadId;
-}
-
 export async function loadJobRecord(jobId: string): Promise<JobRecord | undefined> {
   const store = await getJobRegistryStore();
   return store.loadRecordByKey(jobKey(jobId));
@@ -142,23 +121,13 @@ export async function findLatestJobByChannelThread(
   threadId: string,
   agentId: AgentId,
 ): Promise<JobRecord | undefined> {
-  const records = await loadAllRecords();
-  let latestWithThreadId: JobRecord | undefined;
-  let latestTime = -1;
-
-  for (const record of records) {
-    if (!matchesChannelThread(provider, record, channelId, threadId)) continue;
-    const agentThreadId = record.job?.agentThreadIds?.[agentId];
-    if (!agentThreadId) continue;
-    const createdTime = Date.parse(record.createdAt);
-    if (Number.isNaN(createdTime)) continue;
-    if (createdTime > latestTime) {
-      latestWithThreadId = record;
-      latestTime = createdTime;
-    }
-  }
-
-  return latestWithThreadId;
+  const store = await getJobRegistryStore();
+  return store.findLatestJobRecordByChannelThread({
+    provider,
+    channelId,
+    threadId,
+    agentId,
+  });
 }
 
 export async function findLatestJobByChannelThreadAndTypes(
@@ -167,22 +136,13 @@ export async function findLatestJobByChannelThreadAndTypes(
   threadId: string,
   types: JobType[],
 ): Promise<JobRecord | undefined> {
-  const records = await loadAllRecords();
-  let latest: JobRecord | undefined;
-  let latestTime = -1;
-
-  for (const record of records) {
-    if (!matchesChannelThread(provider, record, channelId, threadId)) continue;
-    if (!types.includes(record.job.type)) continue;
-    const createdTime = Date.parse(record.createdAt);
-    if (Number.isNaN(createdTime)) continue;
-    if (createdTime > latestTime) {
-      latest = record;
-      latestTime = createdTime;
-    }
-  }
-
-  return latest;
+  const store = await getJobRegistryStore();
+  return store.findLatestJobRecordByChannelThread({
+    provider,
+    channelId,
+    threadId,
+    types,
+  });
 }
 
 export async function clearJobsBefore(cutoff: Date): Promise<number> {
@@ -191,25 +151,28 @@ export async function clearJobsBefore(cutoff: Date): Promise<number> {
     throw new Error('Invalid cutoff date.');
   }
 
-  const keysToDelete: string[] = [];
-  const records = await loadAllRecords();
-  for (const record of records) {
-    const key = jobKey(record.job.jobId);
-    const createdAt = record?.createdAt;
-    if (!createdAt) continue;
-    const createdTime = Date.parse(createdAt);
-    if (Number.isNaN(createdTime)) continue;
-    if (createdTime < cutoffTime) {
-      keysToDelete.push(key);
-    }
-  }
+  const store = await getJobRegistryStore();
+  const keysToDelete = await store.listJobKeysCreatedBefore(cutoff.toISOString());
 
   if (!keysToDelete.length) {
     return 0;
   }
 
-  const store = await getJobRegistryStore();
   await store.deleteRecordsByKeys(keysToDelete);
   await Promise.all(keysToDelete.map((key) => removeJobRoot(jobIdFromKey(key))));
   return keysToDelete.length;
+}
+
+export async function countJobRecordsByTypes(types: JobType[]): Promise<number> {
+  const store = await getJobRegistryStore();
+  return store.countJobRecordsByTypes(types);
+}
+
+export async function listJobRecordsForCleanup(input: {
+  types: JobType[];
+  olderThan?: string;
+  limit?: number;
+}): Promise<JobRecord[]> {
+  const store = await getJobRegistryStore();
+  return store.listJobRecordsForCleanup(input);
 }

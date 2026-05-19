@@ -43,6 +43,21 @@ async function removeJobRecords(
   await registry.deleteJobRecords(recordsToDelete.map((record) => record.job.jobId));
 }
 
+const CLEANUP_ELIGIBLE_TYPES = [
+  'MENTION',
+  'ASK',
+  'EXPLORE',
+  'PLAN',
+  'REVIEW',
+  'IMPLEMENT',
+] as const;
+
+function isEligibleCleanupType(record: { job: { type: string } }): boolean {
+  return CLEANUP_ELIGIBLE_TYPES.includes(
+    record.job.type as (typeof CLEANUP_ELIGIBLE_TYPES)[number],
+  );
+}
+
 export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
   const config = loadWorkerConfig();
   const maxEntries = config.cleanupMaxEntries;
@@ -57,16 +72,45 @@ export async function enforceJobCleanup(registry: JobRegistry): Promise<void> {
     );
   }
 
+  if (registry.countJobRecordsByTypes && registry.listJobRecordsForCleanup) {
+    if (maxAgeMs !== undefined) {
+      const cutoffIso = new Date(Date.now() - maxAgeMs).toISOString();
+      const aged = await registry.listJobRecordsForCleanup({
+        types: [...CLEANUP_ELIGIBLE_TYPES],
+        olderThan: cutoffIso,
+      });
+      if (aged.length) {
+        await removeJobRecords(aged, config, registry);
+        logger.info(
+          { removed: aged.length, maxAge: maxAgeRaw, cutoff: cutoffIso },
+          'Trimmed job history by max age',
+        );
+      }
+    }
+
+    if (maxEntries === undefined) return;
+
+    const normalizedMax = Math.max(0, maxEntries);
+    const totalEligible = await registry.countJobRecordsByTypes([...CLEANUP_ELIGIBLE_TYPES]);
+    const excess = totalEligible - normalizedMax;
+    if (excess <= 0) return;
+
+    const recordsToDelete = await registry.listJobRecordsForCleanup({
+      types: [...CLEANUP_ELIGIBLE_TYPES],
+      limit: excess,
+    });
+    if (!recordsToDelete.length) return;
+
+    await removeJobRecords(recordsToDelete, config, registry);
+    logger.info(
+      { removed: recordsToDelete.length, maxEntries: normalizedMax },
+      'Trimmed job history to max entries',
+    );
+    return;
+  }
+
   const records = await registry.loadAllJobRecords();
-  const eligibleRecords = records.filter(
-    (record) =>
-      record.job.type === 'MENTION' ||
-      record.job.type === 'ASK' ||
-      record.job.type === 'EXPLORE' ||
-      record.job.type === 'PLAN' ||
-      record.job.type === 'REVIEW' ||
-      record.job.type === 'IMPLEMENT',
-  );
+  const eligibleRecords = records.filter(isEligibleCleanupType);
   if (!eligibleRecords.length) return;
 
   const enriched = eligibleRecords.map((record) => {

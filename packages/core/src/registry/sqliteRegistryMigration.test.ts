@@ -28,7 +28,7 @@ describe('sqlite registry migration', () => {
     );
 
     expect(status.isUpToDate).toBe(true);
-    expect(status.expectedMigrations).toBe(8);
+    expect(status.expectedMigrations).toBe(9);
 
     const client = await createSqliteClient(registryDir);
     try {

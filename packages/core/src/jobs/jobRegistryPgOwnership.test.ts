@@ -59,6 +59,80 @@ class FakePgClient {
       where: () => Promise.resolve(undefined),
     }),
   };
+
+  readonly pool = {
+    query: (queryText: string, values: unknown[] = []) => {
+      if (queryText.includes(`record #>> '{job,channel,provider}'`)) {
+        const [jobPrefix, provider, threadId, channelId] = values;
+        const trailingValues = values.slice(4);
+        const agentId = trailingValues.find((value) => typeof value === 'string');
+        const types = trailingValues.find((value) => Array.isArray(value)) as string[] | undefined;
+        const matches = Array.from(this.rows.entries())
+          .filter(([key]) => key.startsWith(String(jobPrefix)))
+          .map(([, record]) => record)
+          .filter((record) => record.job.channel.provider === provider)
+          .filter((record) => record.job.channel.threadId === threadId)
+          .filter(
+            (record) =>
+              record.job.channel.channelId === channelId ||
+              record.job.channel.channelId === threadId ||
+              channelId === threadId,
+          )
+          .filter((record) => (agentId ? Boolean(record.job.agentThreadIds?.[agentId]) : true))
+          .filter((record) => (types?.length ? types.includes(record.job.type) : true))
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        return Promise.resolve({
+          rows: matches.slice(0, 1).map((record) => ({ record })),
+        });
+      }
+
+      if (queryText.includes(`SELECT job_id FROM jobs`)) {
+        const [jobPrefix, cutoffIso] = values;
+        return Promise.resolve({
+          rows: Array.from(this.rows.entries())
+            .filter(([key]) => key.startsWith(String(jobPrefix)))
+            .filter(([, record]) => record.createdAt < String(cutoffIso))
+            .map(([jobId]) => ({ job_id: jobId })),
+        });
+      }
+
+      if (queryText.includes(`COUNT(*)::int AS record_count`)) {
+        const [jobPrefix, types] = values as [string, string[]];
+        return Promise.resolve({
+          rows: [
+            {
+              record_count: Array.from(this.rows.entries())
+                .filter(([key]) => key.startsWith(jobPrefix))
+                .map(([, record]) => record)
+                .filter((record) => types.includes(record.job.type)).length,
+            },
+          ],
+        });
+      }
+
+      if (queryText.includes(`ORDER BY record->>'createdAt' ASC`)) {
+        const [jobPrefix, types, maybeOlderThan, maybeLimit] = values;
+        const olderThan = typeof maybeOlderThan === 'string' ? maybeOlderThan : undefined;
+        const limit =
+          typeof maybeLimit === 'number'
+            ? maybeLimit
+            : typeof maybeOlderThan === 'number'
+              ? maybeOlderThan
+              : undefined;
+        const rows = Array.from(this.rows.entries())
+          .filter(([key]) => key.startsWith(String(jobPrefix)))
+          .map(([, record]) => record)
+          .filter((record) => (types as string[]).includes(record.job.type))
+          .filter((record) => (olderThan ? record.createdAt <= olderThan : true))
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .slice(0, limit ?? Number.MAX_SAFE_INTEGER)
+          .map((record) => ({ record }));
+        return Promise.resolve({ rows });
+      }
+
+      throw new Error(`Unexpected pg query in test: ${queryText}`);
+    },
+  };
 }
 
 function buildRecord(jobId: string): JobRecord {

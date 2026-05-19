@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadJobRecord, saveJobQueued, updateJobRecord } from './registry.js';
+import { clearJobsBefore, loadJobRecord, saveJobQueued, updateJobRecord } from './registry.js';
 import type { JobRecord, JobRegistryStore } from './registryTypes.js';
 
 const hoisted = vi.hoisted(() => {
@@ -14,6 +14,10 @@ const hoisted = vi.hoisted(() => {
       ),
     ),
     loadRecordByKey: vi.fn((key: string) => Promise.resolve(records.get(key))),
+    findLatestJobRecordByChannelThread: vi.fn(() => Promise.resolve(undefined)),
+    listJobKeysCreatedBefore: vi.fn(() => Promise.resolve([])),
+    countJobRecordsByTypes: vi.fn(() => Promise.resolve(0)),
+    listJobRecordsForCleanup: vi.fn(() => Promise.resolve([])),
     upsertRecord: vi.fn((key: string, record: JobRecord) => {
       records.set(key, record);
       return Promise.resolve();
@@ -113,5 +117,23 @@ describe('jobs/registry ownership fields', () => {
       workerClaimedAt: '2026-05-18T09:01:00.000Z',
       ownerStaleSince: '2026-05-18T09:10:00.000Z',
     });
+  });
+
+  it('clears old jobs through the store query instead of loading all records', async () => {
+    hoisted.store.listJobKeysCreatedBefore = vi
+      .fn<JobRegistryStore['listJobKeysCreatedBefore']>()
+      .mockResolvedValueOnce(['job:job-3', 'job:job-4']);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const listJobKeysCreatedBeforeMock = vi.mocked(hoisted.store.listJobKeysCreatedBefore);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const loadAllRecordsByPrefixMock = vi.mocked(hoisted.store.loadAllRecordsByPrefix);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const deleteRecordsByKeysMock = vi.mocked(hoisted.store.deleteRecordsByKeys);
+
+    await expect(clearJobsBefore(new Date('2026-05-18T10:00:00.000Z'))).resolves.toBe(2);
+
+    expect(listJobKeysCreatedBeforeMock).toHaveBeenCalledWith('2026-05-18T10:00:00.000Z');
+    expect(loadAllRecordsByPrefixMock).not.toHaveBeenCalled();
+    expect(deleteRecordsByKeysMock).toHaveBeenCalledWith(['job:job-3', 'job:job-4']);
   });
 });

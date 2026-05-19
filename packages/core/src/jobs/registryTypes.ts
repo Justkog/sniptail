@@ -1,4 +1,5 @@
-import type { JobSpec, MergeRequestResult } from '../types/job.js';
+import type { ChannelProvider } from '../types/channel.js';
+import type { AgentId, JobSpec, JobType, MergeRequestResult } from '../types/job.js';
 
 export type JobStatus = 'queued' | 'running' | 'ok' | 'failed';
 
@@ -23,10 +24,28 @@ export type JobRecord = {
   openQuestions?: string[];
 };
 
+export type JobRecordThreadLookup = {
+  provider: ChannelProvider;
+  channelId: string;
+  threadId: string;
+  agentId?: AgentId;
+  types?: JobType[];
+};
+
+export type JobRecordCleanupQuery = {
+  types: JobType[];
+  olderThan?: string;
+  limit?: number;
+};
+
 export interface JobRegistryStore {
   kind: 'pg' | 'sqlite' | 'redis';
   loadAllRecordsByPrefix(prefix: string): Promise<JobRecord[]>;
   loadRecordByKey(key: string): Promise<JobRecord | undefined>;
+  findLatestJobRecordByChannelThread(input: JobRecordThreadLookup): Promise<JobRecord | undefined>;
+  listJobKeysCreatedBefore(cutoffIso: string): Promise<string[]>;
+  countJobRecordsByTypes(types: JobType[]): Promise<number>;
+  listJobRecordsForCleanup(input: JobRecordCleanupQuery): Promise<JobRecord[]>;
   upsertRecord(key: string, record: JobRecord): Promise<void>;
   /**
    * Atomically updates the record at `key` only if the currently stored

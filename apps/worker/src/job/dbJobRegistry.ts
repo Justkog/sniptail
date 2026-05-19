@@ -1,8 +1,10 @@
 import {
   clearJobsBefore as clearJobsBeforeDb,
+  countJobRecordsByTypes as countJobRecordsByTypesDb,
   deleteJobRecords as deleteJobRecordsDb,
   findLatestJobByChannelThread as findLatestJobByChannelThreadDb,
   findLatestJobByChannelThreadAndTypes as findLatestJobByChannelThreadAndTypesDb,
+  listJobRecordsForCleanup as listJobRecordsForCleanupDb,
   loadAllJobRecords as loadAllJobRecordsDb,
   loadJobRecord as loadJobRecordDb,
   markJobForDeletion as markJobForDeletionDb,
@@ -36,6 +38,18 @@ export class DbJobRegistry implements JobRegistry {
 
   async clearJobsBefore(cutoff: Date): Promise<number> {
     return clearJobsBeforeDb(cutoff);
+  }
+
+  async countJobRecordsByTypes(types: JobType[]): Promise<number> {
+    return countJobRecordsByTypesDb(types);
+  }
+
+  async listJobRecordsForCleanup(input: {
+    types: JobType[];
+    olderThan?: string;
+    limit?: number;
+  }): Promise<JobRecord[]> {
+    return listJobRecordsForCleanupDb(input);
   }
 
   async findLatestJobByChannelThread(

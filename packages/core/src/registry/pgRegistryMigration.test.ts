@@ -15,8 +15,8 @@ describe('pg registry migration', () => {
     };
 
     expect(journal.entries[journal.entries.length - 1]).toMatchObject({
-      idx: 3,
-      tag: '0003_create_agent_session_and_worker_registry_state',
+      idx: 4,
+      tag: '0004_add_job_query_indexes',
     });
   });
 

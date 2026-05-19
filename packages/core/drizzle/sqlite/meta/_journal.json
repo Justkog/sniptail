@@ -47,6 +47,12 @@
       "when": 1779148800000,
       "tag": "0007_add_worker_registry_state",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "when": 1779148860000,
+      "tag": "0008_add_job_query_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -23,6 +23,12 @@
       "when": 1760000200000,
       "tag": "0003_create_agent_session_and_worker_registry_state",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "when": 1779148860000,
+      "tag": "0004_add_job_query_indexes",
+      "breakpoints": true
     }
   ]
 }
