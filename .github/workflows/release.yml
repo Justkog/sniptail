@@ -323,8 +323,8 @@ jobs:
 
           tmp_registry="$(mktemp -d)"
           trap 'rm -rf "${tmp_registry}" "${symlink_root}"' EXIT
-          JOB_REGISTRY_DB=sqlite \
-          JOB_REGISTRY_PATH="${tmp_registry}" \
+          SNIPTAIL_REGISTRY_DB=sqlite \
+          SNIPTAIL_REGISTRY_PATH="${tmp_registry}" \
           QUEUE_DRIVER=inproc \
           "${stage_root}/bin/sniptail" db status --scope worker --json >/dev/null
 
