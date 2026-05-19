@@ -345,6 +345,15 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 - Run action availability in bot UIs is sourced from catalog metadata (`providerData.sniptail.run.actionIds`) synced on worker startup or via `sniptail repos sync-run-actions`.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
 
+## Managed job resume routing
+
+- Fresh managed jobs use the shared `sniptail-jobs` queue so any available worker can claim them.
+- Resumed managed jobs route to the worker that owns the source job, using `sniptail-worker-jobs:<workerId>`.
+- Workers record job ownership when they start running a job. Resume routing uses that owner because job work directories, copied artifacts, repo worktrees, and provider session files are worker-local.
+- If the source job owner is unavailable, the resume request is rejected before a new job record is created. The source job keeps its stale-owner state until the worker returns or an operator clears ownership.
+- Targeted managed-job mailbox work is prioritized over shared managed jobs on the same worker. While targeted jobs are pending, shared `sniptail-jobs` consumption is paused for that worker and both paths run through the same local managed-job lane.
+- Multi-machine deployments that need reliable resume routing must use a shared registry backend such as Postgres or Redis. SQLite is suitable for local or single-machine operation, but it is not shared across machines.
+
 ## Agent command operations
 
 - Worker capabilities are read from the shared registry, not from transient bot events.
