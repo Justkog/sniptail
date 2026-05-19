@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest } from '@sniptail/core/permissions/permissionsApprovalTypes.js';
 import { PermissionsRuntimeService } from './permissionsRuntimeService.js';
 
@@ -9,9 +9,15 @@ function createService() {
         groupCacheTtlSeconds: 30,
       },
     } as never,
-    queue: {} as never,
     bootstrapQueue: {} as never,
     workerEventQueue: {} as never,
+    queueRuntime: {
+      queues: {
+        jobs: {} as never,
+      },
+      publishWorkerEventToMailbox: vi.fn(),
+      publishJobToWorkerMailbox: vi.fn(),
+    } as never,
   });
 }
 

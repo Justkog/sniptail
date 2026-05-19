@@ -32,7 +32,6 @@ function includesExplicitMention(text: string, botUserId: string): boolean {
 export function registerDmMentionEvent({
   app,
   config,
-  queue,
   queueRuntime,
   permissions,
   slackIds,
@@ -126,7 +125,7 @@ export function registerDmMentionEvent({
       {
         app,
         config,
-        queue,
+        queueRuntime,
         permissions,
         slackIds,
       },

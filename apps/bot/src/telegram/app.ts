@@ -1,18 +1,11 @@
 import { loadBotConfig } from '@sniptail/core/config/config.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import { logger } from '@sniptail/core/logger.js';
 import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 import type { TelegramHandlerContext } from './context.js';
 import { registerTelegramHandlers } from './handlers.js';
 
-export async function startTelegramBot(
-  queue: QueuePublisher<JobSpec>,
-  bootstrapQueue: QueuePublisher<BootstrapRequest>,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
-) {
+export async function startTelegramBot(queueRuntime: QueueTransportRuntime) {
   const config = loadBotConfig();
   if (!config.telegram) {
     throw new Error(
@@ -26,14 +19,10 @@ export async function startTelegramBot(
   const context: TelegramHandlerContext = {
     bot,
     config,
-    queue,
-    bootstrapQueue,
-    workerEventQueue,
+    queueRuntime,
     permissions: new PermissionsRuntimeService({
       config,
-      queue,
-      bootstrapQueue,
-      workerEventQueue,
+      queueRuntime,
     }),
   };
 

@@ -91,7 +91,7 @@ export function registerRunSubmitView({
   app,
   slackIds,
   config,
-  queue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.view(slackIds.actions.runSubmit, async ({ ack, body, view, client }) => {
@@ -307,7 +307,7 @@ export function registerRunSubmitView({
     const requestText = `Run action ${actionId}`;
     const result = await submitNormalizedJobRequest({
       config,
-      queue,
+      queueRuntime,
       input: {
         type: 'RUN',
         repoKeys,

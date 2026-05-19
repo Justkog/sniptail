@@ -1,23 +1,12 @@
 import { App } from '@slack/bolt';
-import type {
-  QueuePublisher,
-  QueueTransportRuntime,
-} from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
-import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from './features/context.js';
 import { registerSlackHandlers } from './handlers.js';
 import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
-export function createSlackApp(
-  queue: QueuePublisher<JobSpec>,
-  bootstrapQueue: QueuePublisher<BootstrapRequest>,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
-  queueRuntime: QueueTransportRuntime,
-) {
+export function createSlackApp(queueRuntime: QueueTransportRuntime) {
   const config = loadBotConfig();
   if (!config.slack) {
     throw new Error(
@@ -27,9 +16,6 @@ export function createSlackApp(
   const slackIds = buildSlackIds(config.botName);
   const permissions = new PermissionsRuntimeService({
     config,
-    queue,
-    bootstrapQueue,
-    workerEventQueue,
     queueRuntime,
   });
   const app = new App({
@@ -43,9 +29,6 @@ export function createSlackApp(
     app,
     slackIds,
     config,
-    queue,
-    bootstrapQueue,
-    workerEventQueue,
     queueRuntime,
     permissions,
   };

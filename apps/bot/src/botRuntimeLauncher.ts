@@ -74,32 +74,18 @@ export async function startBotRuntime(
 
   try {
     if (config.slackEnabled) {
-      slackApp = createSlackApp(
-        queueRuntime.queues.jobs,
-        queueRuntime.queues.bootstrap,
-        queueRuntime.queues.workerEvents,
-        queueRuntime,
-      );
+      slackApp = createSlackApp(queueRuntime);
       await slackApp.start();
       await debugLogSlackRuntimeIdentity(slackApp);
       logger.info(`⚡️ ${config.botName} Slack bot is running (Socket Mode)`);
     }
 
     if (config.discordEnabled) {
-      discordClient = await startDiscordBot(
-        queueRuntime.queues.jobs,
-        queueRuntime.queues.bootstrap,
-        queueRuntime.queues.workerEvents,
-        queueRuntime,
-      );
+      discordClient = await startDiscordBot(queueRuntime);
     }
 
     if (config.telegramEnabled) {
-      telegramBot = await startTelegramBot(
-        queueRuntime.queues.jobs,
-        queueRuntime.queues.bootstrap,
-        queueRuntime.queues.workerEvents,
-      );
+      telegramBot = await startTelegramBot(queueRuntime);
     }
 
     if (!slackApp && !discordClient && !telegramBot) {

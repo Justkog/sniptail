@@ -88,9 +88,7 @@ export async function resolveManagedJobOwnerRoute(input: {
         input.resumeFromJobId,
         buildJobOwnershipPatch({
           ownerWorkerId: sourceJob.ownerWorkerId,
-          ...(sourceJob.ownerWorkerLabel
-            ? { ownerWorkerLabel: sourceJob.ownerWorkerLabel }
-            : {}),
+          ...(sourceJob.ownerWorkerLabel ? { ownerWorkerLabel: sourceJob.ownerWorkerLabel } : {}),
           ...(sourceJob.workerClaimedAt ? { workerClaimedAt: sourceJob.workerClaimedAt } : {}),
           ownerStaleSince,
         }),

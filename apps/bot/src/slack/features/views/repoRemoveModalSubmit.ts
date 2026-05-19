@@ -12,7 +12,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 export function registerRepoRemoveModalSubmit({
   app,
   slackIds,
-  workerEventQueue,
+  queueRuntime,
   config,
   permissions,
 }: SlackHandlerContext) {
@@ -94,7 +94,7 @@ export function registerRepoRemoveModalSubmit({
         return;
       }
 
-      await enqueueWorkerEvent(workerEventQueue, event);
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
 
       await postMessage(app, {
         channel: responseChannel,

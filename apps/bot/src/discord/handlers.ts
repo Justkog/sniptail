@@ -130,8 +130,7 @@ async function replyToInteractionError(
 }
 
 export function registerDiscordHandlers(context: DiscordHandlerContext): void {
-  const { client, config, queue, bootstrapQueue, workerEventQueue, queueRuntime, permissions } =
-    context;
+  const { client, config, queueRuntime, permissions } = context;
   const prefix = toSlackCommandPrefix(config.botName);
   const commandNames = buildCommandNames(prefix);
 
@@ -355,7 +354,12 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.repoAdd) {
       try {
-        await handleRepoAddAdmin(interaction, config, workerEventQueue, permissions);
+        await handleRepoAddAdmin(
+          interaction,
+          config,
+          queueRuntime.queues.workerEvents,
+          permissions,
+        );
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -365,7 +369,12 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.repoRemove) {
       try {
-        await handleRepoRemoveAdmin(interaction, config, workerEventQueue, permissions);
+        await handleRepoRemoveAdmin(
+          interaction,
+          config,
+          queueRuntime.queues.workerEvents,
+          permissions,
+        );
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -375,7 +384,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.commandName === commandNames.clearBefore) {
       try {
-        await handleClearBefore(interaction, config, workerEventQueue, permissions);
+        await handleClearBefore(interaction, config, queueRuntime.queues.workerEvents, permissions);
       } catch (err) {
         logger.error({ err, command: interaction.commandName }, 'Discord command failed');
         await interaction.reply('Something went wrong handling that command.');
@@ -404,7 +413,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     try {
       if (interaction.commandName === commandNames.usage) {
-        await handleUsage(interaction, config, workerEventQueue, permissions);
+        await handleUsage(interaction, config, queueRuntime.queues.workerEvents, permissions);
       }
     } catch (err) {
       logger.error({ err, command: interaction.commandName }, 'Discord command failed');
@@ -679,7 +688,13 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
             await handleRunFromJobButton(interaction, parsed.jobId, config);
             return;
           case 'reviewFromJob':
-            await handleReviewFromJobButton(interaction, parsed.jobId, config, queue, permissions);
+            await handleReviewFromJobButton(
+              interaction,
+              parsed.jobId,
+              config,
+              queueRuntime,
+              permissions,
+            );
             return;
           case 'worktreeCommands':
             if (
@@ -713,7 +728,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
               interaction,
               parsed.jobId,
               config,
-              workerEventQueue,
+              queueRuntime.queues.workerEvents,
               permissions,
             );
             return;
@@ -832,7 +847,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === implementModalCustomId) {
       try {
-        await handleImplementModalSubmit(interaction, config, queue, permissions);
+        await handleImplementModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord implement modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -841,7 +856,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === runModalCustomId) {
       try {
-        await handleRunModalSubmit(interaction, config, queue, permissions);
+        await handleRunModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord run modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -851,7 +866,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === exploreModalCustomId) {
       try {
-        await handleDiscordExploreModalSubmit(interaction, config, queue, permissions);
+        await handleDiscordExploreModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord explore modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -860,7 +875,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === planModalCustomId) {
       try {
-        await handlePlanModalSubmit(interaction, config, queue, permissions);
+        await handlePlanModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord plan modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -869,7 +884,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === answerQuestionsModalCustomId) {
       try {
-        await handleAnswerQuestionsSubmit(interaction, config, queue, permissions);
+        await handleAnswerQuestionsSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord answer questions modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -878,7 +893,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === askModalCustomId) {
       try {
-        await handleAskModalSubmit(interaction, config, queue, permissions);
+        await handleAskModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord ask modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -887,7 +902,12 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === bootstrapModalCustomId) {
       try {
-        await handleBootstrapModalSubmit(interaction, config, bootstrapQueue, permissions);
+        await handleBootstrapModalSubmit(
+          interaction,
+          config,
+          queueRuntime.queues.bootstrap,
+          permissions,
+        );
       } catch (err) {
         logger.error({ err }, 'Discord bootstrap modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');
@@ -935,7 +955,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       if (handledAgentThreadMessage) {
         return;
       }
-      await handleMention(message, config, queue, permissions);
+      await handleMention(message, config, queueRuntime.queues.jobs, permissions);
     } catch (err) {
       logger.error({ err }, 'Discord mention handling failed');
     }

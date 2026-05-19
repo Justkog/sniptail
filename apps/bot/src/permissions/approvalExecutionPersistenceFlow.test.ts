@@ -3,10 +3,10 @@ import type { ApprovalRequest } from '@sniptail/core/permissions/permissionsAppr
 import { PermissionsRuntimeService } from './permissionsRuntimeService.js';
 
 const saveJobQueuedMock = vi.hoisted(() => vi.fn());
-const enqueueJobMock = vi.hoisted(() => vi.fn());
 const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerMailboxEventMock = vi.hoisted(() => vi.fn());
+const saveAndEnqueueManagedJobMock = vi.hoisted(() => vi.fn());
 const loadAgentSessionMock = vi.hoisted(() => vi.fn());
 const updateAgentSessionStatusMock = vi.hoisted(() => vi.fn());
 const loadApprovalRequestMock = vi.hoisted(() => vi.fn());
@@ -18,15 +18,22 @@ const evaluatePermissionDecisionMock = vi.hoisted(() => vi.fn());
 const enqueueAgentSessionOwnerMailboxEventMock = vi.hoisted(() => vi.fn());
 const isOwnerRoutedAgentEventMock = vi.hoisted(() => vi.fn());
 
+function getFirstMockCallArg<T>(mock: { mock: { calls: Array<Array<unknown>> } }): T | undefined {
+  return mock.mock.calls[0]?.[0] as T | undefined;
+}
+
 vi.mock('@sniptail/core/jobs/registry.js', () => ({
   saveJobQueued: saveJobQueuedMock,
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueJob: enqueueJobMock,
   enqueueBootstrap: enqueueBootstrapMock,
   enqueueWorkerEvent: enqueueWorkerEventMock,
   enqueueWorkerMailboxEvent: enqueueWorkerMailboxEventMock,
+}));
+
+vi.mock('../job-requests/enqueueManagedJob.js', () => ({
+  saveAndEnqueueManagedJob: saveAndEnqueueManagedJobMock,
 }));
 
 vi.mock('@sniptail/core/logger.js', () => ({
@@ -95,11 +102,14 @@ function createService() {
         approvalTtlSeconds: 86_400,
       },
     } as never,
-    queue: { add: vi.fn() } as never,
     bootstrapQueue: { add: vi.fn() } as never,
     workerEventQueue: { add: vi.fn() } as never,
     queueRuntime: {
+      queues: {
+        jobs: { add: vi.fn() },
+      },
       publishWorkerEventToMailbox: vi.fn(),
+      publishJobToWorkerMailbox: vi.fn(),
     } as never,
   });
 }
@@ -209,10 +219,13 @@ describe('approval execution persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     saveJobQueuedMock.mockResolvedValue(undefined);
-    enqueueJobMock.mockResolvedValue(undefined);
     enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
     enqueueWorkerMailboxEventMock.mockResolvedValue(undefined);
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'accepted',
+      target: 'shared',
+    });
     enqueueAgentSessionOwnerMailboxEventMock.mockResolvedValue(undefined);
     updateAgentSessionStatusMock.mockResolvedValue(undefined);
     loadAgentSessionMock.mockResolvedValue({
@@ -245,7 +258,7 @@ describe('approval execution persistence', () => {
     });
   });
 
-  it('approved enqueueJob persists queue record before enqueue', async () => {
+  it('approved enqueueJob delegates to the managed-job enqueue flow', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -279,13 +292,27 @@ describe('approval execution persistence', () => {
       throw new Error('Expected approved status');
     }
     expect(result.executed).toBe(true);
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(approvedRequest.operation.job);
-    expect(enqueueJobMock).toHaveBeenCalledWith(expect.anything(), approvedRequest.operation.job);
-    expect(
-      saveJobQueuedMock.mock.invocationCallOrder[0] < enqueueJobMock.mock.invocationCallOrder[0],
-    ).toBe(true);
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
+    const savedJob = getFirstMockCallArg<{
+      config: unknown;
+      queueRuntime: {
+        publishJobToWorkerMailbox: unknown;
+        queues: {
+          jobs: unknown;
+        };
+      };
+      job: typeof approvedRequest.operation.job;
+    }>(saveAndEnqueueManagedJobMock);
+    expect(savedJob?.job).toMatchObject({
+      jobId: 'explore-1',
+      type: 'EXPLORE',
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Explore this',
+    });
+    expect(savedJob?.config).toBeDefined();
+    expect(savedJob?.queueRuntime.publishJobToWorkerMailbox).toBeDefined();
+    expect(savedJob?.queueRuntime.queues.jobs).toBeDefined();
   });
 
   it('approved owner-routed live agent events revalidate the session before mailbox enqueue', async () => {
@@ -323,18 +350,16 @@ describe('approval execution persistence', () => {
     }
     expect(result.executed).toBe(true);
     expect(loadAgentSessionMock).toHaveBeenCalledWith('session-1');
-    const enqueueArgs = enqueueAgentSessionOwnerMailboxEventMock.mock.calls[0]?.[0] as
-      | {
-          session: {
-            sessionId: string;
-            ownerWorkerId?: string;
-          };
-          queueRuntime: {
-            publishWorkerEventToMailbox: () => Promise<void>;
-          };
-          event: typeof approvedRequest.operation.event;
-        }
-      | undefined;
+    const enqueueArgs = getFirstMockCallArg<{
+      session: {
+        sessionId: string;
+        ownerWorkerId?: string;
+      };
+      queueRuntime: {
+        publishWorkerEventToMailbox: () => Promise<void>;
+      };
+      event: typeof approvedRequest.operation.event;
+    }>(enqueueAgentSessionOwnerMailboxEventMock);
     expect(enqueueArgs).toMatchObject({
       session: {
         sessionId: 'session-1',
@@ -352,7 +377,7 @@ describe('approval execution persistence', () => {
     expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
 
-  it('approved enqueueJob save failure reports execution failure and does not enqueue', async () => {
+  it('approved enqueueJob persistence failure reports execution failure', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -368,7 +393,10 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    saveJobQueuedMock.mockRejectedValue(new Error('persist failed'));
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'persist_failed',
+      error: new Error('persist failed'),
+    });
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',
@@ -387,10 +415,9 @@ describe('approval execution persistence', () => {
     }
     expect(result.executed).toBe(false);
     expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
-    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
-  it('approved enqueueJob enqueue failure reports execution failure after persistence', async () => {
+  it('approved enqueueJob stale-owner routing failure reports execution failure', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -406,7 +433,10 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    enqueueJobMock.mockRejectedValue(new Error('enqueue failed'));
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'invalid',
+      message: 'Job explore-0 is waiting for owner worker worker-a to return.',
+    });
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',
@@ -425,8 +455,7 @@ describe('approval execution persistence', () => {
     }
     expect(result.executed).toBe(false);
     expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
   });
 
   it('denied and cancelled resolutions do not persist or enqueue jobs', async () => {
@@ -483,8 +512,7 @@ describe('approval execution persistence', () => {
     });
     expect(cancelledResult.status).toBe('cancelled');
 
-    expect(saveJobQueuedMock).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
     expect(enqueueBootstrapMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
     expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();

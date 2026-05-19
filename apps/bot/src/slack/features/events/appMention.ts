@@ -7,7 +7,6 @@ import { queueSlackMentionJob } from './slackMentionEventRouting.js';
 export function registerAppMentionEvent({
   app,
   config,
-  queue,
   queueRuntime,
   permissions,
   slackIds,
@@ -61,7 +60,7 @@ export function registerAppMentionEvent({
       {
         app,
         config,
-        queue,
+        queueRuntime,
         permissions,
         slackIds,
       },

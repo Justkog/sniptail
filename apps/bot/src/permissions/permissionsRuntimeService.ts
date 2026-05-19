@@ -1,17 +1,12 @@
-import type {
-  QueuePublisher,
-  QueueTransportRuntime,
-} from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import {
   loadAgentSession,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
-import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import {
   enqueueBootstrap,
-  enqueueJob,
   enqueueWorkerEvent,
   enqueueWorkerMailboxEvent,
 } from '@sniptail/core/queue/queue.js';
@@ -36,12 +31,9 @@ import type {
   PermissionDecision,
   PermissionSubject,
 } from '@sniptail/core/permissions/permissionsPolicyTypes.js';
-import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import { resolvePermissionsProviderCapabilities } from './permissionsProviderCapabilities.js';
-import { auditJobRequest } from '../lib/requestAudit.js';
+import { saveAndEnqueueManagedJob } from '../job-requests/enqueueManagedJob.js';
 import {
   enqueueAgentSessionOwnerMailboxEvent,
   getAgentSessionIdFromWorkerEvent,
@@ -50,10 +42,10 @@ import {
 
 type RuntimeDeps = {
   config: BotConfig;
-  queue: QueuePublisher<JobSpec>;
-  bootstrapQueue: QueuePublisher<BootstrapRequest>;
-  workerEventQueue: QueuePublisher<WorkerEvent>;
-  queueRuntime?: Pick<QueueTransportRuntime, 'publishWorkerEventToMailbox'>;
+  queueRuntime: Pick<
+    QueueTransportRuntime,
+    'queues' | 'publishWorkerEventToMailbox' | 'publishJobToWorkerMailbox'
+  >;
 };
 
 type AuthorizationInput = {
@@ -89,16 +81,13 @@ export type ApprovalInteractionResult =
 
 export class PermissionsRuntimeService {
   readonly #config: BotConfig;
-  readonly #queue: QueuePublisher<JobSpec>;
-  readonly #bootstrapQueue: QueuePublisher<BootstrapRequest>;
-  readonly #workerEventQueue: QueuePublisher<WorkerEvent>;
-  readonly #queueRuntime: Pick<QueueTransportRuntime, 'publishWorkerEventToMailbox'> | undefined;
+  readonly #queueRuntime: Pick<
+    QueueTransportRuntime,
+    'queues' | 'publishWorkerEventToMailbox' | 'publishJobToWorkerMailbox'
+  >;
 
   constructor(deps: RuntimeDeps) {
     this.#config = deps.config;
-    this.#queue = deps.queue;
-    this.#bootstrapQueue = deps.bootstrapQueue;
-    this.#workerEventQueue = deps.workerEventQueue;
     this.#queueRuntime = deps.queueRuntime;
   }
 
@@ -338,26 +327,25 @@ export class PermissionsRuntimeService {
 
   async executeDeferredOperation(operation: DeferredPermissionOperation): Promise<void> {
     switch (operation.kind) {
-      case 'enqueueJob':
-        try {
-          await saveJobQueued(operation.job);
-        } catch (err) {
-          auditJobRequest(this.#config, operation.job, 'persist_failed');
-          throw err;
+      case 'enqueueJob': {
+        const result = await saveAndEnqueueManagedJob({
+          config: this.#config,
+          queueRuntime: this.#queueRuntime,
+          job: operation.job,
+        });
+        if (result.status === 'invalid') {
+          throw new Error(result.message);
         }
-        await enqueueJob(this.#queue, operation.job);
-        auditJobRequest(this.#config, operation.job, 'accepted');
+        if (result.status === 'persist_failed') {
+          throw result.error;
+        }
         return;
+      }
       case 'enqueueBootstrap':
-        await enqueueBootstrap(this.#bootstrapQueue, operation.request);
+        await enqueueBootstrap(this.#queueRuntime.queues.bootstrap, operation.request);
         return;
       case 'enqueueWorkerEvent':
         if (operation.targetWorkerId) {
-          if (!this.#queueRuntime) {
-            throw new Error(
-              `Cannot enqueue worker mailbox event for ${operation.targetWorkerId} without queue runtime support.`,
-            );
-          }
           if (isOwnerRoutedAgentEvent(operation.event)) {
             const sessionId = getAgentSessionIdFromWorkerEvent(operation.event);
             if (!sessionId) {
@@ -380,7 +368,7 @@ export class PermissionsRuntimeService {
             );
           }
         } else {
-          await enqueueWorkerEvent(this.#workerEventQueue, operation.event);
+          await enqueueWorkerEvent(this.#queueRuntime.queues.workerEvents, operation.event);
         }
         if (operation.event.type === 'agent.session.start') {
           await updateAgentSessionStatus(operation.event.payload.sessionId, 'active');

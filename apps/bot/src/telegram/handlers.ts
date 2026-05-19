@@ -94,7 +94,7 @@ async function submitTelegramJob(input: {
   await refreshRepoAllowlist(context.config);
   const result = await submitNormalizedJobRequest({
     config: context.config,
-    queue: context.queue,
+    queueRuntime: context.queueRuntime,
     input: {
       type: input.type,
       repoKeys: input.repoKeys,
@@ -186,7 +186,7 @@ async function submitTelegramRun(input: {
   await refreshRepoAllowlist(input.context.config);
   const result = await submitNormalizedJobRequest({
     config: input.context.config,
-    queue: input.context.queue,
+    queueRuntime: input.context.queueRuntime,
     input: {
       type: 'RUN',
       repoKeys: parsed.repoKeys,
@@ -252,7 +252,7 @@ async function submitTelegramMention(input: {
 }) {
   const result = await submitNormalizedJobRequest({
     config: input.context.config,
-    queue: input.context.queue,
+    queueRuntime: input.context.queueRuntime,
     input: {
       type: 'MENTION',
       repoKeys: [],
@@ -323,7 +323,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     }
     await enqueueTelegramUsageRequest({
       bot,
-      workerEventQueue: context.workerEventQueue,
+      workerEventQueue: context.queueRuntime.queues.workerEvents,
       permissions: context.permissions,
       userId,
       channelId: chatId,
@@ -449,7 +449,7 @@ export function registerTelegramHandlers(context: TelegramHandlerContext): void 
     if (!authorized) {
       return;
     }
-    await enqueueWorkerEvent(context.workerEventQueue, event);
+    await enqueueWorkerEvent(context.queueRuntime.queues.workerEvents, event);
     await editTelegramMessage(
       bot,
       chatId,

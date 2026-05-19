@@ -1,9 +1,8 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import { normalizeRunActionId } from '@sniptail/core/repos/runActions.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
 import { deleteDiscordSelectionReply, runSelectionByUser } from '../../state.js';
@@ -25,7 +24,7 @@ import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 export async function handleRunModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: QueuePublisher<JobSpec>,
+  queueRuntime: Pick<QueueTransportRuntime, 'queues' | 'publishJobToWorkerMailbox'>,
   permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
@@ -118,7 +117,7 @@ export async function handleRunModalSubmit(
 
   const result = await submitNormalizedJobRequest({
     config,
-    queue,
+    queueRuntime,
     input: {
       type: 'RUN',
       repoKeys,
