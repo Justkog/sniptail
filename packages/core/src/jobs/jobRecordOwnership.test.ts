@@ -38,8 +38,15 @@ const hoisted = vi.hoisted(() => {
   return {
     records,
     store,
+    loadCoreConfig: vi.fn(() => ({
+      jobWorkRoot: '/tmp/sniptail-jobs',
+    })),
   };
 });
+
+vi.mock('../config/config.js', () => ({
+  loadCoreConfig: hoisted.loadCoreConfig,
+}));
 
 vi.mock('./registryStore.js', () => ({
   getJobRegistryStore: vi.fn(() => hoisted.store),
