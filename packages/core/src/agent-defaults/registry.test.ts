@@ -41,7 +41,7 @@ describe('agent default registry', () => {
   }
 
   it('loads and upserts per-guild discord defaults', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentDefaultsTable();
 
     const created = await upsertDiscordAgentDefaults({
@@ -78,7 +78,7 @@ describe('agent default registry', () => {
   });
 
   it('loads and upserts per-workspace slack defaults', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentDefaultsTable();
 
     const created = await upsertSlackAgentDefaults({
@@ -103,20 +103,20 @@ describe('agent default registry', () => {
 
   it('rejects pg and redis drivers for now', async () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'pg',
-      JOB_REGISTRY_PG_URL: 'postgres://user:pass@localhost:5432/sniptail',
+      SNIPTAIL_REGISTRY_DB: 'pg',
+      SNIPTAIL_REGISTRY_PG_URL: 'postgres://user:pass@localhost:5432/sniptail',
     });
     await expect(loadDiscordAgentDefaults({ userId: 'U1', guildId: 'G1' })).rejects.toThrow(
-      'Agent default registry is not supported yet when JOB_REGISTRY_DB=pg',
+      'Agent default registry is not supported yet when SNIPTAIL_REGISTRY_DB=pg',
     );
     resetConfigCaches();
 
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: 'redis://localhost:6379/1',
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: 'redis://localhost:6379/1',
     });
     await expect(loadDiscordAgentDefaults({ userId: 'U1', guildId: 'G1' })).rejects.toThrow(
-      'Agent default registry is not supported yet when JOB_REGISTRY_DB=redis',
+      'Agent default registry is not supported yet when SNIPTAIL_REGISTRY_DB=redis',
     );
   });
 });

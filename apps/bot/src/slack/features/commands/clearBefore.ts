@@ -9,7 +9,7 @@ export function registerClearBeforeCommand({
   app,
   slackIds,
   permissions,
-  workerEventQueue,
+  queueRuntime,
 }: SlackHandlerContext) {
   app.command(slackIds.commands.clearBefore, async ({ ack, body, client }) => {
     const userId = body.user_id;
@@ -70,7 +70,7 @@ export function registerClearBeforeCommand({
     });
 
     try {
-      await enqueueWorkerEvent(workerEventQueue, {
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, {
         ...event,
       });
       await client.chat.postEphemeral({

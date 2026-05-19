@@ -31,18 +31,18 @@ function buildContextFilesInputBlock() {
 }
 
 function buildAgentStaticOptions(
-  items: Array<{ key: string; label?: string }>,
-  selectedKey?: string,
+  items: Array<{ key: string; label?: string; value?: string }>,
+  selectedValue?: string,
 ) {
   const options = items.slice(0, 100).map((item) => ({
     text: {
       type: 'plain_text' as const,
       text: item.label ? `${item.label} (${item.key})` : item.key,
     },
-    value: item.key,
+    value: item.value ?? item.key,
   }));
-  const initialOption = selectedKey
-    ? options.find((option) => option.value === selectedKey)
+  const initialOption = selectedValue
+    ? options.find((option) => option.value === selectedValue)
     : undefined;
   return { options, initialOption };
 }
@@ -329,8 +329,10 @@ export function buildAgentModal(
   options: {
     workspaces: Array<{ key: string; label?: string }>;
     profiles: Array<{ key: string; label?: string }>;
+    workers?: Array<{ key: string; label?: string; value?: string }>;
     selectedWorkspaceKey?: string;
     selectedProfileKey?: string;
+    selectedWorkerId?: string;
     initialCwd?: string;
   },
 ) {
@@ -339,6 +341,9 @@ export function buildAgentModal(
     options.selectedWorkspaceKey,
   );
   const profileOptions = buildAgentStaticOptions(options.profiles, options.selectedProfileKey);
+  const workerOptions = options.workers?.length
+    ? buildAgentStaticOptions(options.workers, options.selectedWorkerId)
+    : undefined;
 
   return {
     type: 'modal' as const,
@@ -395,6 +400,25 @@ export function buildAgentModal(
           ...(options.initialCwd ? { initial_value: options.initialCwd } : {}),
         },
       },
+      ...(workerOptions
+        ? [
+            {
+              type: 'input' as const,
+              block_id: 'worker',
+              optional: true,
+              label: { type: 'plain_text' as const, text: 'Worker (optional)' },
+              element: {
+                type: 'static_select' as const,
+                action_id: 'worker_id',
+                placeholder: { type: 'plain_text' as const, text: 'Auto-select worker' },
+                options: workerOptions.options,
+                ...(workerOptions.initialOption
+                  ? { initial_option: workerOptions.initialOption }
+                  : {}),
+              },
+            },
+          ]
+        : []),
       buildContextFilesInputBlock(),
     ],
   };

@@ -1,8 +1,9 @@
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import { appendSlackAgentStopRequested } from '../../agentCommandState.js';
 import {
   buildAgentPromptStopWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
@@ -11,7 +12,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 export function registerAgentStopAction({
   app,
   slackIds,
-  workerEventQueue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.action(slackIds.actions.agentStop, async ({ ack, body, client, action }) => {
@@ -57,6 +58,15 @@ export function registerAgentStopAction({
       reason: `Requested by Slack user ${userId}`,
       messageId: messageTs,
     });
+    const route = await resolveAgentSessionOwnerMailboxRoute(session);
+    if (!route.ok) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: route.errorMessage,
+      });
+      return;
+    }
 
     const authorized = await authorizeSlackOperationAndRespond({
       permissions,
@@ -67,6 +77,7 @@ export function registerAgentStopAction({
       operation: {
         kind: 'enqueueWorkerEvent',
         event,
+        targetWorkerId: route.targetWorkerId,
       },
       actor: {
         userId,
@@ -87,7 +98,7 @@ export function registerAgentStopAction({
       return;
     }
 
-    await enqueueWorkerEvent(workerEventQueue, event);
+    await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
     await client.chat.update({
       channel: channelId,
       ts: messageTs,

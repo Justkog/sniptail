@@ -43,6 +43,7 @@ export async function handleRunActionSelection(
 
   runSelectionByUser.set(interaction.user.id, {
     repoKeys,
+    ...(selection?.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
     actionId,
     runStepIndex: 0,
     collectedParams: {},
@@ -55,6 +56,7 @@ export async function handleRunActionSelection(
     config,
     selection: {
       repoKeys,
+      ...(selection?.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
       actionId,
       runStepIndex: 0,
       collectedParams: {},

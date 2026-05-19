@@ -6,11 +6,18 @@ import {
 } from '@sniptail/core/agent-sessions/registry.js';
 import { upsertSlackAgentDefaults } from '@sniptail/core/agent-defaults/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import type { JobContextFile } from '@sniptail/core/types/job.js';
-import { getAgentCommandMetadata } from '../../../agentCommandMetadataCache.js';
+import {
+  buildAgentWorkerSelectionError,
+  resolveAgentStartWorker,
+} from '../../../agentCommandWorkerRouting.js';
+import {
+  findAgentProfileMetadata,
+  loadAgentCommandMetadata,
+} from '../../../agentCommandMetadataCache.js';
 import { buildSlackAgentStopBlocks } from '../../agentCommandState.js';
-import { loadSlackModalContextFiles, postMessage } from '../../helpers.js';
+import { loadSlackModalContextFiles, postEphemeral, postMessage } from '../../helpers.js';
 import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
@@ -68,13 +75,16 @@ export function registerAgentSubmitView({
   app,
   slackIds,
   config,
-  workerEventQueue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.view(slackIds.actions.agentSubmit, async ({ ack, body, view, client }) => {
     await ack();
 
-    const metadata = getAgentCommandMetadata();
+    const metadata = await loadAgentCommandMetadata().catch((err) => {
+      logger.error({ err }, 'Failed to load agent command metadata from the registry');
+      return undefined;
+    });
     const privateMetadata = parsePrivateMetadata(view.private_metadata);
     const channelId = privateMetadata?.channelId;
     const userId = privateMetadata?.userId ?? body.user.id;
@@ -111,6 +121,9 @@ export function registerAgentSubmitView({
     const workspaceKey = state.workspace?.workspace_key?.selected_option?.value?.trim();
     const profileKey = state.profile?.agent_profile_key?.selected_option?.value?.trim();
     const cwd = validateRelativeCwd(normalizeOptionalString(state.cwd?.cwd?.value));
+    const requestedWorkerId = normalizeOptionalString(
+      state.worker?.worker_id?.selected_option?.value,
+    );
 
     if (!prompt) {
       auditAgentSessionStart(config, baseAuditInput, 'invalid');
@@ -135,6 +148,31 @@ export function registerAgentSubmitView({
       await postMessage(app, {
         channel: channelId,
         text: 'Please choose a valid agent profile.',
+        ...(existingThreadId ? { threadTs: existingThreadId } : {}),
+      });
+      return;
+    }
+    const profile = findAgentProfileMetadata(metadata, profileKey);
+    if (profile?.status === 'conflicted') {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: `Agent profile key: \`${profileKey}\` is currently conflicted across live workers. Please ask an operator to fix worker configuration.`,
+        ...(existingThreadId ? { threadTs: existingThreadId } : {}),
+      });
+      return;
+    }
+    const selectionError = buildAgentWorkerSelectionError(
+      metadata,
+      workspaceKey,
+      profileKey,
+      requestedWorkerId,
+    );
+    if (selectionError) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: selectionError,
         ...(existingThreadId ? { threadTs: existingThreadId } : {}),
       });
       return;
@@ -260,6 +298,40 @@ export function registerAgentSubmitView({
       ...(contextFiles?.length ? { contextFiles } : {}),
     });
 
+    const freshMetadata = await loadAgentCommandMetadata({ forceRefresh: true }).catch((err) => {
+      logger.error({ err }, 'Failed to refresh agent command metadata from the registry');
+      return undefined;
+    });
+    if (!freshMetadata?.enabled) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: 'Agent sessions are not available yet. Please try again in a few seconds.',
+        ...(threadId ? { threadTs: threadId } : {}),
+      });
+      return;
+    }
+
+    let ownerWorker: ReturnType<typeof resolveAgentStartWorker>;
+    try {
+      ownerWorker = resolveAgentStartWorker(
+        freshMetadata,
+        workspaceKey,
+        profileKey,
+        requestedWorkerId,
+      );
+    } catch (err) {
+      auditAgentSessionStart(config, baseAuditInput, 'invalid');
+      await postMessage(app, {
+        channel: channelId,
+        text: (err as Error).message,
+        ...(threadId ? { threadTs: threadId } : {}),
+      });
+      return;
+    }
+
+    const now = new Date();
+
     try {
       await createAgentSession({
         sessionId,
@@ -271,7 +343,11 @@ export function registerAgentSubmitView({
         workspaceKey,
         agentProfileKey: profileKey,
         ...(cwd ? { cwd } : {}),
+        ownerWorkerId: ownerWorker.workerId,
+        ...(ownerWorker.workerLabel ? { ownerWorkerLabel: ownerWorker.workerLabel } : {}),
+        workerClaimedAt: now.toISOString(),
         status: 'pending',
+        now,
       });
     } catch (err) {
       auditAgentSessionStart(
@@ -310,6 +386,7 @@ export function registerAgentSubmitView({
       operation: {
         kind: 'enqueueWorkerEvent',
         event,
+        targetWorkerId: ownerWorker.workerId,
       },
       actor: {
         userId,
@@ -356,7 +433,7 @@ export function registerAgentSubmitView({
     }
 
     try {
-      await enqueueWorkerEvent(workerEventQueue, event);
+      await enqueueWorkerMailboxEvent(queueRuntime, ownerWorker.workerId, event);
       await upsertSlackAgentDefaults({
         userId,
         ...(workspaceId ? { workspaceId } : {}),
@@ -384,6 +461,12 @@ export function registerAgentSubmitView({
         },
         'accepted',
       );
+      await postEphemeral(app, {
+        channel: channelId,
+        user: userId,
+        text: `Agent session started on worker \`${ownerWorker.workerId}\`.`,
+        ...(threadId ? { threadTs: threadId } : {}),
+      });
     } catch (err) {
       logger.error({ err, sessionId }, 'Failed to enqueue Slack agent session start event');
       await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {

@@ -44,7 +44,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
   const botConfigPath = join(configDir, 'bot.toml');
   const workerConfigPath = join(configDir, 'worker.toml');
   const jobWorkRoot = join(configDir, 'jobs');
-  const jobRegistryPath = join(configDir, 'job-registry');
+  const registryPath = join(configDir, 'job-registry');
   const repoCacheRoot = join(configDir, 'repos');
 
   const optionalKeys = [
@@ -57,6 +57,11 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'JOB_REGISTRY_DB',
     'JOB_REGISTRY_PG_URL',
     'JOB_REGISTRY_REDIS_URL',
+    'JOB_REGISTRY_PATH',
+    'SNIPTAIL_REGISTRY_DB',
+    'SNIPTAIL_REGISTRY_PG_URL',
+    'SNIPTAIL_REGISTRY_REDIS_URL',
+    'SNIPTAIL_REGISTRY_NAMESPACE',
     'PRIMARY_AGENT',
     'SNIPTAIL_CHANNELS',
     'DISCORD_BOT_TOKEN',
@@ -66,7 +71,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'REDIS_URL',
     'REPO_ALLOWLIST_PATH',
     'JOB_WORK_ROOT',
-    'JOB_REGISTRY_PATH',
+    'SNIPTAIL_REGISTRY_PATH',
     'REPO_CACHE_ROOT',
     'WORKTREE_SETUP_COMMAND',
     'WORKTREE_SETUP_ALLOW_FAILURE',
@@ -80,6 +85,8 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
     'AGENT_COMMAND_INTERACTION_TIMEOUT_MS',
     'AGENT_COMMAND_OUTPUT_DEBOUNCE_MS',
+    'SNIPTAIL_WORKER_ID',
+    'SNIPTAIL_WORKER_LABEL',
     'GH_COPILOT_EXECUTION_MODE',
     'GH_COPILOT_DOCKERFILE_PATH',
     'GH_COPILOT_DOCKER_IMAGE',
@@ -120,8 +127,10 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     `repo_allowlist_path = "${allowlistPath}"`,
     `job_work_root = "${jobWorkRoot}"`,
     'queue_driver = "redis"',
-    `job_registry_path = "${jobRegistryPath}"`,
-    'job_registry_db = "sqlite"',
+    '',
+    '[registry]',
+    `path = "${registryPath}"`,
+    'db = "sqlite"',
     '',
     '[bot]',
     'bot_name = "Sniptail"',
@@ -157,8 +166,10 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     `repo_allowlist_path = "${allowlistPath}"`,
     `job_work_root = "${jobWorkRoot}"`,
     'queue_driver = "redis"',
-    `job_registry_path = "${jobRegistryPath}"`,
-    'job_registry_db = "sqlite"',
+    '',
+    '[registry]',
+    `path = "${registryPath}"`,
+    'db = "sqlite"',
     '',
     '[worker]',
     'bot_name = "Sniptail"',

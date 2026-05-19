@@ -40,6 +40,7 @@ export const runSelectionByUser = new Map<
   string,
   {
     repoKeys: string[];
+    resumeFromJobId?: string;
     actionId?: string;
     requestedAt: number;
     runStepIndex?: number;

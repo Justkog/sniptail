@@ -6,9 +6,9 @@ const envPath =
   process.env.DOTENV_CONFIG_PATH ?? fileURLToPath(new URL('../../.env', import.meta.url));
 loadEnv({ path: envPath });
 
-const pgUrl = process.env.JOB_REGISTRY_PG_URL;
+const pgUrl = process.env.SNIPTAIL_REGISTRY_PG_URL;
 if (!pgUrl) {
-  throw new Error('JOB_REGISTRY_PG_URL is required for postgres migrations.');
+  throw new Error('SNIPTAIL_REGISTRY_PG_URL is required for postgres migrations.');
 }
 
 export default defineConfig({

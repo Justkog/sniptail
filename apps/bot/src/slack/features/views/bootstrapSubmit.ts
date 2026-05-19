@@ -13,7 +13,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 export function registerBootstrapSubmitView({
   app,
   slackIds,
-  bootstrapQueue,
+  queueRuntime,
   config,
   permissions,
 }: SlackHandlerContext) {
@@ -127,7 +127,7 @@ export function registerBootstrapSubmitView({
         return;
       }
 
-      await enqueueBootstrap(bootstrapQueue, bootstrapRequest);
+      await enqueueBootstrap(queueRuntime.queues.bootstrap, bootstrapRequest);
 
       await postMessage(app, {
         channel: responseChannel,

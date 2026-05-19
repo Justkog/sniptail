@@ -19,7 +19,6 @@ import {
   buildDiscordAgentPermissionComponents,
   buildDiscordAgentQuestionComponents,
 } from '@sniptail/core/discord/components.js';
-import { setAgentCommandMetadata as setDiscordAgentCommandMetadata } from '../agentCommandMetadataCache.js';
 import {
   clearPendingDiscordAgentQuestion,
   setPendingDiscordAgentQuestion,
@@ -50,7 +49,6 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     'reaction.add',
     'message.ephemeral',
     'interaction.reply.edit',
-    'agent.metadata.update',
     'agent.permission.requested',
     'agent.permission.updated',
     'agent.question.requested',
@@ -60,18 +58,6 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
     if (event.provider !== this.providerId) {
       return false;
-    }
-    if (event.type === 'agent.metadata.update') {
-      setDiscordAgentCommandMetadata(event.payload);
-      logger.info(
-        {
-          enabled: event.payload.enabled,
-          workspaces: event.payload.workspaces.length,
-          profiles: event.payload.profiles.length,
-        },
-        'Updated cached Discord agent command metadata',
-      );
-      return true;
     }
     const client = runtime.discordClient;
     if (!client) {

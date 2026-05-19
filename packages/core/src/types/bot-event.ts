@@ -1,6 +1,4 @@
 import type { ChannelProvider } from './channel.js';
-import type { ModelReasoningEffort } from '@openai/codex-sdk';
-
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
 export type BotEventBase = {
@@ -16,24 +14,6 @@ type FileUploadPayloadBase = {
 export type FileUploadPayload =
   | (FileUploadPayloadBase & { filePath: string; fileContent?: never })
   | (FileUploadPayloadBase & { filePath?: never; fileContent: string });
-
-export type BotAgentWorkspaceMetadata = {
-  key: string;
-  label?: string;
-  description?: string;
-};
-
-export type BotAgentProfileMetadata = {
-  key: string;
-  provider: 'codex' | 'opencode' | 'copilot' | 'acp';
-  agent?: string;
-  profile?: string;
-  model?: string;
-  modelProvider?: string;
-  reasoningEffort?: ModelReasoningEffort;
-  label?: string;
-  description?: string;
-};
 
 export type BotAgentPermissionRequestPayload = {
   channelId: string;
@@ -120,14 +100,6 @@ export type BotEventPayloadMap = {
     interactionToken: string;
     interactionApplicationId: string;
     text: string;
-  };
-  'agent.metadata.update': {
-    enabled: boolean;
-    defaultWorkspace?: string;
-    defaultAgentProfile?: string;
-    workspaces: BotAgentWorkspaceMetadata[];
-    profiles: BotAgentProfileMetadata[];
-    receivedAt: string;
   };
   'agent.permission.requested': BotAgentPermissionRequestPayload;
   'agent.permission.updated': BotAgentPermissionUpdatePayload;

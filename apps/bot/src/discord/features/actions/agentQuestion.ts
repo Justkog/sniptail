@@ -11,14 +11,15 @@ import {
   parseDiscordAgentQuestionTextInputCustomId,
   type DiscordAgentQuestionAction,
 } from '@sniptail/core/discord/components.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotAgentQuestionRequestPayload } from '@sniptail/core/types/bot-event.js';
 import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
@@ -158,13 +159,23 @@ async function validateQuestionInteraction(
 async function authorizeAndEnqueueQuestionResolution(input: {
   interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction;
   config: BotConfig;
-  workerEventQueue: QueuePublisher<WorkerEvent>;
+  queueRuntime: QueueTransportRuntime;
   permissions: PermissionsRuntimeService;
+  session: NonNullable<Awaited<ReturnType<typeof loadAgentSession>>>;
   event: WorkerEvent;
   responseChannelId: string;
   summary: string;
   denyMessage: string;
 }): Promise<boolean> {
+  const route = await resolveAgentSessionOwnerMailboxRoute(input.session);
+  if (!route.ok) {
+    if (input.interaction.deferred || input.interaction.replied) {
+      await input.interaction.editReply(route.errorMessage);
+    } else {
+      await input.interaction.reply({ content: route.errorMessage, ephemeral: true });
+    }
+    return false;
+  }
   const interactionThreadId =
     input.interaction.channel?.isThread() && input.interaction.channelId
       ? input.interaction.channelId
@@ -178,6 +189,7 @@ async function authorizeAndEnqueueQuestionResolution(input: {
     operation: {
       kind: 'enqueueWorkerEvent',
       event: input.event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: input.interaction.user.id,
@@ -198,7 +210,7 @@ async function authorizeAndEnqueueQuestionResolution(input: {
     },
   });
   if (!authorized) return false;
-  await enqueueWorkerEvent(input.workerEventQueue, input.event);
+  await enqueueWorkerMailboxEvent(input.queueRuntime, route.targetWorkerId, input.event);
   return !denied;
 }
 
@@ -210,7 +222,7 @@ export async function handleAgentQuestionSelect(
     questionIndex: number;
   },
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const session = await validateQuestionInteraction(interaction, input);
@@ -248,8 +260,9 @@ export async function handleAgentQuestionSelect(
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,
     config,
-    workerEventQueue,
+    queueRuntime,
     permissions,
+    session,
     event,
     responseChannelId: session.threadId,
     summary: `Answer OpenCode question in session ${input.sessionId}`,
@@ -297,7 +310,7 @@ export async function handleAgentQuestionButton(
     action: DiscordAgentQuestionAction;
   },
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const session = await validateQuestionInteraction(interaction, input);
@@ -342,8 +355,9 @@ export async function handleAgentQuestionButton(
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,
     config,
-    workerEventQueue,
+    queueRuntime,
     permissions,
+    session,
     event,
     responseChannelId: session.threadId,
     summary:
@@ -371,7 +385,7 @@ export async function handleAgentQuestionModalSubmit(
     interactionId: string;
   },
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const pending = getPendingDiscordAgentQuestion(input.sessionId, input.interactionId);
@@ -427,8 +441,9 @@ export async function handleAgentQuestionModalSubmit(
   const authorized = await authorizeAndEnqueueQuestionResolution({
     interaction,
     config,
-    workerEventQueue,
+    queueRuntime,
     permissions,
+    session,
     event,
     responseChannelId: session.threadId,
     summary: `Answer OpenCode question in session ${input.sessionId}`,

@@ -8,7 +8,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 export function registerClearJobAction({
   app,
   slackIds,
-  workerEventQueue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.action(slackIds.actions.clearJob, async ({ ack, body, action }) => {
@@ -70,7 +70,7 @@ export function registerClearJobAction({
     }
 
     try {
-      await enqueueWorkerEvent(workerEventQueue, event);
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
       if (channelId) {
         await postMessage(app, {
           channel: channelId,

@@ -7,13 +7,18 @@ const hoisted = vi.hoisted(() => ({
   upsertDiscordAgentDefaults: vi.fn(),
   createAgentSession: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
   authorizeDiscordPrecheckAndRespond: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  getDiscordAgentCommandMetadata: vi.fn(),
+  loadAgentCommandMetadata: vi.fn(),
+  findAgentWorkspaceMetadata: vi.fn(),
+  findAgentProfileMetadata: vi.fn(),
   buildCwdAutocompleteChoices: vi.fn(),
   buildProfileAutocompleteChoices: vi.fn(),
   buildWorkspaceAutocompleteChoices: vi.fn(),
+  buildAgentWorkerChoices: vi.fn(),
+  buildAgentWorkerSelectionError: vi.fn(),
+  resolveAgentStartWorker: vi.fn(),
   postDiscordMessage: vi.fn(),
   loadDiscordContextFiles: vi.fn(),
   auditAgentSessionStart: vi.fn(),
@@ -30,7 +35,19 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('@sniptail/core/discord/components.js', () => ({
+  buildDiscordAgentStopComponents: vi.fn(() => []),
 }));
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
@@ -42,7 +59,41 @@ vi.mock('../../../agentCommandMetadataCache.js', () => ({
   buildCwdAutocompleteChoices: hoisted.buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices: hoisted.buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices: hoisted.buildWorkspaceAutocompleteChoices,
-  getAgentCommandMetadata: hoisted.getDiscordAgentCommandMetadata,
+  loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
+  findAgentWorkspaceMetadata: hoisted.findAgentWorkspaceMetadata,
+  findAgentProfileMetadata: hoisted.findAgentProfileMetadata,
+  listSelectableAgentProfiles: vi.fn(),
+}));
+
+vi.mock('../../../agentCommandWorkerRouting.js', () => ({
+  buildAgentWorkerChoices: hoisted.buildAgentWorkerChoices,
+  buildAgentWorkerSelectionError: hoisted.buildAgentWorkerSelectionError,
+  resolveAgentStartWorker: hoisted.resolveAgentStartWorker,
+}));
+
+vi.mock('../../../agentCommandShared.js', () => ({
+  buildAgentSessionStartWorkerEvent: vi.fn(
+    (input: {
+      session: {
+        sessionId: string;
+        workspaceKey: string;
+        agentProfileKey: string;
+        cwd?: string;
+      };
+      prompt: string;
+      contextFiles?: unknown[];
+    }) => ({
+      type: 'agent.session.start',
+      payload: {
+        sessionId: input.session.sessionId,
+        prompt: input.prompt,
+        workspaceKey: input.session.workspaceKey,
+        agentProfileKey: input.session.agentProfileKey,
+        ...(input.session.cwd ? { cwd: input.session.cwd } : {}),
+        ...(input.contextFiles ? { contextFiles: input.contextFiles } : {}),
+      },
+    }),
+  ),
 }));
 
 vi.mock('../../helpers.js', () => ({
@@ -99,21 +150,38 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const config = { botName: 'Sniptail' };
-const queue = {};
+const config = {
+  botName: 'Sniptail',
+  agentCommand: {
+    defaultWorkspace: 'snatch',
+    defaultAgentProfile: 'build',
+  },
+};
+const queueRuntime = {};
 const permissions = {};
 
 describe('handleAgentStart', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'opencode', profile: 'build' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'opencode', profile: 'build' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
+    hoisted.findAgentWorkspaceMetadata.mockReturnValue({ key: 'snatch', status: 'available' });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'opencode',
+      profile: 'build',
+    });
+    hoisted.buildAgentWorkerSelectionError.mockReturnValue(undefined);
+    hoisted.resolveAgentStartWorker.mockReturnValue({
+      workerId: 'worker-a',
+      workerLabel: 'Worker A',
+    });
+    hoisted.buildAgentWorkerChoices.mockReturnValue([]);
     hoisted.authorizeDiscordPrecheckAndRespond.mockResolvedValue(true);
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
     hoisted.buildCwdAutocompleteChoices.mockReturnValue([]);
@@ -123,7 +191,7 @@ describe('handleAgentStart', () => {
     hoisted.upsertDiscordAgentDefaults.mockResolvedValue(undefined);
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
     hoisted.loadDiscordContextFiles.mockResolvedValue([]);
     hoisted.auditAgentSessionStart.mockReset();
   });
@@ -136,7 +204,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -146,20 +214,15 @@ describe('handleAgentStart', () => {
       expect.objectContaining({
         channelId: 'channel-1',
         text: expect.stringContaining('inspect the failing tests') as unknown,
-        components: expect.arrayContaining([
-          expect.objectContaining({
-            components: expect.arrayContaining([
-              expect.objectContaining({ label: 'Stop' }),
-            ]) as unknown,
-          }),
-        ]) as unknown,
+        components: expect.any(Array) as unknown,
       }),
     );
     expect(startThread).toHaveBeenCalledWith(
       expect.objectContaining({ autoArchiveDuration: 1440 }),
     );
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.session.start' }),
     );
     expect(hoisted.upsertDiscordAgentDefaults).toHaveBeenCalledWith(
@@ -195,7 +258,9 @@ describe('handleAgentStart', () => {
         ) as unknown,
       }),
     );
-    expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      'Agent session started in <#thread-1> on worker `worker-a`.',
+    );
   });
 
   it('includes validated command attachment files in the session start event', async () => {
@@ -239,7 +304,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -252,8 +317,9 @@ describe('handleAgentStart', () => {
         byteSize: 7,
       },
     ]);
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({
         type: 'agent.session.start',
         payload: expect.objectContaining({
@@ -269,13 +335,17 @@ describe('handleAgentStart', () => {
   });
 
   it('allows non-image attachments for Codex profiles and enqueues the session', async () => {
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'codex', profile: 'deep-review' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'codex', profile: 'deep-review' }],
       receivedAt: '2026-01-01T00:00:00.000Z',
+    });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'codex',
+      profile: 'deep-review',
     });
     hoisted.loadDiscordContextFiles.mockResolvedValue([
       {
@@ -315,14 +385,15 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
     expect(hoisted.postDiscordMessage).toHaveBeenCalled();
     expect(hoisted.createAgentSession).toHaveBeenCalled();
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({
         type: 'agent.session.start',
         payload: expect.objectContaining({
@@ -352,7 +423,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -366,7 +437,9 @@ describe('handleAgentStart', () => {
         components: expect.any(Array) as unknown,
       }),
     );
-    expect(interaction.editReply).toHaveBeenCalledWith('Agent session started in <#thread-1>.');
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      'Agent session started in <#thread-1> on worker `worker-a`.',
+    );
   });
 
   it('audits pending approval separately from denied starts', async () => {
@@ -378,7 +451,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -411,7 +484,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -435,17 +508,25 @@ describe('handleAgentStart', () => {
       agentProfileKey: 'plan',
       cwd: 'apps/worker',
     });
-    hoisted.getDiscordAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       workspaces: [{ key: 'snatch' }, { key: 'tools' }],
       profiles: [
-        { key: 'build', provider: 'opencode', profile: 'build' },
-        { key: 'plan', provider: 'opencode', profile: 'plan' },
+        { key: 'build', status: 'available', provider: 'opencode', profile: 'build' },
+        { key: 'plan', status: 'available', provider: 'opencode', profile: 'plan' },
       ],
       receivedAt: '2026-01-01T00:00:00.000Z',
     });
+    hoisted.findAgentWorkspaceMetadata.mockImplementation((_metadata: unknown, key: string) => ({
+      key,
+      status: 'available',
+    }));
+    hoisted.findAgentProfileMetadata.mockImplementation((_metadata: unknown, key: string) => ({
+      key,
+      status: 'available',
+      provider: 'opencode',
+      profile: key,
+    }));
     const interaction = buildInteraction({
       options: {
         getString: vi.fn((name: string) => {
@@ -459,7 +540,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -494,7 +575,7 @@ describe('handleAgentStart', () => {
     await handleAgentStart(
       interaction as never,
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -509,6 +590,39 @@ describe('handleAgentStart', () => {
         cwd: 'apps/worker',
       }),
     );
+  });
+
+  it('rejects conflicted profiles before session creation', async () => {
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'conflicted',
+    });
+    const interaction = buildInteraction({
+      options: {
+        getString: vi.fn((name: string) => {
+          if (name === 'prompt') return 'inspect the failing tests';
+          if (name === 'agent_profile') return 'build';
+          if (name === 'workspace') return 'snatch';
+          if (name === 'cwd') return 'apps/bot';
+          return null;
+        }),
+        getAttachment: vi.fn(() => null),
+      },
+    });
+
+    await handleAgentStart(
+      interaction as never,
+      config as never,
+      queueRuntime as never,
+      permissions as never,
+    );
+
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content:
+        'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
+      ephemeral: true,
+    });
+    expect(hoisted.createAgentSession).not.toHaveBeenCalled();
   });
 
   it('uses persisted defaults to bias autocomplete choices', async () => {

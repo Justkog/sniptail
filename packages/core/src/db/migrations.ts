@@ -7,10 +7,7 @@ import type { CoreConfig } from '../config/types.js';
 import { createPgClient } from './pg/client.js';
 import { createSqliteClient } from './sqlite/client.js';
 
-type DbMigrationConfig = Pick<
-  CoreConfig,
-  'jobRegistryDriver' | 'jobRegistryPath' | 'jobRegistryPgUrl'
->;
+type DbMigrationConfig = Pick<CoreConfig, 'registryDriver' | 'registryPath' | 'registryPgUrl'>;
 
 type MigrationJournal = {
   entries: Array<{
@@ -20,7 +17,7 @@ type MigrationJournal = {
 };
 
 export type DbMigrationStatus = {
-  driver: CoreConfig['jobRegistryDriver'];
+  driver: CoreConfig['registryDriver'];
   expectedMigrations: number;
   appliedMigrations: number;
   pendingMigrations: number;
@@ -42,14 +39,14 @@ function resolveRootDir(explicitRootDir?: string): string {
 }
 
 function resolveMigrationsFolder(
-  driver: Extract<CoreConfig['jobRegistryDriver'], 'pg' | 'sqlite'>,
+  driver: Extract<CoreConfig['registryDriver'], 'pg' | 'sqlite'>,
   rootDir: string,
 ): string {
   return join(rootDir, 'packages', 'core', 'drizzle', driver);
 }
 
 async function readJournal(
-  driver: Extract<CoreConfig['jobRegistryDriver'], 'pg' | 'sqlite'>,
+  driver: Extract<CoreConfig['registryDriver'], 'pg' | 'sqlite'>,
   rootDir: string,
 ): Promise<MigrationJournal> {
   const migrationsFolder = resolveMigrationsFolder(driver, rootDir);
@@ -84,11 +81,11 @@ async function readJournal(
 async function getPgAppliedMigrations(
   config: DbMigrationConfig,
 ): Promise<{ appliedMigrations: number; latestAppliedAt?: number }> {
-  if (!config.jobRegistryPgUrl) {
-    throw new Error('JOB_REGISTRY_PG_URL is required when JOB_REGISTRY_DB=pg');
+  if (!config.registryPgUrl) {
+    throw new Error('SNIPTAIL_REGISTRY_PG_URL is required when SNIPTAIL_REGISTRY_DB=pg');
   }
 
-  const client = await createPgClient(config.jobRegistryPgUrl);
+  const client = await createPgClient(config.registryPgUrl);
   try {
     const existsResult = await client.pool.query<{
       drizzle_table: string | null;
@@ -129,11 +126,11 @@ async function getPgAppliedMigrations(
 async function getSqliteAppliedMigrations(
   config: DbMigrationConfig,
 ): Promise<{ appliedMigrations: number; latestAppliedAt?: number }> {
-  if (!config.jobRegistryPath) {
-    throw new Error('JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite');
+  if (!config.registryPath) {
+    throw new Error('SNIPTAIL_REGISTRY_PATH is required when SNIPTAIL_REGISTRY_DB=sqlite');
   }
 
-  const client = await createSqliteClient(config.jobRegistryPath);
+  const client = await createSqliteClient(config.registryPath);
   try {
     const table = client.raw
       .prepare(
@@ -163,7 +160,7 @@ async function getSqliteAppliedMigrations(
 }
 
 function buildStatus(
-  driver: CoreConfig['jobRegistryDriver'],
+  driver: CoreConfig['registryDriver'],
   expectedMigrations: number,
   appliedMigrations: number,
   latestExpectedTag?: string,
@@ -188,16 +185,16 @@ export async function getDbMigrationStatus(
   config: DbMigrationConfig,
   options: { rootDir?: string } = {},
 ): Promise<DbMigrationStatus> {
-  if (config.jobRegistryDriver === 'redis') {
+  if (config.registryDriver === 'redis') {
     return buildStatus('redis', 0, 0);
   }
 
   const rootDir = resolveRootDir(options.rootDir);
-  const journal = await readJournal(config.jobRegistryDriver, rootDir);
+  const journal = await readJournal(config.registryDriver, rootDir);
   const expectedMigrations = journal.entries.length;
   const latestExpectedTag = journal.entries[journal.entries.length - 1]?.tag;
 
-  if (config.jobRegistryDriver === 'pg') {
+  if (config.registryDriver === 'pg') {
     const { appliedMigrations, latestAppliedAt } = await getPgAppliedMigrations(config);
     return buildStatus(
       'pg',
@@ -222,21 +219,21 @@ export async function migrateDb(
   config: DbMigrationConfig,
   options: { rootDir?: string } = {},
 ): Promise<DbMigrationStatus> {
-  if (config.jobRegistryDriver === 'redis') {
+  if (config.registryDriver === 'redis') {
     return buildStatus('redis', 0, 0);
   }
 
   const rootDir = resolveRootDir(options.rootDir);
-  const migrationsFolder = resolveMigrationsFolder(config.jobRegistryDriver, rootDir);
+  const migrationsFolder = resolveMigrationsFolder(config.registryDriver, rootDir);
   if (!existsSync(migrationsFolder)) {
     throw new Error(`Missing migrations folder at ${migrationsFolder}.`);
   }
 
-  if (config.jobRegistryDriver === 'pg') {
-    if (!config.jobRegistryPgUrl) {
-      throw new Error('JOB_REGISTRY_PG_URL is required when JOB_REGISTRY_DB=pg');
+  if (config.registryDriver === 'pg') {
+    if (!config.registryPgUrl) {
+      throw new Error('SNIPTAIL_REGISTRY_PG_URL is required when SNIPTAIL_REGISTRY_DB=pg');
     }
-    const client = await createPgClient(config.jobRegistryPgUrl);
+    const client = await createPgClient(config.registryPgUrl);
     try {
       await migratePg(client.db, { migrationsFolder });
     } finally {
@@ -245,10 +242,10 @@ export async function migrateDb(
     return getDbMigrationStatus(config, { rootDir });
   }
 
-  if (!config.jobRegistryPath) {
-    throw new Error('JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite');
+  if (!config.registryPath) {
+    throw new Error('SNIPTAIL_REGISTRY_PATH is required when SNIPTAIL_REGISTRY_DB=sqlite');
   }
-  const client = await createSqliteClient(config.jobRegistryPath);
+  const client = await createSqliteClient(config.registryPath);
   try {
     migrateSqlite(client.db, { migrationsFolder });
   } finally {

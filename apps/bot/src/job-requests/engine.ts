@@ -1,16 +1,15 @@
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
-import { saveJobQueued } from '@sniptail/core/jobs/registry.js';
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import { createJobId } from '../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../lib/repoBaseBranch.js';
 import { auditJobRequest, auditNormalizedJobRequest } from '../lib/requestAudit.js';
+import { saveAndEnqueueManagedJob } from './enqueueManagedJob.js';
 import type { NormalizedJobRequestInput, NormalizedJobRequestResult } from './types.js';
 
 type SubmitNormalizedJobRequestInput = {
   config: BotConfig;
-  queue: QueuePublisher<JobSpec>;
+  queueRuntime: Pick<QueueTransportRuntime, 'queues' | 'publishJobToWorkerMailbox'>;
   input: NormalizedJobRequestInput;
   authorize: (job: JobSpec) => Promise<boolean>;
 };
@@ -42,7 +41,7 @@ export function buildNormalizedJobRequest(
 
 export async function submitNormalizedJobRequest({
   config,
-  queue,
+  queueRuntime,
   input,
   authorize,
 }: SubmitNormalizedJobRequestInput): Promise<NormalizedJobRequestResult> {
@@ -64,19 +63,24 @@ export async function submitNormalizedJobRequest({
     };
   }
 
-  try {
-    await saveJobQueued(job);
-  } catch (error) {
-    auditJobRequest(config, job, 'persist_failed');
+  const result = await saveAndEnqueueManagedJob({
+    config,
+    queueRuntime,
+    job,
+  });
+  if (result.status === 'invalid') {
+    return {
+      status: 'invalid',
+      message: result.message,
+    };
+  }
+  if (result.status === 'persist_failed') {
     return {
       status: 'persist_failed',
       job,
-      error,
+      error: result.error,
     };
   }
-
-  await enqueueJob(queue, job);
-  auditJobRequest(config, job, 'accepted');
   return {
     status: 'accepted',
     job,

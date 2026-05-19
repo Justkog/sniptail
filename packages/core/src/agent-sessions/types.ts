@@ -14,6 +14,10 @@ export type AgentSessionRecord = {
   agentProfileKey: string;
   codingAgentSessionId?: string;
   cwd?: string;
+  ownerWorkerId?: string;
+  ownerWorkerLabel?: string;
+  workerClaimedAt?: string;
+  ownerStaleSince?: string;
   status: AgentSessionStatus;
   createdAt: string;
   updatedAt: string;
@@ -28,7 +32,7 @@ export type CreateAgentSessionInput = Omit<
 };
 
 export interface AgentSessionStore {
-  kind: 'sqlite';
+  kind: 'sqlite' | 'pg' | 'redis';
   createSession(input: CreateAgentSessionInput): Promise<AgentSessionRecord>;
   loadSession(sessionId: string): Promise<AgentSessionRecord | undefined>;
   findSessionByThread(input: {
@@ -42,5 +46,12 @@ export interface AgentSessionStore {
   updateCodingAgentSessionId(
     sessionId: string,
     codingAgentSessionId: string,
+  ): Promise<AgentSessionRecord | undefined>;
+  updateSessionOwnership(
+    sessionId: string,
+    ownership: Pick<
+      AgentSessionRecord,
+      'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+    >,
   ): Promise<AgentSessionRecord | undefined>;
 }

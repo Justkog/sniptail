@@ -44,3 +44,14 @@ export async function updateAgentSessionCodingAgentSessionId(
   const store = await getAgentSessionStore();
   return store.updateCodingAgentSessionId(sessionId, codingAgentSessionId);
 }
+
+export async function updateAgentSessionOwnership(
+  sessionId: string,
+  ownership: Pick<
+    AgentSessionRecord,
+    'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+  >,
+): Promise<AgentSessionRecord | undefined> {
+  const store = await getAgentSessionStore();
+  return store.updateSessionOwnership(sessionId, ownership);
+}

@@ -18,6 +18,7 @@ import type {
   BotRunActionReference,
   WorkerRunActionConfig,
   WorkerAgentCommandConfig,
+  BotAgentCommandConfig,
 } from './types.js';
 import type { JobType } from '../types/job.js';
 import {
@@ -42,9 +43,9 @@ import {
   requireEnv,
   resolveBotName,
   resolveQueueDriver,
-  resolveJobRegistryDriver,
-  resolveJobRegistryPgUrl,
-  resolveJobRegistryRedisUrl,
+  resolveRegistryDriver,
+  resolveRegistryPgUrl,
+  resolveRegistryRedisUrl,
   resolvePrimaryAgent,
   resolveCopilotExecutionMode,
   resolveCopilotIdleRetries,
@@ -63,6 +64,19 @@ import { normalizeRunActionId } from '../repos/runActions.js';
 let coreConfigCache: CoreConfig | null = null;
 let botConfigCache: BotConfig | null = null;
 let workerConfigCache: WorkerConfig | null = null;
+
+const LEGACY_REGISTRY_ENV_KEYS = [
+  'JOB_REGISTRY_DB',
+  'JOB_REGISTRY_PATH',
+  'JOB_REGISTRY_PG_URL',
+  'JOB_REGISTRY_REDIS_URL',
+] as const;
+const LEGACY_CORE_REGISTRY_TOML_KEYS = [
+  'job_registry_db',
+  'job_registry_path',
+  'job_registry_pg_url',
+  'job_registry_redis_url',
+] as const;
 
 export { parseRepoAllowlist, writeRepoAllowlist } from './repoAllowlist.js';
 export { resolveGitHubConfig, resolveGitLabConfig } from './providers.js';
@@ -237,29 +251,58 @@ function parseOpenCodeModelMap(modelsToml: TomlTable | undefined, label: string)
   return Object.keys(models).length ? models : undefined;
 }
 
-function loadCoreConfigFromToml(coreToml?: TomlTable, appRedisUrlToml?: unknown): CoreConfig {
+function loadCoreConfigFromToml(
+  coreToml: TomlTable | undefined,
+  registryToml: TomlTable | undefined,
+  appRedisUrlToml?: unknown,
+): CoreConfig {
+  for (const key of LEGACY_REGISTRY_ENV_KEYS) {
+    if (process.env[key]?.trim()) {
+      throw new Error(
+        `Invalid ${key}. Use SNIPTAIL_REGISTRY_* environment variables and the [registry] config block instead.`,
+      );
+    }
+  }
+  for (const key of LEGACY_CORE_REGISTRY_TOML_KEYS) {
+    if (coreToml?.[key] !== undefined) {
+      throw new Error(
+        `Invalid core.${key} in TOML. Move registry settings into the [registry] config block.`,
+      );
+    }
+  }
   const repoAllowlistPath = resolvePathValue('REPO_ALLOWLIST_PATH', coreToml?.repo_allowlist_path, {
     required: false,
   });
   const queueDriver = resolveQueueDriver(coreToml?.queue_driver);
-  const jobRegistryDriver = resolveJobRegistryDriver(coreToml?.job_registry_db);
-  const jobRegistryPgUrl = resolveJobRegistryPgUrl(jobRegistryDriver);
-  const jobRegistryRedisUrl = resolveJobRegistryRedisUrl(
-    jobRegistryDriver,
-    coreToml?.job_registry_redis_url,
+  const registryDriver = resolveRegistryDriver(registryToml?.db);
+  const registryPgUrl = resolveRegistryPgUrl(registryDriver, registryToml?.pg_url);
+  const registryRedisUrl = resolveRegistryRedisUrl(
+    registryDriver,
+    registryToml?.redis_url,
     appRedisUrlToml,
   );
-  const jobRegistryPath = resolvePathValue('JOB_REGISTRY_PATH', coreToml?.job_registry_path, {
-    required: jobRegistryDriver === 'sqlite',
+  const registryPath = resolvePathValue('SNIPTAIL_REGISTRY_PATH', registryToml?.path, {
+    required: registryDriver === 'sqlite',
   });
+  const registryNamespace = resolveStringValue(
+    'SNIPTAIL_REGISTRY_NAMESPACE',
+    registryToml?.namespace,
+    { defaultValue: 'default' },
+  ) as string;
+  if (!/^[A-Za-z0-9._-]+$/.test(registryNamespace)) {
+    throw new Error(
+      'Invalid registry.namespace. Expected only letters, numbers, ".", "_", or "-".',
+    );
+  }
   return {
     ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
     repoAllowlist: {},
     queueDriver,
-    ...(jobRegistryPath ? { jobRegistryPath } : {}),
-    jobRegistryDriver,
-    ...(jobRegistryPgUrl ? { jobRegistryPgUrl } : {}),
-    ...(jobRegistryRedisUrl ? { jobRegistryRedisUrl } : {}),
+    ...(registryPath ? { registryPath } : {}),
+    registryDriver,
+    ...(registryPgUrl ? { registryPgUrl } : {}),
+    ...(registryRedisUrl ? { registryRedisUrl } : {}),
+    registryNamespace,
   };
 }
 
@@ -704,14 +747,16 @@ function parseWorkerAgentCommandConfig(agentToml: TomlTable | undefined): Worker
     agentToml?.enabled,
     false,
   );
-  const defaultWorkspace = resolveStringValue(
-    'AGENT_COMMAND_DEFAULT_WORKSPACE',
-    agentToml?.default_workspace,
-  );
-  const defaultAgentProfile = resolveStringValue(
-    'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
-    agentToml?.default_agent_profile,
-  );
+  if (agentToml?.default_workspace !== undefined) {
+    throw new Error(
+      'Invalid agent.default_workspace. Agent command defaults must be configured in [agent_command] within the bot config.',
+    );
+  }
+  if (agentToml?.default_agent_profile !== undefined) {
+    throw new Error(
+      'Invalid agent.default_agent_profile. Agent command defaults must be configured in [agent_command] within the bot config.',
+    );
+  }
   const interactionTimeoutMs = resolvePositiveIntegerFromSources(
     'AGENT_COMMAND_INTERACTION_TIMEOUT_MS',
     agentToml?.interaction_timeout_ms,
@@ -734,26 +779,54 @@ function parseWorkerAgentCommandConfig(agentToml: TomlTable | undefined): Worker
     if (!Object.keys(profiles).length) {
       throw new Error('Invalid agent config. enabled=true requires at least one profile.');
     }
-    if (!defaultWorkspace || !workspaces[defaultWorkspace]) {
-      throw new Error(
-        'Invalid agent.default_workspace. Enabled agent command requires a known workspace key.',
-      );
-    }
-    if (!defaultAgentProfile || !profiles[defaultAgentProfile]) {
-      throw new Error(
-        'Invalid agent.default_agent_profile. Enabled agent command requires a known profile key.',
-      );
-    }
   }
 
   return {
     enabled,
-    ...(defaultWorkspace ? { defaultWorkspace } : {}),
-    ...(defaultAgentProfile ? { defaultAgentProfile } : {}),
     interactionTimeoutMs,
     outputDebounceMs,
     workspaces,
     profiles,
+  };
+}
+
+function parseBotAgentCommandConfig(
+  agentCommandToml: TomlTable | undefined,
+): BotAgentCommandConfig {
+  const defaultWorkspace = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_WORKSPACE',
+    agentCommandToml?.default_workspace,
+  );
+  const defaultAgentProfile = resolveStringValue(
+    'AGENT_COMMAND_DEFAULT_AGENT_PROFILE',
+    agentCommandToml?.default_agent_profile,
+  );
+
+  return {
+    ...(defaultWorkspace ? { defaultWorkspace } : {}),
+    ...(defaultAgentProfile ? { defaultAgentProfile } : {}),
+  };
+}
+
+function parseWorkerIdentity(workerToml: TomlTable | undefined): {
+  workerId: string;
+  workerIdExplicit: boolean;
+  workerLabel?: string;
+} {
+  const workerIdEnv = process.env.SNIPTAIL_WORKER_ID;
+  const workerIdToml = getTomlString(workerToml?.id, 'worker.id');
+  const workerId = resolveStringValue('SNIPTAIL_WORKER_ID', workerToml?.id, {
+    defaultValue: 'default',
+  }) as string;
+  const workerLabel = resolveStringValue('SNIPTAIL_WORKER_LABEL', workerToml?.label);
+  if (!/^[A-Za-z0-9._-]+$/.test(workerId)) {
+    throw new Error('Invalid worker.id. Expected only letters, numbers, ".", "_", or "-".');
+  }
+
+  return {
+    workerId,
+    workerIdExplicit: (workerIdEnv?.trim() ?? '') !== '' || workerIdToml !== undefined,
+    ...(workerLabel ? { workerLabel } : {}),
   };
 }
 
@@ -979,8 +1052,9 @@ export function loadCoreConfig(): CoreConfig {
   if (coreConfigCache) return coreConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
   const coreToml = getTomlTable(toml.core, 'core');
+  const registryToml = getTomlTable(toml.registry, 'registry');
   const workerToml = getTomlTable(toml.worker, 'worker');
-  const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
+  const core = loadCoreConfigFromToml(coreToml, registryToml, workerToml?.redis_url);
   const jobWorkRoot = resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
     required: true,
   }) as string;
@@ -995,7 +1069,9 @@ export function loadBotConfig(): BotConfig {
   if (botConfigCache) return botConfigCache;
   const toml = loadTomlConfig(BOT_CONFIG_PATH_ENV, DEFAULT_BOT_CONFIG_PATH, 'bot');
   const coreToml = getTomlTable(toml.core, 'core');
+  const registryToml = getTomlTable(toml.registry, 'registry');
   const botToml = getTomlTable(toml.bot, 'bot');
+  const agentCommandToml = getTomlTable(toml.agent_command, 'agent_command');
   const channelsToml = getTomlTable(toml.channels, 'channels');
   const permissionsToml = getTomlTable(toml.permissions, 'permissions');
   const runToml = getTomlTable(toml.run, 'run');
@@ -1003,7 +1079,7 @@ export function loadBotConfig(): BotConfig {
   const channelsDiscordToml = getTomlTable(channelsToml?.discord, 'channels.discord');
   const channelsTelegramToml = getTomlTable(channelsToml?.telegram, 'channels.telegram');
 
-  const core = loadCoreConfigFromToml(coreToml, botToml?.redis_url);
+  const core = loadCoreConfigFromToml(coreToml, registryToml, botToml?.redis_url);
   if (!coreConfigCache) coreConfigCache = core;
 
   const botName = resolveBotName(botToml?.bot_name);
@@ -1018,6 +1094,7 @@ export function loadBotConfig(): BotConfig {
     'BOOTSTRAP_SERVICES',
     botToml?.bootstrap_services,
   );
+  const agentCommand = parseBotAgentCommandConfig(agentCommandToml);
   const hasRuntimeChannelOverride = process.env.SNIPTAIL_CHANNELS !== undefined;
   const runtimeEnabledChannels = uniqueProviderList(
     resolveStringArrayFromSources('SNIPTAIL_CHANNELS', undefined),
@@ -1089,6 +1166,7 @@ export function loadBotConfig(): BotConfig {
     slackEnabled,
     discordEnabled,
     telegramEnabled,
+    agentCommand,
     ...(slackEnabled && {
       slack: {
         botToken: requireEnv('SLACK_BOT_TOKEN'),
@@ -1121,6 +1199,7 @@ export function loadWorkerConfig(): WorkerConfig {
   if (workerConfigCache) return workerConfigCache;
   const toml = loadTomlConfig(WORKER_CONFIG_PATH_ENV, DEFAULT_WORKER_CONFIG_PATH, 'worker');
   const coreToml = getTomlTable(toml.core, 'core');
+  const registryToml = getTomlTable(toml.registry, 'registry');
   const workerToml = getTomlTable(toml.worker, 'worker');
   const copilotToml = getTomlTable(toml.copilot, 'copilot');
   const codexToml = getTomlTable(toml.codex, 'codex');
@@ -1131,7 +1210,7 @@ export function loadWorkerConfig(): WorkerConfig {
   const runToml = getTomlTable(toml.run, 'run');
   const agentToml = getTomlTable(toml.agent, 'agent');
 
-  const core = loadCoreConfigFromToml(coreToml, workerToml?.redis_url);
+  const core = loadCoreConfigFromToml(coreToml, registryToml, workerToml?.redis_url);
   const jobWorkRoot = resolvePathValue('JOB_WORK_ROOT', coreToml?.job_work_root, {
     required: true,
   }) as string;
@@ -1224,6 +1303,7 @@ export function loadWorkerConfig(): WorkerConfig {
   );
   const runActions = parseWorkerRunActions(runToml);
   const agent = parseWorkerAgentCommandConfig(agentToml);
+  const workerIdentity = parseWorkerIdentity(workerToml);
   const acp = parseAcpLaunchConfig(acpToml, 'acp');
 
   const jobRootCopyGlob = resolvePathValue('JOB_ROOT_COPY_GLOB', workerToml?.job_root_copy_glob);
@@ -1266,6 +1346,11 @@ export function loadWorkerConfig(): WorkerConfig {
     'worker.bootstrap_concurrency',
     2,
   );
+  const consumeSharedWorkerEvents = resolveOptionalFlagFromSources(
+    'CONSUME_SHARED_WORKER_EVENTS',
+    workerToml?.consume_shared_worker_events,
+    true,
+  );
   const workerEventConcurrency = resolvePositiveIntegerFromSources(
     'WORKER_EVENT_CONCURRENCY',
     workerToml?.worker_event_concurrency,
@@ -1282,15 +1367,28 @@ export function loadWorkerConfig(): WorkerConfig {
     required: core.queueDriver === 'redis',
   });
   const localRepoRoot = resolvePathValue('LOCAL_REPO_ROOT', workerToml?.local_repo_root);
+  if (core.queueDriver === 'redis' && agent.enabled && core.registryDriver === 'sqlite') {
+    throw new Error(
+      'Invalid registry.db. Redis queue mode with enabled agent command requires registry.db to be pg or redis.',
+    );
+  }
+  if (core.queueDriver === 'redis' && agent.enabled && !workerIdentity.workerIdExplicit) {
+    throw new Error(
+      'Invalid worker.id. Redis queue mode with enabled agent command requires SNIPTAIL_WORKER_ID or worker.id.',
+    );
+  }
 
   workerConfigCache = {
     ...core,
     jobWorkRoot,
     botName,
+    workerId: workerIdentity.workerId,
+    ...(workerIdentity.workerLabel ? { workerLabel: workerIdentity.workerLabel } : {}),
     ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,
     jobConcurrency,
     bootstrapConcurrency,
+    consumeSharedWorkerEvents,
     workerEventConcurrency,
     ...(localRepoRoot ? { localRepoRoot } : {}),
     copilot: {

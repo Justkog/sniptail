@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as AgentCommandShared from '../../../agentCommandShared.js';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { handleSlackAgentThreadMessage } from './agentThreadMention.js';
 
 const hoisted = vi.hoisted(() => ({
   findAgentSessionByThread: vi.fn(),
   authorizeSlackOperationAndRespond: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
   postMessage: vi.fn(),
 }));
 
@@ -14,7 +16,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/slackPermissionGuards.js', () => ({
@@ -25,13 +27,28 @@ vi.mock('../../helpers.js', () => ({
   postMessage: hoisted.postMessage,
 }));
 
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    warn: vi.fn(),
+  },
+}));
+
+vi.mock('../../../agentCommandShared.js', async () => {
+  const actual = await vi.importActual<typeof AgentCommandShared>('../../../agentCommandShared.js');
+
+  return {
+    ...actual,
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
+
 function createContext() {
   return {
     app: {
       client: {},
     },
     config: { botName: 'Sniptail' },
-    workerEventQueue: {},
+    queueRuntime: {},
     permissions: {},
     slackIds: {
       actions: {
@@ -46,7 +63,11 @@ describe('handleSlackAgentThreadMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(true);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
     hoisted.postMessage.mockResolvedValue({ ts: 'M2' });
   });
 
@@ -63,7 +84,7 @@ describe('handleSlackAgentThreadMessage', () => {
     });
 
     expect(handled).toBe(false);
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
   });
 
   it('enqueues completed-thread follow-ups', async () => {
@@ -102,8 +123,10 @@ describe('handleSlackAgentThreadMessage', () => {
       messageId: '111.222',
       mode: 'run',
     });
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
       expect.anything(),
+      'worker-a',
       expect.objectContaining({ type: 'agent.session.message' }),
     );
   });
@@ -141,7 +164,7 @@ describe('handleSlackAgentThreadMessage', () => {
       'Queue',
       'Steer',
     ]);
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
   });
 
   it('reports pending and terminal states without enqueueing', async () => {
@@ -191,7 +214,7 @@ describe('handleSlackAgentThreadMessage', () => {
     expect(hoisted.postMessage.mock.calls[1]?.[1]).toMatchObject({
       text: 'This agent session is failed.',
     });
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
   });
 
   it('dedupes repeated completed-thread message events', async () => {
@@ -226,6 +249,6 @@ describe('handleSlackAgentThreadMessage', () => {
       workspaceId: 'W1',
     });
 
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledTimes(1);
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledTimes(1);
   });
 });

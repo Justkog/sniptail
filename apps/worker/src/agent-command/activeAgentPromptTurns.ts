@@ -72,3 +72,7 @@ export function clearAgentPromptTurn(sessionId: string): void {
 export function clearAgentPromptTurns(): void {
   activeAgentPromptTurns.clear();
 }
+
+export function getActiveAgentPromptTurnCount(): number {
+  return activeAgentPromptTurns.size;
+}

@@ -15,7 +15,7 @@ export function registerPlanSubmitView({
   app,
   slackIds,
   config,
-  queue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.view(slackIds.actions.planSubmit, async ({ ack, body, view, client }) => {
@@ -67,7 +67,7 @@ export function registerPlanSubmitView({
         : undefined;
     const result = await submitNormalizedJobRequest({
       config,
-      queue,
+      queueRuntime,
       input: {
         type: 'PLAN',
         repoKeys,

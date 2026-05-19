@@ -22,7 +22,7 @@ function parseOptionalProjectId(value?: string): number | undefined {
 export function registerRepoAddModalSubmit({
   app,
   slackIds,
-  workerEventQueue,
+  queueRuntime,
   config,
   permissions,
 }: SlackHandlerContext) {
@@ -135,7 +135,7 @@ export function registerRepoAddModalSubmit({
         return;
       }
 
-      await enqueueWorkerEvent(workerEventQueue, event);
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
 
       await postMessage(app, {
         channel: responseChannel,

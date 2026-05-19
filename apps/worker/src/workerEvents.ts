@@ -2,7 +2,6 @@ import { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import { fetchCodexUsageMessage } from '@sniptail/core/codex/status.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { CoreWorkerEvent, WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import { publishAgentMetadataUpdateForProvider } from './agent-command/metadata.js';
 import {
   runAgentSessionMessage,
   runAgentSessionStart,
@@ -135,14 +134,6 @@ export async function handleWorkerEvent(
           'Failed to fetch Codex usage status. Please try again shortly.',
           botEvents,
         );
-      }
-      return;
-    }
-    case 'agent.metadata.request': {
-      try {
-        await publishAgentMetadataUpdateForProvider(botEvents, event.payload.provider);
-      } catch (err) {
-        logger.error({ err, event }, 'Failed to publish agent metadata update');
       }
       return;
     }

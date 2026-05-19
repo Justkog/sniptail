@@ -3,19 +3,15 @@ import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { NormalizedJobRequestInput } from './types.js';
 import { submitNormalizedJobRequest } from './engine.js';
 
-const saveJobQueuedMock = vi.hoisted(() => vi.fn());
-const enqueueJobMock = vi.hoisted(() => vi.fn());
+const saveAndEnqueueManagedJobMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@sniptail/core/jobs/registry.js', () => ({
-  saveJobQueued: saveJobQueuedMock,
-}));
-
-vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueJob: enqueueJobMock,
+vi.mock('./enqueueManagedJob.js', () => ({
+  saveAndEnqueueManagedJob: saveAndEnqueueManagedJobMock,
 }));
 
 function makeConfig(): BotConfig {
   return {
+    agentCommand: {},
     primaryAgent: 'codex',
     repoAllowlist: {},
   } as BotConfig;
@@ -40,15 +36,22 @@ function makeInput(overrides: Partial<NormalizedJobRequestInput> = {}): Normaliz
 describe('submitNormalizedJobRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    saveJobQueuedMock.mockResolvedValue(undefined);
-    enqueueJobMock.mockResolvedValue(undefined);
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'accepted',
+      target: 'shared',
+    });
   });
 
   it('returns invalid for non-MENTION jobs with empty repos', async () => {
     const authorize = vi.fn().mockResolvedValue(true);
     const result = await submitNormalizedJobRequest({
       config: makeConfig(),
-      queue: {} as never,
+      queueRuntime: {
+        queues: {
+          jobs: { add: vi.fn() },
+        },
+        publishJobToWorkerMailbox: vi.fn(),
+      } as never,
       input: makeInput({ repoKeys: [] }),
       authorize,
     });
@@ -58,33 +61,44 @@ describe('submitNormalizedJobRequest', () => {
       message: 'Select at least one repository before submitting the request.',
     });
     expect(authorize).not.toHaveBeenCalled();
-    expect(saveJobQueuedMock).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
   });
 
   it('returns stopped when authorization denies the request', async () => {
     const authorize = vi.fn().mockResolvedValue(false);
     const result = await submitNormalizedJobRequest({
       config: makeConfig(),
-      queue: {} as never,
+      queueRuntime: {
+        queues: {
+          jobs: { add: vi.fn() },
+        },
+        publishJobToWorkerMailbox: vi.fn(),
+      } as never,
       input: makeInput(),
       authorize,
     });
 
     expect(result.status).toBe('stopped');
     expect(authorize).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
   });
 
-  it('returns persist_failed when saving queued job fails', async () => {
+  it('returns persist_failed when managed-job persistence fails', async () => {
     const expectedError = new Error('write failed');
-    saveJobQueuedMock.mockRejectedValue(expectedError);
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'persist_failed',
+      error: expectedError,
+    });
     const authorize = vi.fn().mockResolvedValue(true);
 
     const result = await submitNormalizedJobRequest({
       config: makeConfig(),
-      queue: {} as never,
+      queueRuntime: {
+        queues: {
+          jobs: { add: vi.fn() },
+        },
+        publishJobToWorkerMailbox: vi.fn(),
+      } as never,
       input: makeInput(),
       authorize,
     });
@@ -92,32 +106,46 @@ describe('submitNormalizedJobRequest', () => {
     expect(result.status).toBe('persist_failed');
     expect(result.error).toBe(expectedError);
     expect(authorize).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
   });
 
-  it('returns accepted and enqueues job when request is valid and authorized', async () => {
+  it('returns accepted when request is valid and authorized', async () => {
     const authorize = vi.fn().mockResolvedValue(true);
-    const queue = {} as never;
+    const queueRuntime = {
+      queues: {
+        jobs: { add: vi.fn() },
+      },
+      publishJobToWorkerMailbox: vi.fn(),
+    } as never;
     const result = await submitNormalizedJobRequest({
       config: makeConfig(),
-      queue,
+      queueRuntime,
       input: makeInput(),
       authorize,
     });
 
     expect(result.status).toBe('accepted');
     expect(authorize).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledWith(queue, expect.objectContaining({ type: 'ASK' }));
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
+    expect(saveAndEnqueueManagedJobMock.mock.calls[0]?.[0]).toMatchObject({
+      config: makeConfig(),
+      queueRuntime,
+      job: {
+        type: 'ASK',
+      },
+    });
   });
 
   it('allows empty repos for MENTION jobs', async () => {
     const authorize = vi.fn().mockResolvedValue(true);
     const result = await submitNormalizedJobRequest({
       config: makeConfig(),
-      queue: {} as never,
+      queueRuntime: {
+        queues: {
+          jobs: { add: vi.fn() },
+        },
+        publishJobToWorkerMailbox: vi.fn(),
+      } as never,
       input: makeInput({
         type: 'MENTION',
         repoKeys: [],
@@ -128,7 +156,31 @@ describe('submitNormalizedJobRequest', () => {
 
     expect(result.status).toBe('accepted');
     expect(authorize).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns invalid when owner routing rejects a resumed job', async () => {
+    const authorize = vi.fn().mockResolvedValue(true);
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'invalid',
+      message: 'Job ask-1 is waiting for owner worker worker-a to return.',
+    });
+
+    const result = await submitNormalizedJobRequest({
+      config: makeConfig(),
+      queueRuntime: {
+        queues: {
+          jobs: { add: vi.fn() },
+        },
+        publishJobToWorkerMailbox: vi.fn(),
+      } as never,
+      input: makeInput({ resumeFromJobId: 'ask-1' }),
+      authorize,
+    });
+
+    expect(result).toEqual({
+      status: 'invalid',
+      message: 'Job ask-1 is waiting for owner worker worker-a to return.',
+    });
   });
 });

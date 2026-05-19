@@ -13,6 +13,12 @@ export interface JobRegistry {
   deleteJobRecords(jobIds: string[]): Promise<void>;
   markJobForDeletion(jobId: string, ttlMs: number): Promise<JobRecord | undefined>;
   clearJobsBefore(cutoff: Date): Promise<number>;
+  countJobRecordsByTypes?(types: JobType[]): Promise<number>;
+  listJobRecordsForCleanup?(input: {
+    types: JobType[];
+    olderThan?: string;
+    limit?: number;
+  }): Promise<JobRecord[]>;
   findLatestJobByChannelThread(
     provider: ChannelProvider,
     channelId: string,

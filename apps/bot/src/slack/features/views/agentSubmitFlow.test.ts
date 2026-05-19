@@ -20,23 +20,34 @@ type SlackViewHandlerArgs = {
 type SlackViewHandler = (args: SlackViewHandlerArgs) => Promise<void>;
 
 const hoisted = vi.hoisted(() => ({
-  getAgentCommandMetadata: vi.fn(),
+  loadAgentCommandMetadata: vi.fn(),
+  findAgentProfileMetadata: vi.fn(),
+  buildAgentWorkerSelectionError: vi.fn(),
+  resolveAgentStartWorker: vi.fn(),
   loadSlackModalContextFiles: vi.fn(),
+  postEphemeral: vi.fn(),
   postMessage: vi.fn(),
   createAgentSession: vi.fn(),
   updateAgentSessionStatus: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
   upsertSlackAgentDefaults: vi.fn(),
   authorizeSlackOperationAndRespond: vi.fn(),
   auditAgentSessionStart: vi.fn(),
 }));
 
 vi.mock('../../../agentCommandMetadataCache.js', () => ({
-  getAgentCommandMetadata: hoisted.getAgentCommandMetadata,
+  loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
+  findAgentProfileMetadata: hoisted.findAgentProfileMetadata,
+}));
+
+vi.mock('../../../agentCommandWorkerRouting.js', () => ({
+  buildAgentWorkerSelectionError: hoisted.buildAgentWorkerSelectionError,
+  resolveAgentStartWorker: hoisted.resolveAgentStartWorker,
 }));
 
 vi.mock('../../helpers.js', () => ({
   loadSlackModalContextFiles: hoisted.loadSlackModalContextFiles,
+  postEphemeral: hoisted.postEphemeral,
   postMessage: hoisted.postMessage,
 }));
 
@@ -46,7 +57,22 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('../../../agentCommandShared.js', () => ({
+  buildAgentSessionStartWorkerEvent: vi.fn((input: { session: { sessionId: string } }) => ({
+    type: 'agent.session.start',
+    payload: { sessionId: input.session.sessionId },
+  })),
 }));
 
 vi.mock('@sniptail/core/agent-defaults/registry.js', () => ({
@@ -80,7 +106,7 @@ function buildContext() {
     config: {
       botName: 'Sniptail',
     },
-    workerEventQueue: {},
+    queueRuntime: {},
     permissions: {},
   } as never;
 
@@ -126,16 +152,28 @@ function buildArgs(overrides: Partial<SlackViewHandlerArgs> = {}): SlackViewHand
 describe('registerAgentSubmitView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    hoisted.getAgentCommandMetadata.mockReturnValue({
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
       enabled: true,
       workspaces: [{ key: 'snatch' }],
-      profiles: [{ key: 'build', provider: 'codex', profile: 'default' }],
+      profiles: [{ key: 'build', status: 'available', provider: 'codex', profile: 'default' }],
+    });
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'available',
+      provider: 'codex',
+      profile: 'default',
+    });
+    hoisted.buildAgentWorkerSelectionError.mockReturnValue(undefined);
+    hoisted.resolveAgentStartWorker.mockReturnValue({
+      workerId: 'worker-a',
+      workerLabel: 'Worker A',
     });
     hoisted.loadSlackModalContextFiles.mockResolvedValue([]);
     hoisted.postMessage.mockResolvedValue({ ts: 'T1' });
+    hoisted.postEphemeral.mockResolvedValue({});
     hoisted.createAgentSession.mockResolvedValue(undefined);
     hoisted.updateAgentSessionStatus.mockResolvedValue(undefined);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
     hoisted.upsertSlackAgentDefaults.mockResolvedValue(undefined);
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(true);
   });
@@ -162,6 +200,31 @@ describe('registerAgentSubmitView', () => {
     );
   });
 
+  it('posts the start acknowledgment ephemerally', async () => {
+    const { handler } = buildContext();
+    const requestedByText: unknown = expect.stringContaining('Agent session requested by <@U1>.');
+
+    await handler(buildArgs());
+
+    expect(hoisted.postEphemeral).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        user: 'U1',
+        text: 'Agent session started on worker `worker-a`.',
+        threadTs: 'T1',
+      }),
+    );
+    expect(hoisted.postMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        text: requestedByText,
+        threadTs: 'T1',
+      }),
+    );
+  });
+
   it('audits pending approvals', async () => {
     const { handler, context } = buildContext();
     hoisted.authorizeSlackOperationAndRespond.mockResolvedValue(false);
@@ -182,7 +245,7 @@ describe('registerAgentSubmitView', () => {
 
   it('audits invalid metadata/state failures before session creation', async () => {
     const { handler, context } = buildContext();
-    hoisted.getAgentCommandMetadata.mockReturnValue(undefined);
+    hoisted.loadAgentCommandMetadata.mockResolvedValue(undefined);
 
     await handler(buildArgs());
 
@@ -221,6 +284,26 @@ describe('registerAgentSubmitView', () => {
       'invalid',
     );
     expect(hoisted.postMessage).not.toHaveBeenCalled();
+    expect(hoisted.createAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects conflicted profiles before session creation', async () => {
+    const { handler } = buildContext();
+    hoisted.findAgentProfileMetadata.mockReturnValue({
+      key: 'build',
+      status: 'conflicted',
+    });
+
+    await handler(buildArgs());
+
+    expect(hoisted.postMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        channel: 'C1',
+        text: 'Agent profile key: `build` is currently conflicted across live workers. Please ask an operator to fix worker configuration.',
+        threadTs: 'T1',
+      }),
+    );
     expect(hoisted.createAgentSession).not.toHaveBeenCalled();
   });
 });

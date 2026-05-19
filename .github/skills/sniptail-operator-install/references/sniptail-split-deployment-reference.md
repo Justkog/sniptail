@@ -6,12 +6,13 @@ Use this reference only when the user needs bot and worker on different machines
 
 - the bot host and worker host are separate
 - Redis-backed queueing is required
-- shared state should live in Redis or Postgres instead of local sqlite
+- shared registry state should live in Redis or Postgres instead of local sqlite
 
 ## Main Rules
 
 - bot and worker must agree on the queue transport
 - do not assume a shared filesystem between bot and worker machines
+- resumed managed jobs route back to the worker that owns the source job, because job work directories and provider session state are worker-local
 - the worker host needs Git, SSH repo access, and the selected agent runtime tools
 
 ## Preflight Checks
@@ -43,9 +44,15 @@ Worker side:
 - `sniptail worker`
 - `queue_driver = "redis"`
 - set `REDIS_URL`
-- choose `job_registry_db = "redis"` or `job_registry_db = "pg"`
+- choose a shared `[registry]` backend:
+  - `[registry].db = "redis"` with `SNIPTAIL_REGISTRY_REDIS_URL` or `REDIS_URL`
+  - `[registry].db = "pg"` with `SNIPTAIL_REGISTRY_PG_URL`
 
-If Postgres is used for the job registry, apply migrations before startup:
+Bot and worker must use the same registry backend and namespace for one deployment.
+
+The shared registry stores worker capabilities and job ownership. In split deployments, this is what lets bots route resumed managed jobs to the original owner worker instead of publishing them to the shared jobs queue. If the owner worker is stale, resume requests fail until that worker returns or an operator clears ownership.
+
+If Postgres is used for the registry, apply migrations before startup:
 
 ```bash
 sniptail db migrate --scope bot

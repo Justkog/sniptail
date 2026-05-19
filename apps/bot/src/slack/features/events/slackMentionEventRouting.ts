@@ -28,10 +28,10 @@ export async function queueSlackMentionJob(
   {
     app,
     config,
-    queue,
+    queueRuntime,
     permissions,
     slackIds,
-  }: Pick<SlackHandlerContext, 'app' | 'config' | 'queue' | 'permissions' | 'slackIds'>,
+  }: Pick<SlackHandlerContext, 'app' | 'config' | 'permissions' | 'slackIds' | 'queueRuntime'>,
   client: SlackHandlerContext['app']['client'],
   input: SlackMentionEventJobInput,
 ): Promise<boolean> {
@@ -151,7 +151,7 @@ export async function queueSlackMentionJob(
     return false;
   }
 
-  await enqueueJob(queue, job);
+  await enqueueJob(queueRuntime.queues.jobs, job);
   auditJobRequest(config, job, 'accepted');
   return true;
 }

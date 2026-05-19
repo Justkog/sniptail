@@ -1,8 +1,7 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { askSelectionByUser, deleteDiscordSelectionReply } from '../../state.js';
 import { buildInteractionChannelContext } from '../../lib/channel.js';
@@ -17,7 +16,7 @@ import { disableDiscordSelectionReply, getActiveDiscordSelection } from '../../s
 export async function handleAskModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: QueuePublisher<JobSpec>,
+  queueRuntime: Pick<QueueTransportRuntime, 'queues' | 'publishJobToWorkerMailbox'>,
   permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
@@ -83,7 +82,7 @@ export async function handleAskModalSubmit(
 
   const result = await submitNormalizedJobRequest({
     config,
-    queue,
+    queueRuntime,
     input: {
       type: 'ASK',
       repoKeys,

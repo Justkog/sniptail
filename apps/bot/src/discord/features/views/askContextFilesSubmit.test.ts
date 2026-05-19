@@ -84,6 +84,15 @@ describe('handleAskModalSubmit', () => {
     ]);
   });
 
+  function makeQueueRuntime() {
+    return {
+      queues: {
+        jobs: { add: vi.fn() },
+      },
+      publishJobToWorkerMailbox: vi.fn(),
+    } as never;
+  }
+
   it('queues ask jobs with Discord context files from the command selection state', async () => {
     askSelectionByUser.set('U1', {
       repoKeys: ['repo-a'],
@@ -128,7 +137,7 @@ describe('handleAskModalSubmit', () => {
       },
     } as never;
 
-    await handleAskModalSubmit(interaction, config, {} as never, {} as never);
+    await handleAskModalSubmit(interaction, config, makeQueueRuntime(), {} as never);
 
     expect(loadDiscordContextFilesMock).toHaveBeenCalledWith([
       {
@@ -201,7 +210,7 @@ describe('handleAskModalSubmit', () => {
       },
     } as never;
 
-    await handleAskModalSubmit(interaction, config, {} as never, {} as never);
+    await handleAskModalSubmit(interaction, config, makeQueueRuntime(), {} as never);
 
     expect(reply).toHaveBeenCalledWith({
       content: 'Repository selection expired. Please run the ask command again.',

@@ -12,22 +12,24 @@ export async function getJobRegistryDb(): Promise<JobRegistryClient> {
   if (!jobRegistryClient) {
     jobRegistryClient = (async () => {
       const config = loadCoreConfig();
-      switch (config.jobRegistryDriver) {
+      switch (config.registryDriver) {
         case 'pg':
-          if (!config.jobRegistryPgUrl) {
-            throw new Error('JOB_REGISTRY_PG_URL is required when JOB_REGISTRY_DB=pg');
+          if (!config.registryPgUrl) {
+            throw new Error('SNIPTAIL_REGISTRY_PG_URL is required when SNIPTAIL_REGISTRY_DB=pg');
           }
-          return createPgClient(config.jobRegistryPgUrl);
+          return createPgClient(config.registryPgUrl);
         case 'sqlite':
-          if (!config.jobRegistryPath) {
-            throw new Error('JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite');
+          if (!config.registryPath) {
+            throw new Error('SNIPTAIL_REGISTRY_PATH is required when SNIPTAIL_REGISTRY_DB=sqlite');
           }
-          return createSqliteClient(config.jobRegistryPath);
+          return createSqliteClient(config.registryPath);
         case 'redis':
-          throw new Error('SQL job registry DB client is unavailable when JOB_REGISTRY_DB=redis');
+          throw new Error(
+            'SQL job registry DB client is unavailable when SNIPTAIL_REGISTRY_DB=redis',
+          );
         default: {
-          const exhaustive: never = config.jobRegistryDriver;
-          throw new Error(`Unsupported JOB_REGISTRY_DB: ${String(exhaustive)}`);
+          const exhaustive: never = config.registryDriver;
+          throw new Error(`Unsupported SNIPTAIL_REGISTRY_DB: ${String(exhaustive)}`);
         }
       }
     })();

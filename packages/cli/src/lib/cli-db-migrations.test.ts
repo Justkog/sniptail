@@ -101,13 +101,13 @@ describe('db migration helpers', () => {
       stdout: '',
       stderr: [
         '[2026-02-22 22:02:48.285 +0100] ERROR (130521): DB command failed',
-        'JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite',
+        'SNIPTAIL_REGISTRY_PATH is required when SNIPTAIL_REGISTRY_DB=sqlite',
         'Usage: db <status|migrate> [options]',
       ].join('\n'),
     });
 
     await expect(getDbMigrationStatus('worker', {})).rejects.toThrow(
-      'Failed to check database migrations for worker: JOB_REGISTRY_PATH is required when JOB_REGISTRY_DB=sqlite',
+      'Failed to check database migrations for worker: SNIPTAIL_REGISTRY_PATH is required when SNIPTAIL_REGISTRY_DB=sqlite',
     );
   });
 

@@ -22,6 +22,8 @@ export interface QueuePublisher<T> {
 
 export interface QueueConsumerHandle {
   close(): Promise<void>;
+  pause?(): Promise<void>;
+  resume?(): Promise<void>;
 }
 
 export type QueueChannel = 'jobs' | 'bootstrap' | 'worker-events' | 'bot-events';
@@ -45,6 +47,15 @@ export type QueueTransportConfig = {
   redisUrl?: string;
 };
 
+export type WorkerMailboxJobCounts = {
+  waiting: number;
+  prioritized: number;
+};
+
+export type WorkerMailboxObserverOptions = {
+  onJobAvailable: () => Promise<void> | void;
+};
+
 export interface QueueTransportRuntime {
   driver: QueueDriver;
   queues: {
@@ -56,6 +67,34 @@ export interface QueueTransportRuntime {
   consumeJobs(options: QueueConsumerOptions<JobSpec>): QueueConsumerHandle;
   consumeBootstrap(options: QueueConsumerOptions<BootstrapRequest>): QueueConsumerHandle;
   consumeWorkerEvents(options: QueueConsumerOptions<WorkerEvent>): QueueConsumerHandle;
+  publishWorkerEventToMailbox(
+    workerId: string,
+    event: WorkerEvent,
+    options?: QueueAddOptions,
+  ): Promise<QueueJob<WorkerEvent>>;
+  publishJobToWorkerMailbox(
+    workerId: string,
+    job: JobSpec,
+    options?: QueueAddOptions,
+  ): Promise<QueueJob<JobSpec>>;
+  consumeWorkerMailbox(
+    workerId: string,
+    options: QueueConsumerOptions<WorkerEvent>,
+  ): QueueConsumerHandle;
+  consumeWorkerJobMailbox(
+    workerId: string,
+    options: QueueConsumerOptions<JobSpec>,
+  ): QueueConsumerHandle;
+  observeWorkerMailbox(
+    workerId: string,
+    options: WorkerMailboxObserverOptions,
+  ): QueueConsumerHandle;
+  observeWorkerJobMailbox(
+    workerId: string,
+    options: WorkerMailboxObserverOptions,
+  ): QueueConsumerHandle;
+  countWorkerMailboxJobs(workerId: string): Promise<WorkerMailboxJobCounts>;
+  countWorkerJobMailboxJobs(workerId: string): Promise<WorkerMailboxJobCounts>;
   consumeBotEvents(options: QueueConsumerOptions<BotEvent>): QueueConsumerHandle;
   close(): Promise<void>;
 }

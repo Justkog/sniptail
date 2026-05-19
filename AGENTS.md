@@ -70,7 +70,7 @@
 - `packages/cli/src/commands/repos.ts`: operator-facing repository catalog management command surface
 - `apps/worker/scripts/`: helper scripts for Docker-backed agent execution
 
-For multi-machine deployments, use Postgres for shared state (`JOB_REGISTRY_DB=pg` + `JOB_REGISTRY_PG_URL`).
+For multi-machine deployments, use Postgres for shared state (`SNIPTAIL_REGISTRY_DB=pg` + `SNIPTAIL_REGISTRY_PG_URL`).
 
 ## Agent command
 
@@ -103,7 +103,7 @@ Notable variables:
 - `REDIS_URL`
 - `GITLAB_BASE_URL`, `GITLAB_TOKEN`
 - `REPO_ALLOWLIST_PATH` (optional seed/projection JSON file; see below)
-- `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `JOB_REGISTRY_PATH`, `JOB_REGISTRY_DB`
+- `REPO_CACHE_ROOT`, `JOB_WORK_ROOT`, `SNIPTAIL_REGISTRY_PATH`, `SNIPTAIL_REGISTRY_DB`, `SNIPTAIL_REGISTRY_NAMESPACE`
 - `LOCAL_REPO_ROOT` (optional; restricts local bootstrap paths)
 - `CODEX_EXECUTION_MODE` (`local` or `docker`)
 - `GH_COPILOT_EXECUTION_MODE` (`local` or `docker`)

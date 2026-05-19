@@ -111,7 +111,7 @@ describe('local command migration flow', () => {
     expect(hoisted.migrateDb).toHaveBeenCalledWith('bot', {
       envOverrides: {
         QUEUE_DRIVER: 'inproc',
-        JOB_REGISTRY_DB: 'sqlite',
+        SNIPTAIL_REGISTRY_DB: 'sqlite',
       },
     });
     expect(hoisted.runRuntime).toHaveBeenCalledTimes(1);

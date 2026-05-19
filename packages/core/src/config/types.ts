@@ -74,26 +74,30 @@ export type WorkerAgentCommandProfileConfig =
 
 export type WorkerAgentCommandConfig = {
   enabled: boolean;
-  defaultWorkspace?: string;
-  defaultAgentProfile?: string;
   interactionTimeoutMs: number;
   outputDebounceMs: number;
   workspaces: Record<string, WorkerAgentCommandWorkspaceConfig>;
   profiles: Record<string, WorkerAgentCommandProfileConfig>;
 };
 
+export type BotAgentCommandConfig = {
+  defaultWorkspace?: string;
+  defaultAgentProfile?: string;
+};
+
 export type QueueDriver = 'redis' | 'inproc';
-export type JobRegistryDriver = 'sqlite' | 'pg' | 'redis';
+export type RegistryDriver = 'sqlite' | 'pg' | 'redis';
 
 export type CoreConfig = {
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot?: string;
   queueDriver: QueueDriver;
-  jobRegistryPath?: string;
-  jobRegistryDriver: JobRegistryDriver;
-  jobRegistryPgUrl?: string;
-  jobRegistryRedisUrl?: string;
+  registryPath?: string;
+  registryDriver: RegistryDriver;
+  registryPgUrl?: string;
+  registryRedisUrl?: string;
+  registryNamespace: string;
 };
 
 export type BotConfig = CoreConfig & {
@@ -126,17 +130,21 @@ export type BotConfig = CoreConfig & {
   run?: {
     actions: Record<string, BotRunActionReference>;
   };
+  agentCommand: BotAgentCommandConfig;
   redisUrl?: string;
 };
 
 export type WorkerConfig = CoreConfig & {
   jobWorkRoot: string;
   botName: string;
+  workerId: string;
+  workerLabel?: string;
   redisUrl?: string;
   openAiKey?: string;
   primaryAgent: AgentId;
   jobConcurrency: number;
   bootstrapConcurrency: number;
+  consumeSharedWorkerEvents: boolean;
   workerEventConcurrency: number;
   localRepoRoot?: string;
   copilot: {
