@@ -79,6 +79,16 @@ export type ApprovalInteractionResult =
       executed: boolean;
     };
 
+class DeferredOperationUserMessageError extends Error {
+  readonly userMessage: string;
+
+  constructor(userMessage: string) {
+    super(userMessage);
+    this.name = 'DeferredOperationUserMessageError';
+    this.userMessage = userMessage;
+  }
+}
+
 export class PermissionsRuntimeService {
   readonly #config: BotConfig;
   readonly #queueRuntime: Pick<
@@ -305,13 +315,17 @@ export class PermissionsRuntimeService {
       executed = true;
     } catch (err) {
       await this.#finalizeAgentStartApproval(approved.request, 'failed');
+      const userMessage =
+        err instanceof DeferredOperationUserMessageError
+          ? err.userMessage
+          : 'Request approved, but execution failed. Please check logs.';
       logger.error(
         { err, approvalId: approved.request.id },
         'Failed to execute approved operation',
       );
       return {
         status: 'approved',
-        message: 'Request approved, but execution failed. Please check logs.',
+        message: userMessage,
         request: approved.request,
         executed: false,
       };
@@ -334,7 +348,7 @@ export class PermissionsRuntimeService {
           job: operation.job,
         });
         if (result.status === 'invalid') {
-          throw new Error(result.message);
+          throw new DeferredOperationUserMessageError(result.message);
         }
         if (result.status === 'persist_failed') {
           throw result.error;

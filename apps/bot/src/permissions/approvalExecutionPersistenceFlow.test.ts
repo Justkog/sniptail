@@ -417,7 +417,7 @@ describe('approval execution persistence', () => {
     expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
   });
 
-  it('approved enqueueJob stale-owner routing failure reports execution failure', async () => {
+  it('approved enqueueJob stale-owner routing failure surfaces the owner-routing message', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -454,7 +454,9 @@ describe('approval execution persistence', () => {
       throw new Error('Expected approved status');
     }
     expect(result.executed).toBe(false);
-    expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
+    expect(result.message).toBe(
+      'Job explore-0 is waiting for owner worker worker-a to return.',
+    );
     expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
   });
 
