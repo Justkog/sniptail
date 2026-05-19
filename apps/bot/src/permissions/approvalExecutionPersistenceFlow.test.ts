@@ -454,9 +454,7 @@ describe('approval execution persistence', () => {
       throw new Error('Expected approved status');
     }
     expect(result.executed).toBe(false);
-    expect(result.message).toBe(
-      'Job explore-0 is waiting for owner worker worker-a to return.',
-    );
+    expect(result.message).toBe('Job explore-0 is waiting for owner worker worker-a to return.');
     expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
   });
 
