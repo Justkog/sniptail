@@ -30,6 +30,15 @@ type SlackLoadedContextFile = {
   };
 };
 
+function makeQueueRuntime() {
+  return {
+    queues: {
+      jobs: { add: vi.fn() },
+    },
+    publishJobToWorkerMailbox: vi.fn(),
+  } as never;
+}
+
 const enqueueJobMock = vi.hoisted(() => vi.fn());
 const saveJobQueuedMock = vi.hoisted(() => vi.fn<(job: JobSpec) => Promise<void>>());
 const refreshRepoAllowlistMock = vi.hoisted(() => vi.fn());
@@ -119,7 +128,7 @@ function createSlackContext() {
         'repo-2': { baseBranch: 'develop' },
       },
     },
-    queue: {},
+    queueRuntime: makeQueueRuntime(),
     permissions: {},
     slackIds: {},
   } as never;

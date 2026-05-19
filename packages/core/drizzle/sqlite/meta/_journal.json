@@ -41,6 +41,18 @@
       "when": 1777939200000,
       "tag": "0006_add_agent_workspace_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "when": 1779148800000,
+      "tag": "0007_add_worker_registry_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "when": 1779148860000,
+      "tag": "0008_add_job_query_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,9 @@ export async function handleRunRepoSelection(
 
   runSelectionByUser.set(interaction.user.id, {
     repoKeys,
+    ...(currentSelection?.resumeFromJobId
+      ? { resumeFromJobId: currentSelection.resumeFromJobId }
+      : {}),
     ...(actions.length === 1 ? { actionId: normalizeRunActionId(actions[0]!.id) } : {}),
     requestedAt: Date.now(),
     ...(currentSelection?.selectorMessageId
@@ -43,6 +46,9 @@ export async function handleRunRepoSelection(
     const actionId = normalizeRunActionId(actions[0]!.id);
     const selection = {
       repoKeys,
+      ...(currentSelection?.resumeFromJobId
+        ? { resumeFromJobId: currentSelection.resumeFromJobId }
+        : {}),
       actionId,
       runStepIndex: 0,
       collectedParams: {},

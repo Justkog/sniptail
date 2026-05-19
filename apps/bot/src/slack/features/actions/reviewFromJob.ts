@@ -1,18 +1,18 @@
-import { enqueueJob } from '@sniptail/core/queue/queue.js';
-import { loadJobRecord, saveJobQueued, updateJobRecord } from '@sniptail/core/jobs/registry.js';
+import { loadJobRecord, updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
+import { saveAndEnqueueManagedJob } from '../../../job-requests/enqueueManagedJob.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
 export function registerReviewFromJobAction({
   app,
   slackIds,
   config,
-  queue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.action(slackIds.actions.reviewFromJob, async ({ ack, body, action }) => {
@@ -91,11 +91,13 @@ export function registerReviewFromJobAction({
       return;
     }
 
-    try {
-      await saveJobQueued(job);
-    } catch (err) {
-      auditJobRequest(config, job, 'persist_failed');
-      logger.error({ err, jobId: job.jobId }, 'Failed to persist review job');
+    const result = await saveAndEnqueueManagedJob({
+      config,
+      queueRuntime,
+      job,
+    });
+    if (result.status === 'persist_failed') {
+      logger.error({ err: result.error, jobId: job.jobId }, 'Failed to persist review job');
       await postMessage(app, {
         channel: channelId,
         text: `I couldn't persist review job ${job.jobId}. Please try again.`,
@@ -103,9 +105,14 @@ export function registerReviewFromJobAction({
       });
       return;
     }
-
-    await enqueueJob(queue, job);
-    auditJobRequest(config, job, 'accepted');
+    if (result.status === 'invalid') {
+      await postMessage(app, {
+        channel: channelId,
+        text: result.message,
+        ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
+      });
+      return;
+    }
 
     const ackResponse = await postMessage(app, {
       channel: channelId,

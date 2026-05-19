@@ -3,9 +3,11 @@ import type { ApprovalRequest } from '@sniptail/core/permissions/permissionsAppr
 import { PermissionsRuntimeService } from './permissionsRuntimeService.js';
 
 const saveJobQueuedMock = vi.hoisted(() => vi.fn());
-const enqueueJobMock = vi.hoisted(() => vi.fn());
 const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
+const enqueueWorkerMailboxEventMock = vi.hoisted(() => vi.fn());
+const saveAndEnqueueManagedJobMock = vi.hoisted(() => vi.fn());
+const loadAgentSessionMock = vi.hoisted(() => vi.fn());
 const updateAgentSessionStatusMock = vi.hoisted(() => vi.fn());
 const loadApprovalRequestMock = vi.hoisted(() => vi.fn());
 const approveIfPendingMock = vi.hoisted(() => vi.fn());
@@ -13,18 +15,37 @@ const denyIfPendingMock = vi.hoisted(() => vi.fn());
 const cancelIfPendingMock = vi.hoisted(() => vi.fn());
 const expireIfPendingMock = vi.hoisted(() => vi.fn());
 const evaluatePermissionDecisionMock = vi.hoisted(() => vi.fn());
+const enqueueAgentSessionOwnerMailboxEventMock = vi.hoisted(() => vi.fn());
+const isOwnerRoutedAgentEventMock = vi.hoisted(() => vi.fn());
+
+function getFirstMockCallArg<T>(mock: { mock: { calls: Array<Array<unknown>> } }): T | undefined {
+  return mock.mock.calls[0]?.[0] as T | undefined;
+}
 
 vi.mock('@sniptail/core/jobs/registry.js', () => ({
   saveJobQueued: saveJobQueuedMock,
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueJob: enqueueJobMock,
   enqueueBootstrap: enqueueBootstrapMock,
   enqueueWorkerEvent: enqueueWorkerEventMock,
+  enqueueWorkerMailboxEvent: enqueueWorkerMailboxEventMock,
+}));
+
+vi.mock('../job-requests/enqueueManagedJob.js', () => ({
+  saveAndEnqueueManagedJob: saveAndEnqueueManagedJobMock,
+}));
+
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
+  loadAgentSession: loadAgentSessionMock,
   updateAgentSessionStatus: updateAgentSessionStatusMock,
 }));
 
@@ -41,6 +62,13 @@ vi.mock('@sniptail/core/permissions/permissionsApprovalStore.js', () => ({
 
 vi.mock('@sniptail/core/permissions/permissionsPolicyEngine.js', () => ({
   evaluatePermissionDecision: evaluatePermissionDecisionMock,
+}));
+
+vi.mock('../agentCommandShared.js', () => ({
+  enqueueAgentSessionOwnerMailboxEvent: enqueueAgentSessionOwnerMailboxEventMock,
+  getAgentSessionIdFromWorkerEvent: (event: { payload?: { sessionId?: string } }) =>
+    event.payload?.sessionId,
+  isOwnerRoutedAgentEvent: isOwnerRoutedAgentEventMock,
 }));
 
 function createService() {
@@ -74,9 +102,15 @@ function createService() {
         approvalTtlSeconds: 86_400,
       },
     } as never,
-    queue: { add: vi.fn() } as never,
     bootstrapQueue: { add: vi.fn() } as never,
     workerEventQueue: { add: vi.fn() } as never,
+    queueRuntime: {
+      queues: {
+        jobs: { add: vi.fn() },
+      },
+      publishWorkerEventToMailbox: vi.fn(),
+      publishJobToWorkerMailbox: vi.fn(),
+    } as never,
   });
 }
 
@@ -126,6 +160,7 @@ function createPendingAgentStartRequest(overrides?: Partial<ApprovalRequest>): A
     action: 'agent.start',
     operation: {
       kind: 'enqueueWorkerEvent',
+      targetWorkerId: 'worker-a',
       event: {
         schemaVersion: 1,
         type: 'agent.session.start',
@@ -149,14 +184,69 @@ function createPendingAgentStartRequest(overrides?: Partial<ApprovalRequest>): A
   });
 }
 
+function createPendingAgentQuestionRequest(overrides?: Partial<ApprovalRequest>): ApprovalRequest {
+  return createPendingRequest({
+    action: 'agent.interaction.resolve',
+    operation: {
+      kind: 'enqueueWorkerEvent',
+      targetWorkerId: 'worker-a',
+      event: {
+        schemaVersion: 1,
+        type: 'agent.interaction.resolve',
+        payload: {
+          sessionId: 'session-1',
+          response: {
+            provider: 'slack',
+            channelId: 'C1',
+            threadId: 'T1',
+            userId: 'U_REQ',
+            workspaceId: 'W1',
+          },
+          interactionId: 'interaction-1',
+          resolution: {
+            kind: 'question',
+            answers: [['yes']],
+          },
+        },
+      },
+    },
+    summary: 'Resolve agent interaction session-1',
+    ...overrides,
+  });
+}
+
 describe('approval execution persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     saveJobQueuedMock.mockResolvedValue(undefined);
-    enqueueJobMock.mockResolvedValue(undefined);
     enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
+    enqueueWorkerMailboxEventMock.mockResolvedValue(undefined);
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'accepted',
+      target: 'shared',
+    });
+    enqueueAgentSessionOwnerMailboxEventMock.mockResolvedValue(undefined);
     updateAgentSessionStatusMock.mockResolvedValue(undefined);
+    loadAgentSessionMock.mockResolvedValue({
+      sessionId: 'session-1',
+      provider: 'slack',
+      channelId: 'C1',
+      threadId: 'T1',
+      userId: 'U_REQ',
+      workspaceKey: 'snatch',
+      agentProfileKey: 'build',
+      ownerWorkerId: 'worker-a',
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    isOwnerRoutedAgentEventMock.mockImplementation(
+      (event: { type?: string }) =>
+        event.type === 'agent.session.message' ||
+        event.type === 'agent.prompt.stop' ||
+        event.type === 'agent.interaction.resolve',
+    );
     expireIfPendingMock.mockResolvedValue({ changed: false, reason: 'not_pending' });
     denyIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
     cancelIfPendingMock.mockResolvedValue({ changed: true, reason: 'updated' });
@@ -168,7 +258,7 @@ describe('approval execution persistence', () => {
     });
   });
 
-  it('approved enqueueJob persists queue record before enqueue', async () => {
+  it('approved enqueueJob delegates to the managed-job enqueue flow', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -202,16 +292,92 @@ describe('approval execution persistence', () => {
       throw new Error('Expected approved status');
     }
     expect(result.executed).toBe(true);
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
-    expect(saveJobQueuedMock).toHaveBeenCalledWith(approvedRequest.operation.job);
-    expect(enqueueJobMock).toHaveBeenCalledWith(expect.anything(), approvedRequest.operation.job);
-    expect(
-      saveJobQueuedMock.mock.invocationCallOrder[0] < enqueueJobMock.mock.invocationCallOrder[0],
-    ).toBe(true);
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
+    const savedJob = getFirstMockCallArg<{
+      config: unknown;
+      queueRuntime: {
+        publishJobToWorkerMailbox: unknown;
+        queues: {
+          jobs: unknown;
+        };
+      };
+      job: typeof approvedRequest.operation.job;
+    }>(saveAndEnqueueManagedJobMock);
+    expect(savedJob?.job).toMatchObject({
+      jobId: 'explore-1',
+      type: 'EXPLORE',
+      repoKeys: ['repo-1'],
+      gitRef: 'main',
+      requestText: 'Explore this',
+    });
+    expect(savedJob?.config).toBeDefined();
+    expect(savedJob?.queueRuntime.publishJobToWorkerMailbox).toBeDefined();
+    expect(savedJob?.queueRuntime.queues.jobs).toBeDefined();
   });
 
-  it('approved enqueueJob save failure reports execution failure and does not enqueue', async () => {
+  it('approved owner-routed live agent events revalidate the session before mailbox enqueue', async () => {
+    const service = createService();
+    const pendingRequest = createPendingAgentQuestionRequest();
+    const approvedRequest = {
+      ...pendingRequest,
+      status: 'approved' as const,
+      resolution: 'approved' as const,
+      resolvedBy: { userId: 'U_APP' },
+      resolvedAt: '2025-01-01T00:01:00.000Z',
+    };
+
+    loadApprovalRequestMock.mockResolvedValue(pendingRequest);
+    approveIfPendingMock.mockResolvedValue({
+      changed: true,
+      reason: 'updated',
+      request: approvedRequest,
+    });
+
+    const result = await service.resolveApprovalInteraction({
+      action: 'approval.grant',
+      resolutionAction: 'approval.grant',
+      approvalId: pendingRequest.id,
+      provider: 'discord',
+      userId: 'U_APP',
+      channelId: 'thread-1',
+      threadId: 'thread-1',
+      guildId: 'G1',
+    });
+
+    expect(result.status).toBe('approved');
+    if (result.status !== 'approved') {
+      throw new Error('Expected approved status');
+    }
+    expect(result.executed).toBe(true);
+    expect(loadAgentSessionMock).toHaveBeenCalledWith('session-1');
+    const enqueueArgs = getFirstMockCallArg<{
+      session: {
+        sessionId: string;
+        ownerWorkerId?: string;
+      };
+      queueRuntime: {
+        publishWorkerEventToMailbox: () => Promise<void>;
+      };
+      event: typeof approvedRequest.operation.event;
+    }>(enqueueAgentSessionOwnerMailboxEventMock);
+    expect(enqueueArgs).toMatchObject({
+      session: {
+        sessionId: 'session-1',
+        ownerWorkerId: 'worker-a',
+      },
+    });
+    expect(enqueueArgs?.event).toMatchObject({
+      schemaVersion: 1,
+      type: 'agent.interaction.resolve',
+      payload: {
+        sessionId: 'session-1',
+      },
+    });
+    expect(typeof enqueueArgs?.queueRuntime.publishWorkerEventToMailbox).toBe('function');
+    expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
+  });
+
+  it('approved enqueueJob persistence failure reports execution failure', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -227,7 +393,10 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    saveJobQueuedMock.mockRejectedValue(new Error('persist failed'));
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'persist_failed',
+      error: new Error('persist failed'),
+    });
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',
@@ -246,10 +415,9 @@ describe('approval execution persistence', () => {
     }
     expect(result.executed).toBe(false);
     expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
-    expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
-  it('approved enqueueJob enqueue failure reports execution failure after persistence', async () => {
+  it('approved enqueueJob stale-owner routing failure surfaces the owner-routing message', async () => {
     const service = createService();
     const pendingRequest = createPendingRequest();
     const approvedRequest = {
@@ -265,7 +433,10 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    enqueueJobMock.mockRejectedValue(new Error('enqueue failed'));
+    saveAndEnqueueManagedJobMock.mockResolvedValue({
+      status: 'invalid',
+      message: 'Job explore-0 is waiting for owner worker worker-a to return.',
+    });
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',
@@ -283,9 +454,8 @@ describe('approval execution persistence', () => {
       throw new Error('Expected approved status');
     }
     expect(result.executed).toBe(false);
-    expect(result.message).toBe('Request approved, but execution failed. Please check logs.');
-    expect(saveJobQueuedMock).toHaveBeenCalledTimes(1);
-    expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+    expect(result.message).toBe('Job explore-0 is waiting for owner worker worker-a to return.');
+    expect(saveAndEnqueueManagedJobMock).toHaveBeenCalledTimes(1);
   });
 
   it('denied and cancelled resolutions do not persist or enqueue jobs', async () => {
@@ -342,10 +512,10 @@ describe('approval execution persistence', () => {
     });
     expect(cancelledResult.status).toBe('cancelled');
 
-    expect(saveJobQueuedMock).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
+    expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
     expect(enqueueBootstrapMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
+    expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
 
   it('marks pending agent sessions failed when agent start approvals are denied, cancelled, or expired', async () => {
@@ -448,7 +618,7 @@ describe('approval execution persistence', () => {
       reason: 'updated',
       request: approvedRequest,
     });
-    enqueueWorkerEventMock.mockRejectedValueOnce(new Error('enqueue failed'));
+    enqueueWorkerMailboxEventMock.mockRejectedValueOnce(new Error('enqueue failed'));
 
     const result = await service.resolveApprovalInteraction({
       action: 'approval.grant',

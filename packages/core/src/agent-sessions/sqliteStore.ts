@@ -10,6 +10,37 @@ import type {
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
+function toOwnershipFields(
+  ownership: Pick<
+    AgentSessionRecord,
+    'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+  >,
+): Pick<
+  AgentSessionRecord,
+  'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+> {
+  return {
+    ...(ownership.ownerWorkerId ? { ownerWorkerId: ownership.ownerWorkerId } : {}),
+    ...(ownership.ownerWorkerLabel ? { ownerWorkerLabel: ownership.ownerWorkerLabel } : {}),
+    ...(ownership.workerClaimedAt ? { workerClaimedAt: ownership.workerClaimedAt } : {}),
+    ...(ownership.ownerStaleSince ? { ownerStaleSince: ownership.ownerStaleSince } : {}),
+  };
+}
+
+function withoutOwnershipFields(
+  session: AgentSessionRecord,
+): Omit<
+  AgentSessionRecord,
+  'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+> {
+  const { ownerWorkerId, ownerWorkerLabel, workerClaimedAt, ownerStaleSince, ...rest } = session;
+  void ownerWorkerId;
+  void ownerWorkerLabel;
+  void workerClaimedAt;
+  void ownerStaleSince;
+  return rest;
+}
+
 function fromRow(row: AgentSessionRow | undefined): AgentSessionRecord | undefined {
   if (!row) return undefined;
   return {
@@ -24,6 +55,10 @@ function fromRow(row: AgentSessionRow | undefined): AgentSessionRecord | undefin
     agentProfileKey: row.agentProfileKey,
     ...(row.codingAgentSessionId ? { codingAgentSessionId: row.codingAgentSessionId } : {}),
     ...(row.cwd ? { cwd: row.cwd } : {}),
+    ...(row.ownerWorkerId ? { ownerWorkerId: row.ownerWorkerId } : {}),
+    ...(row.ownerWorkerLabel ? { ownerWorkerLabel: row.ownerWorkerLabel } : {}),
+    ...(row.workerClaimedAt ? { workerClaimedAt: row.workerClaimedAt } : {}),
+    ...(row.ownerStaleSince ? { ownerStaleSince: row.ownerStaleSince } : {}),
     status: row.status as AgentSessionStatus,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -47,6 +82,10 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
         agentProfileKey: input.agentProfileKey,
         ...(input.codingAgentSessionId ? { codingAgentSessionId: input.codingAgentSessionId } : {}),
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.ownerWorkerId ? { ownerWorkerId: input.ownerWorkerId } : {}),
+        ...(input.ownerWorkerLabel ? { ownerWorkerLabel: input.ownerWorkerLabel } : {}),
+        ...(input.workerClaimedAt ? { workerClaimedAt: input.workerClaimedAt } : {}),
+        ...(input.ownerStaleSince ? { ownerStaleSince: input.ownerStaleSince } : {}),
         status: input.status ?? 'pending',
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -67,6 +106,10 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
             agentProfileKey: record.agentProfileKey,
             codingAgentSessionId: record.codingAgentSessionId,
             cwd: record.cwd,
+            ownerWorkerId: record.ownerWorkerId,
+            ownerWorkerLabel: record.ownerWorkerLabel,
+            workerClaimedAt: record.workerClaimedAt,
+            ownerStaleSince: record.ownerStaleSince,
             status: record.status,
             updatedAt: record.updatedAt,
           },
@@ -129,6 +172,32 @@ export function createSqliteAgentSessionStore(client: SqliteJobRegistryClient): 
       return {
         ...existing,
         codingAgentSessionId,
+        updatedAt,
+      };
+    },
+    async updateSessionOwnership(
+      sessionId: string,
+      ownership: Pick<
+        AgentSessionRecord,
+        'ownerWorkerId' | 'ownerWorkerLabel' | 'workerClaimedAt' | 'ownerStaleSince'
+      >,
+    ): Promise<AgentSessionRecord | undefined> {
+      const existing = await this.loadSession(sessionId);
+      if (!existing) return undefined;
+      const updatedAt = new Date().toISOString();
+      await client.db
+        .update(agentSessions)
+        .set({
+          ownerWorkerId: ownership.ownerWorkerId ?? null,
+          ownerWorkerLabel: ownership.ownerWorkerLabel ?? null,
+          workerClaimedAt: ownership.workerClaimedAt ?? null,
+          ownerStaleSince: ownership.ownerStaleSince ?? null,
+          updatedAt,
+        })
+        .where(eq(agentSessions.sessionId, sessionId));
+      return {
+        ...withoutOwnershipFields(existing),
+        ...toOwnershipFields(ownership),
         updatedAt,
       };
     },

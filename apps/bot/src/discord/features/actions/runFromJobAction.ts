@@ -51,6 +51,7 @@ export async function handleRunFromJobButton(
 
   runSelectionByUser.set(interaction.user.id, {
     repoKeys,
+    resumeFromJobId: jobId,
     ...(actions.length === 1 ? { actionId: normalizeRunActionId(actions[0]!.id) } : {}),
     requestedAt: Date.now(),
   });
@@ -59,6 +60,7 @@ export async function handleRunFromJobButton(
     const actionId = normalizeRunActionId(actions[0]!.id);
     const selection = {
       repoKeys,
+      resumeFromJobId: jobId,
       actionId,
       runStepIndex: 0,
       collectedParams: {},

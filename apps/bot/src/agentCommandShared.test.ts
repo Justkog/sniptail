@@ -1,217 +1,113 @@
-import { describe, expect, it } from 'vitest';
-import {
-  buildAgentInteractionResolveWorkerEvent,
-  buildAgentPromptStopWorkerEvent,
-  buildAgentReplyTarget,
-  buildAgentSessionMessageWorkerEvent,
-  buildAgentSessionStartWorkerEvent,
-  resolveAgentFollowUpMode,
-  validateAgentSessionForThread,
-} from './agentCommandShared.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
+import { resolveAgentSessionOwnerMailboxRoute } from './agentCommandShared.js';
 
-describe('agentCommandShared', () => {
-  const discordSession = {
-    sessionId: 'session-discord',
-    provider: 'discord' as const,
+const hoisted = vi.hoisted(() => ({
+  loadAgentCommandMetadata: vi.fn(),
+  updateAgentSessionOwnership: vi.fn(),
+}));
+
+vi.mock('./agentCommandMetadataCache.js', () => ({
+  loadAgentCommandMetadata: hoisted.loadAgentCommandMetadata,
+}));
+
+vi.mock('@sniptail/core/queue/queue.js', () => ({
+  enqueueWorkerMailboxEvent: vi.fn(),
+}));
+
+vi.mock('@sniptail/core/types/worker-event.js', () => ({
+  WORKER_EVENT_SCHEMA_VERSION: 1,
+}));
+
+vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
+  updateAgentSessionOwnership: hoisted.updateAgentSessionOwnership,
+}));
+
+function buildSession(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRecord {
+  return {
+    sessionId: 'session-1',
+    provider: 'discord',
     channelId: 'channel-1',
     threadId: 'thread-1',
     userId: 'user-1',
-    guildId: 'guild-1',
     workspaceKey: 'snatch',
     agentProfileKey: 'build',
-    status: 'active' as const,
+    ownerWorkerId: 'worker-a',
+    ownerWorkerLabel: 'Worker A',
+    workerClaimedAt: '2026-01-01T00:00:00.000Z',
+    status: 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
   };
+}
 
-  const slackSession = {
-    sessionId: 'session-slack',
-    provider: 'slack' as const,
-    channelId: 'channel-2',
-    threadId: 'thread-2',
-    userId: 'user-2',
-    workspaceId: 'workspace-1',
-    workspaceKey: 'snatch',
-    agentProfileKey: 'build',
-    status: 'active' as const,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  };
+describe('resolveAgentSessionOwnerMailboxRoute', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
+      aggregated: {
+        liveWorkers: [],
+      },
+    });
+    hoisted.updateAgentSessionOwnership.mockResolvedValue(undefined);
+  });
 
-  it('builds provider-aware reply targets', () => {
-    expect(
-      buildAgentReplyTarget(discordSession, { userId: 'actor-1', guildId: 'guild-2' }),
-    ).toEqual({
-      provider: 'discord',
-      channelId: 'thread-1',
-      threadId: 'thread-1',
-      userId: 'actor-1',
-      workspaceId: 'snatch',
-      guildId: 'guild-2',
+  it('marks the owner stale when the owner worker is no longer live', async () => {
+    hoisted.updateAgentSessionOwnership.mockResolvedValue({
+      ...buildSession(),
+      ownerStaleSince: '2026-01-01T00:10:00.000Z',
     });
 
-    expect(
-      buildAgentReplyTarget(slackSession, { userId: 'actor-2', workspaceId: 'workspace-2' }),
-    ).toEqual({
-      provider: 'slack',
-      channelId: 'channel-2',
-      threadId: 'thread-2',
-      userId: 'actor-2',
-      workspaceId: 'workspace-2',
+    const result = await resolveAgentSessionOwnerMailboxRoute(buildSession());
+
+    expect(result.ok).toBe(false);
+    expect(hoisted.loadAgentCommandMetadata).toHaveBeenCalledWith({ forceRefresh: true });
+    expect(hoisted.updateAgentSessionOwnership).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        ownerWorkerId: 'worker-a',
+        ownerWorkerLabel: 'Worker A',
+        workerClaimedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+    expect(result).toMatchObject({
+      errorMessage: 'This agent session is waiting for owner worker Worker A (worker-a) to return.',
+    });
+    expect(result.session).toMatchObject({
+      ownerStaleSince: '2026-01-01T00:10:00.000Z',
     });
   });
 
-  it('builds agent start events for both providers', () => {
-    const discordEvent = buildAgentSessionStartWorkerEvent({
-      session: {
-        sessionId: discordSession.sessionId,
-        provider: 'discord',
-        channelId: discordSession.channelId,
-        threadId: discordSession.threadId,
-        userId: discordSession.userId,
-        guildId: discordSession.guildId,
-        workspaceKey: discordSession.workspaceKey,
-        agentProfileKey: discordSession.agentProfileKey,
+  it('clears stale-owner state when the owner worker is live again', async () => {
+    hoisted.loadAgentCommandMetadata.mockResolvedValue({
+      aggregated: {
+        liveWorkers: [
+          {
+            workerId: 'worker-a',
+            workerLabel: 'Worker A',
+          },
+        ],
       },
-      prompt: 'do work',
     });
-    expect(discordEvent.payload).toMatchObject({
-      sessionId: 'session-discord',
-      response: {
-        provider: 'discord',
-        channelId: 'thread-1',
-        threadId: 'thread-1',
-        userId: 'user-1',
-        workspaceId: 'snatch',
-        guildId: 'guild-1',
-      },
-      prompt: 'do work',
+    hoisted.updateAgentSessionOwnership.mockResolvedValue({
+      ...buildSession(),
+      ownerStaleSince: undefined,
     });
 
-    const slackEvent = buildAgentSessionStartWorkerEvent({
-      session: {
-        sessionId: slackSession.sessionId,
-        provider: 'slack',
-        channelId: slackSession.channelId,
-        threadId: slackSession.threadId,
-        userId: slackSession.userId,
-        workspaceId: slackSession.workspaceId,
-        workspaceKey: slackSession.workspaceKey,
-        agentProfileKey: slackSession.agentProfileKey,
-        cwd: 'apps/bot',
-      },
-      prompt: 'do work',
-    });
-    expect(slackEvent.payload).toMatchObject({
-      sessionId: 'session-slack',
-      response: {
-        provider: 'slack',
-        channelId: 'channel-2',
-        threadId: 'thread-2',
-        userId: 'user-2',
-        workspaceId: 'workspace-1',
-      },
-      prompt: 'do work',
-      cwd: 'apps/bot',
-    });
-  });
+    const result = await resolveAgentSessionOwnerMailboxRoute(
+      buildSession({ ownerStaleSince: '2026-01-01T00:10:00.000Z' }),
+    );
 
-  it('builds shared message, stop, and interaction events', () => {
-    expect(
-      buildAgentSessionMessageWorkerEvent({
-        session: slackSession,
-        actor: { userId: 'actor-1', workspaceId: 'workspace-9' },
-        message: 'follow up',
-        messageId: 'msg-1',
-        mode: 'queue',
-      }).payload,
-    ).toMatchObject({
-      sessionId: 'session-slack',
-      message: 'follow up',
-      messageId: 'msg-1',
-      mode: 'queue',
-      response: {
-        channelId: 'channel-2',
-        threadId: 'thread-2',
-        userId: 'actor-1',
-        workspaceId: 'workspace-9',
-      },
+    expect(result).toMatchObject({
+      ok: true,
+      targetWorkerId: 'worker-a',
     });
-
-    expect(
-      buildAgentPromptStopWorkerEvent({
-        session: discordSession,
-        actor: { userId: 'actor-2', guildId: 'guild-9' },
-        reason: 'stop',
-        messageId: 'msg-2',
-      }).payload,
-    ).toMatchObject({
-      sessionId: 'session-discord',
-      reason: 'stop',
-      messageId: 'msg-2',
-      response: {
-        channelId: 'thread-1',
-        threadId: 'thread-1',
-        userId: 'actor-2',
-        guildId: 'guild-9',
-      },
+    expect(hoisted.updateAgentSessionOwnership).toHaveBeenCalledWith('session-1', {
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+      workerClaimedAt: '2026-01-01T00:00:00.000Z',
+      ownerStaleSince: undefined,
     });
-
-    expect(
-      buildAgentInteractionResolveWorkerEvent({
-        session: slackSession,
-        actor: { userId: 'actor-3' },
-        interactionId: 'interaction-1',
-        resolution: {
-          kind: 'permission',
-          decision: 'always',
-        },
-      }).payload,
-    ).toMatchObject({
-      sessionId: 'session-slack',
-      interactionId: 'interaction-1',
-      resolution: {
-        kind: 'permission',
-        decision: 'always',
-      },
-    });
-  });
-
-  it('validates sessions and resolves follow-up mode', () => {
-    expect(
-      validateAgentSessionForThread({
-        session: undefined,
-        threadId: 'thread-1',
-        allowedStatuses: ['active'],
-        wrongThreadMessage: 'wrong',
-      }),
-    ).toBe('Agent session not found.');
-    expect(
-      validateAgentSessionForThread({
-        session: discordSession,
-        threadId: 'other-thread',
-        allowedStatuses: ['active'],
-        wrongThreadMessage: 'wrong',
-      }),
-    ).toBe('wrong');
-    expect(
-      validateAgentSessionForThread({
-        session: { ...discordSession, status: 'completed' },
-        threadId: 'thread-1',
-        allowedStatuses: ['active'],
-        wrongThreadMessage: 'wrong',
-      }),
-    ).toBe('This agent session is completed.');
-    expect(
-      validateAgentSessionForThread({
-        session: discordSession,
-        threadId: 'thread-1',
-        allowedStatuses: ['active'],
-        wrongThreadMessage: 'wrong',
-      }),
-    ).toBeUndefined();
-
-    expect(resolveAgentFollowUpMode('active', 'steer')).toBe('steer');
-    expect(resolveAgentFollowUpMode('completed', 'queue')).toBe('run');
   });
 });

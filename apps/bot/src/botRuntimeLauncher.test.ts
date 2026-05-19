@@ -10,7 +10,6 @@ const hoisted = vi.hoisted(() => ({
     discordEnabled: false,
     telegramEnabled: false,
   },
-  enqueueWorkerEvent: vi.fn(() => Promise.resolve(undefined)),
   createSlackApp: vi.fn(),
   startDiscordBot: vi.fn(),
   startTelegramBot: vi.fn(),
@@ -34,10 +33,6 @@ vi.mock('@sniptail/core/logger.js', () => ({
   },
 }));
 
-vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
-}));
-
 vi.mock('./slack/app.js', () => ({
   createSlackApp: hoisted.createSlackApp,
 }));
@@ -56,7 +51,7 @@ vi.mock('./botEventWorker.js', () => ({
 
 import { startBotRuntime } from './botRuntimeLauncher.js';
 
-describe('botRuntimeLauncher agent metadata requests', () => {
+describe('botRuntimeLauncher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.config.enabledChannels = [];
@@ -81,10 +76,9 @@ describe('botRuntimeLauncher agent metadata requests', () => {
     hoisted.startBotEventWorker.mockReturnValue({
       close: vi.fn(() => Promise.resolve(undefined)),
     });
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
   });
 
-  it('enqueues a Slack metadata request when Slack starts', async () => {
+  it('starts Slack without enqueueing metadata requests', async () => {
     hoisted.config.enabledChannels = ['slack'];
     hoisted.config.slackEnabled = true;
     const queueRuntime = buildQueueRuntime();
@@ -92,17 +86,10 @@ describe('botRuntimeLauncher agent metadata requests', () => {
     const runtime = await startBotRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledTimes(1);
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queueRuntime.queues.workerEvents,
-      expect.objectContaining({
-        type: 'agent.metadata.request',
-        payload: { provider: 'slack' },
-      }),
-    );
+    expect(hoisted.startBotEventWorker).toHaveBeenCalledTimes(1);
   });
 
-  it('enqueues a Discord metadata request when Discord starts', async () => {
+  it('starts Discord without enqueueing metadata requests', async () => {
     hoisted.config.enabledChannels = ['discord'];
     hoisted.config.discordEnabled = true;
     const queueRuntime = buildQueueRuntime();
@@ -110,17 +97,10 @@ describe('botRuntimeLauncher agent metadata requests', () => {
     const runtime = await startBotRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledTimes(1);
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queueRuntime.queues.workerEvents,
-      expect.objectContaining({
-        type: 'agent.metadata.request',
-        payload: { provider: 'discord' },
-      }),
-    );
+    expect(hoisted.startBotEventWorker).toHaveBeenCalledTimes(1);
   });
 
-  it('enqueues both Slack and Discord metadata requests when both runtimes start', async () => {
+  it('starts both Slack and Discord without enqueueing metadata requests', async () => {
     hoisted.config.enabledChannels = ['slack', 'discord'];
     hoisted.config.slackEnabled = true;
     hoisted.config.discordEnabled = true;
@@ -129,38 +109,6 @@ describe('botRuntimeLauncher agent metadata requests', () => {
     const runtime = await startBotRuntime({ queueRuntime: queueRuntime as never });
     await runtime.close();
 
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledTimes(2);
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenNthCalledWith(
-      1,
-      queueRuntime.queues.workerEvents,
-      expect.objectContaining({
-        type: 'agent.metadata.request',
-        payload: { provider: 'slack' },
-      }),
-    );
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenNthCalledWith(
-      2,
-      queueRuntime.queues.workerEvents,
-      expect.objectContaining({
-        type: 'agent.metadata.request',
-        payload: { provider: 'discord' },
-      }),
-    );
-  });
-
-  it('logs metadata request enqueue failures without aborting startup', async () => {
-    hoisted.config.enabledChannels = ['slack'];
-    hoisted.config.slackEnabled = true;
-    hoisted.enqueueWorkerEvent.mockRejectedValueOnce(new Error('queue down'));
-    const queueRuntime = buildQueueRuntime();
-
-    const runtime = await startBotRuntime({ queueRuntime: queueRuntime as never });
-    await runtime.close();
-
-    const [warningContext, warningMessage] = hoisted.loggerWarn.mock.calls[0] ?? [];
-    expect(warningMessage).toBe('Failed to enqueue initial agent metadata request');
-    expect(warningContext?.provider).toBe('slack');
-    expect(warningContext?.err).toBeInstanceOf(Error);
     expect(hoisted.startBotEventWorker).toHaveBeenCalledTimes(1);
   });
 });

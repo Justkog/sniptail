@@ -7,7 +7,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 export function registerUsageCommand({
   app,
   slackIds,
-  workerEventQueue,
+  queueRuntime,
   permissions,
 }: SlackHandlerContext) {
   app.command(slackIds.commands.usage, async ({ ack, body, client }) => {
@@ -66,7 +66,7 @@ export function registerUsageCommand({
     });
 
     try {
-      await enqueueWorkerEvent(workerEventQueue, event);
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
     } catch (err) {
       logger.error({ err }, 'Failed to fetch Codex usage status');
       await client.chat.postEphemeral({

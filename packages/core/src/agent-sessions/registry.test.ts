@@ -8,6 +8,7 @@ import {
   findDiscordAgentSessionByThread,
   loadAgentSession,
   updateAgentSessionCodingAgentSessionId,
+  updateAgentSessionOwnership,
   updateAgentSessionStatus,
 } from './registry.js';
 
@@ -37,6 +38,10 @@ describe('agent session registry', () => {
           'agent_profile_key text NOT NULL,',
           'coding_agent_session_id text,',
           'cwd text,',
+          'owner_worker_id text,',
+          'owner_worker_label text,',
+          'worker_claimed_at text,',
+          'owner_stale_since text,',
           'status text NOT NULL,',
           'created_at text NOT NULL,',
           'updated_at text NOT NULL',
@@ -47,7 +52,7 @@ describe('agent session registry', () => {
   }
 
   it('creates, loads, finds, and updates sqlite agent sessions', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentSessionsTable();
 
     const created = await createAgentSession({
@@ -60,15 +65,20 @@ describe('agent session registry', () => {
       workspaceKey: 'snatch',
       agentProfileKey: 'build',
       cwd: 'apps/worker',
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+      workerClaimedAt: '2026-01-01T00:01:00.000Z',
       status: 'pending',
       now: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     expect(created.status).toBe('pending');
+    expect(created.ownerWorkerId).toBe('worker-a');
     await expect(loadAgentSession('session-1')).resolves.toMatchObject({
       sessionId: 'session-1',
       threadId: 'T1',
       workspaceKey: 'snatch',
+      ownerWorkerId: 'worker-a',
     });
     await expect(findDiscordAgentSessionByThread('T1')).resolves.toMatchObject({
       sessionId: 'session-1',
@@ -86,14 +96,26 @@ describe('agent session registry', () => {
       'opencode-session-1',
     );
     expect(withCodingAgentSession?.codingAgentSessionId).toBe('opencode-session-1');
+    expect(withCodingAgentSession?.ownerWorkerId).toBe('worker-a');
+    const withUpdatedOwnership = await updateAgentSessionOwnership('session-1', {
+      ownerWorkerId: 'worker-b',
+      ownerWorkerLabel: 'Worker B',
+      workerClaimedAt: '2026-01-01T00:02:00.000Z',
+      ownerStaleSince: '2026-01-01T00:03:00.000Z',
+    });
+    expect(withUpdatedOwnership?.ownerWorkerId).toBe('worker-b');
     await expect(loadAgentSession('session-1')).resolves.toMatchObject({
       status: 'active',
       codingAgentSessionId: 'opencode-session-1',
+      ownerWorkerId: 'worker-b',
+      ownerWorkerLabel: 'Worker B',
+      workerClaimedAt: '2026-01-01T00:02:00.000Z',
+      ownerStaleSince: '2026-01-01T00:03:00.000Z',
     });
   });
 
   it('stores and finds slack agent sessions by provider and thread', async () => {
-    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
     await ensureAgentSessionsTable();
 
     await createAgentSession({
@@ -119,24 +141,5 @@ describe('agent session registry', () => {
       sessionId: 'session-slack-1',
       provider: 'slack',
     });
-  });
-
-  it('rejects pg and redis drivers for now', async () => {
-    applyRequiredEnv({
-      JOB_REGISTRY_DB: 'pg',
-      JOB_REGISTRY_PG_URL: 'postgres://user:pass@localhost:5432/sniptail',
-    });
-    await expect(loadAgentSession('session-1')).rejects.toThrow(
-      'Agent session registry is not supported yet when JOB_REGISTRY_DB=pg',
-    );
-    resetConfigCaches();
-
-    applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: 'redis://localhost:6379/1',
-    });
-    await expect(loadAgentSession('session-1')).rejects.toThrow(
-      'Agent session registry is not supported yet when JOB_REGISTRY_DB=redis',
-    );
   });
 });

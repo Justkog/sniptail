@@ -10,13 +10,17 @@ import {
   createAgentSession,
   updateAgentSessionStatus,
 } from '@sniptail/core/agent-sessions/registry.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import { logger } from '@sniptail/core/logger.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { buildDiscordAgentStopComponents } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { buildAgentSessionStartWorkerEvent } from '../../../agentCommandShared.js';
+import {
+  buildAgentWorkerChoices,
+  buildAgentWorkerSelectionError,
+  resolveAgentStartWorker,
+} from '../../../agentCommandWorkerRouting.js';
 import {
   authorizeDiscordOperationAndRespond,
   authorizeDiscordPrecheckAndRespond,
@@ -25,7 +29,10 @@ import {
   buildCwdAutocompleteChoices,
   buildProfileAutocompleteChoices,
   buildWorkspaceAutocompleteChoices,
-  getAgentCommandMetadata as getDiscordAgentCommandMetadata,
+  findAgentProfileMetadata,
+  findAgentWorkspaceMetadata,
+  loadAgentCommandMetadata,
+  type AgentCommandMetadata,
 } from '../../../agentCommandMetadataCache.js';
 import {
   getDiscordCommandContextAttachments,
@@ -122,17 +129,11 @@ function validateRelativeCwd(cwd: string | undefined): string | undefined {
   return cwd;
 }
 
-function hasWorkspaceKey(
-  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
-  key: string,
-): boolean {
+function hasWorkspaceKey(metadata: AgentCommandMetadata, key: string): boolean {
   return metadata.workspaces.some((workspace) => workspace.key === key);
 }
 
-function hasProfileKey(
-  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
-  key: string,
-): boolean {
+function hasProfileKey(metadata: AgentCommandMetadata, key: string): boolean {
   return metadata.profiles.some((profile) => profile.key === key);
 }
 
@@ -143,15 +144,24 @@ type ResolvedAgentSelections = {
 };
 
 function resolveKnownWorkspaceKey(
-  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  metadata: AgentCommandMetadata,
   workspaceKey: string | undefined,
 ): string | undefined {
   if (!workspaceKey) return undefined;
   return hasWorkspaceKey(metadata, workspaceKey) ? workspaceKey : undefined;
 }
 
+function resolveAvailableProfileKey(
+  metadata: AgentCommandMetadata,
+  profileKey: string | undefined,
+): string | undefined {
+  if (!profileKey) return undefined;
+  const profile = findAgentProfileMetadata(metadata, profileKey);
+  return profile?.status === 'available' ? profileKey : undefined;
+}
+
 function resolveKnownProfileKey(
-  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  metadata: AgentCommandMetadata,
   profileKey: string | undefined,
 ): string | undefined {
   if (!profileKey) return undefined;
@@ -160,7 +170,8 @@ function resolveKnownProfileKey(
 
 async function resolveAgentSelections(
   interaction: Pick<ChatInputCommandInteraction, 'options' | 'user' | 'guildId'>,
-  metadata: NonNullable<ReturnType<typeof getDiscordAgentCommandMetadata>>,
+  metadata: AgentCommandMetadata,
+  config: BotConfig,
 ): Promise<ResolvedAgentSelections | { error: string }> {
   const persistedDefaults = await loadDiscordAgentDefaults({
     userId: interaction.user.id,
@@ -186,15 +197,15 @@ async function resolveAgentSelections(
   const workspaceKey =
     explicitWorkspace ??
     resolveKnownWorkspaceKey(metadata, persistedDefaults?.workspaceKey) ??
-    resolveKnownWorkspaceKey(metadata, metadata.defaultWorkspace);
+    resolveKnownWorkspaceKey(metadata, config.agentCommand?.defaultWorkspace);
   if (!workspaceKey) {
     return { error: 'No workspace was provided and no valid default workspace is configured.' };
   }
 
   const profileKey =
     explicitProfile ??
-    resolveKnownProfileKey(metadata, persistedDefaults?.agentProfileKey) ??
-    resolveKnownProfileKey(metadata, metadata.defaultAgentProfile);
+    resolveAvailableProfileKey(metadata, persistedDefaults?.agentProfileKey) ??
+    resolveAvailableProfileKey(metadata, config.agentCommand?.defaultAgentProfile);
   if (!profileKey) {
     return { error: 'No agent profile was provided and no valid default profile is configured.' };
   }
@@ -224,7 +235,7 @@ export async function handleAgentAutocomplete(interaction: AutocompleteInteracti
   const selectedWorkspace = normalizeOptionalString(interaction.options.getString('workspace'));
   if (focused.name === 'workspace') {
     await interaction.respond(
-      buildWorkspaceAutocompleteChoices(
+      await buildWorkspaceAutocompleteChoices(
         String(focused.value ?? ''),
         persistedDefaults?.workspaceKey,
       ),
@@ -233,7 +244,7 @@ export async function handleAgentAutocomplete(interaction: AutocompleteInteracti
   }
   if (focused.name === 'agent_profile') {
     await interaction.respond(
-      buildProfileAutocompleteChoices(
+      await buildProfileAutocompleteChoices(
         String(focused.value ?? ''),
         persistedDefaults?.agentProfileKey,
       ),
@@ -251,13 +262,34 @@ export async function handleAgentAutocomplete(interaction: AutocompleteInteracti
     );
     return;
   }
+  if (focused.name === 'worker') {
+    const metadata = await loadAgentCommandMetadata();
+    if (!metadata.enabled) {
+      await interaction.respond([]);
+      return;
+    }
+    const selectedProfile = normalizeOptionalString(interaction.options.getString('agent_profile'));
+    const query = String(focused.value ?? '')
+      .trim()
+      .toLowerCase();
+    const choices = buildAgentWorkerChoices(metadata, selectedWorkspace, selectedProfile)
+      .filter(
+        (choice) =>
+          !query ||
+          choice.name.toLowerCase().includes(query) ||
+          choice.value.toLowerCase().includes(query),
+      )
+      .slice(0, 25);
+    await interaction.respond(choices);
+    return;
+  }
   await interaction.respond([]);
 }
 
 export async function handleAgentStart(
   interaction: ChatInputCommandInteraction,
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ) {
   const prompt = interaction.options.getString('prompt', true).trim();
@@ -278,7 +310,10 @@ export async function handleAgentStart(
     ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
   };
 
-  const metadata = getDiscordAgentCommandMetadata();
+  const metadata = await loadAgentCommandMetadata().catch((err) => {
+    logger.error({ err }, 'Failed to load agent command metadata from the registry');
+    return undefined;
+  });
   if (!metadata || !metadata.enabled) {
     auditAgentSessionStart(config, baseAuditInput, 'invalid');
     await interaction.reply({
@@ -299,7 +334,7 @@ export async function handleAgentStart(
 
   let resolvedSelections: ResolvedAgentSelections | { error: string };
   try {
-    resolvedSelections = await resolveAgentSelections(interaction, metadata);
+    resolvedSelections = await resolveAgentSelections(interaction, metadata, config);
   } catch (err) {
     auditAgentSessionStart(config, baseAuditInput, 'persist_failed');
     await interaction.reply({
@@ -317,6 +352,49 @@ export async function handleAgentStart(
     return;
   }
   const { workspaceKey, profileKey, cwd } = resolvedSelections;
+  const requestedWorkerId = normalizeOptionalString(interaction.options.getString('worker'));
+
+  const workspace = findAgentWorkspaceMetadata(metadata, workspaceKey);
+  if (!workspace) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.reply({
+      content: `Unknown workspace key: \`${workspaceKey}\`.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const profile = findAgentProfileMetadata(metadata, profileKey);
+  if (!profile) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.reply({
+      content: `Unknown agent profile key: \`${profileKey}\`.`,
+      ephemeral: true,
+    });
+    return;
+  }
+  if (profile.status === 'conflicted') {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.reply({
+      content: `Agent profile key: \`${profileKey}\` is currently conflicted across live workers. Please ask an operator to fix worker configuration.`,
+      ephemeral: true,
+    });
+    return;
+  }
+  const selectionError = buildAgentWorkerSelectionError(
+    metadata,
+    workspaceKey,
+    profileKey,
+    requestedWorkerId,
+  );
+  if (selectionError) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.reply({
+      content: selectionError,
+      ephemeral: true,
+    });
+    return;
+  }
 
   const authorizedPrecheck = await authorizeDiscordPrecheckAndRespond({
     permissions,
@@ -408,6 +486,34 @@ export async function handleAgentStart(
     ...(contextFiles?.length ? { contextFiles } : {}),
   });
 
+  const freshMetadata = await loadAgentCommandMetadata({ forceRefresh: true }).catch((err) => {
+    logger.error({ err }, 'Failed to refresh agent command metadata from the registry');
+    return undefined;
+  });
+  if (!freshMetadata?.enabled) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.editReply(
+      'Agent sessions are not available yet. Please try again in a few seconds.',
+    );
+    return;
+  }
+
+  let ownerWorker: ReturnType<typeof resolveAgentStartWorker>;
+  try {
+    ownerWorker = resolveAgentStartWorker(
+      freshMetadata,
+      workspaceKey,
+      profileKey,
+      requestedWorkerId,
+    );
+  } catch (err) {
+    auditAgentSessionStart(config, baseAuditInput, 'invalid');
+    await interaction.editReply((err as Error).message);
+    return;
+  }
+
+  const now = new Date();
+
   try {
     await createAgentSession({
       sessionId,
@@ -419,7 +525,11 @@ export async function handleAgentStart(
       workspaceKey,
       agentProfileKey: profileKey,
       ...(cwd ? { cwd } : {}),
+      ownerWorkerId: ownerWorker.workerId,
+      ...(ownerWorker.workerLabel ? { ownerWorkerLabel: ownerWorker.workerLabel } : {}),
+      workerClaimedAt: now.toISOString(),
       status: 'pending',
+      now,
     });
   } catch (err) {
     auditAgentSessionStart(
@@ -462,6 +572,7 @@ export async function handleAgentStart(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: ownerWorker.workerId,
     },
     actor: {
       userId: interaction.user.id,
@@ -505,7 +616,7 @@ export async function handleAgentStart(
   }
 
   try {
-    await enqueueWorkerEvent(workerEventQueue, event);
+    await enqueueWorkerMailboxEvent(queueRuntime, ownerWorker.workerId, event);
     await upsertDiscordAgentDefaults({
       userId: interaction.user.id,
       ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
@@ -536,7 +647,9 @@ export async function handleAgentStart(
       },
       'accepted',
     );
-    await interaction.editReply(`Agent session started in <#${thread.threadId}>.`);
+    await interaction.editReply(
+      `Agent session started in <#${thread.threadId}> on worker \`${ownerWorker.workerId}\`.`,
+    );
   } catch (err) {
     logger.error({ err, sessionId }, 'Failed to enqueue agent session start event');
     await updateAgentSessionStatus(sessionId, 'failed').catch((updateErr) => {

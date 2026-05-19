@@ -2,10 +2,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { handleAgentPermissionButton } from './agentPermission.js';
 
+type AgentSessionMock = {
+  sessionId: string;
+  threadId: string;
+  channelId: string;
+  status: 'active' | 'completed' | 'failed';
+};
+
+type BuildAgentInteractionResolveWorkerEventInput = {
+  session: AgentSessionMock;
+  actor: {
+    userId: string;
+    guildId?: string;
+  };
+  interactionId: string;
+  resolution: {
+    kind: 'permission';
+    decision: 'once' | 'always' | 'reject';
+  };
+};
+
+type ValidateAgentSessionForThreadInput = {
+  session: AgentSessionMock | undefined;
+  threadId: string;
+  allowedStatuses: AgentSessionMock['status'][];
+  wrongThreadMessage: string;
+};
+
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
   getDiscordAgentPermissionMessageState: vi.fn(),
 }));
 
@@ -14,7 +42,7 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
@@ -24,6 +52,42 @@ vi.mock('../../permissions/discordPermissionGuards.js', () => ({
 vi.mock('../../discordBotChannelAdapter.js', () => ({
   getDiscordAgentPermissionMessageState: hoisted.getDiscordAgentPermissionMessageState,
 }));
+
+vi.mock('../../../agentCommandShared.js', () => {
+  return {
+    buildAgentInteractionResolveWorkerEvent: ({
+      session,
+      actor,
+      interactionId,
+      resolution,
+    }: BuildAgentInteractionResolveWorkerEventInput) => ({
+      type: 'agent.interaction.resolve',
+      payload: {
+        sessionId: session.sessionId,
+        response: {
+          channelId: session.threadId,
+          threadId: session.threadId,
+          userId: actor.userId,
+        },
+        interactionId,
+        resolution,
+      },
+    }),
+    validateAgentSessionForThread: ({
+      session,
+      threadId,
+      allowedStatuses,
+      wrongThreadMessage,
+    }: ValidateAgentSessionForThreadInput) => {
+      if (!session) return 'Agent session not found.';
+      if (session.threadId !== threadId) return wrongThreadMessage;
+      if (!allowedStatuses.includes(session.status))
+        return `This agent session is ${session.status}.`;
+      return undefined;
+    },
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
 
 function buildSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -62,7 +126,7 @@ function buildInteraction(overrides: Record<string, unknown> = {}) {
 }
 
 const config = { botName: 'Sniptail' };
-const queue = {};
+const queueRuntime = {};
 const permissions = {};
 
 describe('handleAgentPermissionButton', () => {
@@ -70,7 +134,11 @@ describe('handleAgentPermissionButton', () => {
     vi.clearAllMocks();
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
     hoisted.getDiscordAgentPermissionMessageState.mockReturnValue(undefined);
   });
 
@@ -81,12 +149,12 @@ describe('handleAgentPermissionButton', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', decision: 'always' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
     const authInput = hoisted.authorizeDiscordOperationAndRespond.mock.calls[0]?.[0] as
-      | { action: string; operation: { event: WorkerEvent } }
+      | { action: string; operation: { event: WorkerEvent; targetWorkerId?: string } }
       | undefined;
     expect(authInput?.action).toBe('agent.interaction.resolve');
     expect(authInput?.operation.event.type).toBe('agent.interaction.resolve');
@@ -99,8 +167,10 @@ describe('handleAgentPermissionButton', () => {
       },
     });
     expect(authInput?.operation.event.payload.resolution).not.toHaveProperty('message');
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.interaction.resolve' }),
     );
     expect(interaction.update).toHaveBeenCalledWith({
@@ -125,7 +195,7 @@ describe('handleAgentPermissionButton', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', decision: 'always' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -143,11 +213,11 @@ describe('handleAgentPermissionButton', () => {
       interaction as never,
       { sessionId: 'session-1', interactionId: 'interaction-1', decision: 'reject' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
-    expect(hoisted.enqueueWorkerEvent).not.toHaveBeenCalled();
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith({
       content: 'This permission control does not belong to this agent session thread.',
       ephemeral: true,

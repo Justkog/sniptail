@@ -1,5 +1,5 @@
 import { loadCoreConfig } from '../config/config.js';
-import type { CoreConfig, JobRegistryDriver } from '../config/types.js';
+import type { CoreConfig, RegistryDriver } from '../config/types.js';
 import { getJobRegistryDb } from '../db/index.js';
 import { createPgRepoCatalogStore } from './catalogPgStore.js';
 import { createRedisRepoCatalogStore } from './catalogRedisStore.js';
@@ -25,13 +25,13 @@ async function createSqliteStore(): Promise<RepoCatalogStore> {
 }
 
 function createRedisStore(config: CoreConfig): Promise<RepoCatalogStore> {
-  if (!config.jobRegistryRedisUrl) {
-    throw new Error('JOB_REGISTRY_REDIS_URL is required when JOB_REGISTRY_DB=redis');
+  if (!config.registryRedisUrl) {
+    throw new Error('SNIPTAIL_REGISTRY_REDIS_URL is required when SNIPTAIL_REGISTRY_DB=redis');
   }
-  return Promise.resolve(createRedisRepoCatalogStore(config.jobRegistryRedisUrl));
+  return Promise.resolve(createRedisRepoCatalogStore(config.registryRedisUrl));
 }
 
-const STORE_FACTORIES: Record<JobRegistryDriver, StoreFactory> = {
+const STORE_FACTORIES: Record<RegistryDriver, StoreFactory> = {
   pg: createPgStore,
   sqlite: createSqliteStore,
   redis: createRedisStore,
@@ -42,7 +42,7 @@ let storePromise: Promise<RepoCatalogStore> | undefined;
 export async function getRepoCatalogStore(): Promise<RepoCatalogStore> {
   if (!storePromise) {
     const config = loadCoreConfig();
-    storePromise = STORE_FACTORIES[config.jobRegistryDriver](config);
+    storePromise = STORE_FACTORIES[config.registryDriver](config);
   }
   return storePromise;
 }

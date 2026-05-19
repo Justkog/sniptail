@@ -1,21 +1,23 @@
 import type { Message } from 'discord.js';
 import { findDiscordAgentSessionByThread } from '@sniptail/core/agent-sessions/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import { buildDiscordAgentFollowUpBusyComponents } from '@sniptail/core/discord/components.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { truncateRequestSummary } from '../../../lib/jobs.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
-import { buildAgentSessionMessageWorkerEvent } from '../../../agentCommandShared.js';
+import {
+  buildAgentSessionMessageWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
+} from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 
 export async function handleAgentThreadMessage(
   message: Message,
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<boolean> {
   if (!message.channel.isThread()) {
@@ -68,6 +70,11 @@ export async function handleAgentThreadMessage(
     messageId: message.id,
     mode: 'run',
   });
+  const route = await resolveAgentSessionOwnerMailboxRoute(session);
+  if (!route.ok) {
+    await message.reply(route.errorMessage);
+    return true;
+  }
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
@@ -77,6 +84,7 @@ export async function handleAgentThreadMessage(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: message.author.id,
@@ -95,6 +103,6 @@ export async function handleAgentThreadMessage(
     return true;
   }
 
-  await enqueueWorkerEvent(workerEventQueue, event);
+  await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
   return true;
 }

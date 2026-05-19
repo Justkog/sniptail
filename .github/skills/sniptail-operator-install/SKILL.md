@@ -123,7 +123,8 @@ sniptail local --migrate-if-needed
 This local mode forces:
 
 - `QUEUE_DRIVER=inproc`
-- `JOB_REGISTRY_DB=sqlite`
+- `SNIPTAIL_REGISTRY_DB=sqlite`
+- `SNIPTAIL_REGISTRY_PATH=...`
 
 That removes the need for Redis during initial setup.
 
@@ -188,7 +189,7 @@ Stay on the local runtime unless the user explicitly needs one of these:
 
 - bot and worker on different machines
 - Redis-backed multi-process queueing
-- Postgres-backed shared job registry
+- Postgres-backed shared registry state
 - separate operational responsibilities for bot and worker hosts
 
 If the user needs any of those, switch to the split deployment path in [Split deployment reference](references/sniptail-split-deployment-reference.md).

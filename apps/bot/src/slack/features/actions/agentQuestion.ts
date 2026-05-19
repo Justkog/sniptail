@@ -1,5 +1,5 @@
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import {
   appendSlackAgentQuestionDecision,
@@ -14,6 +14,7 @@ import {
 import { buildAgentQuestionCustomModal } from '../../modals.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import type { SlackHandlerContext } from '../context.js';
@@ -22,6 +23,7 @@ import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermis
 async function authorizeAndEnqueueQuestionResolution(input: {
   context: SlackHandlerContext;
   client: SlackHandlerContext['app']['client'];
+  session: NonNullable<Awaited<ReturnType<typeof loadAgentSession>>>;
   event: WorkerEvent;
   userId: string;
   channelId: string;
@@ -30,6 +32,15 @@ async function authorizeAndEnqueueQuestionResolution(input: {
   summary: string;
   denyText: string;
 }): Promise<boolean> {
+  const route = await resolveAgentSessionOwnerMailboxRoute(input.session);
+  if (!route.ok) {
+    await input.client.chat.postEphemeral({
+      channel: input.channelId,
+      user: input.userId,
+      text: route.errorMessage,
+    });
+    return false;
+  }
   const authorized = await authorizeSlackOperationAndRespond({
     permissions: input.context.permissions,
     client: input.client,
@@ -39,6 +50,7 @@ async function authorizeAndEnqueueQuestionResolution(input: {
     operation: {
       kind: 'enqueueWorkerEvent',
       event: input.event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: input.userId,
@@ -58,7 +70,7 @@ async function authorizeAndEnqueueQuestionResolution(input: {
   if (!authorized) {
     return false;
   }
-  await enqueueWorkerEvent(input.context.workerEventQueue, input.event);
+  await enqueueWorkerMailboxEvent(input.context.queueRuntime, route.targetWorkerId, input.event);
   return true;
 }
 
@@ -194,6 +206,7 @@ export function registerAgentQuestionActions(context: SlackHandlerContext) {
     const authorized = await authorizeAndEnqueueQuestionResolution({
       context,
       client,
+      session,
       event,
       userId,
       channelId,
@@ -327,6 +340,7 @@ export function registerAgentQuestionActions(context: SlackHandlerContext) {
     const authorized = await authorizeAndEnqueueQuestionResolution({
       context,
       client,
+      session,
       event,
       userId,
       channelId,
@@ -409,6 +423,7 @@ export function registerAgentQuestionActions(context: SlackHandlerContext) {
     const authorized = await authorizeAndEnqueueQuestionResolution({
       context,
       client,
+      session,
       event,
       userId,
       channelId,
@@ -515,6 +530,7 @@ export function registerAgentQuestionActions(context: SlackHandlerContext) {
     const authorized = await authorizeAndEnqueueQuestionResolution({
       context,
       client,
+      session,
       event,
       userId,
       channelId,

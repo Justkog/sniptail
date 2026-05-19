@@ -45,15 +45,15 @@ function parseScope(raw?: string): Scope {
 }
 
 function getRegistryConfig(scope: Scope): {
-  jobRegistryDriver: 'sqlite' | 'pg' | 'redis';
-  jobRegistryPath?: string;
-  jobRegistryPgUrl?: string;
+  registryDriver: 'sqlite' | 'pg' | 'redis';
+  registryPath?: string;
+  registryPgUrl?: string;
 } {
   const config = scope === 'bot' ? loadBotConfig() : loadWorkerConfig();
   return {
-    jobRegistryDriver: config.jobRegistryDriver,
-    ...(config.jobRegistryPath ? { jobRegistryPath: config.jobRegistryPath } : {}),
-    ...(config.jobRegistryPgUrl ? { jobRegistryPgUrl: config.jobRegistryPgUrl } : {}),
+    registryDriver: config.registryDriver,
+    ...(config.registryPath ? { registryPath: config.registryPath } : {}),
+    ...(config.registryPgUrl ? { registryPgUrl: config.registryPgUrl } : {}),
   };
 }
 

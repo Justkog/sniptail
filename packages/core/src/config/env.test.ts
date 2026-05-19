@@ -20,8 +20,9 @@ describe('config loaders', () => {
       '[core]',
       `job_work_root = "${join(configDir, 'jobs')}"`,
       'queue_driver = "inproc"',
-      `job_registry_path = "${join(configDir, 'job-registry')}"`,
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      `path = "${join(configDir, 'job-registry')}"`,
+      'db = "sqlite"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -32,6 +33,28 @@ describe('config loaders', () => {
     ].join('\n');
     writeFileSync(workerConfigPath, workerToml, 'utf8');
     process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+    return configDir;
+  }
+
+  function writeBotConfig(extraLines: string[]) {
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const botConfigPath = join(configDir, 'bot.toml');
+    const botToml = [
+      '[core]',
+      `job_work_root = "${join(configDir, 'jobs')}"`,
+      '[registry]',
+      `path = "${join(configDir, 'job-registry')}"`,
+      'db = "sqlite"',
+      '',
+      '[bot]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "opencode"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      ...extraLines,
+    ].join('\n');
+    writeFileSync(botConfigPath, botToml, 'utf8');
+    process.env.SNIPTAIL_BOT_CONFIG_PATH = botConfigPath;
     return configDir;
   }
 
@@ -67,6 +90,7 @@ describe('config loaders', () => {
     expect(config.repoAllowlist).toEqual({});
     expect(config.permissions.defaultEffect).toBe('allow');
     expect(config.permissions.rules).toEqual([]);
+    expect(config.agentCommand).toEqual({});
   });
 
   it('parses permission rules from TOML', () => {
@@ -82,8 +106,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -133,8 +158,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -175,8 +201,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -227,8 +254,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -271,8 +299,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -313,8 +342,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -354,8 +384,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -392,8 +423,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -471,8 +503,9 @@ describe('config loaders', () => {
     const botToml = [
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -518,10 +551,24 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Invalid QUEUE_DRIVER: invalid-driver');
   });
 
-  it('requires a redis registry URL when JOB_REGISTRY_DB=redis and no fallback exists', () => {
+  it('rejects legacy registry env vars', () => {
+    applyRequiredEnv({ JOB_REGISTRY_DB: 'sqlite' });
+
+    expect(() => loadCoreConfig()).toThrow(
+      'Invalid JOB_REGISTRY_DB. Use SNIPTAIL_REGISTRY_* environment variables and the [registry] config block instead.',
+    );
+  });
+
+  it('rejects invalid registry namespaces', () => {
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_NAMESPACE: 'bad namespace' });
+
+    expect(() => loadCoreConfig()).toThrow('Invalid registry.namespace');
+  });
+
+  it('requires a redis registry URL when SNIPTAIL_REGISTRY_DB=redis and no fallback exists', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: undefined,
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: undefined,
       REDIS_URL: undefined,
     });
 
@@ -530,8 +577,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -551,7 +599,7 @@ describe('config loaders', () => {
     process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
 
     expect(() => loadCoreConfig()).toThrow(
-      'JOB_REGISTRY_REDIS_URL or REDIS_URL is required when JOB_REGISTRY_DB=redis',
+      'SNIPTAIL_REGISTRY_REDIS_URL or REDIS_URL is required when SNIPTAIL_REGISTRY_DB=redis',
     );
   });
 
@@ -568,8 +616,9 @@ describe('config loaders', () => {
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
       'queue_driver = "inproc"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -593,27 +642,49 @@ describe('config loaders', () => {
     expect(config.redisUrl).toBeUndefined();
   });
 
-  it('falls back to worker.toml redis_url when JOB_REGISTRY_DB=redis', () => {
+  it('falls back to worker.toml redis_url when SNIPTAIL_REGISTRY_DB=redis', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: undefined,
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: undefined,
       REDIS_URL: undefined,
     });
 
     const config = loadWorkerConfig();
-    expect(config.jobRegistryDriver).toBe('redis');
-    expect(config.jobRegistryRedisUrl).toBe('redis://localhost:6379/0');
+    expect(config.registryDriver).toBe('redis');
+    expect(config.registryRedisUrl).toBe('redis://localhost:6379/0');
   });
 
-  it('accepts JOB_REGISTRY_REDIS_URL when JOB_REGISTRY_DB=redis', () => {
+  it('accepts SNIPTAIL_REGISTRY_REDIS_URL when SNIPTAIL_REGISTRY_DB=redis', () => {
     applyRequiredEnv({
-      JOB_REGISTRY_DB: 'redis',
-      JOB_REGISTRY_REDIS_URL: 'redis://localhost:6379/3',
+      SNIPTAIL_REGISTRY_DB: 'redis',
+      SNIPTAIL_REGISTRY_REDIS_URL: 'redis://localhost:6379/3',
     });
 
     const config = loadWorkerConfig();
-    expect(config.jobRegistryDriver).toBe('redis');
-    expect(config.jobRegistryRedisUrl).toBe('redis://localhost:6379/3');
+    expect(config.registryDriver).toBe('redis');
+    expect(config.registryRedisUrl).toBe('redis://localhost:6379/3');
+  });
+
+  it('rejects sqlite registry for redis agent workers', () => {
+    applyRequiredEnv({
+      QUEUE_DRIVER: 'redis',
+    });
+    writeWorkerConfig([
+      'worker.id = "worker-one"',
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[agent]',
+      'enabled = true',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid registry.db');
   });
 
   it('defaults dockerfile paths when not configured', () => {
@@ -624,8 +695,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -713,8 +785,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -749,8 +822,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -809,8 +883,6 @@ describe('config loaders', () => {
     writeWorkerConfig([
       '[agent]',
       'enabled = true',
-      'default_workspace = "snatch"',
-      'default_agent_profile = "build"',
       'interaction_timeout_ms = 120000',
       'output_debounce_ms = 5000',
       '',
@@ -830,8 +902,6 @@ describe('config loaders', () => {
 
     expect(config.agent).toEqual({
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       interactionTimeoutMs: 120_000,
       outputDebounceMs: 5_000,
       workspaces: {
@@ -855,16 +925,12 @@ describe('config loaders', () => {
   it('applies agent command scalar env overrides', () => {
     applyRequiredEnv({
       AGENT_COMMAND_ENABLED: 'true',
-      AGENT_COMMAND_DEFAULT_WORKSPACE: 'two',
-      AGENT_COMMAND_DEFAULT_AGENT_PROFILE: 'plan',
       AGENT_COMMAND_INTERACTION_TIMEOUT_MS: '300000',
       AGENT_COMMAND_OUTPUT_DEBOUNCE_MS: '7000',
     });
     writeWorkerConfig([
       '[agent]',
       'enabled = false',
-      'default_workspace = "one"',
-      'default_agent_profile = "build"',
       'interaction_timeout_ms = 120000',
       'output_debounce_ms = 5000',
       '',
@@ -886,31 +952,58 @@ describe('config loaders', () => {
     const config = loadWorkerConfig();
 
     expect(config.agent.enabled).toBe(true);
-    expect(config.agent.defaultWorkspace).toBe('two');
-    expect(config.agent.defaultAgentProfile).toBe('plan');
     expect(config.agent.interactionTimeoutMs).toBe(300_000);
     expect(config.agent.outputDebounceMs).toBe(7_000);
   });
 
+  it('loads agent command defaults from bot TOML', () => {
+    applyRequiredEnv();
+    writeBotConfig([
+      '[agent_command]',
+      'default_workspace = "snatch"',
+      'default_agent_profile = "build"',
+    ]);
+
+    const config = loadBotConfig();
+
+    expect(config.agentCommand).toEqual({
+      defaultWorkspace: 'snatch',
+      defaultAgentProfile: 'build',
+    });
+  });
+
+  it('applies agent command default env overrides to bot config', () => {
+    applyRequiredEnv({
+      AGENT_COMMAND_DEFAULT_WORKSPACE: 'two',
+      AGENT_COMMAND_DEFAULT_AGENT_PROFILE: 'plan',
+    });
+    writeBotConfig([
+      '[agent_command]',
+      'default_workspace = "one"',
+      'default_agent_profile = "build"',
+    ]);
+
+    const config = loadBotConfig();
+
+    expect(config.agentCommand).toEqual({
+      defaultWorkspace: 'two',
+      defaultAgentProfile: 'plan',
+    });
+  });
+
   it('rejects enabled agent command config without workspaces or profiles', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['[agent]', 'enabled = true']);
+
+    expect(() => loadWorkerConfig()).toThrow('enabled=true requires at least one workspace');
+  });
+
+  it('rejects worker agent config that still declares defaults', () => {
     applyRequiredEnv();
     writeWorkerConfig([
       '[agent]',
       'enabled = true',
       'default_workspace = "snatch"',
-      'default_agent_profile = "build"',
-    ]);
-
-    expect(() => loadWorkerConfig()).toThrow('enabled=true requires at least one workspace');
-  });
-
-  it('rejects unknown agent command default keys', () => {
-    applyRequiredEnv();
-    writeWorkerConfig([
-      '[agent]',
-      'enabled = true',
-      'default_workspace = "missing"',
-      'default_agent_profile = "build"',
       '',
       '[agent.workspaces.snatch]',
       'path = "/tmp/snatch"',
@@ -923,13 +1016,110 @@ describe('config loaders', () => {
     expect(() => loadWorkerConfig()).toThrow('Invalid agent.default_workspace');
   });
 
+  it('ignores bot agent command default env vars when loading worker config', () => {
+    applyRequiredEnv({
+      AGENT_COMMAND_DEFAULT_WORKSPACE: 'two',
+      AGENT_COMMAND_DEFAULT_AGENT_PROFILE: 'plan',
+    });
+    writeWorkerConfig([
+      '[agent]',
+      'enabled = true',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    const config = loadWorkerConfig();
+
+    expect(config.agent).toEqual({
+      enabled: true,
+      interactionTimeoutMs: 1_800_000,
+      outputDebounceMs: 3_000,
+      workspaces: {
+        snatch: {
+          path: '/tmp/snatch',
+        },
+      },
+      profiles: {
+        build: {
+          provider: 'opencode',
+          profile: 'build',
+        },
+      },
+    });
+  });
+
+  it('parses worker identity from TOML', () => {
+    applyRequiredEnv();
+    writeWorkerConfig(['id = "linux-build-1"', 'label = "Linux Build 1"']);
+
+    const config = loadWorkerConfig();
+
+    expect(config.workerId).toBe('linux-build-1');
+    expect(config.workerLabel).toBe('Linux Build 1');
+  });
+
+  it('applies worker identity env overrides', () => {
+    applyRequiredEnv({
+      SNIPTAIL_WORKER_ID: 'worker-from-env',
+      SNIPTAIL_WORKER_LABEL: 'Worker From Env',
+    });
+    writeWorkerConfig(['id = "worker-from-toml"', 'label = "Worker From TOML"']);
+
+    const config = loadWorkerConfig();
+
+    expect(config.workerId).toBe('worker-from-env');
+    expect(config.workerLabel).toBe('Worker From Env');
+  });
+
+  it('defaults worker identity to "default" for local mode', () => {
+    applyRequiredEnv();
+
+    const config = loadWorkerConfig();
+
+    expect(config.workerId).toBe('default');
+    expect(config.workerLabel).toBeUndefined();
+  });
+
+  it('rejects invalid worker identity values', () => {
+    applyRequiredEnv({
+      SNIPTAIL_WORKER_ID: 'bad worker id',
+    });
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid worker.id');
+  });
+
+  it('requires an explicit worker id for redis agent workers', () => {
+    applyRequiredEnv({
+      QUEUE_DRIVER: 'redis',
+      SNIPTAIL_REGISTRY_DB: 'redis',
+    });
+    writeWorkerConfig([
+      'redis_url = "redis://localhost:6379/0"',
+      '',
+      '[agent]',
+      'enabled = true',
+      '',
+      '[agent.workspaces.snatch]',
+      'path = "/tmp/snatch"',
+      '',
+      '[agent.profiles.build]',
+      'provider = "opencode"',
+      'profile = "build"',
+    ]);
+
+    expect(() => loadWorkerConfig()).toThrow('Invalid worker.id');
+  });
+
   it('rejects relative agent command workspace paths', () => {
     applyRequiredEnv();
     writeWorkerConfig([
       '[agent]',
       'enabled = true',
-      'default_workspace = "snatch"',
-      'default_agent_profile = "build"',
       '',
       '[agent.workspaces.snatch]',
       'path = "relative/snatch"',
@@ -1261,6 +1451,7 @@ describe('config loaders', () => {
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(2);
     expect(config.bootstrapConcurrency).toBe(2);
+    expect(config.consumeSharedWorkerEvents).toBe(true);
     expect(config.workerEventConcurrency).toBe(2);
   });
 
@@ -1272,8 +1463,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1282,6 +1474,7 @@ describe('config loaders', () => {
       'repo_cache_root = "/tmp/sniptail/repos"',
       'job_concurrency = 4',
       'bootstrap_concurrency = 3',
+      'consume_shared_worker_events = false',
       'worker_event_concurrency = 5',
       'job_root_copy_glob = ""',
       'include_raw_request_in_mr = false',
@@ -1299,7 +1492,43 @@ describe('config loaders', () => {
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(4);
     expect(config.bootstrapConcurrency).toBe(3);
+    expect(config.consumeSharedWorkerEvents).toBe(false);
     expect(config.workerEventConcurrency).toBe(5);
+  });
+
+  it('loads consume_shared_worker_events from TOML when set to true', () => {
+    applyRequiredEnv();
+
+    const configDir = mkdtempSync(join(tmpdir(), 'sniptail-config-'));
+    const workerConfigPath = join(configDir, 'worker.toml');
+    const workerToml = [
+      '[core]',
+      'job_work_root = "/tmp/sniptail/jobs"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
+      '',
+      '[worker]',
+      'bot_name = "Sniptail"',
+      'primary_agent = "codex"',
+      'redis_url = "redis://localhost:6379/0"',
+      'repo_cache_root = "/tmp/sniptail/repos"',
+      'consume_shared_worker_events = true',
+      'job_root_copy_glob = ""',
+      'include_raw_request_in_mr = false',
+      '',
+      '[copilot]',
+      'execution_mode = "local"',
+      'idle_retries = 2',
+      '',
+      '[codex]',
+      'execution_mode = "local"',
+    ].join('\n');
+    writeFileSync(workerConfigPath, workerToml, 'utf8');
+    process.env.SNIPTAIL_WORKER_CONFIG_PATH = workerConfigPath;
+
+    const config = loadWorkerConfig();
+    expect(config.consumeSharedWorkerEvents).toBe(true);
   });
 
   it('throws when worker concurrency env values are invalid', () => {
@@ -1320,8 +1549,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1360,8 +1590,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1402,8 +1633,9 @@ describe('config loaders', () => {
       '[core]',
       `repo_allowlist_path = "${allowlistPath}"`,
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "sqlite"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "sqlite"',
       '',
       '[bot]',
       'bot_name = "Sniptail"',
@@ -1438,8 +1670,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1484,8 +1717,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',
@@ -1519,8 +1753,9 @@ describe('config loaders', () => {
     const workerToml = [
       '[core]',
       'job_work_root = "/tmp/sniptail/jobs"',
-      'job_registry_path = "/tmp/sniptail/registry"',
-      'job_registry_db = "redis"',
+      '[registry]',
+      'path = "/tmp/sniptail/registry"',
+      'db = "redis"',
       '',
       '[worker]',
       'bot_name = "Sniptail"',

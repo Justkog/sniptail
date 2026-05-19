@@ -7,7 +7,6 @@ import type {
 import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './helpers.js';
-import { setAgentCommandMetadata } from '../agentCommandMetadataCache.js';
 import {
   appendSlackAgentPermissionStatus,
   appendSlackAgentQuestionStatus,
@@ -46,7 +45,6 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     'file.upload',
     'reaction.add',
     'message.ephemeral',
-    'agent.metadata.update',
     'agent.permission.requested',
     'agent.permission.updated',
     'agent.question.requested',
@@ -56,10 +54,6 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
     if (event.provider !== this.providerId) {
       return false;
-    }
-    if (event.type === 'agent.metadata.update') {
-      setAgentCommandMetadata(event.payload);
-      return true;
     }
     const app = runtime.slackApp;
     if (!app) {

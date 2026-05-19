@@ -1,20 +1,13 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
-import type { JobSpec } from '@sniptail/core/types/job.js';
-import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { DiscordHandlerContext } from './context.js';
 import { registerDiscordCommands } from './lib/commands.js';
 import { registerDiscordHandlers } from './handlers.js';
 import { PermissionsRuntimeService } from '../permissions/permissionsRuntimeService.js';
 
-export async function startDiscordBot(
-  jobQueue: QueuePublisher<JobSpec>,
-  bootstrapQueue: QueuePublisher<BootstrapRequest>,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
-) {
+export async function startDiscordBot(queueRuntime: QueueTransportRuntime) {
   const config = loadBotConfig();
   if (!config.discord) {
     throw new Error(
@@ -42,14 +35,10 @@ export async function startDiscordBot(
   const context: DiscordHandlerContext = {
     client,
     config,
-    queue: jobQueue,
-    bootstrapQueue,
-    workerEventQueue,
+    queueRuntime,
     permissions: new PermissionsRuntimeService({
       config,
-      queue: jobQueue,
-      bootstrapQueue,
-      workerEventQueue,
+      queueRuntime,
     }),
   };
 

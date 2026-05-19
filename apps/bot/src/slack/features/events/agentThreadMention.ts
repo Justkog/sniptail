@@ -1,6 +1,6 @@
 import { findAgentSessionByThread } from '@sniptail/core/agent-sessions/registry.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import {
   buildSlackAgentActionValue,
   buildSlackAgentFollowUpBusyBlocks,
@@ -10,7 +10,10 @@ import { dedupe } from '../../lib/dedupe.js';
 import type { SlackHandlerContext } from '../context.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 import { stripSlackMentions } from '../../lib/threadContext.js';
-import { buildAgentSessionMessageWorkerEvent } from '../../../agentCommandShared.js';
+import {
+  buildAgentSessionMessageWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
+} from '../../../agentCommandShared.js';
 
 type SlackAgentThreadMessageInput = {
   channelId?: string;
@@ -24,10 +27,10 @@ type SlackAgentThreadMessageInput = {
 export async function handleSlackAgentThreadMessage(
   {
     app,
-    workerEventQueue,
+    queueRuntime,
     permissions,
     slackIds,
-  }: Pick<SlackHandlerContext, 'app' | 'config' | 'workerEventQueue' | 'permissions' | 'slackIds'>,
+  }: Pick<SlackHandlerContext, 'app' | 'config' | 'queueRuntime' | 'permissions' | 'slackIds'>,
   input: SlackAgentThreadMessageInput,
 ): Promise<boolean> {
   const { channelId, threadId, text = '', eventTs, userId, workspaceId } = input;
@@ -96,6 +99,15 @@ export async function handleSlackAgentThreadMessage(
     ...(eventTs ? { messageId: eventTs } : {}),
     mode: 'run',
   });
+  const route = await resolveAgentSessionOwnerMailboxRoute(session);
+  if (!route.ok) {
+    await postMessage(app, {
+      channel: channelId,
+      text: route.errorMessage,
+      threadTs: threadId,
+    });
+    return true;
+  }
 
   const authorized = await authorizeSlackOperationAndRespond({
     permissions,
@@ -106,6 +118,7 @@ export async function handleSlackAgentThreadMessage(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId,
@@ -126,7 +139,7 @@ export async function handleSlackAgentThreadMessage(
     return true;
   }
 
-  await enqueueWorkerEvent(workerEventQueue, event);
+  await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
   return true;
 }
 

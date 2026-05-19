@@ -2,10 +2,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import { handleAgentFollowUpButton } from './agentFollowUp.js';
 
+type AgentSessionMock = {
+  sessionId: string;
+  threadId: string;
+  channelId: string;
+  status: 'active' | 'completed' | 'failed';
+};
+
+type BuildAgentSessionMessageWorkerEventInput = {
+  session: AgentSessionMock;
+  actor: {
+    userId: string;
+    guildId?: string;
+  };
+  message: string;
+  messageId?: string;
+  mode?: 'run' | 'queue' | 'steer';
+};
+
+type ValidateAgentSessionForThreadInput = {
+  session: AgentSessionMock | undefined;
+  threadId: string;
+  allowedStatuses: AgentSessionMock['status'][];
+  wrongThreadMessage: string;
+};
+
 const hoisted = vi.hoisted(() => ({
   loadAgentSession: vi.fn(),
   authorizeDiscordOperationAndRespond: vi.fn(),
-  enqueueWorkerEvent: vi.fn(),
+  enqueueWorkerMailboxEvent: vi.fn(),
+  resolveAgentSessionOwnerMailboxRoute: vi.fn(),
 }));
 
 vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
@@ -13,12 +39,56 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueWorkerEvent: hoisted.enqueueWorkerEvent,
+  enqueueWorkerMailboxEvent: hoisted.enqueueWorkerMailboxEvent,
 }));
 
 vi.mock('../../permissions/discordPermissionGuards.js', () => ({
   authorizeDiscordOperationAndRespond: hoisted.authorizeDiscordOperationAndRespond,
 }));
+
+vi.mock('../../../lib/jobs.js', () => ({
+  truncateRequestSummary: (value: string) => value,
+}));
+
+vi.mock('../../../agentCommandShared.js', () => {
+  return {
+    buildAgentSessionMessageWorkerEvent: ({
+      session,
+      actor,
+      message,
+      messageId,
+      mode,
+    }: BuildAgentSessionMessageWorkerEventInput) => ({
+      type: 'agent.session.message',
+      payload: {
+        sessionId: session.sessionId,
+        response: {
+          channelId: session.threadId,
+          threadId: session.threadId,
+          userId: actor.userId,
+        },
+        message,
+        ...(messageId ? { messageId } : {}),
+        ...(mode ? { mode } : {}),
+      },
+    }),
+    resolveAgentFollowUpMode: (status: string, requested: 'queue' | 'steer') =>
+      status === 'active' ? requested : 'run',
+    validateAgentSessionForThread: ({
+      session,
+      threadId,
+      allowedStatuses,
+      wrongThreadMessage,
+    }: ValidateAgentSessionForThreadInput) => {
+      if (!session) return 'Agent session not found.';
+      if (session.threadId !== threadId) return wrongThreadMessage;
+      if (!allowedStatuses.includes(session.status))
+        return `This agent session is ${session.status}.`;
+      return undefined;
+    },
+    resolveAgentSessionOwnerMailboxRoute: hoisted.resolveAgentSessionOwnerMailboxRoute,
+  };
+});
 
 function buildSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -63,7 +133,7 @@ function buildInteraction() {
 }
 
 const config = { botName: 'Sniptail' };
-const queue = {};
+const queueRuntime = {};
 const permissions = {};
 
 describe('handleAgentFollowUpButton', () => {
@@ -71,7 +141,11 @@ describe('handleAgentFollowUpButton', () => {
     vi.clearAllMocks();
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
-    hoisted.enqueueWorkerEvent.mockResolvedValue(undefined);
+    hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
+    hoisted.resolveAgentSessionOwnerMailboxRoute.mockResolvedValue({
+      ok: true,
+      targetWorkerId: 'worker-a',
+    });
   });
 
   it('enqueues queued follow-ups from the original thread message', async () => {
@@ -81,7 +155,7 @@ describe('handleAgentFollowUpButton', () => {
       interaction as never,
       { action: 'queue', sessionId: 'session-1', messageId: 'M1' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -94,8 +168,10 @@ describe('handleAgentFollowUpButton', () => {
       messageId: 'M1',
       mode: 'queue',
     });
-    expect(hoisted.enqueueWorkerEvent).toHaveBeenCalledWith(
-      queue,
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
+    expect(hoisted.enqueueWorkerMailboxEvent).toHaveBeenCalledWith(
+      queueRuntime,
+      'worker-a',
       expect.objectContaining({ type: 'agent.session.message' }),
     );
     const updateInput = interaction.update.mock.calls[0]?.[0] as
@@ -113,7 +189,7 @@ describe('handleAgentFollowUpButton', () => {
       interaction as never,
       { action: 'steer', sessionId: 'session-1', messageId: 'M1' },
       config as never,
-      queue as never,
+      queueRuntime as never,
       permissions as never,
     );
 
@@ -124,5 +200,6 @@ describe('handleAgentFollowUpButton', () => {
       mode: 'run',
       message: 'follow up text',
     });
+    expect(authInput?.operation.targetWorkerId).toBe('worker-a');
   });
 });

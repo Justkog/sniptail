@@ -1,13 +1,13 @@
 import type { ButtonInteraction } from 'discord.js';
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { DiscordAgentPermissionDecision } from '@sniptail/core/discord/components.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
+  resolveAgentSessionOwnerMailboxRoute,
   validateAgentSessionForThread,
 } from '../../../agentCommandShared.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
@@ -59,7 +59,7 @@ export async function handleAgentPermissionButton(
     decision: DiscordAgentPermissionDecision;
   },
   config: BotConfig,
-  workerEventQueue: QueuePublisher<WorkerEvent>,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ): Promise<void> {
   const session = await loadAgentSession(input.sessionId);
@@ -100,6 +100,14 @@ export async function handleAgentPermissionButton(
       decision: input.decision,
     },
   });
+  const route = await resolveAgentSessionOwnerMailboxRoute(session);
+  if (!route.ok) {
+    await interaction.reply({
+      content: route.errorMessage,
+      ephemeral: true,
+    });
+    return;
+  }
 
   let denied = false;
   const messageState = getDiscordAgentPermissionMessageState(input.sessionId, input.interactionId);
@@ -111,6 +119,7 @@ export async function handleAgentPermissionButton(
     operation: {
       kind: 'enqueueWorkerEvent',
       event,
+      targetWorkerId: route.targetWorkerId,
     },
     actor: {
       userId: interaction.user.id,
@@ -143,7 +152,7 @@ export async function handleAgentPermissionButton(
     return;
   }
 
-  await enqueueWorkerEvent(workerEventQueue, event);
+  await enqueueWorkerMailboxEvent(queueRuntime, route.targetWorkerId, event);
   await interaction.update({
     content: appendDecisionText(
       messageState?.requestText ?? interaction.message.content,

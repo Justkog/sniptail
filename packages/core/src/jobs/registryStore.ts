@@ -9,12 +9,12 @@ let redisStore: JobRegistryStore | undefined;
 
 export async function getJobRegistryStore(): Promise<JobRegistryStore> {
   const config = loadCoreConfig();
-  if (config.jobRegistryDriver === 'redis') {
-    if (!config.jobRegistryRedisUrl) {
-      throw new Error('JOB_REGISTRY_REDIS_URL is required when JOB_REGISTRY_DB=redis');
+  if (config.registryDriver === 'redis') {
+    if (!config.registryRedisUrl) {
+      throw new Error('SNIPTAIL_REGISTRY_REDIS_URL is required when SNIPTAIL_REGISTRY_DB=redis');
     }
     if (!redisStore) {
-      redisStore = createRedisJobRegistryStore(config.jobRegistryRedisUrl);
+      redisStore = createRedisJobRegistryStore(config.registryRedisUrl);
     }
     return redisStore;
   }

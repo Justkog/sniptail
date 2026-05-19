@@ -1,22 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@sniptail/core/config/config.js', () => ({
-  loadCoreConfig: () => ({
-    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
-    repoAllowlist: {},
-    jobWorkRoot: '/tmp/sniptail/job-root',
-    queueDriver: 'redis',
-    jobRegistryPath: '/tmp/sniptail/registry',
-    jobRegistryDriver: 'sqlite',
-  }),
-  loadWorkerConfig: () => ({
+const hoisted = vi.hoisted(() => ({
+  workerConfig: {
     botName: 'sniptail',
     repoAllowlistPath: '/tmp/sniptail/allowlist.json',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/sniptail/job-root',
     queueDriver: 'redis',
-    jobRegistryPath: '/tmp/sniptail/registry',
-    jobRegistryDriver: 'sqlite',
+    registryPath: '/tmp/sniptail/registry',
+    registryDriver: 'sqlite',
+    workerId: 'worker-a',
+    workerLabel: 'Worker A',
     repoCacheRoot: '/tmp/sniptail/repo-cache',
     jobRootCopyGlob: undefined,
     openAiKey: undefined,
@@ -66,7 +60,19 @@ vi.mock('@sniptail/core/config/config.js', () => ({
         },
       },
     },
+  },
+}));
+
+vi.mock('@sniptail/core/config/config.js', () => ({
+  loadCoreConfig: () => ({
+    repoAllowlistPath: '/tmp/sniptail/allowlist.json',
+    repoAllowlist: {},
+    jobWorkRoot: '/tmp/sniptail/job-root',
+    queueDriver: 'redis',
+    registryPath: '/tmp/sniptail/registry',
+    registryDriver: 'sqlite',
   }),
+  loadWorkerConfig: () => hoisted.workerConfig,
 }));
 
 vi.mock('@sniptail/core/repos/catalog.js', () => ({
@@ -800,6 +806,11 @@ describe('worker/pipeline helpers', () => {
 });
 
 describe('worker/pipeline runJob', () => {
+  beforeEach(() => {
+    hoisted.workerConfig.workerId = 'worker-a';
+    hoisted.workerConfig.workerLabel = 'Worker A';
+  });
+
   it('runs a mention job and posts the response', async () => {
     const registry = createRegistryMock();
     const loadJobRecordMock = registry.loadJobRecord;
@@ -855,19 +866,22 @@ describe('worker/pipeline runJob', () => {
         schemaVersion: 1,
         provider: 'slack',
         type: 'message.post',
-        payload: expect.objectContaining({
-          channelId: 'C1',
-          text: 'Hello there!',
-          threadId: '123.456',
-        }) as {
-          channelId: string;
-          text: string;
-          threadId?: string;
-          blocks?: unknown[];
-        },
       }),
     );
-    expect(updateJobRecordMock).toHaveBeenCalledWith('job-mention', { status: 'running' });
+    expect(asRecord(enqueueBotEventMock.mock.calls.at(-1)?.[1])?.payload).toMatchObject({
+      channelId: 'C1',
+      text: 'Hello there!',
+      threadId: '123.456',
+    });
+    const mentionRunningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
+    expect(mentionRunningPatch).toMatchObject({
+      status: 'running',
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+    });
+    expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-mention',
       expect.objectContaining({ status: 'ok', summary: 'Hello there!' }),
@@ -949,6 +963,49 @@ describe('worker/pipeline runJob', () => {
         forceLocalBranchUpdate: true,
       }),
     );
+  });
+
+  it('omits ownerWorkerLabel from the running patch when the worker has no label', async () => {
+    hoisted.workerConfig.workerLabel = undefined;
+
+    const registry = createRegistryMock();
+    const loadJobRecordMock = registry.loadJobRecord;
+    const updateJobRecordMock = registry.updateJobRecord;
+    const runAgentMock = vi.mocked(AGENT_DESCRIPTORS.codex.adapter.run);
+    const mkdirMock = vi.mocked(mkdir);
+    const writeFileMock = vi.mocked(writeFile);
+    const appendFileMock = vi.mocked(appendFile);
+
+    const job = {
+      jobId: 'job-no-label',
+      type: 'MENTION' as const,
+      repoKeys: [],
+      gitRef: 'main',
+      requestText: 'Hello',
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+    };
+
+    loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
+    updateJobRecordMock.mockResolvedValue({} as JobRecord);
+    runAgentMock.mockResolvedValue({
+      threadId: 'thread-no-label',
+      finalResponse: 'Hello there!',
+    });
+    mkdirMock.mockResolvedValue(undefined);
+    writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
+
+    await runJob(new BullMqBotEventSink({} as QueuePublisher<BotEvent>), job, registry);
+
+    const runningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
+    expect(runningPatch).toMatchObject({
+      status: 'running',
+      ownerWorkerId: 'worker-a',
+    });
+    expect(typeof runningPatch?.workerClaimedAt).toBe('string');
+    expect(runningPatch).not.toHaveProperty('ownerWorkerLabel');
   });
 
   it('runs an explore job and uploads report.md output', async () => {
@@ -1042,26 +1099,28 @@ describe('worker/pipeline runJob', () => {
       expect.objectContaining({
         provider: 'slack',
         type: 'file.upload',
-        payload: expect.objectContaining({
-          channelId: 'C1',
-          title: 'sniptail-job-explore-report.md',
-          threadId: '123.456',
-        }) as {
-          channelId: string;
-          title: string;
-          threadId?: string;
-          filePath?: string;
-          fileContent?: string;
-        },
       }),
     );
-    expect(updateJobRecordMock).toHaveBeenCalledWith('job-explore', { status: 'running' });
+    const exploreUploadEvent = enqueueBotEventMock.mock.calls
+      .map((call) => call[1])
+      .find((event) => asRecord(event)?.type === 'file.upload');
+    expect(asRecord(exploreUploadEvent)?.payload).toMatchObject({
+      channelId: 'C1',
+      title: 'sniptail-job-explore-report.md',
+      threadId: '123.456',
+    });
+    const exploreRunningPatch = updateJobRecordMock.mock.calls
+      .map((call) => asRecord(call[1]))
+      .find((patch) => patch?.status === 'running' && patch?.ownerWorkerId === 'worker-a');
+    expect(exploreRunningPatch).toMatchObject({
+      status: 'running',
+      ownerWorkerId: 'worker-a',
+      ownerWorkerLabel: 'Worker A',
+    });
+    expect(typeof exploreRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-explore',
-      expect.objectContaining({
-        status: 'ok',
-        summary: '# Explore report\n\nOption A\n',
-      }),
+      expect.objectContaining({ status: 'ok', summary: '# Explore report\n\nOption A\n' }),
     );
   });
 

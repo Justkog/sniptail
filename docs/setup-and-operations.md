@@ -86,7 +86,8 @@ For single-machine mode without Redis queueing, use:
 
 - `sniptail local` command
 - `QUEUE_DRIVER=inproc`
-- `JOB_REGISTRY_DB=sqlite` (durable local job registry)
+- `SNIPTAIL_REGISTRY_DB=sqlite` (durable local registry)
+- `SNIPTAIL_REGISTRY_PATH=...`
 
 For distributed mode, keep Redis queue transport:
 
@@ -95,7 +96,7 @@ For distributed mode, keep Redis queue transport:
 - set `REDIS_URL` in your `.env` (recommended), or
 - edit `redis_url` in both `sniptail.bot.toml` (`[bot].redis_url`) and `sniptail.worker.toml` (`[worker].redis_url`).
 
-Optional: if you want the job registry to use a different Redis than the queue, set `JOB_REGISTRY_REDIS_URL` (or set `[core].job_registry_redis_url` in TOML).
+Optional: if you want the registry to use a different Redis than the queue, set `SNIPTAIL_REGISTRY_REDIS_URL` (or set `[registry].redis_url` in TOML).
 
 If you want to keep the TOML files somewhere else (for example so upgrades don't overwrite them), pass `--config` or set:
 
@@ -166,7 +167,7 @@ This uses `scripts/slack-app-manifest.template.yaml` and writes `slack-app-manif
 
 #### 6) Seed the repository catalog
 
-The repo allowlist is stored in the configured job registry backend (sqlite/pg/redis). With the default Redis registry, this also means bot + worker can run on different machines without any shared filesystem.
+The repo allowlist is stored in the configured registry backend (sqlite/pg/redis). With the default Redis registry, this also means bot + worker can run on different machines without any shared filesystem.
 
 The quickest way to seed entries is with the CLI:
 
@@ -254,26 +255,43 @@ pnpm install
 cp .env.example .env
 ```
 
-#### 2) Configure queue transport + job registry backend
+#### 2) Configure queue transport + registry backend
 
 For queue transport:
 
 - use Redis (`[core].queue_driver = "redis"`) for multi-process/multi-machine setups, or
 - use in-process (`[core].queue_driver = "inproc"`) for single-machine `sniptail local` runs.
 
-For the job registry, you can:
+For the shared registry, you can:
 
-- use the same Redis instance (recommended, set `[core].job_registry_db = "redis"`), or
-- use sqlite for single-machine/local experiments (`[core].job_registry_db = "sqlite"`), or
-- use Postgres for shared state (`[core].job_registry_db = "pg"` + `JOB_REGISTRY_PG_URL`)
+- use the same Redis instance (recommended, set `[registry].db = "redis"`), or
+- use sqlite for single-machine/local experiments (`[registry].db = "sqlite"` plus `[registry].path`), or
+- use Postgres for shared state (`[registry].db = "pg"` + `SNIPTAIL_REGISTRY_PG_URL`)
+
+For multi-worker agent-command deployments using Redis queues:
+
+- every bot and worker must share the same registry backend and namespace
+- Postgres or Redis should be used for the registry
+- sqlite is only suitable for local or in-process runs and is not valid for Redis multi-worker agent routing
 
 #### 3) Postgres migrations (optional)
 
-If you use Postgres for the job registry, apply migrations:
+If you use Postgres for the registry, apply migrations:
 
 ```bash
 pnpm run db:migrate:pg
 ```
+
+#### 3a) Multi-worker agent-command checklist
+
+If you want live `/sniptail-agent` sessions to work across multiple workers:
+
+1. Set `[core].queue_driver = "redis"` for all participating bots and workers.
+2. Configure a shared `[registry]` backend and namespace for the same deployment.
+3. Give every worker a stable `[worker].id`, plus `[worker].label` if you want friendlier operator-facing names.
+4. Configure `[agent].enabled = true` with at least one local workspace and one local profile on every worker that should accept agent sessions.
+5. Put `default_workspace` and `default_agent_profile` under bot `[agent_command]`, not worker `[agent]`.
+6. Restart bots and workers so capability aggregation and mailbox routing rebuild from the shared registry.
 
 #### 4) Run in dev
 
@@ -315,6 +333,8 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 
 - Repos are mirrored into `[worker].repo_cache_root` and checked out as worktrees under `[core].job_work_root` from `sniptail.worker.toml`.
 - Worker parallelism is configurable per queue via `[worker].job_concurrency`, `[worker].bootstrap_concurrency`, and `[worker].worker_event_concurrency` (or env overrides `JOB_CONCURRENCY`, `BOOTSTRAP_CONCURRENCY`, `WORKER_EVENT_CONCURRENCY`), each defaulting to `2`.
+- Set `[worker].consume_shared_worker_events = false` on mailbox-focused workers that should skip the shared `sniptail-worker-events` queue and only handle jobs, bootstrap requests, and explicitly targeted mailbox events. Leave it `true` on at least one worker if you rely on generic shared worker events such as repo catalog mutations, usage checks, or job cleanup actions.
+- On workers with mailbox-enabled agent mode, live agent-session mailbox work is prioritized over shared worker events. Shared worker-event consumption is paused while mailbox work is pending, so `worker_event_concurrency` is effectively constrained for that worker path.
 - Worktree bootstrap is optional and configurable. Set `[worker].worktree_setup_command` (or `WORKTREE_SETUP_COMMAND`) to run a custom command in each worktree (for example `pnpm install`, `npm ci`, `poetry install`, etc.).
 - Repos can define a local setup contract script at `.sniptail/setup` (no extension). If present, it runs in the repo worktree after `worktree_setup_command`.
 - Repos can define a local check contract script at `.sniptail/check` (no extension). If present, it runs during validation before configured check aliases.
@@ -324,6 +344,23 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 - Only repos listed in the DB-backed repo catalog are selectable in Slack/Discord.
 - Run action availability in bot UIs is sourced from catalog metadata (`providerData.sniptail.run.actionIds`) synced on worker startup or via `sniptail repos sync-run-actions`.
 - GitHub repos require `GITHUB_API_TOKEN`; GitLab repos require `projectId` plus `GITLAB_TOKEN`.
+
+## Managed job resume routing
+
+- Fresh managed jobs use the shared `sniptail-jobs` queue so any available worker can claim them.
+- Resumed managed jobs route to the worker that owns the source job, using `sniptail-worker-jobs:<workerId>`.
+- Workers record job ownership when they start running a job. Resume routing uses that owner because job work directories, copied artifacts, repo worktrees, and provider session files are worker-local.
+- If the source job owner is unavailable, the resume request is rejected before a new job record is created. The source job keeps its stale-owner state until the worker returns or an operator clears ownership.
+- Targeted managed-job mailbox work is prioritized over shared managed jobs on the same worker. While targeted jobs are pending, shared `sniptail-jobs` consumption is paused for that worker and both paths run through the same local managed-job lane.
+- Multi-machine deployments that need reliable resume routing must use a shared registry backend such as Postgres or Redis. SQLite is suitable for local or single-machine operation, but it is not shared across machines.
+
+## Agent command operations
+
+- Worker capabilities are read from the shared registry, not from transient bot events.
+- New agent sessions are placed on a selected worker mailbox queue and then stay owned by that worker.
+- Follow-ups, stop/steer controls, permission decisions, and question answers are routed back to the owner worker mailbox.
+- If the owner worker becomes stale, the session remains active with a stale-owner condition until the worker returns or an operator clears the session.
+- Startup diagnostics for mailbox-enabled workers include worker ID, queue driver, registry driver, registry namespace, mailbox queue name, and active session count.
 
 ## Debug logging
 

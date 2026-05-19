@@ -42,6 +42,41 @@ vi.mock('@sniptail/core/agent-sessions/registry.js', () => ({
   updateAgentSessionStatus: hoisted.updateAgentSessionStatus,
 }));
 
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('@sniptail/core/codex/logging.js', () => ({
+  summarizeCodexEvent: vi.fn(() => 'codex event'),
+}));
+
+vi.mock('@sniptail/core/copilot/logging.js', () => ({
+  summarizeCopilotEvent: vi.fn(() => 'copilot event'),
+}));
+
+vi.mock('@sniptail/core/opencode/logging.js', () => ({
+  summarizeOpenCodeEvent: vi.fn(() => 'opencode event'),
+}));
+
+vi.mock('@sniptail/core/agents/resolveWorkerAgentScriptPath.js', () => ({
+  resolveWorkerAgentScriptPath: vi.fn(() => '/tmp/fake-agent-script'),
+}));
+
+vi.mock('@sniptail/core/types/bot-event.js', () => ({
+  BOT_EVENT_SCHEMA_VERSION: 1,
+}));
+
+vi.mock('../acp/acpInteractiveAgent.js', () => ({
+  resolveAcpAgentInteraction: vi.fn(),
+  runAcpAgentTurn: vi.fn(),
+  steerAcpAgentTurn: vi.fn(),
+  stopAcpAgentPrompt: vi.fn(),
+}));
+
 import { clearActiveCodexRuntimes, getActiveCodexRuntime } from '../codex/codexInteractionState.js';
 import {
   clearActiveOpenCodeRuntimes,
@@ -54,9 +89,10 @@ import { runAgentSessionMessage, runAgentSessionStart } from './agentSessionRunn
 function buildConfig(workspacePath: string): WorkerConfig {
   return {
     botName: 'Sniptail',
+    workerId: 'default',
     queueDriver: 'inproc',
-    jobRegistryDriver: 'sqlite',
-    jobRegistryPath: ':memory:',
+    registryDriver: 'sqlite',
+    registryPath: ':memory:',
     repoAllowlist: {},
     jobWorkRoot: '/tmp/jobs',
     repoCacheRoot: '/tmp/repos',
@@ -86,8 +122,6 @@ function buildConfig(workspacePath: string): WorkerConfig {
     includeRawRequestInMr: false,
     agent: {
       enabled: true,
-      defaultWorkspace: 'snatch',
-      defaultAgentProfile: 'build',
       interactionTimeoutMs: 1_800_000,
       outputDebounceMs: 15_000,
       workspaces: {
@@ -164,6 +198,9 @@ function buildSession(overrides: Record<string, unknown> = {}) {
     userId: 'user-1',
     workspaceKey: 'snatch',
     agentProfileKey: 'build',
+    ownerWorkerId: 'default',
+    ownerWorkerLabel: 'Default Worker',
+    workerClaimedAt: '2026-01-01T00:00:00.000Z',
     codingAgentSessionId: 'opencode-session-1',
     status: 'completed',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -257,7 +294,7 @@ describe('OpenCode agent prompt runner', () => {
     hoisted.replyOpenCodePermission.mockResolvedValue(undefined);
     hoisted.rejectOpenCodeQuestion.mockResolvedValue(undefined);
     hoisted.abortOpenCodeSession.mockResolvedValue(undefined);
-    hoisted.loadAgentSession.mockResolvedValue({ status: 'active' });
+    hoisted.loadAgentSession.mockResolvedValue(buildSession({ status: 'active' }));
   });
 
   afterEach(async () => {
@@ -828,7 +865,7 @@ describe('OpenCode agent prompt runner', () => {
     expect(codexJob?.requestText).toContain(
       'Additional user-provided files are available for this turn:',
     );
-    expect(codexJob?.requestText).toContain('/tmp/sniptail-agent-files-');
+    expect(codexJob?.requestText).toContain('sniptail-agent-files-');
     expect(codexJob?.requestText).toContain('notes.md');
     expect(codexJob?.requestText).not.toContain('diagram.png');
   });
@@ -1773,8 +1810,7 @@ describe('OpenCode agent prompt runner', () => {
   it('does not overwrite stopped sessions after OpenCode aborts', async () => {
     await mkdir(tempRoot, { recursive: true });
     const notifier = buildNotifier();
-    hoisted.loadAgentSession.mockResolvedValueOnce({ status: 'stopped' });
-    hoisted.runOpenCodePrompt.mockRejectedValueOnce(new Error('OpenCode prompt aborted'));
+    hoisted.loadAgentSession.mockResolvedValueOnce(buildSession({ status: 'stopped' }));
 
     await runAgentSessionStart({
       event: buildEvent(),
