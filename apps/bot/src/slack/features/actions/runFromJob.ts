@@ -90,6 +90,7 @@ export function registerRunFromJobAction({
           channelId,
           userId,
           threadId: threadId ?? undefined,
+          resumeFromJobId: jobId,
         }),
         slackIds.actions.runActionSelect,
         repoKeys,

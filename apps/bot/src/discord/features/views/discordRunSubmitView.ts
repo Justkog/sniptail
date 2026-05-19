@@ -89,6 +89,7 @@ export async function handleRunModalSubmit(
     const nextSelection = {
       repoKeys,
       actionId,
+      ...(selection?.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
       requestedAt: Date.now(),
       runStepIndex: stepIndex + 1,
       collectedParams,
@@ -125,6 +126,7 @@ export async function handleRunModalSubmit(
       requestText,
       channel: buildInteractionChannelContext(interaction),
       ...(threadContext ? { threadContext } : {}),
+      ...(selection?.resumeFromJobId ? { resumeFromJobId: selection.resumeFromJobId } : {}),
       run: {
         actionId,
         params: toRunParamPayload(normalized.normalized),

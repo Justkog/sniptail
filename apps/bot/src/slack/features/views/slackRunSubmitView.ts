@@ -22,6 +22,7 @@ type SlackRunViewMetadata = {
   channelId: string;
   userId: string;
   threadId?: string;
+  resumeFromJobId?: string;
   repoKeys?: string[];
   actionId?: string;
   gitRef?: string;
@@ -130,6 +131,7 @@ export function registerRunSubmitView({
         channelId: metadata?.channelId ?? body.user.id,
         userId: metadata?.userId ?? body.user.id,
         ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        ...(metadata?.resumeFromJobId ? { resumeFromJobId: metadata.resumeFromJobId } : {}),
         repoKeys,
         gitRef,
         collectedParams,
@@ -195,6 +197,7 @@ export function registerRunSubmitView({
         channelId: metadata?.channelId ?? body.user.id,
         userId: metadata?.userId ?? body.user.id,
         ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        ...(metadata?.resumeFromJobId ? { resumeFromJobId: metadata.resumeFromJobId } : {}),
         repoKeys,
         actionId,
         gitRef,
@@ -265,6 +268,7 @@ export function registerRunSubmitView({
         channelId: metadata?.channelId ?? body.user.id,
         userId: metadata?.userId ?? body.user.id,
         ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
+        ...(metadata?.resumeFromJobId ? { resumeFromJobId: metadata.resumeFromJobId } : {}),
         repoKeys,
         actionId,
         gitRef,
@@ -320,6 +324,7 @@ export function registerRunSubmitView({
           ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
         },
         ...(threadContext ? { threadContext } : {}),
+        ...(metadata?.resumeFromJobId ? { resumeFromJobId: metadata.resumeFromJobId } : {}),
         run: {
           actionId,
           params: normalizedParams.normalized,

@@ -15,6 +15,7 @@ import { buildRunModal } from '../modals.js';
 
 export type RunSelectionState = {
   repoKeys: string[];
+  resumeFromJobId?: string;
   actionId: string;
   runStepIndex: number;
   collectedParams: Record<string, unknown>;
