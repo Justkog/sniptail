@@ -2,7 +2,7 @@ import type { ConnectionOptions } from 'bullmq';
 import type { BotEvent } from '../types/bot-event.js';
 import type { JobSpec } from '../types/job.js';
 import type { QueueTransportRuntime } from './queueTransportTypes.js';
-import type { WorkerEvent } from '../types/worker-event.js';
+import type { CoreWorkerEvent, WorkerEvent } from '../types/worker-event.js';
 import type { QueuePublisher } from './queueTransportTypes.js';
 
 export const jobQueueName = 'sniptail-jobs';
@@ -47,6 +47,18 @@ export async function enqueueBotEvent(queue: QueuePublisher<BotEvent>, event: Bo
 
 export async function enqueueWorkerEvent(queue: QueuePublisher<WorkerEvent>, event: WorkerEvent) {
   return queue.add(event.type, event, {
+    removeOnComplete: 200,
+    removeOnFail: 200,
+  });
+}
+
+export async function enqueueBootstrapWorkerEvent(
+  queue: QueuePublisher<WorkerEvent>,
+  event: CoreWorkerEvent<'repos.bootstrap'>,
+) {
+  const requestId = event.requestId ?? event.payload.requestId;
+  return queue.add(event.type, event, {
+    jobId: requestId,
     removeOnComplete: 200,
     removeOnFail: 200,
   });

@@ -1,6 +1,6 @@
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueBootstrapWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
@@ -104,6 +104,7 @@ export function registerBootstrapSubmitView({
       };
       const event = {
         schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+        requestId: bootstrapRequest.requestId,
         type: 'repos.bootstrap' as const,
         payload: bootstrapRequest,
       };
@@ -133,7 +134,7 @@ export function registerBootstrapSubmitView({
         return;
       }
 
-      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
+      await enqueueBootstrapWorkerEvent(queueRuntime.queues.workerEvents, event);
 
       await postMessage(app, {
         channel: responseChannel,

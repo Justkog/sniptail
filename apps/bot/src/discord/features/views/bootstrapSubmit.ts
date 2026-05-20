@@ -2,7 +2,7 @@ import type { ModalSubmitInteraction } from 'discord.js';
 import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
-import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
+import { enqueueBootstrapWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
 import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
@@ -115,6 +115,6 @@ export async function handleBootstrapModalSubmit(
   }
 
   bootstrapExtrasByUser.delete(interaction.user.id);
-  await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
+  await enqueueBootstrapWorkerEvent(queueRuntime.queues.workerEvents, event);
   await interaction.editReply(`Queued bootstrap for ${repoName}. I'll post updates here.`);
 }
