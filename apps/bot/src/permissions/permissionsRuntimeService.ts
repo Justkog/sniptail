@@ -5,11 +5,7 @@ import {
 } from '@sniptail/core/agent-sessions/registry.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
-import {
-  enqueueBootstrap,
-  enqueueWorkerEvent,
-  enqueueWorkerMailboxEvent,
-} from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerEvent, enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import {
   approveIfPending,
   assignApprovalContextIfPending,
@@ -355,9 +351,6 @@ export class PermissionsRuntimeService {
         }
         return;
       }
-      case 'enqueueBootstrap':
-        await enqueueBootstrap(this.#queueRuntime.queues.bootstrap, operation.request);
-        return;
       case 'enqueueWorkerEvent':
         if (operation.targetWorkerId) {
           if (isOwnerRoutedAgentEvent(operation.event)) {

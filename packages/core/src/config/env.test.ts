@@ -1450,7 +1450,6 @@ describe('config loaders', () => {
 
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(2);
-    expect(config.bootstrapConcurrency).toBe(2);
     expect(config.consumeSharedWorkerEvents).toBe(true);
     expect(config.workerEventConcurrency).toBe(2);
   });
@@ -1473,7 +1472,6 @@ describe('config loaders', () => {
       'redis_url = "redis://localhost:6379/0"',
       'repo_cache_root = "/tmp/sniptail/repos"',
       'job_concurrency = 4',
-      'bootstrap_concurrency = 3',
       'consume_shared_worker_events = false',
       'worker_event_concurrency = 5',
       'job_root_copy_glob = ""',
@@ -1491,7 +1489,6 @@ describe('config loaders', () => {
 
     const config = loadWorkerConfig();
     expect(config.jobConcurrency).toBe(4);
-    expect(config.bootstrapConcurrency).toBe(3);
     expect(config.consumeSharedWorkerEvents).toBe(false);
     expect(config.workerEventConcurrency).toBe(5);
   });

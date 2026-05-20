@@ -7,6 +7,7 @@ import type {
   ApprovalResolution,
   ApprovalTransitionResult,
 } from './permissionsApprovalTypes.js';
+import type { WorkerEvent } from '../types/worker-event.js';
 
 const APPROVAL_KEY_PREFIX = 'approval:';
 
@@ -196,6 +197,75 @@ export async function assignApprovalContextIfPending(
 
   const requestMessageId =
     typeof contextPatch.requestMessageId === 'string' ? contextPatch.requestMessageId : undefined;
+  const patchBootstrapWorkerEventRouting = (event: WorkerEvent): WorkerEvent => {
+    if (event.type !== 'repos.bootstrap') {
+      return event;
+    }
+    return {
+      ...event,
+      payload: {
+        ...event.payload,
+        channel: {
+          ...event.payload.channel,
+          ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
+          ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+          ...(requestMessageId ? { requestMessageId } : {}),
+        },
+      },
+    };
+  };
+  const patchDeferredOperationRouting = (
+    operation: ApprovalRequest['operation'],
+  ): ApprovalRequest['operation'] => {
+    switch (operation.kind) {
+      case 'enqueueJob':
+        return {
+          ...operation,
+          job: {
+            ...operation.job,
+            channel: {
+              ...operation.job.channel,
+              ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
+              ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
+              ...(requestMessageId ? { requestMessageId } : {}),
+            },
+          },
+        };
+      case 'enqueueWorkerEvent':
+        return {
+          ...operation,
+          event: patchBootstrapWorkerEventRouting(operation.event),
+        };
+      default:
+        return operation;
+    }
+  };
+  const isDeferredOperationRoutingUnchanged = (
+    operation: ApprovalRequest['operation'],
+  ): boolean => {
+    switch (operation.kind) {
+      case 'enqueueJob':
+        return (
+          (!contextPatch.channelId || operation.job.channel.channelId === contextPatch.channelId) &&
+          (!contextPatch.threadId || operation.job.channel.threadId === contextPatch.threadId) &&
+          (!requestMessageId || operation.job.channel.requestMessageId === requestMessageId)
+        );
+      case 'enqueueWorkerEvent':
+        if (operation.event.type !== 'repos.bootstrap') {
+          return true;
+        }
+        return (
+          (!contextPatch.channelId ||
+            operation.event.payload.channel.channelId === contextPatch.channelId) &&
+          (!contextPatch.threadId ||
+            operation.event.payload.channel.threadId === contextPatch.threadId) &&
+          (!requestMessageId ||
+            operation.event.payload.channel.requestMessageId === requestMessageId)
+        );
+      default:
+        return true;
+    }
+  };
 
   const nextContext: ApprovalRequestContext = {
     ...request.context,
@@ -205,33 +275,7 @@ export async function assignApprovalContextIfPending(
   };
   const updateOperationRouting = options?.updateOperationRouting ?? true;
   const nextOperation = updateOperationRouting
-    ? request.operation.kind === 'enqueueJob'
-      ? {
-          ...request.operation,
-          job: {
-            ...request.operation.job,
-            channel: {
-              ...request.operation.job.channel,
-              ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
-              ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
-              ...(requestMessageId ? { requestMessageId } : {}),
-            },
-          },
-        }
-      : request.operation.kind === 'enqueueBootstrap'
-        ? {
-            ...request.operation,
-            request: {
-              ...request.operation.request,
-              channel: {
-                ...request.operation.request.channel,
-                ...(contextPatch.channelId ? { channelId: contextPatch.channelId } : {}),
-                ...(contextPatch.threadId ? { threadId: contextPatch.threadId } : {}),
-                ...(requestMessageId ? { requestMessageId } : {}),
-              },
-            },
-          }
-        : request.operation
+    ? patchDeferredOperationRouting(request.operation)
     : request.operation;
 
   const contextUnchanged =
@@ -239,20 +283,7 @@ export async function assignApprovalContextIfPending(
     nextContext.threadId === request.context.threadId &&
     nextContext.requestMessageId === request.context.requestMessageId;
   const operationRoutingUnchanged = updateOperationRouting
-    ? request.operation.kind === 'enqueueJob'
-      ? (!contextPatch.channelId ||
-          request.operation.job.channel.channelId === contextPatch.channelId) &&
-        (!contextPatch.threadId ||
-          request.operation.job.channel.threadId === contextPatch.threadId) &&
-        (!requestMessageId || request.operation.job.channel.requestMessageId === requestMessageId)
-      : request.operation.kind === 'enqueueBootstrap'
-        ? (!contextPatch.channelId ||
-            request.operation.request.channel.channelId === contextPatch.channelId) &&
-          (!contextPatch.threadId ||
-            request.operation.request.channel.threadId === contextPatch.threadId) &&
-          (!requestMessageId ||
-            request.operation.request.channel.requestMessageId === requestMessageId)
-        : true
+    ? isDeferredOperationRoutingUnchanged(request.operation)
     : true;
   if (contextUnchanged && operationRoutingUnchanged) {
     return makeTransitionResult(request, false, 'unchanged');

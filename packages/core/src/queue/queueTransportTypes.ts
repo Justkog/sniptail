@@ -1,6 +1,5 @@
 import type { QueueDriver } from '../config/types.js';
 import type { BotEvent } from '../types/bot-event.js';
-import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 import type { WorkerEvent } from '../types/worker-event.js';
 
@@ -26,11 +25,10 @@ export interface QueueConsumerHandle {
   resume?(): Promise<void>;
 }
 
-export type QueueChannel = 'jobs' | 'bootstrap' | 'worker-events' | 'bot-events';
+export type QueueChannel = 'jobs' | 'worker-events' | 'bot-events';
 
 export type QueueChannelPayloadMap = {
   jobs: JobSpec;
-  bootstrap: BootstrapRequest;
   'worker-events': WorkerEvent;
   'bot-events': BotEvent;
 };
@@ -60,12 +58,10 @@ export interface QueueTransportRuntime {
   driver: QueueDriver;
   queues: {
     jobs: QueuePublisher<JobSpec>;
-    bootstrap: QueuePublisher<BootstrapRequest>;
     workerEvents: QueuePublisher<WorkerEvent>;
     botEvents: QueuePublisher<BotEvent>;
   };
   consumeJobs(options: QueueConsumerOptions<JobSpec>): QueueConsumerHandle;
-  consumeBootstrap(options: QueueConsumerOptions<BootstrapRequest>): QueueConsumerHandle;
   consumeWorkerEvents(options: QueueConsumerOptions<WorkerEvent>): QueueConsumerHandle;
   publishWorkerEventToMailbox(
     workerId: string,

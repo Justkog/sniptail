@@ -1,7 +1,8 @@
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { logger } from '@sniptail/core/logger.js';
-import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
+import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
 import { createJobId } from '../../../lib/jobs.js';
@@ -101,6 +102,11 @@ export function registerBootstrapSubmitView({
           userId: responseUser,
         },
       };
+      const event = {
+        schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+        type: 'repos.bootstrap' as const,
+        payload: bootstrapRequest,
+      };
 
       const authorized = await authorizeSlackOperationAndRespond({
         permissions,
@@ -109,8 +115,8 @@ export function registerBootstrapSubmitView({
         action: 'jobs.bootstrap',
         summary: `Queue bootstrap request ${bootstrapRequest.requestId} for ${repoName}`,
         operation: {
-          kind: 'enqueueBootstrap',
-          request: bootstrapRequest,
+          kind: 'enqueueWorkerEvent',
+          event,
         },
         actor: {
           userId: responseUser,
@@ -127,7 +133,7 @@ export function registerBootstrapSubmitView({
         return;
       }
 
-      await enqueueBootstrap(queueRuntime.queues.bootstrap, bootstrapRequest);
+      await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
 
       await postMessage(app, {
         channel: responseChannel,

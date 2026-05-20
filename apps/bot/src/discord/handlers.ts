@@ -902,12 +902,7 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
 
     if (interaction.isModalSubmit() && interaction.customId === bootstrapModalCustomId) {
       try {
-        await handleBootstrapModalSubmit(
-          interaction,
-          config,
-          queueRuntime.queues.bootstrap,
-          permissions,
-        );
+        await handleBootstrapModalSubmit(interaction, config, queueRuntime, permissions);
       } catch (err) {
         logger.error({ err }, 'Discord bootstrap modal submit failed');
         await replyToInteractionError(interaction, 'Something went wrong handling that request.');

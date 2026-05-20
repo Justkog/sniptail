@@ -1,6 +1,5 @@
 import type { ConnectionOptions } from 'bullmq';
 import type { BotEvent } from '../types/bot-event.js';
-import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 import type { QueueTransportRuntime } from './queueTransportTypes.js';
 import type { WorkerEvent } from '../types/worker-event.js';
@@ -8,7 +7,6 @@ import type { QueuePublisher } from './queueTransportTypes.js';
 
 export const jobQueueName = 'sniptail-jobs';
 export const botEventQueueName = 'sniptail-bot-events';
-export const bootstrapQueueName = 'sniptail-bootstrap';
 export const workerEventQueueName = 'sniptail-worker-events';
 const WORKER_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
@@ -35,17 +33,6 @@ export function workerJobMailboxQueueName(workerId: string): string {
 export async function enqueueJob(queue: QueuePublisher<JobSpec>, job: JobSpec) {
   return queue.add(job.type, job, {
     jobId: job.jobId,
-    removeOnComplete: 100,
-    removeOnFail: 100,
-  });
-}
-
-export async function enqueueBootstrap(
-  queue: QueuePublisher<BootstrapRequest>,
-  request: BootstrapRequest,
-) {
-  return queue.add(bootstrapQueueName, request, {
-    jobId: request.requestId,
     removeOnComplete: 100,
     removeOnFail: 100,
   });

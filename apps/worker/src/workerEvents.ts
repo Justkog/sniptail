@@ -12,6 +12,7 @@ import type { BotEventSink } from './channels/botEventSink.js';
 import { createNotifier } from './channels/createNotifier.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
 import type { JobRegistry } from './job/jobRegistry.js';
+import { runBootstrap } from './bootstrap.js';
 import {
   addRepoCatalogEntryFromInput,
   removeRepoCatalogEntryFromInput,
@@ -44,6 +45,10 @@ export async function handleWorkerEvent(
 ): Promise<void> {
   const notifier = createNotifier(botEvents);
   switch (event.type) {
+    case 'repos.bootstrap': {
+      await runBootstrap(botEvents, event.payload);
+      return;
+    }
     case 'jobs.clear': {
       const { jobId, ttlMs } = event.payload;
       await registry.markJobForDeletion(jobId, ttlMs).catch((err) => {

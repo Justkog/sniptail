@@ -1,9 +1,10 @@
 import type { ModalSubmitInteraction } from 'discord.js';
-import type { QueuePublisher } from '@sniptail/core/queue/queueTransportTypes.js';
+import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { listBootstrapProviderIds } from '@sniptail/core/repos/providers.js';
-import { enqueueBootstrap } from '@sniptail/core/queue/queue.js';
+import { enqueueWorkerEvent } from '@sniptail/core/queue/queue.js';
 import type { BootstrapRequest } from '@sniptail/core/types/bootstrap.js';
+import { WORKER_EVENT_SCHEMA_VERSION } from '@sniptail/core/types/worker-event.js';
 import { sanitizeRepoKey } from '@sniptail/core/git/keys.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { createJobId } from '../../../lib/jobs.js';
@@ -16,7 +17,7 @@ import type { PermissionsRuntimeService } from '../../../permissions/permissions
 export async function handleBootstrapModalSubmit(
   interaction: ModalSubmitInteraction,
   config: BotConfig,
-  queue: QueuePublisher<BootstrapRequest>,
+  queueRuntime: Pick<QueueTransportRuntime, 'queues'>,
   permissions: PermissionsRuntimeService,
 ) {
   await refreshRepoAllowlist(config);
@@ -78,6 +79,11 @@ export async function handleBootstrapModalSubmit(
     ...(service === 'local' && extras.localPath ? { localPath: extras.localPath } : {}),
     channel: buildInteractionChannelContext(interaction),
   };
+  const event = {
+    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+    type: 'repos.bootstrap' as const,
+    payload: request,
+  };
 
   const authorized = await authorizeDiscordOperationAndRespond({
     permissions,
@@ -85,8 +91,8 @@ export async function handleBootstrapModalSubmit(
     action: 'jobs.bootstrap',
     summary: `Queue bootstrap request ${request.requestId} for ${repoName}`,
     operation: {
-      kind: 'enqueueBootstrap',
-      request,
+      kind: 'enqueueWorkerEvent',
+      event,
     },
     actor: {
       userId: interaction.user.id,
@@ -108,6 +114,6 @@ export async function handleBootstrapModalSubmit(
   }
 
   bootstrapExtrasByUser.delete(interaction.user.id);
-  await enqueueBootstrap(queue, request);
+  await enqueueWorkerEvent(queueRuntime.queues.workerEvents, event);
   await interaction.editReply(`Queued bootstrap for ${repoName}. I'll post updates here.`);
 }

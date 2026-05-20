@@ -78,7 +78,6 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'JOB_ROOT_COPY_GLOB',
     'INCLUDE_RAW_REQUEST_IN_MR',
     'JOB_CONCURRENCY',
-    'BOOTSTRAP_CONCURRENCY',
     'WORKER_EVENT_CONCURRENCY',
     'AGENT_COMMAND_ENABLED',
     'AGENT_COMMAND_DEFAULT_WORKSPACE',

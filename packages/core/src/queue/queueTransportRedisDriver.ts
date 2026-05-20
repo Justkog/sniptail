@@ -3,7 +3,6 @@ import type { Job } from 'bullmq';
 import {
   assertValidWorkerId,
   botEventQueueName,
-  bootstrapQueueName,
   createConnectionOptions,
   jobQueueName,
   workerJobMailboxQueueName,
@@ -18,7 +17,6 @@ import type {
   QueueTransportRuntime,
 } from './queueTransportTypes.js';
 import type { BotEvent } from '../types/bot-event.js';
-import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 import type { WorkerEvent } from '../types/worker-event.js';
 
@@ -92,9 +90,6 @@ function createConsumer<T>(
 export function createRedisQueueTransportRuntime(redisUrl: string): QueueTransportRuntime {
   const connection = createConnectionOptions(redisUrl);
   const jobQueue = new Queue<JobSpec, unknown, string>(jobQueueName, { connection });
-  const bootstrapQueue = new Queue<BootstrapRequest, unknown, string>(bootstrapQueueName, {
-    connection,
-  });
   const workerEventQueue = new Queue<WorkerEvent, unknown, string>(workerEventQueueName, {
     connection,
   });
@@ -153,17 +148,11 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
     driver: 'redis',
     queues: {
       jobs: createPublisher<JobSpec>(jobQueue),
-      bootstrap: createPublisher<BootstrapRequest>(bootstrapQueue),
       workerEvents: createPublisher<WorkerEvent>(workerEventQueue),
       botEvents: createPublisher<BotEvent>(botEventQueue),
     },
     consumeJobs(options) {
       const consumer = createConsumer<JobSpec>(jobQueueName, redisUrl, options);
-      consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
-      return consumer;
-    },
-    consumeBootstrap(options) {
-      const consumer = createConsumer<BootstrapRequest>(bootstrapQueueName, redisUrl, options);
       consumers.push(consumer as QueueConsumerHandle & { worker: Worker<unknown> });
       return consumer;
     },
@@ -259,7 +248,6 @@ export function createRedisQueueTransportRuntime(redisUrl: string): QueueTranspo
       }
       await Promise.all([
         jobQueue.close(),
-        bootstrapQueue.close(),
         workerEventQueue.close(),
         botEventQueue.close(),
         ...[...workerMailboxQueues.values()].map((queue) => queue.close()),

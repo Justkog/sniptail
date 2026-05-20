@@ -3,7 +3,6 @@ import type { ApprovalRequest } from '@sniptail/core/permissions/permissionsAppr
 import { PermissionsRuntimeService } from './permissionsRuntimeService.js';
 
 const saveJobQueuedMock = vi.hoisted(() => vi.fn());
-const enqueueBootstrapMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerEventMock = vi.hoisted(() => vi.fn());
 const enqueueWorkerMailboxEventMock = vi.hoisted(() => vi.fn());
 const saveAndEnqueueManagedJobMock = vi.hoisted(() => vi.fn());
@@ -27,7 +26,6 @@ vi.mock('@sniptail/core/jobs/registry.js', () => ({
 }));
 
 vi.mock('@sniptail/core/queue/queue.js', () => ({
-  enqueueBootstrap: enqueueBootstrapMock,
   enqueueWorkerEvent: enqueueWorkerEventMock,
   enqueueWorkerMailboxEvent: enqueueWorkerMailboxEventMock,
 }));
@@ -102,11 +100,10 @@ function createService() {
         approvalTtlSeconds: 86_400,
       },
     } as never,
-    bootstrapQueue: { add: vi.fn() } as never,
-    workerEventQueue: { add: vi.fn() } as never,
     queueRuntime: {
       queues: {
         jobs: { add: vi.fn() },
+        workerEvents: { add: vi.fn() },
       },
       publishWorkerEventToMailbox: vi.fn(),
       publishJobToWorkerMailbox: vi.fn(),
@@ -219,7 +216,6 @@ describe('approval execution persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     saveJobQueuedMock.mockResolvedValue(undefined);
-    enqueueBootstrapMock.mockResolvedValue(undefined);
     enqueueWorkerEventMock.mockResolvedValue(undefined);
     enqueueWorkerMailboxEventMock.mockResolvedValue(undefined);
     saveAndEnqueueManagedJobMock.mockResolvedValue({
@@ -513,7 +509,7 @@ describe('approval execution persistence', () => {
     expect(cancelledResult.status).toBe('cancelled');
 
     expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
-    expect(enqueueBootstrapMock).not.toHaveBeenCalled();
+    expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
     expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
