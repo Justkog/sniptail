@@ -81,6 +81,7 @@ export async function handleBootstrapModalSubmit(
   };
   const event = {
     schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+    requestId: request.requestId,
     type: 'repos.bootstrap' as const,
     payload: request,
   };
