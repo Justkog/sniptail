@@ -510,7 +510,6 @@ describe('approval execution persistence', () => {
 
     expect(saveAndEnqueueManagedJobMock).not.toHaveBeenCalled();
     expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
-    expect(enqueueWorkerEventMock).not.toHaveBeenCalled();
     expect(enqueueWorkerMailboxEventMock).not.toHaveBeenCalled();
   });
 
