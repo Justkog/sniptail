@@ -6,7 +6,7 @@ import {
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import { logger } from '@sniptail/core/logger.js';
 import {
-  enqueueBootstrap,
+  enqueueBootstrapWorkerEvent,
   enqueueWorkerEvent,
   enqueueWorkerMailboxEvent,
 } from '@sniptail/core/queue/queue.js';
@@ -355,9 +355,6 @@ export class PermissionsRuntimeService {
         }
         return;
       }
-      case 'enqueueBootstrap':
-        await enqueueBootstrap(this.#queueRuntime.queues.bootstrap, operation.request);
-        return;
       case 'enqueueWorkerEvent':
         if (operation.targetWorkerId) {
           if (isOwnerRoutedAgentEvent(operation.event)) {
@@ -382,7 +379,11 @@ export class PermissionsRuntimeService {
             );
           }
         } else {
-          await enqueueWorkerEvent(this.#queueRuntime.queues.workerEvents, operation.event);
+          if (operation.event.type === 'repos.bootstrap') {
+            await enqueueBootstrapWorkerEvent(this.#queueRuntime.queues.workerEvents, operation.event);
+          } else {
+            await enqueueWorkerEvent(this.#queueRuntime.queues.workerEvents, operation.event);
+          }
         }
         if (operation.event.type === 'agent.session.start') {
           await updateAgentSessionStatus(operation.event.payload.sessionId, 'active');

@@ -143,7 +143,6 @@ export type WorkerConfig = CoreConfig & {
   openAiKey?: string;
   primaryAgent: AgentId;
   jobConcurrency: number;
-  bootstrapConcurrency: number;
   consumeSharedWorkerEvents: boolean;
   workerEventConcurrency: number;
   localRepoRoot?: string;

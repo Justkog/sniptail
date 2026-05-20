@@ -1,4 +1,3 @@
-import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { ChannelProvider } from '../types/channel.js';
 import type { JobSpec } from '../types/job.js';
 import type { WorkerEvent } from '../types/worker-event.js';
@@ -9,10 +8,6 @@ export type DeferredPermissionOperation =
   | {
       kind: 'enqueueJob';
       job: JobSpec;
-    }
-  | {
-      kind: 'enqueueBootstrap';
-      request: BootstrapRequest;
     }
   | {
       kind: 'enqueueWorkerEvent';

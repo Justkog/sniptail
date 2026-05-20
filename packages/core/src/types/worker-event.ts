@@ -1,5 +1,6 @@
 import type { ChannelProvider } from './channel.js';
 import type { JobContextFile } from './job.js';
+import type { BootstrapRequest } from './bootstrap.js';
 
 export const WORKER_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -89,6 +90,7 @@ export type WorkerAgentInteractionResolvePayload = {
 };
 
 export type WorkerEventPayloadMap = {
+  'repos.bootstrap': BootstrapRequest;
   'jobs.clear': {
     jobId: string;
     ttlMs: number;

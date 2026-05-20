@@ -119,18 +119,22 @@ describe('permissionsApprovalStore', () => {
         approverSubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
         notifySubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
         operation: {
-          kind: 'enqueueBootstrap',
-          request: {
-            requestId: 'boot-1',
-            repoName: 'repo',
-            repoKey: 'repo',
-            service: 'local',
-            channel: {
-              provider: 'slack',
-              channelId: 'C2',
-              userId: 'U_REQ',
+          kind: 'enqueueWorkerEvent',
+          event: {
+            schemaVersion: 1,
+            type: 'repos.bootstrap',
+            payload: {
+              requestId: 'boot-1',
+              repoName: 'repo',
+              repoKey: 'repo',
+              service: 'local',
+              channel: {
+                provider: 'slack',
+                channelId: 'C2',
+                userId: 'U_REQ',
+              },
+              localPath: '/tmp/repo',
             },
-            localPath: '/tmp/repo',
           },
         },
         summary: 'Bootstrap repo',
@@ -154,18 +158,22 @@ describe('permissionsApprovalStore', () => {
         approverSubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
         notifySubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
         operation: {
-          kind: 'enqueueBootstrap',
-          request: {
-            requestId: 'boot-2',
-            repoName: 'repo2',
-            repoKey: 'repo2',
-            service: 'local',
-            channel: {
-              provider: 'slack',
-              channelId: 'C2',
-              userId: 'U_REQ',
+          kind: 'enqueueWorkerEvent',
+          event: {
+            schemaVersion: 1,
+            type: 'repos.bootstrap',
+            payload: {
+              requestId: 'boot-2',
+              repoName: 'repo2',
+              repoKey: 'repo2',
+              service: 'local',
+              channel: {
+                provider: 'slack',
+                channelId: 'C2',
+                userId: 'U_REQ',
+              },
+              localPath: '/tmp/repo2',
             },
-            localPath: '/tmp/repo2',
           },
         },
         summary: 'Bootstrap repo2',
@@ -342,6 +350,114 @@ describe('permissionsApprovalStore', () => {
       expect(reassigned.request.operation.job.channel.channelId).toBe('D1');
       expect(reassigned.request.operation.job.channel.threadId).toBeUndefined();
       expect(reassigned.request.operation.job.channel.requestMessageId).toBeUndefined();
+    }
+  });
+
+  it('reassigns bootstrap worker-event routing while pending', async () => {
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.bootstrap',
+        provider: 'slack',
+        context: {
+          provider: 'slack',
+          channelId: 'C4',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
+        notifySubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
+        operation: {
+          kind: 'enqueueWorkerEvent',
+          event: {
+            schemaVersion: 1,
+            type: 'repos.bootstrap',
+            payload: {
+              requestId: 'boot-3',
+              repoName: 'repo3',
+              repoKey: 'repo3',
+              service: 'local',
+              channel: {
+                provider: 'slack',
+                channelId: 'C4',
+                userId: 'U_REQ',
+              },
+              localPath: '/tmp/repo3',
+            },
+          },
+        },
+        summary: 'Bootstrap repo3',
+      },
+      ttlSeconds: 60,
+    });
+
+    const reassigned = await assignApprovalContextIfPending(request.id, {
+      channelId: 'thread-789',
+      threadId: 'thread-789',
+      requestMessageId: 'message-789',
+    });
+
+    expect(reassigned.changed).toBe(true);
+    expect(reassigned.request?.operation.kind).toBe('enqueueWorkerEvent');
+    if (reassigned.request?.operation.kind === 'enqueueWorkerEvent') {
+      expect(reassigned.request.operation.event.type).toBe('repos.bootstrap');
+      if (reassigned.request.operation.event.type === 'repos.bootstrap') {
+        expect(reassigned.request.operation.event.payload.channel.channelId).toBe('thread-789');
+        expect(reassigned.request.operation.event.payload.channel.threadId).toBe('thread-789');
+        expect(reassigned.request.operation.event.payload.channel.requestMessageId).toBe(
+          'message-789',
+        );
+      }
+    }
+  });
+
+  it('leaves non-bootstrap worker-event routing unchanged', async () => {
+    applyRequiredEnv({ SNIPTAIL_REGISTRY_DB: 'sqlite' });
+    await ensureJobsTable();
+    const request = await createApprovalRequest({
+      base: {
+        action: 'jobs.clearBefore',
+        provider: 'slack',
+        context: {
+          provider: 'slack',
+          channelId: 'C5',
+        },
+        requestedBy: { userId: 'U_REQ' },
+        approverSubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
+        notifySubjects: [{ kind: 'user', userId: 'U_ADMIN' }],
+        operation: {
+          kind: 'enqueueWorkerEvent',
+          event: {
+            schemaVersion: 1,
+            type: 'jobs.clearBefore',
+            payload: {
+              cutoffIso: '2025-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        summary: 'Clear old jobs',
+      },
+      ttlSeconds: 60,
+    });
+
+    const reassigned = await assignApprovalContextIfPending(request.id, {
+      channelId: 'thread-999',
+      threadId: 'thread-999',
+      requestMessageId: 'message-999',
+    });
+
+    expect(reassigned.changed).toBe(true);
+    expect(reassigned.request?.context.channelId).toBe('thread-999');
+    expect(reassigned.request?.context.threadId).toBe('thread-999');
+    expect(reassigned.request?.context.requestMessageId).toBe('message-999');
+    expect(reassigned.request?.operation.kind).toBe('enqueueWorkerEvent');
+    if (reassigned.request?.operation.kind === 'enqueueWorkerEvent') {
+      expect(reassigned.request.operation.event.type).toBe('jobs.clearBefore');
+      if (reassigned.request.operation.event.type === 'jobs.clearBefore') {
+        expect(reassigned.request.operation.event.payload.cutoffIso).toBe(
+          '2025-01-01T00:00:00.000Z',
+        );
+      }
     }
   });
 });

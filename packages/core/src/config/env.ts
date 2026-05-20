@@ -1340,12 +1340,6 @@ export function loadWorkerConfig(): WorkerConfig {
     'worker.job_concurrency',
     2,
   );
-  const bootstrapConcurrency = resolvePositiveIntegerFromSources(
-    'BOOTSTRAP_CONCURRENCY',
-    workerToml?.bootstrap_concurrency,
-    'worker.bootstrap_concurrency',
-    2,
-  );
   const consumeSharedWorkerEvents = resolveOptionalFlagFromSources(
     'CONSUME_SHARED_WORKER_EVENTS',
     workerToml?.consume_shared_worker_events,
@@ -1387,7 +1381,6 @@ export function loadWorkerConfig(): WorkerConfig {
     ...(redisUrl ? { redisUrl } : {}),
     primaryAgent,
     jobConcurrency,
-    bootstrapConcurrency,
     consumeSharedWorkerEvents,
     workerEventConcurrency,
     ...(localRepoRoot ? { localRepoRoot } : {}),
