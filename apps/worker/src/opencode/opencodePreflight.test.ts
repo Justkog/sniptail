@@ -23,7 +23,6 @@ function buildConfig(): WorkerConfig {
     redisUrl: 'redis://localhost:6379/0',
     primaryAgent: 'opencode',
     jobConcurrency: 2,
-    bootstrapConcurrency: 2,
     workerEventConcurrency: 2,
     repoCacheRoot: '/tmp/repos',
     includeRawRequestInMr: false,

@@ -11,7 +11,6 @@ const hoisted = vi.hoisted(() => ({
     primaryAgent: 'codex',
     workerId: '',
     jobConcurrency: 2,
-    bootstrapConcurrency: 2,
     consumeSharedWorkerEvents: true,
     workerEventConcurrency: 2,
     repoCacheRoot: '/tmp/repos',
@@ -151,7 +150,6 @@ function createConsumerHandle(
 
 function createQueueRuntimeStub() {
   const jobsConsumer = createConsumerHandle();
-  const bootstrapConsumer = createConsumerHandle();
   const workerEventsConsumer = createConsumerHandle();
   const mailboxConsumer = createConsumerHandle();
   const mailboxObserver = createConsumerHandle();
@@ -161,7 +159,6 @@ function createQueueRuntimeStub() {
   const countWorkerJobMailboxJobs = vi.fn(() => Promise.resolve({ waiting: 0, prioritized: 0 }));
   return {
     jobsConsumer,
-    bootstrapConsumer,
     workerEventsConsumer,
     mailboxConsumer,
     mailboxObserver,
@@ -171,7 +168,6 @@ function createQueueRuntimeStub() {
     countWorkerJobMailboxJobs,
     queueRuntime: {
       consumeJobs: vi.fn(() => jobsConsumer),
-      consumeBootstrap: vi.fn(() => bootstrapConsumer),
       consumeWorkerEvents: vi.fn(() => workerEventsConsumer),
       consumeWorkerMailbox: vi.fn(() => mailboxConsumer),
       observeWorkerMailbox: vi.fn(() => mailboxObserver),
@@ -364,7 +360,6 @@ describe('workerRuntimeLauncher', () => {
     const consumerClose = vi.fn(() => Promise.resolve(undefined));
     const queueRuntime = {
       consumeJobs: vi.fn(() => ({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => ({ close: consumerClose })),
       consumeWorkerJobMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
       observeWorkerJobMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
       consumeWorkerEvents: vi.fn(() => {
@@ -690,7 +685,6 @@ describe('workerRuntimeLauncher', () => {
     let mailboxHandler!: (job: { data: { requestId: string; type: string } }) => Promise<void>;
     const queueRuntime = {
       consumeJobs: vi.fn(() => createConsumerHandle({ close: consumerClose })),
-      consumeBootstrap: vi.fn(() => createConsumerHandle({ close: consumerClose })),
       consumeWorkerJobMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
       observeWorkerJobMailbox: vi.fn(() => createConsumerHandle({ close: consumerClose })),
       consumeWorkerEvents: vi.fn((options: { handler: typeof workerEventHandler }) => {

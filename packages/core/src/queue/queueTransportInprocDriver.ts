@@ -1,7 +1,6 @@
 import {
   assertValidWorkerId,
   botEventQueueName,
-  bootstrapQueueName,
   jobQueueName,
   workerJobMailboxQueueName,
   workerMailboxQueueName,
@@ -15,7 +14,6 @@ import type {
   QueueTransportRuntime,
 } from './queueTransportTypes.js';
 import type { BotEvent } from '../types/bot-event.js';
-import type { BootstrapRequest } from '../types/bootstrap.js';
 import type { JobSpec } from '../types/job.js';
 import type { WorkerEvent } from '../types/worker-event.js';
 
@@ -201,7 +199,6 @@ class InprocQueueChannel<T> {
 export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
   const channels = {
     jobs: new InprocQueueChannel<JobSpec>(jobQueueName),
-    bootstrap: new InprocQueueChannel<BootstrapRequest>(bootstrapQueueName),
     workerEvents: new InprocQueueChannel<WorkerEvent>(workerEventQueueName),
     botEvents: new InprocQueueChannel<BotEvent>(botEventQueueName),
   };
@@ -232,15 +229,11 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     driver: 'inproc',
     queues: {
       jobs: channels.jobs.createPublisher(),
-      bootstrap: channels.bootstrap.createPublisher(),
       workerEvents: channels.workerEvents.createPublisher(),
       botEvents: channels.botEvents.createPublisher(),
     },
     consumeJobs(options) {
       return channels.jobs.subscribe(options);
-    },
-    consumeBootstrap(options) {
-      return channels.bootstrap.subscribe(options);
     },
     consumeWorkerEvents(options) {
       return channels.workerEvents.subscribe(options);
@@ -280,7 +273,6 @@ export function createInprocQueueTransportRuntime(): QueueTransportRuntime {
     },
     async close() {
       await channels.jobs.close();
-      await channels.bootstrap.close();
       await channels.workerEvents.close();
       await channels.botEvents.close();
       const activeMailboxChannels = [...mailboxChannels.values()];

@@ -9,7 +9,6 @@ import type {
 } from '@sniptail/core/queue/queueTransportTypes.js';
 import { createAgentSessionOwnershipRegistryStore } from '@sniptail/core/registry/registryStoreFactory.js';
 import { seedRepoCatalogFromAllowlistFile } from '@sniptail/core/repos/catalog.js';
-import { runBootstrap } from './bootstrap.js';
 import { runJob } from './pipeline.js';
 import { handleWorkerEvent } from './workerEvents.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
@@ -207,22 +206,6 @@ export async function startWorkerRuntime(
       'Failed to load initial targeted job mailbox counts',
     );
   });
-
-  consumers.push(
-    queueRuntime.consumeBootstrap({
-      concurrency: config.bootstrapConcurrency,
-      handler: async (job) => {
-        logger.info({ requestId: job.data.requestId }, 'Worker picked up bootstrap request');
-        await runBootstrap(botEvents, job.data);
-      },
-      onFailed: (job, err) => {
-        logger.error({ requestId: job?.data?.requestId, err }, 'Bootstrap request failed');
-      },
-      onCompleted: (job) => {
-        logger.info({ requestId: job.data.requestId }, 'Bootstrap request completed');
-      },
-    }),
-  );
 
   if (shouldConsumeAgentMailbox) {
     const mailboxQueueName = getWorkerMailboxQueueName(config.workerId);

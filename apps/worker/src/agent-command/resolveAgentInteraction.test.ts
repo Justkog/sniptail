@@ -45,7 +45,6 @@ function buildConfig(): WorkerConfig {
     repoCacheRoot: '/tmp/repos',
     primaryAgent: 'opencode',
     jobConcurrency: 1,
-    bootstrapConcurrency: 1,
     workerEventConcurrency: 1,
     copilot: { executionMode: 'local', idleRetries: 3, idleTimeoutMs: 300_000 },
     opencode: {

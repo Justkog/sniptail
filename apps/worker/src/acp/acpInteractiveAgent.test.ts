@@ -57,7 +57,6 @@ function buildConfig(workspacePath: string): WorkerConfig {
     repoCacheRoot: '/tmp/repos',
     primaryAgent: 'opencode',
     jobConcurrency: 1,
-    bootstrapConcurrency: 1,
     workerEventConcurrency: 1,
     copilot: {
       executionMode: 'local',
