@@ -255,6 +255,7 @@ describe('agentSessionListService', () => {
 
     const result = await listAgentSessionsForWorker({
       config,
+      adapters: {},
       payload: {
         response: {
           provider: 'discord',
@@ -301,6 +302,7 @@ describe('agentSessionListService', () => {
         agentProfileKey: 'build',
         pageSize: 5,
       },
+      adapters: {},
     });
 
     expect(result).toEqual({
@@ -328,6 +330,7 @@ describe('agentSessionListService', () => {
 
     const result = await listAgentSessionsForWorker({
       config,
+      adapters: {},
       payload: {
         response: {
           provider: 'discord',
