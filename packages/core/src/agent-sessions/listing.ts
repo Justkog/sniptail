@@ -9,6 +9,7 @@ export type AgentSessionSummary = {
   createdAt?: string;
   updatedAt?: string;
   cwd?: string;
+  roots?: string[];
   project?: string;
   description?: string;
 };

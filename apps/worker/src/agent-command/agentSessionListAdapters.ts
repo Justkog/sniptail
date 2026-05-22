@@ -4,6 +4,7 @@ import type {
   AgentSessionSummary,
 } from '@sniptail/core/agent-sessions/listing.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
+import { acpAgentSessionListAdapter } from '../acp/acpSessionListAdapter.js';
 import type { ResolvedAgentWorkspace } from './workspaceResolver.js';
 import type { InteractiveAgentProfile } from './interactiveAgentTypes.js';
 
@@ -41,7 +42,9 @@ export type AgentSessionListAdapterRegistry = Partial<
   Record<AgentSessionListProvider, AgentSessionListAdapter>
 >;
 
-export const AGENT_SESSION_LIST_ADAPTERS: AgentSessionListAdapterRegistry = {};
+export const AGENT_SESSION_LIST_ADAPTERS: AgentSessionListAdapterRegistry = {
+  acp: acpAgentSessionListAdapter,
+};
 
 export function getAgentSessionListAdapter(
   provider: AgentSessionListProvider,

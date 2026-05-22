@@ -60,6 +60,7 @@ describe('bot event schema', () => {
             createdAt: '2026-05-21T10:00:00.000Z',
             updatedAt: '2026-05-21T10:05:00.000Z',
             cwd: 'apps/worker',
+            roots: ['packages/core', 'docs'],
             project: 'snatch',
             description: 'Previously attached session',
           },
