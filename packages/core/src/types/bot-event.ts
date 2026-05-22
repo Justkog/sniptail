@@ -1,8 +1,10 @@
 import type { ChannelProvider } from './channel.js';
+import type { AgentSessionSummary } from '../agent-sessions/listing.js';
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
 export type BotEventBase = {
   jobId?: string;
+  requestId?: string;
 };
 
 type FileUploadPayloadBase = {
@@ -73,6 +75,20 @@ export type BotAgentQuestionUpdatePayload = {
   message?: string;
 };
 
+export type BotAgentSessionsListedPayload = {
+  channelId: string;
+  userId: string;
+  workspaceId?: string;
+  guildId?: string;
+  agentProfileKey?: string;
+  workerId: string;
+  sessions: AgentSessionSummary[];
+  previousCursor?: string;
+  nextCursor?: string;
+  cursorHistory?: string[];
+  errorMessage?: string;
+};
+
 export type BotEventPayloadMap = {
   'message.post': {
     channelId: string;
@@ -105,6 +121,7 @@ export type BotEventPayloadMap = {
   'agent.permission.updated': BotAgentPermissionUpdatePayload;
   'agent.question.requested': BotAgentQuestionRequestPayload;
   'agent.question.updated': BotAgentQuestionUpdatePayload;
+  'agent.sessions.listed': BotAgentSessionsListedPayload;
 };
 
 export type CoreBotEventType = keyof BotEventPayloadMap;

@@ -1,6 +1,7 @@
 import type { ChannelProvider } from './channel.js';
 import type { JobContextFile } from './job.js';
 import type { BootstrapRequest } from './bootstrap.js';
+import type { AgentSessionListFilters } from '../agent-sessions/listing.js';
 
 export const WORKER_EVENT_SCHEMA_VERSION = 1 as const;
 
@@ -89,6 +90,15 @@ export type WorkerAgentInteractionResolvePayload = {
   resolution: WorkerAgentInteractionResolution;
 };
 
+export type WorkerAgentSessionsListPayload = {
+  response: WorkerReplyTarget;
+  workerId: string;
+  agentProfileKey?: string;
+  pageSize: number;
+  cursor?: string;
+  filters?: AgentSessionListFilters;
+};
+
 export type WorkerEventPayloadMap = {
   'repos.bootstrap': BootstrapRequest;
   'jobs.clear': {
@@ -105,6 +115,7 @@ export type WorkerEventPayloadMap = {
   'agent.session.message': WorkerAgentSessionMessagePayload;
   'agent.prompt.stop': WorkerAgentPromptStopPayload;
   'agent.interaction.resolve': WorkerAgentInteractionResolvePayload;
+  'agent.sessions.list': WorkerAgentSessionsListPayload;
 };
 
 export type CoreWorkerEventType = keyof WorkerEventPayloadMap;
