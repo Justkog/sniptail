@@ -6,6 +6,7 @@ import {
   runAgentSessionMessage,
   runAgentSessionStart,
 } from './agent-command/agentSessionRunner.js';
+import { handleAgentSessionsList } from './agent-command/handleAgentSessionsList.js';
 import { resolveAgentInteraction } from './agent-command/resolveAgentInteraction.js';
 import { stopAgentPrompt } from './agent-command/stopAgentPrompt.js';
 import type { BotEventSink } from './channels/botEventSink.js';
@@ -166,6 +167,10 @@ export async function handleWorkerEvent(
     }
     case 'agent.interaction.resolve': {
       await resolveAgentInteraction({ event, config, notifier, botEvents });
+      return;
+    }
+    case 'agent.sessions.list': {
+      await handleAgentSessionsList({ event, config, botEvents });
       return;
     }
     default:
