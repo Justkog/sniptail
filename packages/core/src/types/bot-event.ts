@@ -1,5 +1,9 @@
 import type { ChannelProvider } from './channel.js';
-import type { AgentSessionListFilters, AgentSessionSummary } from '../agent-sessions/listing.js';
+import type {
+  AgentSessionListFilters,
+  AgentSessionListProvider,
+  AgentSessionSummary,
+} from '../agent-sessions/listing.js';
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
 export type BotEventBase = {
@@ -90,6 +94,28 @@ export type BotAgentSessionsListedPayload = {
   errorMessage?: string;
 };
 
+export type BotAgentSessionPreviewMessage = {
+  role: 'agent' | 'user';
+  text: string;
+  createdAt?: string;
+};
+
+export type BotAgentSessionPreviewedPayload = {
+  channelId: string;
+  threadId: string;
+  userId?: string;
+  guildId?: string;
+  sessionId: string;
+  workerId: string;
+  agentProfileKey: string;
+  provider: AgentSessionListProvider;
+  providerSessionId: string;
+  workspaceKey?: string;
+  cwd?: string;
+  message?: BotAgentSessionPreviewMessage;
+  errorMessage?: string;
+};
+
 export type BotEventPayloadMap = {
   'message.post': {
     channelId: string;
@@ -123,6 +149,7 @@ export type BotEventPayloadMap = {
   'agent.question.requested': BotAgentQuestionRequestPayload;
   'agent.question.updated': BotAgentQuestionUpdatePayload;
   'agent.sessions.listed': BotAgentSessionsListedPayload;
+  'agent.session.previewed': BotAgentSessionPreviewedPayload;
 };
 
 export type CoreBotEventType = keyof BotEventPayloadMap;

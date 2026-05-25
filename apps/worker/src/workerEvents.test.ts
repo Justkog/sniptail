@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => ({
     repoAllowlistPath: undefined,
   },
   handleAgentSessionsList: vi.fn(() => Promise.resolve(undefined)),
+  handleAgentSessionPreview: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@sniptail/core/config/config.js', () => ({
@@ -49,12 +50,17 @@ vi.mock('./agent-command/handleAgentSessionsList.js', () => ({
   handleAgentSessionsList: hoisted.handleAgentSessionsList,
 }));
 
+vi.mock('./agent-command/handleAgentSessionPreview.js', () => ({
+  handleAgentSessionPreview: hoisted.handleAgentSessionPreview,
+}));
+
 import { handleWorkerEvent } from './workerEvents.js';
 
 describe('workerEvents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.handleAgentSessionsList.mockResolvedValue(undefined);
+    hoisted.handleAgentSessionPreview.mockResolvedValue(undefined);
   });
 
   it('routes agent.sessions.list events to the list handler', async () => {
@@ -83,6 +89,43 @@ describe('workerEvents', () => {
     await handleWorkerEvent(event, registry, botEvents);
 
     expect(hoisted.handleAgentSessionsList).toHaveBeenCalledWith({
+      event,
+      config: hoisted.config,
+      botEvents,
+    });
+  });
+
+  it('routes agent.session.preview events to the preview handler', async () => {
+    const botEvents = {
+      publish: vi.fn(() => Promise.resolve(undefined)),
+    };
+    const registry = {
+      markJobForDeletion: vi.fn(),
+      clearJobsBefore: vi.fn(),
+    } as never;
+    const event = {
+      schemaVersion: 1,
+      requestId: 'request-1',
+      type: 'agent.session.preview',
+      payload: {
+        response: {
+          provider: 'discord',
+          channelId: 'channel-1',
+          threadId: 'thread-1',
+          userId: 'user-1',
+          guildId: 'guild-1',
+        },
+        sessionId: 'sniptail-session-1',
+        workerId: 'worker-a',
+        agentProfileKey: 'build',
+        provider: 'opencode',
+        providerSessionId: 'provider-session-1',
+      },
+    } as const;
+
+    await handleWorkerEvent(event, registry, botEvents);
+
+    expect(hoisted.handleAgentSessionPreview).toHaveBeenCalledWith({
       event,
       config: hoisted.config,
       botEvents,

@@ -17,6 +17,20 @@ type QueuedAgentSessionsListEvent = {
   };
 };
 
+type QueuedAgentSessionPreviewEvent = {
+  requestId: string;
+  type: 'agent.session.preview';
+  payload: {
+    sessionId: string;
+    workerId: string;
+    agentProfileKey: string;
+    provider: string;
+    providerSessionId: string;
+    workspaceKey?: string;
+    cwd?: string;
+  };
+};
+
 const hoisted = vi.hoisted(() => ({
   loadAgentCommandMetadata: vi.fn(),
   enqueueWorkerMailboxEvent: vi.fn(),
@@ -194,7 +208,7 @@ describe('handleDiscordAgentSessionsButton', () => {
     expect(getDiscordAgentSessionsActionState(token)).toBeDefined();
   });
 
-  it('attaches a provider session without starting a prompt', async () => {
+  it('attaches a provider session and requests a last-message preview', async () => {
     const token = setDiscordAgentSessionsActionState({
       kind: 'attach',
       payload: {
@@ -236,6 +250,53 @@ describe('handleDiscordAgentSessionsButton', () => {
         status: 'completed',
       }),
     );
-    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
+    const enqueueCalls = hoisted.enqueueWorkerMailboxEvent.mock.calls as Array<
+      [unknown, string, QueuedAgentSessionPreviewEvent]
+    >;
+    const [, workerId, event] = enqueueCalls[0] ?? [];
+    expect(workerId).toBe('worker-a');
+    expect(event).toMatchObject({
+      type: 'agent.session.preview',
+      payload: {
+        workerId: 'worker-a',
+        agentProfileKey: 'build',
+        provider: 'acp',
+        providerSessionId: 'provider-session-1',
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
+    });
+    expect(event.type).not.toBe('agent.session.start');
+  });
+
+  it('keeps attach successful when preview enqueue fails', async () => {
+    hoisted.enqueueWorkerMailboxEvent.mockRejectedValueOnce(new Error('queue down'));
+    const token = setDiscordAgentSessionsActionState({
+      kind: 'attach',
+      payload: {
+        channelId: 'channel-1',
+        userId: 'user-1',
+        guildId: 'guild-1',
+        workerId: 'worker-a',
+        provider: 'acp',
+        providerSessionId: 'provider-session-1',
+        sessionAgentProfileKey: 'build',
+        workspaceKey: 'snatch',
+      },
+    });
+    const interaction = buildInteraction();
+
+    await handleDiscordAgentSessionsButton(
+      interaction as never,
+      { action: 'attach', token },
+      { botName: 'Sniptail' } as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(hoisted.createAgentSession).toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining('last-message preview could not be requested'),
+    );
   });
 });

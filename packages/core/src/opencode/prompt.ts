@@ -1,4 +1,4 @@
-import { type Event as OpenCodeEvent, type Part, type TextPart } from '@opencode-ai/sdk/v2';
+import type { Event as OpenCodeEvent } from '@opencode-ai/sdk/v2';
 import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildPromptForJob } from '../agents/buildPrompt.js';
@@ -19,6 +19,7 @@ export {
   replyOpenCodeQuestion,
 } from './client.js';
 import { streamEvents } from './events.js';
+import { extractOpenCodeTextParts } from './textParts.js';
 
 export type OpenCodePromptRunOptions = Omit<
   AgentRunOptions,
@@ -51,14 +52,6 @@ function buildPromptParts(prompt: string, attachments?: AgentAttachment[]) {
   ];
 }
 
-function extractText(parts: Part[] | undefined): string {
-  return (parts ?? [])
-    .filter((part): part is TextPart => part.type === 'text')
-    .map((part) => part.text)
-    .join('')
-    .trim();
-}
-
 async function fallbackFinalResponse(
   client: OpenCodeClient,
   sessionID: string,
@@ -71,7 +64,7 @@ async function fallbackFinalResponse(
   const latestAssistant = [...(messages.data ?? [])]
     .reverse()
     .find((message) => message.info.role === 'assistant');
-  return extractText(latestAssistant?.parts);
+  return extractOpenCodeTextParts(latestAssistant?.parts);
 }
 
 async function createRuntime(
@@ -153,7 +146,7 @@ export async function runOpenCodePrompt(
     }
 
     const finalResponse =
-      extractText(promptResponse.data?.parts) ||
+      extractOpenCodeTextParts(promptResponse.data?.parts) ||
       (await fallbackFinalResponse(runtime.client, session.id, workDir));
 
     return {

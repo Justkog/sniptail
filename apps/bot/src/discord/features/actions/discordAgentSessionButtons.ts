@@ -5,6 +5,10 @@ import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
 import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
+import {
+  WORKER_EVENT_SCHEMA_VERSION,
+  type CoreWorkerEvent,
+} from '@sniptail/core/types/worker-event.js';
 import { createJobId } from '../../../lib/jobs.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { loadAgentCommandMetadata } from '../../../agentCommandMetadataCache.js';
@@ -265,6 +269,7 @@ async function handleAttachButton(
   token: string,
   payload: DiscordAgentSessionsAttachActionPayload,
   config: BotConfig,
+  queueRuntime: QueueTransportRuntime,
   permissions: PermissionsRuntimeService,
 ) {
   if (!matchesInteractionRequester(payload, interaction)) {
@@ -376,9 +381,39 @@ async function handleAttachButton(
     return;
   }
 
-  await interaction.editReply(
-    `Attached provider session in <#${thread.threadId}> on worker \`${payload.workerId}\`.`,
-  );
+  const previewEvent: CoreWorkerEvent<'agent.session.preview'> = {
+    schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+    requestId: createJobId('agent-session-preview'),
+    type: 'agent.session.preview',
+    payload: {
+      sessionId,
+      response: {
+        provider: 'discord',
+        channelId: thread.channelId,
+        threadId: thread.threadId,
+        userId: interaction.user.id,
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+      },
+      workerId: payload.workerId,
+      agentProfileKey: payload.sessionAgentProfileKey,
+      provider: payload.provider,
+      providerSessionId: payload.providerSessionId,
+      ...(workspaceKey ? { workspaceKey } : {}),
+      ...(cwd ? { cwd } : {}),
+    },
+  };
+
+  try {
+    await enqueueWorkerMailboxEvent(queueRuntime, payload.workerId, previewEvent);
+    await interaction.editReply(
+      `Attached provider session in <#${thread.threadId}> on worker \`${payload.workerId}\`.`,
+    );
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to enqueue Discord attached session preview');
+    await interaction.editReply(
+      `Attached provider session in <#${thread.threadId}> on worker \`${payload.workerId}\`, but the last-message preview could not be requested.`,
+    );
+  }
 }
 
 export async function handleDiscordAgentSessionsButton(
@@ -398,7 +433,14 @@ export async function handleDiscordAgentSessionsButton(
   }
 
   if (state.kind === 'attach') {
-    await handleAttachButton(interaction, parsed.token, state.payload, config, permissions);
+    await handleAttachButton(
+      interaction,
+      parsed.token,
+      state.payload,
+      config,
+      queueRuntime,
+      permissions,
+    );
     return;
   }
   await handlePageButton(

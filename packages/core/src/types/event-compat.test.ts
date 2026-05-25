@@ -97,6 +97,36 @@ describe('bot event schema', () => {
 
     expect(event.payload.errorMessage).toContain('Codex');
   });
+
+  it('accepts agent session previewed bot events', () => {
+    const event: BotEvent = {
+      schemaVersion: BOT_EVENT_SCHEMA_VERSION,
+      provider: 'discord',
+      requestId: 'request-4',
+      type: 'agent.session.previewed',
+      payload: {
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        userId: 'user-1',
+        guildId: 'guild-1',
+        sessionId: 'sniptail-session-1',
+        workerId: 'worker-a',
+        agentProfileKey: 'opencode-build',
+        provider: 'opencode',
+        providerSessionId: 'provider-session-1',
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+        message: {
+          role: 'agent',
+          text: 'Last assistant response',
+          createdAt: '2026-05-21T10:05:00.000Z',
+        },
+      },
+    };
+
+    expect(event.type).toBe('agent.session.previewed');
+    expect(event.payload.message?.role).toBe('agent');
+  });
 });
 
 describe('worker event schema', () => {
@@ -153,5 +183,32 @@ describe('worker event schema', () => {
 
     expect(event.payload.pageSize).toBe(4);
     expect(event.payload.filters?.workspaceKey).toBe('snatch');
+  });
+
+  it('accepts agent session preview worker events', () => {
+    const event: WorkerEvent = {
+      schemaVersion: WORKER_EVENT_SCHEMA_VERSION,
+      requestId: 'request-3',
+      type: 'agent.session.preview',
+      payload: {
+        response: {
+          provider: 'discord',
+          channelId: 'channel-1',
+          threadId: 'thread-1',
+          userId: 'user-1',
+          guildId: 'guild-1',
+        },
+        sessionId: 'sniptail-session-1',
+        workerId: 'worker-a',
+        agentProfileKey: 'opencode-build',
+        provider: 'opencode',
+        providerSessionId: 'provider-session-1',
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
+    };
+
+    expect(event.type).toBe('agent.session.preview');
+    expect(event.payload.providerSessionId).toBe('provider-session-1');
   });
 });

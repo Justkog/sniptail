@@ -1,17 +1,11 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import type { AgentRunOptions } from '@sniptail/core/agents/types.js';
 import type { AgentSessionSummary } from '@sniptail/core/agent-sessions/listing.js';
-import {
-  createDockerRuntime,
-  createLocalRuntime,
-  createServerRuntime,
-} from '@sniptail/core/opencode/runtime.js';
-import type { WorkerConfig } from '@sniptail/core/config/types.js';
 import type {
   AgentSessionListAdapter,
   AgentSessionListAdapterInput,
   AgentSessionListAdapterResult,
 } from '../agent-command/agentSessionListAdapters.js';
+import { createOpenCodeWorkerRuntime } from './openCodeWorkerRuntime.js';
 
 type OpenCodeSession = {
   id: string;
@@ -173,60 +167,6 @@ function normalizeSession(
   };
 }
 
-function buildOpenCodeRunOptions(
-  config: WorkerConfig,
-  profile: AgentSessionListAdapterInput['profile'],
-): AgentRunOptions {
-  return {
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-      ...(profile.profile ? { agent: profile.profile } : {}),
-      startupTimeoutMs: config.opencode.startupTimeoutMs,
-      dockerStreamLogs: config.opencode.dockerStreamLogs,
-      ...(config.opencode.executionMode === 'docker'
-        ? {
-            docker: {
-              enabled: true,
-              ...(config.opencode.dockerfilePath
-                ? { dockerfilePath: config.opencode.dockerfilePath }
-                : {}),
-              ...(config.opencode.dockerImage ? { image: config.opencode.dockerImage } : {}),
-              ...(config.opencode.dockerBuildContext
-                ? { buildContext: config.opencode.dockerBuildContext }
-                : {}),
-            },
-          }
-        : {}),
-    },
-  };
-}
-
-async function createOpenCodeListRuntime(
-  workDir: string,
-  config: WorkerConfig,
-  profile: AgentSessionListAdapterInput['profile'],
-) {
-  const options = buildOpenCodeRunOptions(config, profile);
-  switch (config.opencode.executionMode) {
-    case 'server':
-      return createServerRuntime(workDir, process.env, options);
-    case 'docker':
-      return createDockerRuntime(
-        `agent-session-list-${profile.key}`,
-        workDir,
-        process.env,
-        options,
-      );
-    case 'local':
-    default:
-      return createLocalRuntime(workDir, options);
-  }
-}
-
 function buildListQuery(input: AgentSessionListAdapterInput): {
   directory?: string;
   search?: string;
@@ -266,7 +206,12 @@ export const openCodeAgentSessionListAdapter: AgentSessionListAdapter = {
     }
 
     const workDir = input.resolvedWorkspace?.resolvedCwd ?? input.config.repoCacheRoot;
-    const runtime = await createOpenCodeListRuntime(workDir, input.config, input.profile);
+    const runtime = await createOpenCodeWorkerRuntime(
+      `agent-session-list-${input.profile.key}`,
+      workDir,
+      input.config,
+      input.profile,
+    );
 
     try {
       const response = await runtime.client.session.list(buildListQuery(input));

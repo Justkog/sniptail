@@ -65,6 +65,7 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     'agent.question.requested',
     'agent.question.updated',
     'agent.sessions.listed',
+    'agent.session.previewed',
   ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
@@ -135,6 +136,9 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
         return true;
       case 'agent.sessions.listed':
         await this.postAgentSessionsListed(client, event);
+        return true;
+      case 'agent.session.previewed':
+        await this.postAgentSessionPreviewed(client, event);
         return true;
       default:
         return false;
@@ -405,6 +409,17 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
       components,
     });
   }
+
+  private async postAgentSessionPreviewed(
+    client: Parameters<typeof postDiscordMessage>[0],
+    event: CoreBotEvent<'agent.session.previewed'>,
+  ) {
+    await postDiscordMessage(client, {
+      channelId: event.payload.channelId,
+      threadId: event.payload.threadId,
+      text: buildAgentSessionPreviewText(event),
+    });
+  }
 }
 
 function matchesPendingDiscordBrowserRequest(
@@ -423,6 +438,51 @@ function matchesPendingDiscordBrowserRequest(
 
 function truncateDiscordLine(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}...`;
+}
+
+function truncateDiscordMessage(value: string, maxLength = DISCORD_MESSAGE_CONTENT_LIMIT): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 4)}...`;
+}
+
+function escapeDiscordCodeBlock(value: string): string {
+  return value.replaceAll('```', "'''");
+}
+
+function buildAgentSessionPreviewText(event: CoreBotEvent<'agent.session.previewed'>): string {
+  const lines = [
+    '**Last message from attached session**',
+    `Provider: \`${event.payload.provider}\` | Profile: \`${event.payload.agentProfileKey}\``,
+    `Session ID: \`${event.payload.providerSessionId}\``,
+    event.payload.workspaceKey
+      ? `Workspace: \`${event.payload.workspaceKey}${event.payload.cwd ? ` / ${event.payload.cwd}` : ''}\``
+      : undefined,
+  ].filter((line) => line !== undefined);
+
+  if (event.payload.errorMessage || !event.payload.message) {
+    lines.push(
+      '',
+      event.payload.errorMessage ??
+        'Sniptail attached the session, but no last-message preview was available.',
+    );
+    return truncateDiscordMessage(lines.join('\n'));
+  }
+
+  const createdAtMs = event.payload.message.createdAt
+    ? Date.parse(event.payload.message.createdAt)
+    : Number.NaN;
+  const createdAt = Number.isFinite(createdAtMs)
+    ? ` at <t:${Math.floor(createdAtMs / 1000)}:f>`
+    : '';
+  const role = event.payload.message.role === 'agent' ? 'Agent' : 'User';
+  lines.push(
+    '',
+    `${role}${createdAt}:`,
+    '```',
+    escapeDiscordCodeBlock(event.payload.message.text.trim()),
+    '```',
+  );
+
+  return truncateDiscordMessage(lines.join('\n'));
 }
 
 function buildDiscordAgentSessionsBrowserMessage(

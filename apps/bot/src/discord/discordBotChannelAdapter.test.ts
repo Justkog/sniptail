@@ -158,6 +158,42 @@ function buildSessionsListedEvent(
   };
 }
 
+function buildSessionPreviewedEvent(
+  overrides: Partial<CoreBotEvent<'agent.session.previewed'>['payload']> = {},
+  options: { includeMessage?: boolean } = {},
+): CoreBotEvent<'agent.session.previewed'> {
+  const includeMessage = options.includeMessage ?? true;
+  return {
+    schemaVersion: 1,
+    requestId: 'request-preview-1',
+    provider: 'discord',
+    type: 'agent.session.previewed',
+    payload: {
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      sessionId: 'sniptail-session-1',
+      workerId: 'worker-a',
+      agentProfileKey: 'build',
+      provider: 'opencode',
+      providerSessionId: 'provider-session-1',
+      workspaceKey: 'snatch',
+      cwd: 'apps/worker',
+      ...(includeMessage
+        ? {
+            message: {
+              role: 'agent' as const,
+              text: 'Latest assistant response',
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          }
+        : {}),
+      ...overrides,
+    },
+  };
+}
+
 describe('DiscordBotChannelAdapter question formatting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -303,5 +339,55 @@ describe('DiscordBotChannelAdapter question formatting', () => {
     );
 
     expect(hoisted.editDiscordInteractionReply).not.toHaveBeenCalled();
+  });
+
+  it('renders attached session previews into the Discord thread', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+
+    await adapter.handleEvent(buildSessionPreviewedEvent(), { discordClient: {} as never });
+
+    expect(hoisted.postDiscordMessage).toHaveBeenCalledWith(
+      {} as never,
+      expect.objectContaining({
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        text: expect.stringContaining('Latest assistant response') as unknown,
+      }),
+    );
+  });
+
+  it('renders attached session preview errors safely', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+
+    await adapter.handleEvent(
+      buildSessionPreviewedEvent(
+        {
+          errorMessage: 'Sniptail attached the session, but no preview is available.',
+        },
+        { includeMessage: false },
+      ),
+      { discordClient: {} as never },
+    );
+
+    expect(hoisted.postDiscordMessage).toHaveBeenCalledWith(
+      {} as never,
+      expect.objectContaining({
+        channelId: 'channel-1',
+        threadId: 'thread-1',
+        text: expect.stringContaining('no preview is available') as unknown,
+      }),
+    );
+  });
+
+  it('ignores attached session preview events for other channel providers', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+    const event = {
+      ...buildSessionPreviewedEvent(),
+      provider: 'slack',
+    } as CoreBotEvent<'agent.session.previewed'>;
+
+    await adapter.handleEvent(event, { discordClient: {} as never });
+
+    expect(hoisted.postDiscordMessage).not.toHaveBeenCalled();
   });
 });
