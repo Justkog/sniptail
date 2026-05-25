@@ -1,5 +1,5 @@
 import type { ChannelProvider } from './channel.js';
-import type { AgentSessionSummary } from '../agent-sessions/listing.js';
+import type { AgentSessionListFilters, AgentSessionSummary } from '../agent-sessions/listing.js';
 export const BOT_EVENT_SCHEMA_VERSION = 1 as const;
 
 export type BotEventBase = {
@@ -82,6 +82,7 @@ export type BotAgentSessionsListedPayload = {
   guildId?: string;
   agentProfileKey?: string;
   workerId: string;
+  filters?: AgentSessionListFilters;
   sessions: AgentSessionSummary[];
   previousCursor?: string;
   nextCursor?: string;

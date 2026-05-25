@@ -50,6 +50,11 @@ describe('bot event schema', () => {
         guildId: 'guild-1',
         agentProfileKey: 'acp-opencode',
         workerId: 'worker-a',
+        filters: {
+          workspaceKey: 'snatch',
+          cwd: 'apps/worker',
+          roots: ['docs', 'packages/core'],
+        },
         sessions: [
           {
             id: 'session-1',

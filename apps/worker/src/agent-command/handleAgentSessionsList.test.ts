@@ -32,6 +32,10 @@ function createEvent(
     userId: string | undefined;
     workspaceId: string;
     guildId: string;
+    filters: {
+      workspaceKey?: string;
+      cwd?: string;
+    };
   }> = {},
 ) {
   return {
@@ -53,6 +57,7 @@ function createEvent(
       workerId: 'worker-a',
       pageSize: 4,
       ...(overrides.agentProfileKey ? { agentProfileKey: overrides.agentProfileKey } : {}),
+      ...(overrides.filters ? { filters: overrides.filters } : {}),
     },
   } as const;
 }
@@ -89,6 +94,10 @@ describe('handleAgentSessionsList', () => {
       requestId: 'request-1',
       workspaceId: 'workspace-1',
       guildId: 'guild-1',
+      filters: {
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
     });
 
     await handleAgentSessionsList({
@@ -114,6 +123,10 @@ describe('handleAgentSessionsList', () => {
         workspaceId: 'workspace-1',
         guildId: 'guild-1',
         workerId: 'worker-a',
+        filters: {
+          workspaceKey: 'snatch',
+          cwd: 'apps/worker',
+        },
         sessions: [
           {
             id: 'acp-1',

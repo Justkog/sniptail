@@ -47,6 +47,7 @@ export async function handleAgentSessionsList(input: {
           ? { agentProfileKey: event.payload.agentProfileKey }
           : {}),
         workerId: event.payload.workerId,
+        ...(event.payload.filters ? { filters: event.payload.filters } : {}),
         sessions: result.sessions,
         ...(result.previousCursor ? { previousCursor: result.previousCursor } : {}),
         ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
@@ -69,6 +70,7 @@ export async function handleAgentSessionsList(input: {
           ? { agentProfileKey: event.payload.agentProfileKey }
           : {}),
         workerId: event.payload.workerId,
+        ...(event.payload.filters ? { filters: event.payload.filters } : {}),
         sessions: [],
         errorMessage: `Failed to list sessions: ${toUserErrorMessage(err)}`,
       },
