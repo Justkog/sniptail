@@ -353,7 +353,9 @@ describe('copilotSessionListAdapter', () => {
         pageSize: 1,
         cursor: 'bad-cursor',
       }),
-    ).rejects.toThrow('Copilot session list cursor is invalid or expired. Refresh the session list.');
+    ).rejects.toThrow(
+      'Copilot session list cursor is invalid or expired. Refresh the session list.',
+    );
   });
 
   it('rejects explicit cursors reused with a different normalized filter scope', async () => {
@@ -378,7 +380,9 @@ describe('copilotSessionListAdapter', () => {
           branch: 'feature/browser',
         },
       }),
-    ).rejects.toThrow('Copilot session list cursor is invalid or expired. Refresh the session list.');
+    ).rejects.toThrow(
+      'Copilot session list cursor is invalid or expired. Refresh the session list.',
+    );
   });
 
   it('accepts explicit cursors when trimmed filters normalize to the same scope', async () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listCopilotSessions } from './copilotSessionListing.js';
+import { listCopilotSessions, type ListedCopilotSession } from './copilotSessionListing.js';
 
 const hoisted = vi.hoisted(() => {
   const clientCtor = vi.fn();
@@ -63,18 +63,14 @@ describe('listCopilotSessions', () => {
     hoisted.stop.mockResolvedValue([]);
     hoisted.forceStop.mockResolvedValue(undefined);
     hoisted.execFile.mockImplementation(
-      (
-        _file: string,
-        _args: string[],
-        callback?: ((error: Error | null) => void) | undefined,
-      ) => {
+      (_file: string, _args: string[], callback?: (error: Error | null) => void) => {
         callback?.(null);
       },
     );
   });
 
   it('starts the client, lists sessions with the provided filter, and stops cleanly', async () => {
-    const sessions = [
+    const sessions: ListedCopilotSession[] = [
       {
         sessionId: 'session-1',
         startTime: new Date('2026-05-22T09:00:00.000Z'),
@@ -138,32 +134,39 @@ describe('listCopilotSessions', () => {
     });
 
     expect(hoisted.resolveWorkerAgentScriptPath).toHaveBeenCalledWith('copilot-docker.sh');
-    expect(hoisted.clientCtor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: '/tmp/repos',
-        cliPath: '/tmp/copilot-docker.sh',
-        autoRestart: false,
-        env: expect.objectContaining({
-          HOME: '/home/sniptail',
-          GH_COPILOT_DOCKERFILE_PATH: expect.stringContaining('Dockerfile.copilot'),
-          GH_COPILOT_DOCKER_IMAGE: 'sniptail-copilot:local',
-          GH_COPILOT_DOCKER_BUILD_CONTEXT: expect.stringContaining('/docker'),
-          GH_COPILOT_DOCKER_CONTAINER_NAME: expect.stringMatching(
-            /^sniptail-copilot-list-/,
-          ),
-        }),
-      }),
-    );
+    const clientCtorFirstCall = hoisted.clientCtor.mock.calls[0];
+    expect(clientCtorFirstCall).toBeDefined();
+    const clientOptions = clientCtorFirstCall?.[0] as
+      | {
+          cwd: string;
+          cliPath?: string;
+          autoRestart: boolean;
+          env: Record<string, string>;
+        }
+      | undefined;
+
+    expect(clientOptions).toMatchObject({
+      cwd: '/tmp/repos',
+      cliPath: '/tmp/copilot-docker.sh',
+      autoRestart: false,
+    });
+    expect(clientOptions?.env).toMatchObject({
+      HOME: '/home/sniptail',
+      GH_COPILOT_DOCKER_IMAGE: 'sniptail-copilot:local',
+    });
+    expect(clientOptions?.env.GH_COPILOT_DOCKERFILE_PATH).toContain('Dockerfile.copilot');
+    expect(clientOptions?.env.GH_COPILOT_DOCKER_BUILD_CONTEXT).toContain('/docker');
+    expect(clientOptions?.env.GH_COPILOT_DOCKER_CONTAINER_NAME).toMatch(/^sniptail-copilot-list-/);
     expect(hoisted.execFile).toHaveBeenNthCalledWith(
       1,
       'docker',
-      [ 'stop', expect.stringMatching(/^sniptail-copilot-list-/) ],
+      ['stop', expect.stringMatching(/^sniptail-copilot-list-/)],
       expect.any(Function),
     );
     expect(hoisted.execFile).toHaveBeenNthCalledWith(
       2,
       'docker',
-      [ 'rm', '-f', expect.stringMatching(/^sniptail-copilot-list-/) ],
+      ['rm', '-f', expect.stringMatching(/^sniptail-copilot-list-/)],
       expect.any(Function),
     );
   });

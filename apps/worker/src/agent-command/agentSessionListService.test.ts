@@ -6,6 +6,7 @@ import type {
   AgentSessionListAdapter,
   AgentSessionListAdapterRegistry,
   AgentSessionListAdapterPageState,
+  AgentSessionListAdapterResult,
 } from './agentSessionListAdapters.js';
 import { listAgentSessionsForWorker } from './agentSessionListService.js';
 
@@ -55,7 +56,16 @@ function decodeAggregateCursor(cursor: string) {
   if (!cursor.startsWith(prefix)) {
     throw new Error('bad cursor');
   }
-  return JSON.parse(Buffer.from(cursor.slice(prefix.length), 'base64url').toString('utf8'));
+  const parsed: unknown = JSON.parse(
+    Buffer.from(cursor.slice(prefix.length), 'base64url').toString('utf8'),
+  );
+  return parsed;
+}
+
+function createListSessionsResult(
+  result: AgentSessionListAdapterResult,
+): AgentSessionListAdapterResult {
+  return result;
 }
 
 describe('agentSessionListService', () => {
@@ -85,17 +95,17 @@ describe('agentSessionListService', () => {
   ): AgentSessionListAdapter {
     return {
       provider,
-      listSessions: vi.fn(async () => ({
-        sessions: [],
-      })),
+      listSessions: vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+        Promise.resolve(createListSessionsResult({ sessions: [] })),
+      ),
       ...impl,
     };
   }
 
   it('dispatches explicit profile requests to the selected adapter and preserves raw cursor behavior', async () => {
     const workspaceRoot = await createWorkspaceRoot('sniptail-agent-session-list-explicit-');
-    const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve({
         sessions: [
           {
             id: 'provider-session-1',
@@ -106,7 +116,10 @@ describe('agentSessionListService', () => {
         ],
         previousCursor: 'prev-1',
         nextCursor: 'next-1',
-      })),
+      } satisfies AgentSessionListAdapterResult),
+    );
+    const acpAdapter = createAdapter('acp', {
+      listSessions: acpListSessions,
     });
     const config = createWorkerConfig({
       agent: {
@@ -149,24 +162,24 @@ describe('agentSessionListService', () => {
       },
     });
 
-    expect(acpAdapter.listSessions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageSize: 5,
-        cursor: 'cursor-1',
-        filters: {
-          workspaceKey: 'snatch',
-          cwd: 'apps/worker',
-        },
-        resolvedWorkspace: expect.objectContaining({
-          workspaceKey: 'snatch',
-          relativeCwd: join('apps', 'worker'),
-        }),
-        profile: expect.objectContaining({
-          key: 'build',
-          provider: 'acp',
-        }),
-      }),
-    );
+    const acpListSessionsCall = acpListSessions.mock.calls[0];
+    expect(acpListSessionsCall).toBeDefined();
+    expect(acpListSessionsCall?.[0]).toMatchObject({
+      pageSize: 5,
+      cursor: 'cursor-1',
+      filters: {
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
+      resolvedWorkspace: {
+        workspaceKey: 'snatch',
+        relativeCwd: join('apps', 'worker'),
+      },
+      profile: {
+        key: 'build',
+        provider: 'acp',
+      },
+    });
     expect(result).toEqual({
       sessions: [
         {
@@ -182,10 +195,11 @@ describe('agentSessionListService', () => {
   });
 
   it('passes aggregate-looking cursors through explicit profile requests', async () => {
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(createListSessionsResult({ sessions: [] })),
+    );
     const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
-        sessions: [],
-      })),
+      listSessions: acpListSessions,
     });
     const directCursor = `sniptail-agent-sessions-v1.${Buffer.from(
       JSON.stringify({
@@ -234,11 +248,9 @@ describe('agentSessionListService', () => {
       },
     });
 
-    expect(acpAdapter.listSessions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cursor: directCursor,
-      }),
-    );
+    expect(acpListSessions.mock.calls[0]?.[0]).toMatchObject({
+      cursor: directCursor,
+    });
     expect(result.errorMessage).toBeUndefined();
   });
 
@@ -350,9 +362,9 @@ describe('agentSessionListService', () => {
   });
 
   it('aggregates across profiles, sorts deterministically, slices to page size, and emits an aggregate next cursor', async () => {
-    const adapters: AgentSessionListAdapterRegistry = {
-      acp: createAdapter('acp', {
-        listSessions: vi.fn(async () => ({
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(
+        createListSessionsResult({
           sessions: [
             {
               id: 'acp-1',
@@ -367,23 +379,34 @@ describe('agentSessionListService', () => {
               updatedAt: '2026-05-22T09:59:00.000Z',
             },
           ],
-        })),
+        }),
+      ),
+    );
+    const copilotListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(
+      () =>
+        Promise.resolve(
+          createListSessionsResult({
+            sessions: [
+              {
+                id: 'copilot-1',
+                provider: 'copilot',
+                agentProfileKey: 'ignored',
+                updatedAt: '2026-05-22T10:10:00.000Z',
+              },
+            ],
+            hasMore: true,
+            cursorState: {
+              offset: 1,
+            },
+          }),
+        ),
+    );
+    const adapters: AgentSessionListAdapterRegistry = {
+      acp: createAdapter('acp', {
+        listSessions: acpListSessions,
       }),
       copilot: createAdapter('copilot', {
-        listSessions: vi.fn(async () => ({
-          sessions: [
-            {
-              id: 'copilot-1',
-              provider: 'copilot',
-              agentProfileKey: 'ignored',
-              updatedAt: '2026-05-22T10:10:00.000Z',
-            },
-          ],
-          hasMore: true,
-          cursorState: {
-            offset: 1,
-          },
-        })),
+        listSessions: copilotListSessions,
       }),
     };
     const config = createWorkerConfig({
@@ -423,16 +446,12 @@ describe('agentSessionListService', () => {
       adapters,
     });
 
-    expect(adapters.acp?.listSessions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageSize: 2,
-      }),
-    );
-    expect(adapters.copilot?.listSessions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageSize: 2,
-      }),
-    );
+    expect(acpListSessions.mock.calls[0]?.[0]).toMatchObject({
+      pageSize: 2,
+    });
+    expect(copilotListSessions.mock.calls[0]?.[0]).toMatchObject({
+      pageSize: 2,
+    });
     expect(result.previousCursor).toBeUndefined();
     expect(result.sessions).toEqual([
       {
@@ -461,32 +480,45 @@ describe('agentSessionListService', () => {
         offset: 1,
       },
     });
-    expect(decoded.bufferedSessions).toEqual([{ id: 'acp-2', provider: 'acp', agentProfileKey: 'alpha', updatedAt: '2026-05-22T09:59:00.000Z' }]);
+    expect(decoded.bufferedSessions).toEqual([
+      {
+        id: 'acp-2',
+        provider: 'acp',
+        agentProfileKey: 'alpha',
+        updatedAt: '2026-05-22T09:59:00.000Z',
+      },
+    ]);
   });
 
   it('replays buffered sessions on the next aggregate page without re-querying completed profiles', async () => {
+    const copilotListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(
+      () => Promise.resolve(createListSessionsResult({ sessions: [] })),
+    );
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(
+        createListSessionsResult({
+          sessions: [
+            {
+              id: 'acp-1',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T10:05:00.000Z',
+            },
+            {
+              id: 'acp-2',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T09:59:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
     const copilotAdapter = createAdapter('copilot', {
-      listSessions: vi.fn(async () => ({
-        sessions: [],
-      })),
+      listSessions: copilotListSessions,
     });
     const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
-        sessions: [
-          {
-            id: 'acp-1',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T10:05:00.000Z',
-          },
-          {
-            id: 'acp-2',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T09:59:00.000Z',
-          },
-        ],
-      })),
+      listSessions: acpListSessions,
     });
     const config = createWorkerConfig({
       agent: {
@@ -554,35 +586,37 @@ describe('agentSessionListService', () => {
     ]);
     expect(secondPage.previousCursor).toMatch(/^sniptail-agent-sessions-v1\./);
     expect(secondPage.nextCursor).toBeUndefined();
-    expect(acpAdapter.listSessions).toHaveBeenCalledTimes(1);
-    expect(copilotAdapter.listSessions).toHaveBeenCalledTimes(1);
+    expect(acpListSessions).toHaveBeenCalledTimes(1);
+    expect(copilotListSessions).toHaveBeenCalledTimes(1);
   });
 
   it('queries only profiles with saved cursor state when buffered sessions do not fill the page', async () => {
-    const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
-        sessions: [
-          {
-            id: 'acp-buffered',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-        ],
-      })),
-    });
-    const copilotAdapter = createAdapter('copilot', {
-      listSessions: vi
-        .fn()
-        .mockResolvedValueOnce({
-          sessions: [],
-          hasMore: true,
-          cursorState: {
-            cursor: 'copilot-next',
-            offset: 2,
-          },
-        })
-        .mockResolvedValueOnce({
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(
+        createListSessionsResult({
+          sessions: [
+            {
+              id: 'acp-buffered',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
+    const copilotListSessions = vi
+      .fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>()
+      .mockResolvedValueOnce({
+        sessions: [],
+        hasMore: true,
+        cursorState: {
+          cursor: 'copilot-next',
+          offset: 2,
+        },
+      })
+      .mockResolvedValueOnce(
+        createListSessionsResult({
           sessions: [
             {
               id: 'copilot-next-session',
@@ -592,6 +626,12 @@ describe('agentSessionListService', () => {
             },
           ],
         }),
+      );
+    const acpAdapter = createAdapter('acp', {
+      listSessions: acpListSessions,
+    });
+    const copilotAdapter = createAdapter('copilot', {
+      listSessions: copilotListSessions,
     });
     const config = createWorkerConfig({
       agent: {
@@ -647,7 +687,7 @@ describe('agentSessionListService', () => {
       },
     });
 
-    expect(copilotAdapter.listSessions).toHaveBeenNthCalledWith(
+    expect(copilotListSessions).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         cursorState: {
@@ -656,28 +696,33 @@ describe('agentSessionListService', () => {
         },
       }),
     );
-    expect(acpAdapter.listSessions).toHaveBeenCalledTimes(1);
+    expect(acpListSessions).toHaveBeenCalledTimes(1);
   });
 
   it('matches aggregate cursor scope for equivalent normalized cwd filters', async () => {
     const workspaceRoot = await createWorkspaceRoot('sniptail-agent-session-list-normalized-cwd-');
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(
+        createListSessionsResult({
+          sessions: [
+            {
+              id: 'acp-1',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+            {
+              id: 'acp-2',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T09:59:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
     const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
-        sessions: [
-          {
-            id: 'acp-1',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-          {
-            id: 'acp-2',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T09:59:00.000Z',
-          },
-        ],
-      })),
+      listSessions: acpListSessions,
     });
     const config = createWorkerConfig({
       agent: {
@@ -751,23 +796,28 @@ describe('agentSessionListService', () => {
   });
 
   it('matches aggregate cursor scope for reordered duplicate roots filters', async () => {
+    const acpListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(() =>
+      Promise.resolve(
+        createListSessionsResult({
+          sessions: [
+            {
+              id: 'acp-1',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T10:00:00.000Z',
+            },
+            {
+              id: 'acp-2',
+              provider: 'acp',
+              agentProfileKey: 'ignored',
+              updatedAt: '2026-05-22T09:59:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
     const acpAdapter = createAdapter('acp', {
-      listSessions: vi.fn(async () => ({
-        sessions: [
-          {
-            id: 'acp-1',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T10:00:00.000Z',
-          },
-          {
-            id: 'acp-2',
-            provider: 'acp',
-            agentProfileKey: 'ignored',
-            updatedAt: '2026-05-22T09:59:00.000Z',
-          },
-        ],
-      })),
+      listSessions: acpListSessions,
     });
     const config = createWorkerConfig({
       agent: {
@@ -858,7 +908,8 @@ describe('agentSessionListService', () => {
 
     expect(result).toEqual({
       sessions: [],
-      errorMessage: 'Worker `worker-a` has no configured agent profiles that support session listing.',
+      errorMessage:
+        'Worker `worker-a` has no configured agent profiles that support session listing.',
     });
   });
 
@@ -1075,10 +1126,11 @@ describe('agentSessionListService', () => {
   });
 
   it('returns explicit profile adapter failures as user-facing errors', async () => {
+    const opencodeListSessions = vi.fn<(input: unknown) => Promise<AgentSessionListAdapterResult>>(
+      () => Promise.reject(new Error('endpoint unavailable')),
+    );
     const opencodeAdapter = createAdapter('opencode', {
-      listSessions: vi.fn(async () => {
-        throw new Error('endpoint unavailable');
-      }),
+      listSessions: opencodeListSessions,
     });
     const config = createWorkerConfig({
       agent: {

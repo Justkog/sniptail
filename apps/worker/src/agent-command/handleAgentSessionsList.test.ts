@@ -84,6 +84,7 @@ describe('handleAgentSessionsList', () => {
     const botEvents = {
       publish: vi.fn(() => Promise.resolve(undefined)),
     };
+    const config = createConfig();
     const event = createEvent({
       requestId: 'request-1',
       workspaceId: 'workspace-1',
@@ -92,15 +93,17 @@ describe('handleAgentSessionsList', () => {
 
     await handleAgentSessionsList({
       event,
-      config: createConfig(),
+      config,
       botEvents,
     });
 
     expect(listAgentSessionsForWorker).toHaveBeenCalledWith({
-      config: expect.anything(),
+      config,
       payload: event.payload,
     });
-    expect(botEvents.publish).toHaveBeenCalledWith({
+    const publishCall = botEvents.publish.mock.calls[0];
+    expect(publishCall).toBeDefined();
+    expect(publishCall?.[0]).toMatchObject({
       schemaVersion: 1,
       requestId: 'request-1',
       provider: 'discord',
@@ -150,18 +153,18 @@ describe('handleAgentSessionsList', () => {
       botEvents,
     });
 
-    expect(botEvents.publish).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'agent.sessions.listed',
-        payload: expect.objectContaining({
-          agentProfileKey: 'codex-review',
-          workerId: 'worker-a',
-          sessions: [],
-          errorMessage:
-            'Session listing is not supported for Codex profiles because the Codex SDK does not expose previous sessions.',
-        }),
-      }),
-    );
+    const publishCall = botEvents.publish.mock.calls[0];
+    expect(publishCall).toBeDefined();
+    expect(publishCall?.[0]).toMatchObject({
+      type: 'agent.sessions.listed',
+      payload: {
+        agentProfileKey: 'codex-review',
+        workerId: 'worker-a',
+        sessions: [],
+        errorMessage:
+          'Session listing is not supported for Codex profiles because the Codex SDK does not expose previous sessions.',
+      },
+    });
   });
 
   it('converts unexpected service failures into a listed error response', async () => {
@@ -176,22 +179,22 @@ describe('handleAgentSessionsList', () => {
       botEvents,
     });
 
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        err: expect.any(Error),
-        event: expect.anything(),
-      }),
-      'Failed to list agent sessions',
-    );
-    expect(botEvents.publish).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'agent.sessions.listed',
-        payload: expect.objectContaining({
-          sessions: [],
-          errorMessage: 'Failed to list sessions: adapter crashed',
-        }),
-      }),
-    );
+    const errorCall = vi.mocked(logger.error).mock.calls[0];
+    expect(errorCall).toBeDefined();
+    expect(errorCall?.[1]).toBe('Failed to list agent sessions');
+    const errorDetails = errorCall?.[0] as { err: Error; event: unknown } | undefined;
+    expect(errorDetails?.err).toBeInstanceOf(Error);
+    expect(errorDetails?.event).toBeDefined();
+
+    const publishCall = botEvents.publish.mock.calls[0];
+    expect(publishCall).toBeDefined();
+    expect(publishCall?.[0]).toMatchObject({
+      type: 'agent.sessions.listed',
+      payload: {
+        sessions: [],
+        errorMessage: 'Failed to list sessions: adapter crashed',
+      },
+    });
   });
 
   it('skips publishing when the reply target has no user id', async () => {
@@ -207,11 +210,12 @@ describe('handleAgentSessionsList', () => {
 
     expect(listAgentSessionsForWorker).not.toHaveBeenCalled();
     expect(botEvents.publish).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: expect.anything(),
-      }),
+    const warnCall = vi.mocked(logger.warn).mock.calls[0];
+    expect(warnCall).toBeDefined();
+    expect(warnCall?.[1]).toBe(
       'Cannot publish session list response for worker "worker-a" without a reply user id.',
     );
+    const warnDetails = warnCall?.[0] as { event: unknown } | undefined;
+    expect(warnDetails?.event).toBeDefined();
   });
 });

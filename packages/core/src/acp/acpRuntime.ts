@@ -536,7 +536,11 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
     ...(runtimeAgentInfo ? { agentInfo: runtimeAgentInfo } : {}),
     async listSessions(params) {
       if (!initialized.agentCapabilities?.sessionCapabilities?.list) {
-        throw wrapRuntimeError(options, 'ACP agent does not support session/list.', runtimeAgentInfo);
+        throw wrapRuntimeError(
+          options,
+          'ACP agent does not support session/list.',
+          runtimeAgentInfo,
+        );
       }
       try {
         return await listAcpSessions(connection, params);

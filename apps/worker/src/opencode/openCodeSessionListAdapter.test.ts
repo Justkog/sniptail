@@ -316,7 +316,9 @@ describe('openCodeSessionListAdapter', () => {
           start: 'not-a-timestamp',
         },
       }),
-    ).rejects.toThrow('Invalid start filter. Expected an ISO timestamp or milliseconds since epoch.');
+    ).rejects.toThrow(
+      'Invalid start filter. Expected an ISO timestamp or milliseconds since epoch.',
+    );
 
     expect(hoisted.sessionList).not.toHaveBeenCalled();
     expect(hoisted.close).toHaveBeenCalledTimes(1);

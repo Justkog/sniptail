@@ -57,8 +57,7 @@ function buildCopilotClientInput(input: ListCopilotSessionsInput): {
     copilotEnv.GH_COPILOT_DOCKER_BUILD_CONTEXT = resolve(input.docker.buildContext);
   }
 
-  const containerName =
-    copilotEnv[COPILOT_DOCKER_CONTAINER_NAME_ENV] || buildContainerName();
+  const containerName = copilotEnv[COPILOT_DOCKER_CONTAINER_NAME_ENV] || buildContainerName();
   copilotEnv[COPILOT_DOCKER_CONTAINER_NAME_ENV] = containerName;
 
   return {

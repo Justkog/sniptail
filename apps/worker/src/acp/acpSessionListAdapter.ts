@@ -108,7 +108,9 @@ function resolveAdditionalDirectories(input: AgentSessionListAdapterInput): stri
       continue;
     }
     if (isAbsolute(normalizedRoot)) {
-      throw new Error('Invalid roots filter. Expected relative paths inside the selected workspace.');
+      throw new Error(
+        'Invalid roots filter. Expected relative paths inside the selected workspace.',
+      );
     }
 
     const absoluteRoot = resolve(input.resolvedWorkspace.workspaceRoot, normalizedRoot);

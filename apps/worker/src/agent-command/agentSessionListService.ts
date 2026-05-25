@@ -103,9 +103,9 @@ function decodeAggregateCursor(cursor: string): AggregateCursorPayload {
     throw new Error('cursor-format');
   }
 
-  const parsed = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Partial<
-    AggregateCursorPayload
-  >;
+  const parsed = JSON.parse(
+    Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+  ) as Partial<AggregateCursorPayload>;
   if (parsed.version !== 1 || parsed.mode !== 'aggregate') {
     throw new Error('cursor-version');
   }
@@ -231,8 +231,8 @@ function normalizeRoots(roots: string[] | undefined): string[] | undefined {
     return undefined;
   }
 
-  const normalized = [...new Set(roots.map((root) => root.trim()).filter(Boolean))].sort((left, right) =>
-    left.localeCompare(right),
+  const normalized = [...new Set(roots.map((root) => root.trim()).filter(Boolean))].sort(
+    (left, right) => left.localeCompare(right),
   );
   return normalized.length ? normalized : undefined;
 }
@@ -315,11 +315,14 @@ function buildAggregateAdapterInput(input: {
   };
 }
 
-function buildCurrentPageAggregateCursor(input: {
-  scope: AggregateCursorScope;
-  profileStates?: Record<string, AgentSessionListAdapterPageState>;
-  bufferedSessions?: AgentSessionSummary[];
-}, previousCursor?: string): string {
+function buildCurrentPageAggregateCursor(
+  input: {
+    scope: AggregateCursorScope;
+    profileStates?: Record<string, AgentSessionListAdapterPageState>;
+    bufferedSessions?: AgentSessionSummary[];
+  },
+  previousCursor?: string,
+): string {
   return encodeAggregateCursor({
     version: 1,
     mode: 'aggregate',
@@ -467,8 +470,8 @@ export async function listAgentSessionsForWorker({
   const currentPageCursor = decodedCursor
     ? payload.cursor
     : buildCurrentPageAggregateCursor({
-      scope,
-    });
+        scope,
+      });
 
   const sessions: AgentSessionSummary[] = decodedCursor?.bufferedSessions
     ? [...decodedCursor.bufferedSessions]

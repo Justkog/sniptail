@@ -590,7 +590,9 @@ describe('ACP runtime wrapper', () => {
       launch: { command: ['mock-acp'] },
     });
 
-    await expect(runtime.listSessions({})).rejects.toThrow('ACP agent does not support session/list.');
+    await expect(runtime.listSessions({})).rejects.toThrow(
+      'ACP agent does not support session/list.',
+    );
     expect(connection.listSessions).not.toHaveBeenCalled();
   });
 

@@ -215,7 +215,12 @@ async function createOpenCodeListRuntime(
     case 'server':
       return createServerRuntime(workDir, process.env, options);
     case 'docker':
-      return createDockerRuntime(`agent-session-list-${profile.key}`, workDir, process.env, options);
+      return createDockerRuntime(
+        `agent-session-list-${profile.key}`,
+        workDir,
+        process.env,
+        options,
+      );
     case 'local':
     default:
       return createLocalRuntime(workDir, options);

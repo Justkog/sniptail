@@ -68,7 +68,9 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
   return trimmed ? trimmed : undefined;
 }
 
-function normalizeFiltersForScope(input: AgentSessionListAdapterInput): CopilotCursorFilters | undefined {
+function normalizeFiltersForScope(
+  input: AgentSessionListAdapterInput,
+): CopilotCursorFilters | undefined {
   const filters: CopilotCursorFilters = {};
   if (input.resolvedWorkspace?.workspaceKey) {
     filters.workspaceKey = input.resolvedWorkspace.workspaceKey;
@@ -190,16 +192,16 @@ function decodeCursor(cursor: string, scope: CopilotCursorScope): number {
   }
 
   try {
-    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Partial<
-      CopilotCursorPayload
-    >;
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+    ) as Partial<CopilotCursorPayload>;
     if (payload.version !== 1 || payload.mode !== 'copilot') {
       throw new Error(INVALID_COPILOT_CURSOR_MESSAGE);
     }
     if (!Number.isInteger(payload.offset) || (payload.offset as number) < 0) {
       throw new Error(INVALID_COPILOT_CURSOR_MESSAGE);
     }
-    if (!payload.scope || !scopesMatch(payload.scope as CopilotCursorScope, scope)) {
+    if (!payload.scope || !scopesMatch(payload.scope, scope)) {
       throw new Error(INVALID_COPILOT_CURSOR_MESSAGE);
     }
     return payload.offset as number;

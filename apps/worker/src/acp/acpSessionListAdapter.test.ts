@@ -428,7 +428,9 @@ describe('acpSessionListAdapter', () => {
           roots: ['packages/core'],
         },
       }),
-    ).rejects.toThrow('A workspace key is required when roots are provided for ACP session listing.');
+    ).rejects.toThrow(
+      'A workspace key is required when roots are provided for ACP session listing.',
+    );
 
     expect(hoisted.launchAcpRuntime).not.toHaveBeenCalled();
   });
