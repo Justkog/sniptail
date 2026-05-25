@@ -3,7 +3,8 @@
 This guide walks through creating a Discord application/bot, inviting it to your server, and configuring Sniptail to use it.
 
 Sniptail’s Discord bot:
-- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
+
+- Registers slash commands on startup (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`, `/sniptail-agent-sessions`).
 - Accepts up to 3 small context-file attachments on `/sniptail-ask`, `/sniptail-explore`, `/sniptail-plan`, and `/sniptail-implement`.
 - Supports `@mention` in a channel to kick off a job, and will include supported files attached to that triggering mention message.
 - Posts job results and uploads Markdown reports as file attachments.
@@ -36,6 +37,7 @@ export DISCORD_BOT_TOKEN="..."
 Sniptail listens for message mentions and needs access to message content.
 
 In **Bot → Privileged Gateway Intents**, enable:
+
 - **MESSAGE CONTENT INTENT**
 
 ## 4) Invite the bot to your server
