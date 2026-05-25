@@ -1,17 +1,17 @@
-import { isAbsolute } from 'node:path';
 import type {
   AgentSessionListFilters,
   AgentSessionSummary,
 } from '@sniptail/core/agent-sessions/listing.js';
 import type { CoreWorkerEvent } from '@sniptail/core/types/worker-event.js';
-import type {
-  AgentCommandMetadata,
-  AgentCommandProfileMetadata,
-} from '../agentCommandMetadataCache.js';
+import {
+  agentSessionBrowserFiltersEqual,
+  findAgentSessionBrowserWorkerProfile,
+  normalizeAgentSessionBrowserFilters,
+  validateAgentSessionBrowserCwd,
+  validateAgentSessionBrowserSelection,
+} from '../agentSessionBrowserShared.js';
 
 export const SLACK_AGENT_SESSIONS_PAGE_SIZE = 5;
-
-type LiveWorker = AgentCommandMetadata['aggregated']['liveWorkers'][number];
 
 type ParsedAgentSessionsCommand = {
   workerId: string;
@@ -25,60 +25,10 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
 }
 
 export function validateRelativeCwd(cwd: string | undefined): string | undefined {
-  const normalized = normalizeOptionalString(cwd);
-  if (!normalized) {
-    return undefined;
-  }
-  if (isAbsolute(normalized)) {
-    throw new Error('`cwd` must be a relative path.');
-  }
-  return normalized;
+  return validateAgentSessionBrowserCwd(cwd);
 }
 
-export function normalizeAgentSessionListFilters(
-  filters: AgentSessionListFilters | undefined,
-): AgentSessionListFilters | undefined {
-  if (!filters) {
-    return undefined;
-  }
-
-  const normalized: AgentSessionListFilters = {};
-  const assignTrimmed = (
-    key: keyof Omit<AgentSessionListFilters, 'roots'>,
-    value: string | undefined,
-  ) => {
-    const trimmed = normalizeOptionalString(value);
-    if (trimmed) {
-      normalized[key] = trimmed;
-    }
-  };
-
-  assignTrimmed('workspaceKey', filters.workspaceKey);
-  assignTrimmed('cwd', filters.cwd);
-  assignTrimmed('gitRoot', filters.gitRoot);
-  assignTrimmed('repository', filters.repository);
-  assignTrimmed('branch', filters.branch);
-  assignTrimmed('search', filters.search);
-  assignTrimmed('start', filters.start);
-
-  const roots = filters.roots
-    ?.map((root) => normalizeOptionalString(root))
-    .filter((root): root is string => Boolean(root));
-  if (roots?.length) {
-    normalized.roots = [...new Set(roots)].sort((left, right) => left.localeCompare(right));
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
-
-export function agentSessionListFiltersEqual(
-  left: AgentSessionListFilters | undefined,
-  right: AgentSessionListFilters | undefined,
-): boolean {
-  const normalizedLeft = normalizeAgentSessionListFilters(left);
-  const normalizedRight = normalizeAgentSessionListFilters(right);
-  return JSON.stringify(normalizedLeft ?? {}) === JSON.stringify(normalizedRight ?? {});
-}
+export const agentSessionListFiltersEqual = agentSessionBrowserFiltersEqual;
 
 export function buildAgentSessionsCommandUsage(commandName: string): string {
   return `Usage: ${commandName} worker:<worker-id> [agent_profile:<profile-key>] [workspace:<workspace-key>] [cwd:<relative-path>]`;
@@ -148,7 +98,7 @@ export function parseAgentSessionsCommandText(text: string): ParsedAgentSessions
 
   const parsedCommand: ParsedAgentSessionsCommand = { workerId };
   const agentProfileKey = normalizeOptionalString(raw.agentProfileKey);
-  const normalizedFilters = normalizeAgentSessionListFilters(filters);
+  const normalizedFilters = normalizeAgentSessionBrowserFilters(filters);
   if (agentProfileKey) {
     parsedCommand.agentProfileKey = agentProfileKey;
   }
@@ -159,65 +109,8 @@ export function parseAgentSessionsCommandText(text: string): ParsedAgentSessions
   return parsedCommand;
 }
 
-export function findLiveWorker(
-  metadata: AgentCommandMetadata,
-  workerId: string,
-): LiveWorker | undefined {
-  return metadata.aggregated.liveWorkers.find((worker) => worker.workerId === workerId);
-}
-
-export function findWorkerProfile(
-  worker: LiveWorker,
-  profileKey: string,
-): AgentCommandProfileMetadata | undefined {
-  const profile = worker.profiles.find((candidate) => candidate.key === profileKey);
-  return profile
-    ? {
-        key: profile.key,
-        status: 'available',
-        provider: profile.provider,
-        ...(profile.agent ? { agent: profile.agent } : {}),
-        ...(profile.profile ? { profile: profile.profile } : {}),
-        ...(profile.model ? { model: profile.model } : {}),
-        ...(profile.modelProvider ? { modelProvider: profile.modelProvider } : {}),
-        ...(profile.reasoningEffort ? { reasoningEffort: profile.reasoningEffort } : {}),
-        ...(profile.label ? { label: profile.label } : {}),
-        ...(profile.description ? { description: profile.description } : {}),
-        workerIds: [worker.workerId],
-      }
-    : undefined;
-}
-
-export function workerHasWorkspace(worker: LiveWorker, workspaceKey: string): boolean {
-  return worker.workspaces.some((workspace) => workspace.key === workspaceKey);
-}
-
-export function validateSlackAgentSessionsSelection(input: {
-  metadata: AgentCommandMetadata;
-  workerId: string;
-  agentProfileKey?: string;
-  filters?: AgentSessionListFilters;
-}): { worker: LiveWorker } {
-  const worker = findLiveWorker(input.metadata, input.workerId);
-  if (!worker) {
-    throw new Error(
-      `Worker \`${input.workerId}\` is not live. Refresh the worker list and try again.`,
-    );
-  }
-
-  if (input.agentProfileKey && !findWorkerProfile(worker, input.agentProfileKey)) {
-    throw new Error(
-      `Worker \`${input.workerId}\` does not expose agent profile \`${input.agentProfileKey}\`.`,
-    );
-  }
-
-  const workspaceKey = input.filters?.workspaceKey?.trim();
-  if (workspaceKey && !workerHasWorkspace(worker, workspaceKey)) {
-    throw new Error(`Worker \`${input.workerId}\` does not expose workspace \`${workspaceKey}\`.`);
-  }
-
-  return { worker };
-}
+export const validateSlackAgentSessionsSelection = validateAgentSessionBrowserSelection;
+export const findWorkerProfile = findAgentSessionBrowserWorkerProfile;
 
 export function buildAgentSessionsListWorkerEvent(input: {
   requestId: string;

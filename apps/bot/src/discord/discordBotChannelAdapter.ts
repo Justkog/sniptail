@@ -16,6 +16,17 @@ import {
   uploadDiscordFile,
 } from './helpers.js';
 import {
+  buildDiscordAgentSessionTimestamp,
+  discordAgentSessionFiltersEqual,
+} from './discordAgentSessionBrowserShared.js';
+import {
+  clearPendingDiscordAgentSessionBrowserRequest,
+  getPendingDiscordAgentSessionBrowserRequest,
+  setDiscordAgentSessionsActionState,
+  type PendingDiscordAgentSessionBrowserRequest,
+} from './state.js';
+import { buildDiscordAgentSessionsCustomId } from './features/actions/discordAgentSessionButtons.js';
+import {
   buildDiscordAgentPermissionComponents,
   buildDiscordAgentQuestionComponents,
 } from '@sniptail/core/discord/components.js';
@@ -53,6 +64,7 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
     'agent.permission.updated',
     'agent.question.requested',
     'agent.question.updated',
+    'agent.sessions.listed',
   ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
@@ -120,6 +132,9 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
         return true;
       case 'agent.question.updated':
         await this.updateAgentQuestionRequest(client, event);
+        return true;
+      case 'agent.sessions.listed':
+        await this.postAgentSessionsListed(client, event);
         return true;
       default:
         return false;
@@ -367,6 +382,184 @@ export class DiscordBotChannelAdapter implements RuntimeBotChannelAdapter {
       text: buildAgentQuestionUpdateText(event.payload),
     });
   }
+
+  private async postAgentSessionsListed(
+    client: Parameters<typeof editDiscordInteractionReply>[0],
+    event: CoreBotEvent<'agent.sessions.listed'>,
+  ) {
+    const requestId = event.requestId?.trim();
+    if (!requestId) {
+      return;
+    }
+    const pending = getPendingDiscordAgentSessionBrowserRequest(requestId);
+    if (!pending || !matchesPendingDiscordBrowserRequest(pending, event)) {
+      return;
+    }
+    clearPendingDiscordAgentSessionBrowserRequest(requestId);
+
+    const { text, components } = buildDiscordAgentSessionsBrowserMessage(pending, event);
+    await editDiscordInteractionReply(client, {
+      interactionApplicationId: pending.interactionApplicationId,
+      interactionToken: pending.interactionToken,
+      text,
+      components,
+    });
+  }
+}
+
+function matchesPendingDiscordBrowserRequest(
+  pending: PendingDiscordAgentSessionBrowserRequest,
+  event: CoreBotEvent<'agent.sessions.listed'>,
+): boolean {
+  return (
+    pending.channelId === event.payload.channelId &&
+    pending.userId === event.payload.userId &&
+    pending.guildId === event.payload.guildId &&
+    pending.workerId === event.payload.workerId &&
+    pending.agentProfileKey === event.payload.agentProfileKey &&
+    discordAgentSessionFiltersEqual(pending.filters, event.payload.filters)
+  );
+}
+
+function truncateDiscordLine(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}...`;
+}
+
+function buildDiscordAgentSessionsBrowserMessage(
+  pending: PendingDiscordAgentSessionBrowserRequest,
+  event: CoreBotEvent<'agent.sessions.listed'>,
+): { text: string; components: unknown[] } {
+  const header = [
+    '**Agent sessions**',
+    `Worker: \`${pending.workerId}\``,
+    pending.agentProfileKey ? `Profile: \`${pending.agentProfileKey}\`` : 'Profile: all listable',
+    pending.filters?.workspaceKey
+      ? `Workspace: \`${pending.filters.workspaceKey}${pending.filters.cwd ? ` / ${pending.filters.cwd}` : ''}\``
+      : undefined,
+  ]
+    .filter((line) => line !== undefined)
+    .join('\n');
+
+  if (event.payload.errorMessage) {
+    return {
+      text: `${header}\n\n${event.payload.errorMessage}`,
+      components: [],
+    };
+  }
+
+  const lines = [header];
+  if (!event.payload.sessions.length) {
+    lines.push('', 'No matching sessions were found.');
+  }
+
+  const components: unknown[] = [];
+  for (const [index, session] of event.payload.sessions.entries()) {
+    const rowLines = [
+      `**${index + 1}. ${truncateDiscordLine(session.title?.trim() || 'Untitled session', 80)}**`,
+      `Provider: \`${session.provider}\` | Profile: \`${session.agentProfileKey}\``,
+      `Session ID: \`${session.id}\``,
+      buildDiscordAgentSessionTimestamp(session),
+      session.workspaceKey
+        ? `Workspace: \`${session.workspaceKey}${session.cwd ? ` / ${session.cwd}` : ''}\``
+        : session.cwd
+          ? `CWD: \`${session.cwd}\``
+          : undefined,
+      session.project ? `Project: ${truncateDiscordLine(session.project, 100)}` : undefined,
+      session.roots?.length
+        ? `Roots: ${session.roots.map((root) => `\`${root}\``).join(', ')}`
+        : undefined,
+      session.description ? truncateDiscordLine(session.description, 160) : undefined,
+    ].filter((line) => line !== undefined);
+    lines.push('', ...rowLines);
+
+    const token = setDiscordAgentSessionsActionState({
+      kind: 'attach',
+      payload: {
+        channelId: pending.channelId,
+        userId: pending.userId,
+        ...(pending.guildId ? { guildId: pending.guildId } : {}),
+        workerId: pending.workerId,
+        ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+        ...(pending.filters ? { filters: pending.filters } : {}),
+        provider: session.provider,
+        providerSessionId: session.id,
+        sessionAgentProfileKey: session.agentProfileKey,
+        ...(session.workspaceKey ? { workspaceKey: session.workspaceKey } : {}),
+        ...(session.cwd ? { cwd: session.cwd } : {}),
+        ...(session.title ? { title: session.title } : {}),
+      },
+    });
+    components.push({
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 1,
+          label: `Attach ${index + 1}`,
+          custom_id: buildDiscordAgentSessionsCustomId('attach', token),
+        },
+      ],
+    });
+  }
+
+  const navigationComponents: unknown[] = [];
+  const previousCursor = event.payload.previousCursor ?? pending.cursorHistory.at(-1);
+  if (event.payload.previousCursor || pending.cursorHistory.length > 0) {
+    const token = setDiscordAgentSessionsActionState({
+      kind: 'previous',
+      payload: {
+        channelId: pending.channelId,
+        userId: pending.userId,
+        ...(pending.guildId ? { guildId: pending.guildId } : {}),
+        workerId: pending.workerId,
+        ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+        ...(pending.filters ? { filters: pending.filters } : {}),
+        ...(pending.currentCursor ? { currentCursor: pending.currentCursor } : {}),
+        cursorHistory: pending.cursorHistory,
+        ...(previousCursor ? { previousCursor } : {}),
+        ...(event.payload.nextCursor ? { nextCursor: event.payload.nextCursor } : {}),
+      },
+    });
+    navigationComponents.push({
+      type: 2,
+      style: 2,
+      label: 'Previous',
+      custom_id: buildDiscordAgentSessionsCustomId('previous', token),
+    });
+  }
+  if (event.payload.nextCursor) {
+    const token = setDiscordAgentSessionsActionState({
+      kind: 'next',
+      payload: {
+        channelId: pending.channelId,
+        userId: pending.userId,
+        ...(pending.guildId ? { guildId: pending.guildId } : {}),
+        workerId: pending.workerId,
+        ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+        ...(pending.filters ? { filters: pending.filters } : {}),
+        ...(pending.currentCursor ? { currentCursor: pending.currentCursor } : {}),
+        cursorHistory: pending.cursorHistory,
+        nextCursor: event.payload.nextCursor,
+      },
+    });
+    navigationComponents.push({
+      type: 2,
+      style: 1,
+      label: 'Next',
+      custom_id: buildDiscordAgentSessionsCustomId('next', token),
+    });
+  }
+  if (navigationComponents.length) {
+    components.push({
+      type: 1,
+      components: navigationComponents,
+    });
+  }
+
+  return {
+    text: truncateDiscordLine(lines.join('\n'), DISCORD_MESSAGE_CONTENT_LIMIT),
+    components,
+  };
 }
 
 function agentPermissionKey(sessionId: string, interactionId: string): string {

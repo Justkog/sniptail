@@ -470,11 +470,20 @@ describe('agentSessionListService', () => {
     expect(result.nextCursor).toBeDefined();
 
     const decoded = decodeAggregateCursor(result.nextCursor as string) as {
+      initialPage?: true;
       previousCursor: string;
       profileStates: Record<string, AgentSessionListAdapterPageState>;
       bufferedSessions: Array<{ id: string }>;
     };
     expect(decoded.previousCursor).toMatch(/^sniptail-agent-sessions-v1\./);
+    const previousDecoded = decodeAggregateCursor(decoded.previousCursor) as {
+      initialPage?: true;
+      profileStates: Record<string, AgentSessionListAdapterPageState>;
+      bufferedSessions: Array<{ id: string }>;
+    };
+    expect(previousDecoded.initialPage).toBe(true);
+    expect(previousDecoded.profileStates).toEqual({});
+    expect(previousDecoded.bufferedSessions).toEqual([]);
     expect(decoded.profileStates).toEqual({
       zed: {
         offset: 1,
@@ -588,6 +597,37 @@ describe('agentSessionListService', () => {
     expect(secondPage.nextCursor).toBeUndefined();
     expect(acpListSessions).toHaveBeenCalledTimes(1);
     expect(copilotListSessions).toHaveBeenCalledTimes(1);
+
+    const previousPage = await listAgentSessionsForWorker({
+      config,
+      payload: {
+        response: {
+          provider: 'slack',
+          channelId: 'channel-1',
+          userId: 'user-1',
+        },
+        workerId: 'worker-a',
+        pageSize: 1,
+        cursor: secondPage.previousCursor,
+      },
+      adapters: {
+        acp: acpAdapter,
+        copilot: copilotAdapter,
+      },
+    });
+
+    expect(previousPage.sessions).toEqual([
+      {
+        id: 'acp-1',
+        provider: 'acp',
+        agentProfileKey: 'alpha',
+        updatedAt: '2026-05-22T10:05:00.000Z',
+      },
+    ]);
+    expect(previousPage.previousCursor).toBeUndefined();
+    expect(previousPage.nextCursor).toBeDefined();
+    expect(acpListSessions).toHaveBeenCalledTimes(2);
+    expect(copilotListSessions).toHaveBeenCalledTimes(2);
   });
 
   it('queries only profiles with saved cursor state when buffered sessions do not fill the page', async () => {

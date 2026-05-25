@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  AgentSessionListFilters,
+  AgentSessionSummary,
+} from '@sniptail/core/agent-sessions/listing.js';
+import type {
   InteractionCallbackResponse,
   ModalSubmitInteraction,
   StringSelectMenuInteraction,
@@ -23,6 +27,7 @@ const FROM_JOB_SELECTION_MAX_ENTRIES = 50;
 export const DISCORD_SELECTION_TTL_MS = 15 * 60 * 1000;
 export const DISCORD_SELECTION_CAPTURED_MESSAGE =
   'Repository selection captured. Complete the modal or rerun the command.';
+export const DISCORD_AGENT_SESSIONS_STATE_TTL_MS = 15 * 60 * 1000;
 
 export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
 export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
@@ -59,8 +64,117 @@ export const bootstrapExtrasByUser = new Map<
   }
 >();
 
+export type PendingDiscordAgentSessionBrowserRequest = {
+  requestId: string;
+  channelId: string;
+  userId: string;
+  guildId?: string;
+  interactionApplicationId: string;
+  interactionToken: string;
+  workerId: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+  currentCursor?: string;
+  cursorHistory: string[];
+  requestedAt: number;
+};
+
+export type DiscordAgentSessionsBrowserActionPayload = {
+  channelId: string;
+  userId: string;
+  guildId?: string;
+  workerId: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+};
+
+export type DiscordAgentSessionsPageActionPayload = DiscordAgentSessionsBrowserActionPayload & {
+  currentCursor?: string;
+  cursorHistory: string[];
+  previousCursor?: string;
+  nextCursor?: string;
+};
+
+export type DiscordAgentSessionsAttachActionPayload = DiscordAgentSessionsBrowserActionPayload & {
+  provider: AgentSessionSummary['provider'];
+  providerSessionId: string;
+  sessionAgentProfileKey: string;
+  workspaceKey?: string;
+  cwd?: string;
+  title?: string;
+};
+
+type DiscordAgentSessionsActionState =
+  | {
+      kind: 'previous' | 'next';
+      payload: DiscordAgentSessionsPageActionPayload;
+      requestedAt: number;
+    }
+  | { kind: 'attach'; payload: DiscordAgentSessionsAttachActionPayload; requestedAt: number };
+
+const pendingDiscordAgentSessionBrowsers = new Map<
+  string,
+  PendingDiscordAgentSessionBrowserRequest
+>();
+const discordAgentSessionsActionStateByToken = new Map<string, DiscordAgentSessionsActionState>();
+
 export function createDiscordSelectionToken(): string {
   return randomUUID();
+}
+
+export function setPendingDiscordAgentSessionBrowserRequest(
+  payload: PendingDiscordAgentSessionBrowserRequest,
+): void {
+  pendingDiscordAgentSessionBrowsers.set(payload.requestId, payload);
+}
+
+export function getPendingDiscordAgentSessionBrowserRequest(
+  requestId: string,
+  now = Date.now(),
+): PendingDiscordAgentSessionBrowserRequest | undefined {
+  const pending = pendingDiscordAgentSessionBrowsers.get(requestId);
+  if (!pending) {
+    return undefined;
+  }
+  if (now - pending.requestedAt > DISCORD_AGENT_SESSIONS_STATE_TTL_MS) {
+    pendingDiscordAgentSessionBrowsers.delete(requestId);
+    return undefined;
+  }
+  return pending;
+}
+
+export function clearPendingDiscordAgentSessionBrowserRequest(requestId: string): void {
+  pendingDiscordAgentSessionBrowsers.delete(requestId);
+}
+
+export function setDiscordAgentSessionsActionState(
+  state: Omit<DiscordAgentSessionsActionState, 'requestedAt'>,
+): string {
+  const token = randomUUID();
+  discordAgentSessionsActionStateByToken.set(token, {
+    ...state,
+    requestedAt: Date.now(),
+  } as DiscordAgentSessionsActionState);
+  return token;
+}
+
+export function getDiscordAgentSessionsActionState(
+  token: string,
+  now = Date.now(),
+): DiscordAgentSessionsActionState | undefined {
+  const state = discordAgentSessionsActionStateByToken.get(token);
+  if (!state) {
+    return undefined;
+  }
+  if (now - state.requestedAt > DISCORD_AGENT_SESSIONS_STATE_TTL_MS) {
+    discordAgentSessionsActionStateByToken.delete(token);
+    return undefined;
+  }
+  return state;
+}
+
+export function clearDiscordAgentSessionsActionState(token: string): void {
+  discordAgentSessionsActionStateByToken.delete(token);
 }
 
 export function setFromJobSelectionWithCap(

@@ -5,19 +5,67 @@ const hoisted = vi.hoisted(() => ({
   postDiscordMessage: vi.fn().mockResolvedValue({ id: 'message-1' }),
   fetchDiscordMessage: vi.fn(),
   editDiscordMessage: vi.fn().mockResolvedValue(undefined),
+  editDiscordInteractionReply: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('./helpers.js', () => ({
   postDiscordMessage: hoisted.postDiscordMessage,
   postDiscordEphemeral: vi.fn(),
-  editDiscordInteractionReply: vi.fn(),
+  editDiscordInteractionReply: hoisted.editDiscordInteractionReply,
   addDiscordReaction: vi.fn(),
   uploadDiscordFile: vi.fn(),
   fetchDiscordMessage: hoisted.fetchDiscordMessage,
   editDiscordMessage: hoisted.editDiscordMessage,
 }));
 
+vi.mock('@sniptail/core/logger.js', () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+vi.mock('@sniptail/core/config/config.js', () => ({
+  loadBotConfig: vi.fn(() => ({ discord: { commandPrefix: 'sniptail' } })),
+}));
+
+vi.mock('@sniptail/core/utils/slack.js', () => ({
+  toSlackCommandPrefix: vi.fn((prefix: string) => prefix),
+}));
+
+vi.mock('@sniptail/core/discord/components.js', () => ({
+  buildDiscordAgentPermissionComponents: vi.fn(() => []),
+  buildDiscordAgentQuestionComponents: vi.fn(() => []),
+}));
+
+vi.mock('./features/actions/discordAgentSessionButtons.js', () => ({
+  buildDiscordAgentSessionsCustomId: vi.fn(
+    (action: string, token: string) => `sniptail:agent-sessions:${action}:${token}`,
+  ),
+}));
+
+vi.mock('./features/actions/agentQuestion.js', () => ({
+  clearPendingDiscordAgentQuestion: vi.fn(),
+  setPendingDiscordAgentQuestion: vi.fn(),
+}));
+
 import { DiscordBotChannelAdapter } from './discordBotChannelAdapter.js';
+import {
+  clearPendingDiscordAgentSessionBrowserRequest,
+  setPendingDiscordAgentSessionBrowserRequest,
+} from './state.js';
+
+type DiscordInteractionReplyUpdate = {
+  interactionApplicationId: string;
+  interactionToken: string;
+  text: string;
+  components?: Array<{
+    components?: Array<{
+      label?: string;
+    }>;
+  }>;
+};
 
 function buildQuestionEvent(
   questions: CoreBotEvent<'agent.question.requested'>['payload']['questions'],
@@ -75,6 +123,41 @@ function buildPermissionUpdatedEvent(): CoreBotEvent<'agent.permission.updated'>
   };
 }
 
+function buildSessionsListedEvent(
+  overrides: Partial<CoreBotEvent<'agent.sessions.listed'>['payload']> = {},
+): CoreBotEvent<'agent.sessions.listed'> {
+  return {
+    schemaVersion: 1,
+    requestId: 'request-1',
+    provider: 'discord',
+    type: 'agent.sessions.listed',
+    payload: {
+      channelId: 'channel-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+        roots: ['docs', 'packages/core'],
+      },
+      sessions: [
+        {
+          id: 'provider-session-1',
+          provider: 'acp',
+          agentProfileKey: 'build',
+          workspaceKey: 'snatch',
+          cwd: 'apps/worker',
+          title: 'ACP session',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      previousCursor: 'cursor-0',
+      nextCursor: 'cursor-2',
+      ...overrides,
+    },
+  };
+}
+
 describe('DiscordBotChannelAdapter question formatting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +166,8 @@ describe('DiscordBotChannelAdapter question formatting', () => {
       content: '**Permission requested** Tool: `bash`',
     });
     hoisted.editDiscordMessage.mockResolvedValue(undefined);
+    hoisted.editDiscordInteractionReply.mockResolvedValue(undefined);
+    clearPendingDiscordAgentSessionBrowserRequest('request-1');
   });
 
   it('omits numbering and header text for a single question without a header', async () => {
@@ -147,5 +232,76 @@ describe('DiscordBotChannelAdapter question formatting', () => {
         components: [],
       }),
     );
+  });
+
+  it('renders listed sessions into the pending ephemeral interaction reply', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+    setPendingDiscordAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      interactionApplicationId: 'app-1',
+      interactionToken: 'token-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: ' snatch ',
+        roots: ['packages/core', 'docs', 'docs'],
+      },
+      cursorHistory: [],
+      requestedAt: Date.now(),
+    });
+
+    await adapter.handleEvent(buildSessionsListedEvent(), { discordClient: {} as never });
+
+    const editCalls = hoisted.editDiscordInteractionReply.mock.calls as Array<
+      [unknown, DiscordInteractionReplyUpdate]
+    >;
+    const [, reply] = editCalls[0] ?? [];
+    const buttonLabels =
+      reply.components?.flatMap(
+        (row) =>
+          row.components
+            ?.map((component) => component.label)
+            .filter((label) => label !== undefined) ?? [],
+      ) ?? [];
+
+    expect(reply.interactionApplicationId).toBe('app-1');
+    expect(reply.interactionToken).toBe('token-1');
+    expect(reply.text).toContain('ACP session');
+    expect(buttonLabels).toContain('Attach 1');
+    expect(buttonLabels).toContain('Previous');
+    expect(buttonLabels).toContain('Next');
+  });
+
+  it('ignores listed sessions whose filters do not match pending scope', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+    setPendingDiscordAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      interactionApplicationId: 'app-1',
+      interactionToken: 'token-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
+      cursorHistory: [],
+      requestedAt: Date.now(),
+    });
+
+    await adapter.handleEvent(
+      buildSessionsListedEvent({
+        filters: {
+          workspaceKey: 'snatch',
+          cwd: 'apps/bot',
+        },
+      }),
+      { discordClient: {} as never },
+    );
+
+    expect(hoisted.editDiscordInteractionReply).not.toHaveBeenCalled();
   });
 });

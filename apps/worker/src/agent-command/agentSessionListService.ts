@@ -30,6 +30,7 @@ type AggregateCursorScope = {
 type AggregateCursorPayload = {
   version: 1;
   mode: 'aggregate';
+  initialPage?: true;
   previousCursor?: string;
   scope: AggregateCursorScope;
   profileStates: Record<string, AgentSessionListAdapterPageState>;
@@ -129,6 +130,7 @@ function decodeAggregateCursor(cursor: string): AggregateCursorPayload {
   return {
     version: 1,
     mode: 'aggregate',
+    ...(parsed.initialPage === true ? { initialPage: true } : {}),
     scope: {
       workerId: parsed.scope.workerId,
       pageSize: parsed.scope.pageSize,
@@ -318,6 +320,7 @@ function buildAggregateAdapterInput(input: {
 function buildCurrentPageAggregateCursor(
   input: {
     scope: AggregateCursorScope;
+    initialPage?: true;
     profileStates?: Record<string, AgentSessionListAdapterPageState>;
     bufferedSessions?: AgentSessionSummary[];
   },
@@ -326,6 +329,7 @@ function buildCurrentPageAggregateCursor(
   return encodeAggregateCursor({
     version: 1,
     mode: 'aggregate',
+    ...(input.initialPage ? { initialPage: true } : {}),
     scope: input.scope,
     ...(previousCursor ? { previousCursor } : {}),
     profileStates: input.profileStates ?? {},
@@ -467,24 +471,26 @@ export async function listAgentSessionsForWorker({
     }
   }
 
-  const currentPageCursor = decodedCursor
-    ? payload.cursor
-    : buildCurrentPageAggregateCursor({
-        scope,
-      });
+  const effectiveDecodedCursor = decodedCursor?.initialPage ? undefined : decodedCursor;
+  const currentPageCursor =
+    payload.cursor ??
+    buildCurrentPageAggregateCursor({
+      scope,
+      initialPage: true,
+    });
 
-  const sessions: AgentSessionSummary[] = decodedCursor?.bufferedSessions
-    ? [...decodedCursor.bufferedSessions]
+  const sessions: AgentSessionSummary[] = effectiveDecodedCursor?.bufferedSessions
+    ? [...effectiveDecodedCursor.bufferedSessions]
     : [];
   const nextProfileStates: Record<string, AgentSessionListAdapterPageState> = {
-    ...(decodedCursor?.profileStates ?? {}),
+    ...(effectiveDecodedCursor?.profileStates ?? {}),
   };
   let hasMore = Object.keys(nextProfileStates).length > 0;
 
-  const shouldQueryAdapters = !decodedCursor || sessions.length < payload.pageSize;
+  const shouldQueryAdapters = !effectiveDecodedCursor || sessions.length < payload.pageSize;
   for (const profile of shouldQueryAdapters ? listCapableProfiles : []) {
-    const cursorState = decodedCursor?.profileStates[profile.key];
-    if (decodedCursor && !cursorState) {
+    const cursorState = effectiveDecodedCursor?.profileStates[profile.key];
+    if (effectiveDecodedCursor && !cursorState) {
       continue;
     }
 
@@ -531,7 +537,9 @@ export async function listAgentSessionsForWorker({
 
   return {
     sessions: pageSessions,
-    ...(decodedCursor?.previousCursor ? { previousCursor: decodedCursor.previousCursor } : {}),
+    ...(effectiveDecodedCursor?.previousCursor
+      ? { previousCursor: effectiveDecodedCursor.previousCursor }
+      : {}),
     ...(nextCursorNeeded
       ? {
           nextCursor: buildCurrentPageAggregateCursor(
