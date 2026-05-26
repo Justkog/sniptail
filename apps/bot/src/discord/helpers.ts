@@ -149,7 +149,12 @@ export async function editDiscordInteractionReply(
     {
       body: {
         content: options.text,
-        components: (options.components ?? []) as NonNullable<MessageCreateOptions['components']>,
+        ...(options.components !== undefined
+          ? {
+              components:
+                options.components as NonNullable<MessageCreateOptions['components']>,
+            }
+          : {}),
       },
     },
   );
