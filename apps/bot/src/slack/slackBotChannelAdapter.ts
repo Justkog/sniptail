@@ -179,6 +179,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     }
 
     clearPendingSlackAgentSessionBrowserRequest(requestId);
+    const slackIds = buildSlackIds(loadBotConfig().botName);
 
     const headerLines = [
       '*Agent sessions*',
@@ -276,7 +277,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
             text: 'Attach',
           },
           style: 'primary',
-          action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsAttach,
+          action_id: slackIds.actions.agentSessionsAttach,
           value: attachToken,
         },
       });
@@ -307,7 +308,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
           type: 'plain_text',
           text: 'Previous',
         },
-        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsPrevious,
+        action_id: slackIds.actions.agentSessionsPrevious,
         value: previousToken,
       });
     }
@@ -333,7 +334,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
           type: 'plain_text',
           text: 'Next',
         },
-        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsNext,
+        action_id: slackIds.actions.agentSessionsNext,
         value: nextToken,
       });
     }
