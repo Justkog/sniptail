@@ -8,6 +8,7 @@ import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './helpers.js';
 import {
+  type PendingSlackAgentSessionBrowserRequest,
   appendSlackAgentPermissionStatus,
   appendSlackAgentQuestionStatus,
   buildSlackAgentPermissionBlocks,
@@ -17,8 +18,15 @@ import {
   buildSlackAgentQuestionRequestText,
   buildSlackAgentQuestionUpdateText,
   clearPendingSlackAgentQuestion,
+  clearPendingSlackAgentSessionBrowserRequest,
+  getPendingSlackAgentSessionBrowserRequest,
   setPendingSlackAgentQuestion,
+  setSlackAgentSessionsActionState,
 } from './agentCommandState.js';
+import {
+  agentSessionListFiltersEqual,
+  formatSlackAgentSessionTimestamp,
+} from './agentSessionsShared.js';
 import type {
   RuntimeBotChannelAdapter,
   BotEventRuntime,
@@ -30,6 +38,24 @@ type AgentInteractionMessageState = {
 };
 
 export type AgentPermissionMessageState = AgentInteractionMessageState;
+
+function escapeSlackMrkdwn(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function matchesPendingBrowserRequest(
+  pending: PendingSlackAgentSessionBrowserRequest,
+  event: CoreBotEvent<'agent.sessions.listed'>,
+): boolean {
+  return (
+    pending.channelId === event.payload.channelId &&
+    pending.userId === event.payload.userId &&
+    pending.workerId === event.payload.workerId &&
+    pending.workspaceId === event.payload.workspaceId &&
+    pending.agentProfileKey === event.payload.agentProfileKey &&
+    agentSessionListFiltersEqual(pending.filters, event.payload.filters)
+  );
+}
 
 export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
   providerId = 'slack' as const;
@@ -49,6 +75,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     'agent.permission.updated',
     'agent.question.requested',
     'agent.question.updated',
+    'agent.sessions.listed',
   ] as const satisfies readonly CoreBotEventType[];
 
   async handleEvent(event: CoreBotEvent, runtime: BotEventRuntime): Promise<boolean> {
@@ -126,9 +153,207 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
       case 'agent.question.updated':
         await this.updateAgentQuestionRequest(app, event);
         return true;
+      case 'agent.sessions.listed':
+        await this.postAgentSessionsListed(app, event);
+        return true;
       default:
         return false;
     }
+  }
+
+  private async postAgentSessionsListed(
+    app: NonNullable<BotEventRuntime['slackApp']>,
+    event: CoreBotEvent<'agent.sessions.listed'>,
+  ) {
+    const requestId = event.requestId?.trim();
+    if (!requestId) {
+      return;
+    }
+
+    const pending = getPendingSlackAgentSessionBrowserRequest(requestId);
+    if (!pending) {
+      return;
+    }
+    if (!matchesPendingBrowserRequest(pending, event)) {
+      return;
+    }
+
+    clearPendingSlackAgentSessionBrowserRequest(requestId);
+    const slackIds = buildSlackIds(loadBotConfig().botName);
+
+    const headerLines = [
+      '*Agent sessions*',
+      `Worker: \`${pending.workerId}\``,
+      pending.agentProfileKey ? `Profile: \`${pending.agentProfileKey}\`` : 'Profile: all listable',
+      pending.filters?.workspaceKey
+        ? `Workspace: \`${pending.filters.workspaceKey}${pending.filters.cwd ? ` / ${pending.filters.cwd}` : ''}\``
+        : undefined,
+    ].filter((line) => line !== undefined);
+
+    const blocks: Record<string, unknown>[] = [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: headerLines.join('\n'),
+        },
+      },
+    ];
+
+    if (event.payload.errorMessage) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: event.payload.errorMessage,
+        },
+      });
+      await postEphemeral(app, {
+        channel: pending.channelId,
+        user: pending.userId,
+        text: event.payload.errorMessage,
+        ...(pending.sourceThreadId ? { threadTs: pending.sourceThreadId } : {}),
+        blocks,
+      });
+      return;
+    }
+
+    if (!event.payload.sessions.length) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: 'No matching sessions were found.',
+        },
+      });
+    }
+
+    for (const session of event.payload.sessions) {
+      const attachToken = setSlackAgentSessionsActionState({
+        kind: 'attach',
+        payload: {
+          channelId: pending.channelId,
+          userId: pending.userId,
+          workerId: pending.workerId,
+          ...(pending.workspaceId ? { workspaceId: pending.workspaceId } : {}),
+          ...(pending.sourceThreadId ? { sourceThreadId: pending.sourceThreadId } : {}),
+          ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+          ...(pending.filters ? { filters: pending.filters } : {}),
+          provider: session.provider,
+          providerSessionId: session.id,
+          sessionAgentProfileKey: session.agentProfileKey,
+          ...(session.workspaceKey ? { workspaceKey: session.workspaceKey } : {}),
+          ...(session.cwd ? { cwd: session.cwd } : {}),
+          ...(session.title ? { title: session.title } : {}),
+        },
+      });
+      const lines = [
+        `*${escapeSlackMrkdwn(session.title?.trim() || 'Untitled session')}*`,
+        `Provider: \`${session.provider}\``,
+        `Profile: \`${session.agentProfileKey}\``,
+        `Session ID: \`${session.id}\``,
+        formatSlackAgentSessionTimestamp(session),
+        session.workspaceKey
+          ? `Workspace: \`${session.workspaceKey}${session.cwd ? ` / ${session.cwd}` : ''}\``
+          : session.cwd
+            ? `CWD: \`${session.cwd}\``
+            : undefined,
+        session.project ? `Project: ${escapeSlackMrkdwn(session.project)}` : undefined,
+        session.roots?.length
+          ? `Roots: ${session.roots.map((root) => `\`${root}\``).join(', ')}`
+          : undefined,
+        session.description ? escapeSlackMrkdwn(session.description) : undefined,
+      ].filter((line) => line !== undefined);
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: lines.join('\n'),
+        },
+        accessory: {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: 'Attach',
+          },
+          style: 'primary',
+          action_id: slackIds.actions.agentSessionsAttach,
+          value: attachToken,
+        },
+      });
+    }
+
+    const navigationElements: Record<string, unknown>[] = [];
+    const previousCursor = event.payload.previousCursor ?? pending.cursorHistory.at(-1);
+    if (event.payload.previousCursor || pending.cursorHistory.length > 0) {
+      const previousToken = setSlackAgentSessionsActionState({
+        kind: 'previous',
+        payload: {
+          channelId: pending.channelId,
+          userId: pending.userId,
+          workerId: pending.workerId,
+          ...(pending.workspaceId ? { workspaceId: pending.workspaceId } : {}),
+          ...(pending.sourceThreadId ? { sourceThreadId: pending.sourceThreadId } : {}),
+          ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+          ...(pending.filters ? { filters: pending.filters } : {}),
+          ...(pending.currentCursor ? { currentCursor: pending.currentCursor } : {}),
+          cursorHistory: pending.cursorHistory,
+          ...(previousCursor ? { previousCursor } : {}),
+          ...(event.payload.nextCursor ? { nextCursor: event.payload.nextCursor } : {}),
+        },
+      });
+      navigationElements.push({
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Previous',
+        },
+        action_id: slackIds.actions.agentSessionsPrevious,
+        value: previousToken,
+      });
+    }
+    if (event.payload.nextCursor) {
+      const nextToken = setSlackAgentSessionsActionState({
+        kind: 'next',
+        payload: {
+          channelId: pending.channelId,
+          userId: pending.userId,
+          workerId: pending.workerId,
+          ...(pending.workspaceId ? { workspaceId: pending.workspaceId } : {}),
+          ...(pending.sourceThreadId ? { sourceThreadId: pending.sourceThreadId } : {}),
+          ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+          ...(pending.filters ? { filters: pending.filters } : {}),
+          ...(pending.currentCursor ? { currentCursor: pending.currentCursor } : {}),
+          cursorHistory: pending.cursorHistory,
+          nextCursor: event.payload.nextCursor,
+        },
+      });
+      navigationElements.push({
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Next',
+        },
+        action_id: slackIds.actions.agentSessionsNext,
+        value: nextToken,
+      });
+    }
+    if (navigationElements.length) {
+      blocks.push({
+        type: 'actions',
+        elements: navigationElements,
+      });
+    }
+
+    await postEphemeral(app, {
+      channel: pending.channelId,
+      user: pending.userId,
+      text: event.payload.sessions.length
+        ? 'Select a session to attach.'
+        : 'No matching sessions were found.',
+      ...(pending.sourceThreadId ? { threadTs: pending.sourceThreadId } : {}),
+      blocks,
+    });
   }
 
   private async postAgentPermissionRequest(

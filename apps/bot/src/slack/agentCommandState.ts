@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import type {
+  AgentSessionListFilters,
+  AgentSessionSummary,
+} from '@sniptail/core/agent-sessions/listing.js';
 import type {
   BotAgentPermissionRequestPayload,
   BotAgentPermissionUpdatePayload,
@@ -12,6 +17,69 @@ type PendingSlackAgentQuestion = BotAgentQuestionRequestPayload & {
 };
 
 const pendingSlackAgentQuestions = new Map<string, PendingSlackAgentQuestion>();
+const pendingSlackAgentSessionBrowsers = new Map<string, PendingSlackAgentSessionBrowserRequest>();
+const slackAgentSessionsActionStateByToken = new Map<string, SlackAgentSessionsActionState>();
+
+export const SLACK_AGENT_SESSIONS_BROWSER_TTL_MS = 15 * 60 * 1000;
+
+export type PendingSlackAgentSessionBrowserRequest = {
+  requestId: string;
+  channelId: string;
+  userId: string;
+  workspaceId?: string;
+  sourceThreadId?: string;
+  workerId: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+  currentCursor?: string;
+  cursorHistory: string[];
+  requestedAt: number;
+};
+
+type PendingSlackAgentSessionBrowserRequestInput = Omit<
+  PendingSlackAgentSessionBrowserRequest,
+  'requestedAt'
+> & {
+  requestedAt?: number;
+};
+
+export type SlackAgentSessionsBrowserActionPayload = {
+  channelId: string;
+  userId: string;
+  workerId: string;
+  workspaceId?: string;
+  sourceThreadId?: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+};
+
+export type SlackAgentSessionsPageActionPayload = SlackAgentSessionsBrowserActionPayload & {
+  currentCursor?: string;
+  cursorHistory: string[];
+  previousCursor?: string;
+  nextCursor?: string;
+};
+
+export type SlackAgentSessionsAttachActionPayload = SlackAgentSessionsBrowserActionPayload & {
+  provider: AgentSessionSummary['provider'];
+  providerSessionId: string;
+  sessionAgentProfileKey: string;
+  workspaceKey?: string;
+  cwd?: string;
+  title?: string;
+};
+
+export type SlackAgentSessionsActionState =
+  | {
+      kind: 'previous' | 'next';
+      payload: SlackAgentSessionsPageActionPayload;
+      requestedAt: number;
+    }
+  | {
+      kind: 'attach';
+      payload: SlackAgentSessionsAttachActionPayload;
+      requestedAt: number;
+    };
 
 function questionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
@@ -33,6 +101,92 @@ export function getPendingSlackAgentQuestion(
 
 export function clearPendingSlackAgentQuestion(sessionId: string, interactionId: string): void {
   pendingSlackAgentQuestions.delete(questionKey(sessionId, interactionId));
+}
+
+export function setPendingSlackAgentSessionBrowserRequest(
+  payload: PendingSlackAgentSessionBrowserRequestInput,
+  now = Date.now(),
+): void {
+  evictExpiredSlackAgentSessionsState(now);
+  pendingSlackAgentSessionBrowsers.set(payload.requestId, {
+    ...payload,
+    requestedAt: payload.requestedAt ?? now,
+  });
+}
+
+export function getPendingSlackAgentSessionBrowserRequest(
+  requestId: string,
+  now = Date.now(),
+): PendingSlackAgentSessionBrowserRequest | undefined {
+  const pending = pendingSlackAgentSessionBrowsers.get(requestId);
+  if (!pending) {
+    return undefined;
+  }
+  if (isSlackAgentSessionsStateExpired(pending, now)) {
+    pendingSlackAgentSessionBrowsers.delete(requestId);
+    return undefined;
+  }
+  return pending;
+}
+
+export function clearPendingSlackAgentSessionBrowserRequest(requestId: string): void {
+  pendingSlackAgentSessionBrowsers.delete(requestId);
+}
+
+export function setSlackAgentSessionsActionState(
+  state: Omit<SlackAgentSessionsActionState, 'requestedAt'>,
+  now = Date.now(),
+): string {
+  evictExpiredSlackAgentSessionsState(now);
+  const token = randomUUID();
+  slackAgentSessionsActionStateByToken.set(token, {
+    ...state,
+    requestedAt: now,
+  } as SlackAgentSessionsActionState);
+  return token;
+}
+
+export function getSlackAgentSessionsActionState(
+  token: string | undefined,
+  now = Date.now(),
+): SlackAgentSessionsActionState | undefined {
+  const trimmedToken = token?.trim();
+  if (!trimmedToken) {
+    return undefined;
+  }
+  const state = slackAgentSessionsActionStateByToken.get(trimmedToken);
+  if (!state) {
+    return undefined;
+  }
+  if (isSlackAgentSessionsStateExpired(state, now)) {
+    slackAgentSessionsActionStateByToken.delete(trimmedToken);
+    return undefined;
+  }
+  return state;
+}
+
+export function clearSlackAgentSessionsActionState(token: string): void {
+  slackAgentSessionsActionStateByToken.delete(token);
+}
+
+function evictExpiredSlackAgentSessionsState(now: number): void {
+  for (const [requestId, pending] of pendingSlackAgentSessionBrowsers) {
+    if (isSlackAgentSessionsStateExpired(pending, now)) {
+      pendingSlackAgentSessionBrowsers.delete(requestId);
+    }
+  }
+  for (const [token, state] of slackAgentSessionsActionStateByToken) {
+    if (isSlackAgentSessionsStateExpired(state, now)) {
+      slackAgentSessionsActionStateByToken.delete(token);
+    }
+  }
+}
+
+function isSlackAgentSessionsStateExpired(
+  state: Pick<PendingSlackAgentSessionBrowserRequest, 'requestedAt'>,
+  now: number,
+): boolean {
+  return now - state.requestedAt > SLACK_AGENT_SESSIONS_BROWSER_TTL_MS;
 }
 
 export function buildSlackAgentActionValue(value: Record<string, unknown>): string {

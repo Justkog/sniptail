@@ -10,6 +10,7 @@ import { registerBootstrapCommand } from './features/commands/bootstrap.js';
 import { registerImplementCommand } from './features/commands/implement.js';
 import { registerRunCommand } from './features/commands/slackRunCommand.js';
 import { registerAgentCommand } from './features/commands/agent.js';
+import { registerAgentSessionsCommand } from './features/commands/agentSessions.js';
 import { registerUsageCommand } from './features/commands/usage.js';
 import { registerAskFromJobAction } from './features/actions/askFromJob.js';
 import { registerSlackExploreFromJobAction } from './features/actions/slackExploreFromJobAction.js';
@@ -25,6 +26,7 @@ import { registerAgentFollowUpActions } from './features/actions/agentFollowUp.j
 import { registerAgentPermissionActions } from './features/actions/agentPermission.js';
 import { registerAgentQuestionActions } from './features/actions/agentQuestion.js';
 import { registerAgentStopAction } from './features/actions/agentStop.js';
+import { registerAgentSessionsActions } from './features/actions/agentSessionsActions.js';
 import { registerRunActionSelectOptions } from './features/actions/runActionSelect.js';
 import { registerAppMentionEvent } from './features/events/appMention.js';
 import { registerDmMentionEvent } from './features/events/dmMentionEvent.js';
@@ -49,6 +51,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerImplementCommand(context);
   registerRunCommand(context);
   registerAgentCommand(context);
+  registerAgentSessionsCommand(context);
   registerBootstrapCommand(context);
   registerClearBeforeCommand(context);
   registerUsageCommand(context);
@@ -62,6 +65,7 @@ export function registerSlackHandlers(context: SlackHandlerContext): void {
   registerClearJobAction(context);
   registerApprovalActions(context);
   registerAgentStopAction(context);
+  registerAgentSessionsActions(context);
   registerAgentFollowUpActions(context);
   registerAgentPermissionActions(context);
   registerAgentQuestionActions(context);

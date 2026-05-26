@@ -32,6 +32,9 @@ features:
     - command: /sniptail-agent
       description: Start a freeform coding-agent session in a Slack thread.
       should_escape: false
+    - command: /sniptail-agent-sessions
+      description: Browse and attach a previous coding-agent session from a selected worker.
+      should_escape: false
     - command: /sniptail-bootstrap
       description: Create a new repository and add it to the allowlist.
       should_escape: false

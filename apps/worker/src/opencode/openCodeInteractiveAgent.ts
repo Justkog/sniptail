@@ -52,6 +52,7 @@ import {
   type PendingOpenCodePermission,
 } from './openCodeInteractionState.js';
 import { resolveAgentWorkspace } from '../agent-command/workspaceResolver.js';
+import { buildOpenCodeWorkerRunOptions } from './openCodeWorkerRuntime.js';
 
 const ALWAYS_PERMISSION_PROMOTION_DELAY_MS = 750;
 
@@ -98,47 +99,6 @@ function buildRef(response: CoreWorkerEvent<'agent.session.start'>['payload']['r
     provider: response.provider,
     channelId: response.channelId,
     ...(response.threadId ? { threadId: response.threadId } : {}),
-  };
-}
-
-function buildOpenCodeRunOptions(
-  config: WorkerConfig,
-  profile: RunInteractiveAgentTurnInput['turn']['profile'],
-) {
-  const usesNamedAgent = Boolean(profile.profile);
-  const model = profile.model ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.model);
-  const modelProvider =
-    profile.modelProvider ?? (usesNamedAgent ? undefined : config.opencode.defaultModel?.provider);
-  const variant = profile.reasoningEffort;
-
-  return {
-    botName: config.botName,
-    ...(model && modelProvider ? { model, modelProvider } : {}),
-    opencode: {
-      executionMode: config.opencode.executionMode,
-      ...(config.opencode.serverUrl ? { serverUrl: config.opencode.serverUrl } : {}),
-      ...(config.opencode.serverAuthHeaderEnv
-        ? { serverAuthHeaderEnv: config.opencode.serverAuthHeaderEnv }
-        : {}),
-      ...(profile.profile ? { agent: profile.profile } : {}),
-      ...(variant ? { variant } : {}),
-      startupTimeoutMs: config.opencode.startupTimeoutMs,
-      dockerStreamLogs: config.opencode.dockerStreamLogs,
-      ...(config.opencode.executionMode === 'docker'
-        ? {
-            docker: {
-              enabled: true,
-              ...(config.opencode.dockerfilePath
-                ? { dockerfilePath: config.opencode.dockerfilePath }
-                : {}),
-              ...(config.opencode.dockerImage ? { image: config.opencode.dockerImage } : {}),
-              ...(config.opencode.dockerBuildContext
-                ? { buildContext: config.opencode.dockerBuildContext }
-                : {}),
-            },
-          }
-        : {}),
-    },
   };
 }
 
@@ -481,7 +441,7 @@ export async function runOpenCodeAgentTurn({
     let activeRuntimeDirectory = resolved.resolvedCwd;
 
     await runOpenCodePrompt(prompt, resolved.resolvedCwd, env, {
-      ...buildOpenCodeRunOptions(config, profile),
+      ...buildOpenCodeWorkerRunOptions(config, profile, { includePromptDefaults: true }),
       runtimeId: sessionId,
       ...(codingAgentSessionId ? { sessionId: codingAgentSessionId } : {}),
       ...(turn.currentTurnAttachments?.length

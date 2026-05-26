@@ -252,6 +252,16 @@ For ACP profiles, `profile`, `model`, `model_provider`, and `reasoning_effort` a
 
 Pending permission or question interactions are cleared when a session ends, fails, or stops.
 
+## Agent Session Browser And Attach
+
+Slack and Discord expose `/sniptail-agent-sessions` to browse previous provider sessions on a selected worker. The command requires a worker id and accepts optional `agent_profile`, `workspace`, and relative `cwd` selectors. Worker-local absolute workspace paths stay on the worker; bot UIs and session records use only the worker id, workspace key, and relative cwd.
+
+Session listing and attach are supported for ACP, OpenCode, and Copilot profiles. Codex profiles are not listable because Codex does not expose previous-session listing through the SDK.
+
+Attaching a listed session creates a completed Sniptail agent-session record with the selected provider-native session id. It posts a seed message in a Slack or Discord thread and does not enqueue a new prompt. The next user message in that attached thread follows the normal `agent.session.message` path and resumes or loads the provider session on the owner worker.
+
+Operators should configure listable profiles so their provider session storage is reachable by the worker selected in the browser. If a provider cannot load or resume that stored session later, follow-ups in the attached thread will fail even though the attach record was created successfully.
+
 ## Owner-Stale Sessions
 
 If the owner worker disappears after a session starts:

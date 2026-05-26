@@ -3,6 +3,7 @@
 This guide covers the Telegram MVP runtime in Sniptail.
 
 Sniptail's Telegram bot:
+
 - accepts `/ask`, `/explore`, `/plan`, `/implement`, `/review`, `/run`, `/usage`, and `/clearbefore`
 - supports direct-message mention-style requests by treating freeform DM text as a mention job
 - uses inline keyboards plus edited messages for guided ask/explore/plan/implement/review flows
@@ -60,3 +61,4 @@ If you omit the arguments for `/ask`, `/explore`, `/plan`, `/implement`, or `/re
 - Telegram in this MVP uses provider-local edited-message flows for guided interactions. Worker-originated completions still use normal reply/post behavior.
 - Telegram approval prompts use inline buttons and edit the approval message after approve/deny/cancel.
 - Telegram group/role-based permission subjects are not implemented in this MVP. User-based rules work best.
+- The agent-session browser and attach flow are not supported on Telegram yet; use Slack or Discord for `/sniptail-agent-sessions`.

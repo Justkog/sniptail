@@ -28,6 +28,7 @@ type MockAcpMethod = (params: unknown) => Promise<unknown>;
 
 type MockConnection = {
   initialize: ReturnType<typeof vi.fn<MockAcpMethod>>;
+  listSessions: ReturnType<typeof vi.fn<MockAcpMethod>>;
   newSession: ReturnType<typeof vi.fn<MockAcpMethod>>;
   loadSession: ReturnType<typeof vi.fn<MockAcpMethod>>;
   prompt: ReturnType<typeof vi.fn<MockAcpMethod>>;
@@ -66,6 +67,10 @@ vi.mock('@agentclientprotocol/sdk', () => {
 
     initialize(params: unknown) {
       return this.connection.initialize(params);
+    }
+
+    listSessions(params: unknown) {
+      return this.connection.listSessions(params);
     }
 
     newSession(params: unknown) {
@@ -130,8 +135,11 @@ function buildConnection(): MockConnection {
       agentInfo: { name: 'Mock ACP' },
       agentCapabilities: {
         loadSession: true,
-        sessionCapabilities: { close: {} },
+        sessionCapabilities: { close: {}, list: {} },
       },
+    }),
+    listSessions: vi.fn<MockAcpMethod>().mockResolvedValue({
+      sessions: [],
     }),
     newSession: vi.fn<MockAcpMethod>().mockResolvedValue({ sessionId: 'session-1' }),
     loadSession: vi.fn<MockAcpMethod>().mockResolvedValue({ sessionId: 'session-loaded' }),
@@ -147,7 +155,7 @@ function buildConnection(): MockConnection {
 function buildAgentCapabilities(overrides: Partial<AgentCapabilities> = {}): AgentCapabilities {
   return {
     loadSession: true,
-    sessionCapabilities: { close: {} },
+    sessionCapabilities: { close: {}, list: {} },
     ...overrides,
   };
 }
@@ -228,9 +236,53 @@ describe('ACP runtime wrapper', () => {
     });
     expect(runtime.capabilities).toEqual({
       loadSession: true,
-      sessionCapabilities: { close: {} },
+      sessionCapabilities: { close: {}, list: {} },
     });
     expect(runtime.agentInfo).toEqual({ name: 'Mock ACP' });
+  });
+
+  it('lists sessions when the agent advertises session/list support', async () => {
+    const { connection } = queueRuntime();
+    connection.listSessions.mockResolvedValue({
+      sessions: [
+        {
+          sessionId: 'session-1',
+          cwd: '/tmp/project',
+          title: 'Build session',
+          updatedAt: '2026-05-22T10:00:00.000Z',
+        },
+      ],
+      nextCursor: 'cursor-2',
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'] },
+    });
+    const result = await runtime.listSessions({
+      cursor: 'cursor-1',
+      cwd: '/tmp/project',
+      additionalDirectories: ['/tmp/project/packages/core'],
+    });
+    await runtime.close();
+
+    expect(connection.listSessions).toHaveBeenCalledWith({
+      cursor: 'cursor-1',
+      cwd: '/tmp/project',
+      additionalDirectories: ['/tmp/project/packages/core'],
+    });
+    expect(result).toEqual({
+      sessions: [
+        {
+          sessionId: 'session-1',
+          cwd: '/tmp/project',
+          title: 'Build session',
+          updatedAt: '2026-05-22T10:00:00.000Z',
+        },
+      ],
+      nextCursor: 'cursor-2',
+    });
+    expect(connection.closeSession).not.toHaveBeenCalled();
   });
 
   it('includes a default ACP client version when client info is omitted', async () => {
@@ -522,6 +574,46 @@ describe('ACP runtime wrapper', () => {
       'ACP agent does not support session/load',
     );
     expect(connection.loadSession).not.toHaveBeenCalled();
+  });
+
+  it('throws when listing sessions without session/list capability', async () => {
+    const { connection } = queueRuntime();
+    connection.initialize.mockResolvedValue({
+      protocolVersion: 1,
+      agentCapabilities: {
+        sessionCapabilities: {},
+      },
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'] },
+    });
+
+    await expect(runtime.listSessions({})).rejects.toThrow(
+      'ACP agent does not support session/list.',
+    );
+    expect(connection.listSessions).not.toHaveBeenCalled();
+  });
+
+  it('wraps ACP session/list failures with runtime context', async () => {
+    const { connection } = queueRuntime();
+    connection.listSessions.mockRejectedValue(new Error('List failed'));
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: {
+        agent: 'opencode',
+        command: ['mock-acp'],
+      },
+      diagnostics: {
+        configSource: 'agent.profiles.build',
+      },
+    });
+
+    await expect(runtime.listSessions({ cwd: '/tmp/project' })).rejects.toThrow(
+      'ACP runtime failed (agent.profiles.build, command: mock-acp, configured agent: opencode, ACP agent: Mock ACP): List failed',
+    );
   });
 
   it('forwards raw session updates from the ACP client handler', async () => {

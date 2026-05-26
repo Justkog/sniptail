@@ -1,6 +1,7 @@
-import type { Event as OpenCodeEvent, Part } from '@opencode-ai/sdk/v2';
+import type { Event as OpenCodeEvent } from '@opencode-ai/sdk/v2';
 import type { OpenCodeClient } from './runtime.js';
 import { AssistantMessageTextTracker } from './tracker.js';
+import { extractOpenCodeTextParts } from './textParts.js';
 
 function unwrapOpenCodeEvent(event: OpenCodeEvent): OpenCodeEvent {
   const payload = (event as { properties?: { payload?: unknown } }).properties?.payload;
@@ -51,14 +52,6 @@ function getCompletedAssistantMessageInfo(
   return { sessionID: info.sessionID, messageID: info.id };
 }
 
-function extractText(parts: Part[] | undefined): string {
-  return (parts ?? [])
-    .filter((part): part is Part & { type: 'text'; text: string } => part.type === 'text')
-    .map((part) => part.text)
-    .join('')
-    .trim();
-}
-
 export async function fetchCompletedAssistantMessageText(
   client: OpenCodeClient,
   event: OpenCodeEvent,
@@ -74,7 +67,7 @@ export async function fetchCompletedAssistantMessageText(
   }
   const assistantMessage = message.data;
 
-  return extractText(assistantMessage?.parts);
+  return extractOpenCodeTextParts(assistantMessage?.parts);
 }
 
 export async function streamEvents(

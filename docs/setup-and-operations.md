@@ -358,6 +358,8 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 
 - Worker capabilities are read from the shared registry, not from transient bot events.
 - New agent sessions are placed on a selected worker mailbox queue and then stay owned by that worker.
+- Session browsing and attach use the selected worker's provider session storage. Choose the worker that owns or can load the target ACP, OpenCode, or Copilot session.
+- Attached sessions store the provider-native session id and continue through normal owner-routed follow-ups; if the owner worker cannot resume that provider session later, the thread follow-up fails.
 - Follow-ups, stop/steer controls, permission decisions, and question answers are routed back to the owner worker mailbox.
 - If the owner worker becomes stale, the session remains active with a stale-owner condition until the worker returns or an operator clears the session.
 - Startup diagnostics for mailbox-enabled workers include worker ID, queue driver, registry driver, registry namespace, mailbox queue name, and active session count.

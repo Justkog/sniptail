@@ -1,14 +1,46 @@
+type SlackPostEphemeralCall = [
+  unknown,
+  {
+    channel: string;
+    user: string;
+    threadTs: string;
+    text: string;
+    blocks?: Array<{
+      type?: string;
+      text?: { text?: string };
+      elements?: Array<{ text?: { text?: string }; value?: string }>;
+    }>;
+  },
+];
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoreBotEvent } from '@sniptail/core/types/bot-event.js';
+import {
+  clearPendingSlackAgentSessionBrowserRequest,
+  clearSlackAgentSessionsActionState,
+  getSlackAgentSessionsActionState,
+  getPendingSlackAgentSessionBrowserRequest,
+  setPendingSlackAgentSessionBrowserRequest,
+} from './agentCommandState.js';
 
 const hoisted = vi.hoisted(() => ({
   postMessage: vi.fn().mockResolvedValue({ ts: 'message-ts-1' }),
+  postEphemeral: vi.fn().mockResolvedValue(undefined),
   chatUpdate: vi.fn().mockResolvedValue(undefined),
   loadBotConfig: vi.fn(() => ({ botName: 'Sniptail' })),
 }));
 
 vi.mock('@sniptail/core/config/config.js', () => ({
   loadBotConfig: hoisted.loadBotConfig,
+}));
+
+vi.mock('@sniptail/core/slack/ids.js', () => ({
+  buildSlackIds: vi.fn(() => ({
+    actions: {
+      agentSessionsPrevious: 'sessions-prev',
+      agentSessionsNext: 'sessions-next',
+      agentSessionsAttach: 'sessions-attach',
+    },
+  })),
 }));
 
 vi.mock('@sniptail/core/logger.js', () => ({
@@ -22,7 +54,7 @@ vi.mock('@sniptail/core/logger.js', () => ({
 
 vi.mock('./helpers.js', () => ({
   addReaction: vi.fn(),
-  postEphemeral: vi.fn(),
+  postEphemeral: hoisted.postEphemeral,
   postMessage: hoisted.postMessage,
   uploadFile: vi.fn(),
 }));
@@ -107,10 +139,47 @@ function buildQuestionUpdatedEvent(): CoreBotEvent<'agent.question.updated'> {
   };
 }
 
+function buildSessionsListedEvent(
+  overrides: Partial<CoreBotEvent<'agent.sessions.listed'>['payload']> = {},
+): CoreBotEvent<'agent.sessions.listed'> {
+  return {
+    schemaVersion: 1,
+    requestId: 'request-1',
+    provider: 'slack',
+    type: 'agent.sessions.listed',
+    payload: {
+      channelId: 'channel-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+        roots: ['docs', 'packages/core'],
+      },
+      sessions: [
+        {
+          id: 'provider-session-1',
+          provider: 'acp',
+          agentProfileKey: 'build',
+          workspaceKey: 'snatch',
+          cwd: 'apps/worker',
+          title: 'ACP session',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      previousCursor: 'cursor-0',
+      nextCursor: 'cursor-2',
+      ...overrides,
+    },
+  };
+}
+
 describe('SlackBotChannelAdapter permission updates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearPendingSlackAgentSessionBrowserRequest('request-1');
     hoisted.postMessage.mockResolvedValue({ ts: 'message-ts-1' });
+    hoisted.postEphemeral.mockResolvedValue(undefined);
     hoisted.chatUpdate.mockResolvedValue(undefined);
   });
 
@@ -175,5 +244,126 @@ describe('SlackBotChannelAdapter permission updates', () => {
       ].join('\n'),
       blocks: [],
     });
+  });
+
+  it('renders listed session rows ephemerally for the matching pending browser request', async () => {
+    const adapter = new SlackBotChannelAdapter();
+    setPendingSlackAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      sourceThreadId: 'thread-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+        roots: ['packages/core', 'docs', 'docs'],
+      },
+      cursorHistory: [],
+    });
+
+    await adapter.handleEvent(buildSessionsListedEvent(), {
+      slackApp: {
+        client: {
+          chat: {
+            update: hoisted.chatUpdate,
+          },
+        },
+      } as never,
+    });
+
+    const postEphemeralCall = hoisted.postEphemeral.mock.calls[0] as
+      | SlackPostEphemeralCall
+      | undefined;
+    expect(postEphemeralCall?.[1]).toMatchObject({
+      channel: 'channel-1',
+      user: 'user-1',
+      threadTs: 'thread-1',
+      text: 'Select a session to attach.',
+    });
+
+    const actionsBlock = postEphemeralCall?.[1].blocks?.find((block) => block.type === 'actions');
+    const previousButton = actionsBlock?.elements?.find(
+      (element) => element.text?.text === 'Previous',
+    );
+    const previousState = getSlackAgentSessionsActionState(previousButton?.value);
+    expect(previousState?.kind).toBe('previous');
+    expect(previousState?.payload.previousCursor).toBe('cursor-0');
+    if (previousButton?.value) {
+      clearSlackAgentSessionsActionState(previousButton.value);
+    }
+  });
+
+  it('ignores listed responses whose filters do not match the pending browser scope', async () => {
+    const adapter = new SlackBotChannelAdapter();
+    setPendingSlackAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+        cwd: 'apps/worker',
+      },
+      cursorHistory: [],
+    });
+
+    await adapter.handleEvent(
+      buildSessionsListedEvent({
+        filters: {
+          workspaceKey: 'snatch',
+          cwd: 'apps/bot',
+        },
+      }),
+      {
+        slackApp: {
+          client: {
+            chat: {
+              update: hoisted.chatUpdate,
+            },
+          },
+        } as never,
+      },
+    );
+
+    expect(hoisted.postEphemeral).not.toHaveBeenCalled();
+    expect(getPendingSlackAgentSessionBrowserRequest('request-1')).toBeDefined();
+  });
+
+  it('renders listed responses when filters are equivalent after normalization', async () => {
+    const adapter = new SlackBotChannelAdapter();
+    setPendingSlackAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: ' snatch ',
+        roots: ['packages/core', 'docs', 'docs'],
+      },
+      cursorHistory: [],
+    });
+
+    await adapter.handleEvent(
+      buildSessionsListedEvent({
+        filters: {
+          workspaceKey: 'snatch',
+          roots: ['docs', 'packages/core'],
+        },
+      }),
+      {
+        slackApp: {
+          client: {
+            chat: {
+              update: hoisted.chatUpdate,
+            },
+          },
+        } as never,
+      },
+    );
+
+    expect(hoisted.postEphemeral).toHaveBeenCalled();
   });
 });

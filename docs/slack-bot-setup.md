@@ -3,8 +3,9 @@
 This guide walks through creating a Slack app for Sniptail, enabling Socket Mode, configuring required permissions, and setting the environment variables Sniptail expects.
 
 Sniptail’s Slack bot:
+
 - Runs in **Socket Mode** (no public HTTP endpoint required).
-- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`).
+- Supports slash commands (ex: `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`, `/sniptail-agent`).
 - Supports `@Sniptail …` mentions in channels (`app_mention` events), including supported files attached to the triggering mention message.
 - Supports explicit `@Sniptail …` mentions in Slack DMs and MPDMs (`message.im` / `message.mpim` events), both in the main conversation and inside DM threads, including supported files attached to the triggering mention message.
 - Uses interactive components + modals (interactivity enabled).
@@ -20,10 +21,12 @@ Sniptail’s Slack bot:
 Sniptail derives Slack command names from the configured bot name.
 
 Examples:
-- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`, etc.
+
+- Bot name `Sniptail` → `/sniptail-ask`, `/sniptail-explore`, `/sniptail-implement`, `/sniptail-run`, `/sniptail-agent-sessions`, etc.
 - Bot name `My Bot` → `/my-bot-ask`, `/my-bot-explore`, `/my-bot-implement`, etc.
 
 Make sure these match:
+
 - Your Slack app manifest’s command names
 - `sniptail.bot.toml` `[bot].bot_name`
 
