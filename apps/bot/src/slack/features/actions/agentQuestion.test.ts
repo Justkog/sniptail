@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentSessionRecord } from '@sniptail/core/agent-sessions/types.js';
 import {
   clearPendingSlackAgentQuestion,
@@ -127,6 +127,8 @@ function buildClient() {
 describe('registerAgentQuestionActions select flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     clearPendingSlackAgentQuestion('session-1', 'interaction-1');
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
@@ -135,6 +137,11 @@ describe('registerAgentQuestionActions select flow', () => {
       ok: true,
       targetWorkerId: 'worker-a',
     });
+  });
+
+  afterEach(() => {
+    clearPendingSlackAgentQuestion('session-1', 'interaction-1');
+    vi.useRealTimers();
   });
 
   it('posts Selection recorded as a thread-scoped ephemeral message for multi-question prompts', async () => {

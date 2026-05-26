@@ -8,7 +8,6 @@ import { buildSlackIds } from '@sniptail/core/slack/ids.js';
 import { loadBotConfig } from '@sniptail/core/config/config.js';
 import { addReaction, postEphemeral, postMessage, uploadFile } from './helpers.js';
 import {
-  buildSlackAgentActionValue,
   type PendingSlackAgentSessionBrowserRequest,
   appendSlackAgentPermissionStatus,
   appendSlackAgentQuestionStatus,
@@ -22,6 +21,7 @@ import {
   clearPendingSlackAgentSessionBrowserRequest,
   getPendingSlackAgentSessionBrowserRequest,
   setPendingSlackAgentQuestion,
+  setSlackAgentSessionsActionState,
 } from './agentCommandState.js';
 import {
   agentSessionListFiltersEqual,
@@ -228,6 +228,24 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     }
 
     for (const session of event.payload.sessions) {
+      const attachToken = setSlackAgentSessionsActionState({
+        kind: 'attach',
+        payload: {
+          channelId: pending.channelId,
+          userId: pending.userId,
+          workerId: pending.workerId,
+          ...(pending.workspaceId ? { workspaceId: pending.workspaceId } : {}),
+          ...(pending.sourceThreadId ? { sourceThreadId: pending.sourceThreadId } : {}),
+          ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
+          ...(pending.filters ? { filters: pending.filters } : {}),
+          provider: session.provider,
+          providerSessionId: session.id,
+          sessionAgentProfileKey: session.agentProfileKey,
+          ...(session.workspaceKey ? { workspaceKey: session.workspaceKey } : {}),
+          ...(session.cwd ? { cwd: session.cwd } : {}),
+          ...(session.title ? { title: session.title } : {}),
+        },
+      });
       const lines = [
         `*${escapeSlackMrkdwn(session.title?.trim() || 'Untitled session')}*`,
         `Provider: \`${session.provider}\``,
@@ -259,21 +277,7 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
           },
           style: 'primary',
           action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsAttach,
-          value: buildSlackAgentActionValue({
-            channelId: pending.channelId,
-            userId: pending.userId,
-            workerId: pending.workerId,
-            ...(pending.workspaceId ? { workspaceId: pending.workspaceId } : {}),
-            ...(pending.sourceThreadId ? { sourceThreadId: pending.sourceThreadId } : {}),
-            ...(pending.agentProfileKey ? { agentProfileKey: pending.agentProfileKey } : {}),
-            ...(pending.filters ? { filters: pending.filters } : {}),
-            provider: session.provider,
-            providerSessionId: session.id,
-            sessionAgentProfileKey: session.agentProfileKey,
-            ...(session.workspaceKey ? { workspaceKey: session.workspaceKey } : {}),
-            ...(session.cwd ? { cwd: session.cwd } : {}),
-            ...(session.title ? { title: session.title } : {}),
-          }),
+          value: attachToken,
         },
       });
     }
@@ -281,14 +285,9 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
     const navigationElements: Record<string, unknown>[] = [];
     const previousCursor = event.payload.previousCursor ?? pending.cursorHistory.at(-1);
     if (event.payload.previousCursor || pending.cursorHistory.length > 0) {
-      navigationElements.push({
-        type: 'button',
-        text: {
-          type: 'plain_text',
-          text: 'Previous',
-        },
-        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsPrevious,
-        value: buildSlackAgentActionValue({
+      const previousToken = setSlackAgentSessionsActionState({
+        kind: 'previous',
+        payload: {
           channelId: pending.channelId,
           userId: pending.userId,
           workerId: pending.workerId,
@@ -300,18 +299,22 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
           cursorHistory: pending.cursorHistory,
           ...(previousCursor ? { previousCursor } : {}),
           ...(event.payload.nextCursor ? { nextCursor: event.payload.nextCursor } : {}),
-        }),
+        },
       });
-    }
-    if (event.payload.nextCursor) {
       navigationElements.push({
         type: 'button',
         text: {
           type: 'plain_text',
-          text: 'Next',
+          text: 'Previous',
         },
-        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsNext,
-        value: buildSlackAgentActionValue({
+        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsPrevious,
+        value: previousToken,
+      });
+    }
+    if (event.payload.nextCursor) {
+      const nextToken = setSlackAgentSessionsActionState({
+        kind: 'next',
+        payload: {
           channelId: pending.channelId,
           userId: pending.userId,
           workerId: pending.workerId,
@@ -322,7 +325,16 @@ export class SlackBotChannelAdapter implements RuntimeBotChannelAdapter {
           ...(pending.currentCursor ? { currentCursor: pending.currentCursor } : {}),
           cursorHistory: pending.cursorHistory,
           nextCursor: event.payload.nextCursor,
-        }),
+        },
+      });
+      navigationElements.push({
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Next',
+        },
+        action_id: buildSlackIds(loadBotConfig().botName).actions.agentSessionsNext,
+        value: nextToken,
       });
     }
     if (navigationElements.length) {

@@ -151,8 +151,7 @@ export async function editDiscordInteractionReply(
         content: options.text,
         ...(options.components !== undefined
           ? {
-              components:
-                options.components as NonNullable<MessageCreateOptions['components']>,
+              components: options.components as NonNullable<MessageCreateOptions['components']>,
             }
           : {}),
       },

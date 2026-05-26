@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildSlackAgentActionValue } from '../../agentCommandState.js';
+import {
+  clearSlackAgentSessionsActionState,
+  getSlackAgentSessionsActionState,
+  setSlackAgentSessionsActionState,
+} from '../../agentCommandState.js';
 import { registerAgentSessionsActions } from './agentSessionsActions.js';
 
 type SlackActionHandlerArgs = {
@@ -150,7 +154,12 @@ function buildArgs(value: string, userId = 'U1'): SlackActionHandlerArgs {
 }
 
 describe('registerAgentSessionsActions', () => {
+  const actionTokens: string[] = [];
+
   beforeEach(() => {
+    for (const token of actionTokens.splice(0)) {
+      clearSlackAgentSessionsActionState(token);
+    }
     vi.clearAllMocks();
     hoisted.loadAgentCommandMetadata.mockResolvedValue(createMetadata());
     hoisted.enqueueWorkerMailboxEvent.mockResolvedValue(undefined);
@@ -163,8 +172,9 @@ describe('registerAgentSessionsActions', () => {
   it('paginates forward with the worker cursor and browser history', async () => {
     const handlers = buildContext();
     const nextHandler = handlers.get('sessions-next');
-    const args = buildArgs(
-      buildSlackAgentActionValue({
+    const token = setSlackAgentSessionsActionState({
+      kind: 'next',
+      payload: {
         channelId: 'C1',
         userId: 'U1',
         workspaceId: 'W1',
@@ -178,8 +188,10 @@ describe('registerAgentSessionsActions', () => {
         currentCursor: 'cursor-1',
         cursorHistory: [],
         nextCursor: 'cursor-2',
-      }),
-    );
+      },
+    });
+    actionTokens.push(token);
+    const args = buildArgs(token);
 
     await nextHandler?.(args);
 
@@ -218,8 +230,9 @@ describe('registerAgentSessionsActions', () => {
   it('paginates backward with the worker previous cursor', async () => {
     const handlers = buildContext();
     const previousHandler = handlers.get('sessions-prev');
-    const args = buildArgs(
-      buildSlackAgentActionValue({
+    const token = setSlackAgentSessionsActionState({
+      kind: 'previous',
+      payload: {
         channelId: 'C1',
         userId: 'U1',
         workspaceId: 'W1',
@@ -233,8 +246,10 @@ describe('registerAgentSessionsActions', () => {
         currentCursor: 'cursor-2',
         cursorHistory: [],
         previousCursor: 'cursor-1',
-      }),
-    );
+      },
+    });
+    actionTokens.push(token);
+    const args = buildArgs(token);
 
     await previousHandler?.(args);
 
@@ -263,8 +278,9 @@ describe('registerAgentSessionsActions', () => {
   it('creates a completed attached Slack session without starting a prompt', async () => {
     const handlers = buildContext();
     const attachHandler = handlers.get('sessions-attach');
-    const args = buildArgs(
-      buildSlackAgentActionValue({
+    const token = setSlackAgentSessionsActionState({
+      kind: 'attach',
+      payload: {
         channelId: 'C1',
         userId: 'U1',
         workspaceId: 'W1',
@@ -276,8 +292,10 @@ describe('registerAgentSessionsActions', () => {
         workspaceKey: 'snatch',
         cwd: 'apps/worker',
         title: 'Investigate flaky tests',
-      }),
-    );
+      },
+    });
+    actionTokens.push(token);
+    const args = buildArgs(token);
 
     await attachHandler?.(args);
 
@@ -310,8 +328,9 @@ describe('registerAgentSessionsActions', () => {
   it('rejects attach actions from a different Slack user', async () => {
     const handlers = buildContext();
     const attachHandler = handlers.get('sessions-attach');
-    const args = buildArgs(
-      buildSlackAgentActionValue({
+    const token = setSlackAgentSessionsActionState({
+      kind: 'attach',
+      payload: {
         channelId: 'C1',
         userId: 'U1',
         workspaceId: 'W1',
@@ -319,13 +338,15 @@ describe('registerAgentSessionsActions', () => {
         provider: 'acp',
         providerSessionId: 'provider-session-1',
         sessionAgentProfileKey: 'build',
-      }),
-      'U2',
-    );
+      },
+    });
+    actionTokens.push(token);
+    const args = buildArgs(token, 'U2');
 
     await attachHandler?.(args);
 
     expect(hoisted.createAgentSession).not.toHaveBeenCalled();
+    expect(getSlackAgentSessionsActionState(token)?.kind).toBe('attach');
     expect(args.client.chat.postEphemeral).toHaveBeenCalledWith({
       channel: 'C1',
       user: 'U2',

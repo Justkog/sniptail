@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { LRUCache } from 'lru-cache';
 import type {
   AgentSessionListFilters,
   AgentSessionSummary,
@@ -24,45 +25,70 @@ type DiscordScopedJobSelectionState = DiscordJobSelectionState & {
 };
 
 const FROM_JOB_SELECTION_MAX_ENTRIES = 50;
+const DISCORD_STATE_MAX_ENTRIES = 1000;
 export const DISCORD_SELECTION_TTL_MS = 15 * 60 * 1000;
 export const DISCORD_SELECTION_CAPTURED_MESSAGE =
   'Repository selection captured. Complete the modal or rerun the command.';
 export const DISCORD_AGENT_SESSIONS_STATE_TTL_MS = 15 * 60 * 1000;
 
-export const askSelectionByUser = new Map<string, DiscordJobSelectionState>();
-export const exploreSelectionByUser = new Map<string, DiscordJobSelectionState>();
-export const planSelectionByUser = new Map<string, DiscordJobSelectionState>();
-export const askFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
-export const exploreFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
-export const planFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
-export const answerQuestionsByUser = new Map<
-  string,
-  { jobId: string; openQuestions: string[]; requestedAt: number }
->();
-export const implementSelectionByUser = new Map<string, DiscordJobSelectionState>();
-export const implementFromJobSelectionByToken = new Map<string, DiscordScopedJobSelectionState>();
-export const runSelectionByUser = new Map<
-  string,
-  {
-    repoKeys: string[];
-    resumeFromJobId?: string;
-    actionId?: string;
-    requestedAt: number;
-    runStepIndex?: number;
-    collectedParams?: Record<string, unknown>;
-    gitRef?: string;
-    selectorMessageId?: string;
-  }
->();
-export const bootstrapExtrasByUser = new Map<
-  string,
-  {
-    service: string;
-    visibility: 'private' | 'public';
-    quickstart: boolean;
-    requestedAt: number;
-  }
->();
+function createDiscordStateCache<T extends object>(
+  ttl: number,
+  max = DISCORD_STATE_MAX_ENTRIES,
+): LRUCache<string, T> {
+  return new LRUCache<string, T>({
+    max,
+    ttl,
+    perf: { now: () => Date.now() },
+  });
+}
+
+export const askSelectionByUser =
+  createDiscordStateCache<DiscordJobSelectionState>(DISCORD_SELECTION_TTL_MS);
+export const exploreSelectionByUser =
+  createDiscordStateCache<DiscordJobSelectionState>(DISCORD_SELECTION_TTL_MS);
+export const planSelectionByUser =
+  createDiscordStateCache<DiscordJobSelectionState>(DISCORD_SELECTION_TTL_MS);
+export const askFromJobSelectionByToken = createDiscordStateCache<DiscordScopedJobSelectionState>(
+  DISCORD_SELECTION_TTL_MS,
+  FROM_JOB_SELECTION_MAX_ENTRIES,
+);
+export const exploreFromJobSelectionByToken =
+  createDiscordStateCache<DiscordScopedJobSelectionState>(
+    DISCORD_SELECTION_TTL_MS,
+    FROM_JOB_SELECTION_MAX_ENTRIES,
+  );
+export const planFromJobSelectionByToken = createDiscordStateCache<DiscordScopedJobSelectionState>(
+  DISCORD_SELECTION_TTL_MS,
+  FROM_JOB_SELECTION_MAX_ENTRIES,
+);
+export const answerQuestionsByUser = createDiscordStateCache<{
+  jobId: string;
+  openQuestions: string[];
+  requestedAt: number;
+}>(DISCORD_SELECTION_TTL_MS);
+export const implementSelectionByUser =
+  createDiscordStateCache<DiscordJobSelectionState>(DISCORD_SELECTION_TTL_MS);
+export const implementFromJobSelectionByToken =
+  createDiscordStateCache<DiscordScopedJobSelectionState>(
+    DISCORD_SELECTION_TTL_MS,
+    FROM_JOB_SELECTION_MAX_ENTRIES,
+  );
+export const runSelectionByUser = createDiscordStateCache<{
+  repoKeys: string[];
+  resumeFromJobId?: string;
+  actionId?: string;
+  requestedAt: number;
+  runStepIndex?: number;
+  collectedParams?: Record<string, unknown>;
+  gitRef?: string;
+  selectorMessageId?: string;
+}>(DISCORD_SELECTION_TTL_MS);
+export const bootstrapExtrasByUser = createDiscordStateCache<{
+  service: string;
+  visibility: 'private' | 'public';
+  quickstart: boolean;
+  requestedAt: number;
+}>(DISCORD_SELECTION_TTL_MS);
 
 export type PendingDiscordAgentSessionBrowserRequest = {
   requestId: string;
@@ -112,11 +138,12 @@ type DiscordAgentSessionsActionState =
     }
   | { kind: 'attach'; payload: DiscordAgentSessionsAttachActionPayload; requestedAt: number };
 
-const pendingDiscordAgentSessionBrowsers = new Map<
-  string,
-  PendingDiscordAgentSessionBrowserRequest
->();
-const discordAgentSessionsActionStateByToken = new Map<string, DiscordAgentSessionsActionState>();
+const pendingDiscordAgentSessionBrowsers =
+  createDiscordStateCache<PendingDiscordAgentSessionBrowserRequest>(
+    DISCORD_AGENT_SESSIONS_STATE_TTL_MS,
+  );
+const discordAgentSessionsActionStateByToken =
+  createDiscordStateCache<DiscordAgentSessionsActionState>(DISCORD_AGENT_SESSIONS_STATE_TTL_MS);
 
 export function createDiscordSelectionToken(): string {
   return randomUUID();
@@ -130,17 +157,8 @@ export function setPendingDiscordAgentSessionBrowserRequest(
 
 export function getPendingDiscordAgentSessionBrowserRequest(
   requestId: string,
-  now = Date.now(),
 ): PendingDiscordAgentSessionBrowserRequest | undefined {
-  const pending = pendingDiscordAgentSessionBrowsers.get(requestId);
-  if (!pending) {
-    return undefined;
-  }
-  if (now - pending.requestedAt > DISCORD_AGENT_SESSIONS_STATE_TTL_MS) {
-    pendingDiscordAgentSessionBrowsers.delete(requestId);
-    return undefined;
-  }
-  return pending;
+  return pendingDiscordAgentSessionBrowsers.get(requestId);
 }
 
 export function clearPendingDiscordAgentSessionBrowserRequest(requestId: string): void {
@@ -160,17 +178,8 @@ export function setDiscordAgentSessionsActionState(
 
 export function getDiscordAgentSessionsActionState(
   token: string,
-  now = Date.now(),
 ): DiscordAgentSessionsActionState | undefined {
-  const state = discordAgentSessionsActionStateByToken.get(token);
-  if (!state) {
-    return undefined;
-  }
-  if (now - state.requestedAt > DISCORD_AGENT_SESSIONS_STATE_TTL_MS) {
-    discordAgentSessionsActionStateByToken.delete(token);
-    return undefined;
-  }
-  return state;
+  return discordAgentSessionsActionStateByToken.get(token);
 }
 
 export function clearDiscordAgentSessionsActionState(token: string): void {
@@ -178,46 +187,34 @@ export function clearDiscordAgentSessionsActionState(token: string): void {
 }
 
 export function setFromJobSelectionWithCap(
-  selectionMap: Map<string, DiscordScopedJobSelectionState>,
+  selectionMap: LRUCache<string, DiscordScopedJobSelectionState>,
   selectionToken: string,
   selection: DiscordScopedJobSelectionState,
 ): void {
-  if (!selectionMap.has(selectionToken) && selectionMap.size >= FROM_JOB_SELECTION_MAX_ENTRIES) {
-    const oldestSelectionToken = selectionMap.keys().next().value;
-    if (oldestSelectionToken) {
-      selectionMap.delete(oldestSelectionToken);
-    }
-  }
-
   selectionMap.set(selectionToken, selection);
 }
 
 export function isSelectionExpired(
-  selection: Pick<DiscordJobSelectionState, 'requestedAt'> | undefined,
-  now = Date.now(),
+  selectionMap: LRUCache<string, DiscordJobSelectionState>,
+  userId: string,
 ): boolean {
-  if (!selection) {
-    return false;
-  }
-
-  return now - selection.requestedAt > DISCORD_SELECTION_TTL_MS;
+  const selection = selectionMap.get(userId, { allowStale: true });
+  return Boolean(selection) && !selectionMap.has(userId);
 }
 
 export function getActiveDiscordSelection(
-  selectionMap: Map<string, DiscordJobSelectionState>,
+  selectionMap: LRUCache<string, DiscordJobSelectionState>,
   userId: string,
-  now = Date.now(),
 ): {
   selection?: DiscordJobSelectionState;
   expiredSelection?: DiscordJobSelectionState;
 } {
-  const selection = selectionMap.get(userId);
+  const selection = selectionMap.get(userId, { allowStale: true });
   if (!selection) {
     return {};
   }
 
-  if (isSelectionExpired(selection, now)) {
-    selectionMap.delete(userId);
+  if (!selectionMap.has(userId)) {
     return { expiredSelection: selection };
   }
 
@@ -225,7 +222,7 @@ export function getActiveDiscordSelection(
 }
 
 function captureSelectionReplyId<T extends DiscordJobSelectionState>(
-  selectionMap: Map<string, T>,
+  selectionMap: LRUCache<string, T>,
   key: string,
   loggingUserId: string,
   flow: string,
@@ -257,7 +254,7 @@ function captureSelectionReplyId<T extends DiscordJobSelectionState>(
 
 export function storeDiscordSelectionReplyId(
   interaction: { user: { id: string } },
-  selectionMap: Map<string, DiscordJobSelectionState>,
+  selectionMap: LRUCache<string, DiscordJobSelectionState>,
   flow: string,
   response: Pick<InteractionCallbackResponse, 'resource'>,
 ): void {
@@ -265,7 +262,7 @@ export function storeDiscordSelectionReplyId(
 }
 
 export function storeDiscordScopedSelectionReplyId(
-  selectionMap: Map<string, DiscordScopedJobSelectionState>,
+  selectionMap: LRUCache<string, DiscordScopedJobSelectionState>,
   selectionToken: string,
   flow: string,
   response: Pick<InteractionCallbackResponse, 'resource'>,

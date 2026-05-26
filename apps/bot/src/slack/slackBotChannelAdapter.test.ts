@@ -16,10 +16,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoreBotEvent } from '@sniptail/core/types/bot-event.js';
 import {
   clearPendingSlackAgentSessionBrowserRequest,
+  clearSlackAgentSessionsActionState,
+  getSlackAgentSessionsActionState,
   getPendingSlackAgentSessionBrowserRequest,
-  parseSlackAgentActionValue,
   setPendingSlackAgentSessionBrowserRequest,
-  type SlackAgentSessionsPageActionPayload,
 } from './agentCommandState.js';
 
 const hoisted = vi.hoisted(() => ({
@@ -286,10 +286,12 @@ describe('SlackBotChannelAdapter permission updates', () => {
     const previousButton = actionsBlock?.elements?.find(
       (element) => element.text?.text === 'Previous',
     );
-    const previousPayload = parseSlackAgentActionValue<SlackAgentSessionsPageActionPayload>(
-      previousButton?.value,
-    );
-    expect(previousPayload?.previousCursor).toBe('cursor-0');
+    const previousState = getSlackAgentSessionsActionState(previousButton?.value);
+    expect(previousState?.kind).toBe('previous');
+    expect(previousState?.payload.previousCursor).toBe('cursor-0');
+    if (previousButton?.value) {
+      clearSlackAgentSessionsActionState(previousButton.value);
+    }
   });
 
   it('ignores listed responses whose filters do not match the pending browser scope', async () => {

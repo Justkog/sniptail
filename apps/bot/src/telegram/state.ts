@@ -1,4 +1,5 @@
 import type { JobType } from '@sniptail/core/types/job.js';
+import { LRUCache } from 'lru-cache';
 
 export type TelegramWizardState = {
   type: Extract<JobType, 'ASK' | 'EXPLORE' | 'PLAN' | 'IMPLEMENT' | 'REVIEW'>;
@@ -8,29 +9,18 @@ export type TelegramWizardState = {
   startedAt: number;
 };
 
-const wizardState = new Map<string, TelegramWizardState>();
+const WIZARD_STATE_MAX_ENTRIES = 1000;
 const WIZARD_TTL_MS = 15 * 60 * 1000;
-const WIZARD_CLEANUP_INTERVAL_MS = 60 * 1000;
+const wizardState = new LRUCache<string, TelegramWizardState>({
+  max: WIZARD_STATE_MAX_ENTRIES,
+  ttl: WIZARD_TTL_MS,
+  ttlAutopurge: true,
+  perf: { now: () => Date.now() },
+});
 
 function makeKey(chatId: string, userId: string): string {
   return `${chatId}:${userId}`;
 }
-
-function isExpired(state: TelegramWizardState, now: number = Date.now()): boolean {
-  return now - state.startedAt > WIZARD_TTL_MS;
-}
-
-function cleanupExpiredWizardState(): void {
-  const now = Date.now();
-  for (const [key, state] of wizardState.entries()) {
-    if (isExpired(state, now)) {
-      wizardState.delete(key);
-    }
-  }
-}
-
-const wizardStateCleanupTimer = setInterval(cleanupExpiredWizardState, WIZARD_CLEANUP_INTERVAL_MS);
-wizardStateCleanupTimer.unref?.();
 
 export function loadTelegramWizardState(
   chatId: string,
@@ -41,7 +31,7 @@ export function loadTelegramWizardState(
   if (!state) {
     return undefined;
   }
-  if (isExpired(state)) {
+  if (Date.now() - state.startedAt > WIZARD_TTL_MS) {
     wizardState.delete(key);
     return undefined;
   }

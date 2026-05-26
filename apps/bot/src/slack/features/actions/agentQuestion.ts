@@ -1,6 +1,6 @@
 import { loadAgentSession } from '@sniptail/core/agent-sessions/registry.js';
 import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import {
   appendSlackAgentQuestionDecision,
   buildSlackQuestionAnswers,

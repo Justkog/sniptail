@@ -445,14 +445,7 @@ function escapeDiscordCodeBlock(value: string): string {
 }
 
 function buildAgentSessionPreviewText(event: CoreBotEvent<'agent.session.previewed'>): string {
-  const lines = [
-    '**Last message from attached session**',
-    `Provider: \`${event.payload.provider}\` | Profile: \`${event.payload.agentProfileKey}\``,
-    `Session ID: \`${event.payload.providerSessionId}\``,
-    event.payload.workspaceKey
-      ? `Workspace: \`${event.payload.workspaceKey}${event.payload.cwd ? ` / ${event.payload.cwd}` : ''}\``
-      : undefined,
-  ].filter((line) => line !== undefined);
+  const lines = ['**Last message from attached session**'];
 
   if (event.payload.errorMessage || !event.payload.message) {
     lines.push(
