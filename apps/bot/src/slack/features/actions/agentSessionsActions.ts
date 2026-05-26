@@ -4,8 +4,9 @@ import { logger } from '@sniptail/core/logger.js';
 import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import { createJobId } from '../../../lib/jobs.js';
 import {
-  buildSlackAgentActionValue,
-  parseSlackAgentActionValue,
+  clearSlackAgentSessionsActionState,
+  getSlackAgentSessionsActionState,
+  setSlackAgentSessionsActionState,
   setPendingSlackAgentSessionBrowserRequest,
   type SlackAgentSessionsAttachActionPayload,
   type SlackAgentSessionsPageActionPayload,
@@ -164,11 +165,21 @@ function registerPageAction(
   const { app } = context;
   app.action(actionId, async ({ ack, body, client, action }) => {
     await ack();
-    const payload = parseSlackAgentActionValue<SlackAgentSessionsPageActionPayload>(
-      (action as { value?: string }).value,
-    );
+    const token = (action as { value?: string }).value?.trim();
+    const state = getSlackAgentSessionsActionState(token);
+    const payload = state?.kind === direction ? state.payload : undefined;
     const actor = resolveActionContext(body);
-    if (!payload || !actor.channelId || !actor.userId || !matchesRequester(payload, actor)) {
+    if (!payload || !actor.channelId || !actor.userId) {
+      if (actor.channelId && actor.userId) {
+        await client.chat.postEphemeral({
+          channel: actor.channelId,
+          user: actor.userId,
+          text: 'This session browser action expired. Refresh the session list.',
+        });
+      }
+      return;
+    }
+    if (!matchesRequester(payload, actor)) {
       if (actor.channelId && actor.userId) {
         await client.chat.postEphemeral({
           channel: actor.channelId,
@@ -178,6 +189,7 @@ function registerPageAction(
       }
       return;
     }
+    clearSlackAgentSessionsActionState(token ?? '');
     const resolvedActor = {
       channelId: actor.channelId,
       userId: actor.userId,
@@ -271,11 +283,21 @@ export function registerAgentSessionsActions(context: SlackHandlerContext) {
     async ({ ack, body, client, action }) => {
       await ack();
 
-      const payload = parseSlackAgentActionValue<SlackAgentSessionsAttachActionPayload>(
-        (action as { value?: string }).value,
-      );
+      const token = (action as { value?: string }).value?.trim();
+      const state = getSlackAgentSessionsActionState(token);
+      const payload = state?.kind === 'attach' ? state.payload : undefined;
       const actor = resolveActionContext(body);
-      if (!payload || !actor.channelId || !actor.userId || !matchesRequester(payload, actor)) {
+      if (!payload || !actor.channelId || !actor.userId) {
+        if (actor.channelId && actor.userId) {
+          await client.chat.postEphemeral({
+            channel: actor.channelId,
+            user: actor.userId,
+            text: 'This session browser action expired. Refresh the session list.',
+          });
+        }
+        return;
+      }
+      if (!matchesRequester(payload, actor)) {
         if (actor.channelId && actor.userId) {
           await client.chat.postEphemeral({
             channel: actor.channelId,
@@ -285,6 +307,7 @@ export function registerAgentSessionsActions(context: SlackHandlerContext) {
         }
         return;
       }
+      clearSlackAgentSessionsActionState(token ?? '');
       const resolvedActor = {
         channelId: actor.channelId,
         userId: actor.userId,
@@ -426,12 +449,13 @@ export function registerAgentSessionsActions(context: SlackHandlerContext) {
 
 export function buildSlackAgentSessionsPageValue(
   payload: SlackAgentSessionsPageActionPayload,
+  kind: 'previous' | 'next' = payload.previousCursor && !payload.nextCursor ? 'previous' : 'next',
 ): string {
-  return buildSlackAgentActionValue(payload);
+  return setSlackAgentSessionsActionState({ kind, payload });
 }
 
 export function buildSlackAgentSessionsAttachValue(
   payload: SlackAgentSessionsAttachActionPayload,
 ): string {
-  return buildSlackAgentActionValue(payload);
+  return setSlackAgentSessionsActionState({ kind: 'attach', payload });
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   AgentSessionListFilters,
   AgentSessionSummary,
@@ -17,6 +18,7 @@ type PendingSlackAgentQuestion = BotAgentQuestionRequestPayload & {
 
 const pendingSlackAgentQuestions = new Map<string, PendingSlackAgentQuestion>();
 const pendingSlackAgentSessionBrowsers = new Map<string, PendingSlackAgentSessionBrowserRequest>();
+const slackAgentSessionsActionStateByToken = new Map<string, SlackAgentSessionsActionState>();
 
 export const SLACK_AGENT_SESSIONS_BROWSER_TTL_MS = 15 * 60 * 1000;
 
@@ -67,6 +69,18 @@ export type SlackAgentSessionsAttachActionPayload = SlackAgentSessionsBrowserAct
   title?: string;
 };
 
+export type SlackAgentSessionsActionState =
+  | {
+      kind: 'previous' | 'next';
+      payload: SlackAgentSessionsPageActionPayload;
+      requestedAt: number;
+    }
+  | {
+      kind: 'attach';
+      payload: SlackAgentSessionsAttachActionPayload;
+      requestedAt: number;
+    };
+
 function questionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
 }
@@ -93,7 +107,7 @@ export function setPendingSlackAgentSessionBrowserRequest(
   payload: PendingSlackAgentSessionBrowserRequestInput,
   now = Date.now(),
 ): void {
-  evictExpiredPendingSlackAgentSessionBrowsers(now);
+  evictExpiredSlackAgentSessionsState(now);
   pendingSlackAgentSessionBrowsers.set(payload.requestId, {
     ...payload,
     requestedAt: payload.requestedAt ?? now,
@@ -108,7 +122,7 @@ export function getPendingSlackAgentSessionBrowserRequest(
   if (!pending) {
     return undefined;
   }
-  if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+  if (isSlackAgentSessionsStateExpired(pending, now)) {
     pendingSlackAgentSessionBrowsers.delete(requestId);
     return undefined;
   }
@@ -119,19 +133,60 @@ export function clearPendingSlackAgentSessionBrowserRequest(requestId: string): 
   pendingSlackAgentSessionBrowsers.delete(requestId);
 }
 
-function evictExpiredPendingSlackAgentSessionBrowsers(now: number): void {
+export function setSlackAgentSessionsActionState(
+  state: Omit<SlackAgentSessionsActionState, 'requestedAt'>,
+  now = Date.now(),
+): string {
+  evictExpiredSlackAgentSessionsState(now);
+  const token = randomUUID();
+  slackAgentSessionsActionStateByToken.set(token, {
+    ...state,
+    requestedAt: now,
+  } as SlackAgentSessionsActionState);
+  return token;
+}
+
+export function getSlackAgentSessionsActionState(
+  token: string | undefined,
+  now = Date.now(),
+): SlackAgentSessionsActionState | undefined {
+  const trimmedToken = token?.trim();
+  if (!trimmedToken) {
+    return undefined;
+  }
+  const state = slackAgentSessionsActionStateByToken.get(trimmedToken);
+  if (!state) {
+    return undefined;
+  }
+  if (isSlackAgentSessionsStateExpired(state, now)) {
+    slackAgentSessionsActionStateByToken.delete(trimmedToken);
+    return undefined;
+  }
+  return state;
+}
+
+export function clearSlackAgentSessionsActionState(token: string): void {
+  slackAgentSessionsActionStateByToken.delete(token);
+}
+
+function evictExpiredSlackAgentSessionsState(now: number): void {
   for (const [requestId, pending] of pendingSlackAgentSessionBrowsers) {
-    if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+    if (isSlackAgentSessionsStateExpired(pending, now)) {
       pendingSlackAgentSessionBrowsers.delete(requestId);
+    }
+  }
+  for (const [token, state] of slackAgentSessionsActionStateByToken) {
+    if (isSlackAgentSessionsStateExpired(state, now)) {
+      slackAgentSessionsActionStateByToken.delete(token);
     }
   }
 }
 
-function isPendingSlackAgentSessionBrowserExpired(
-  pending: Pick<PendingSlackAgentSessionBrowserRequest, 'requestedAt'>,
+function isSlackAgentSessionsStateExpired(
+  state: Pick<PendingSlackAgentSessionBrowserRequest, 'requestedAt'>,
   now: number,
 ): boolean {
-  return now - pending.requestedAt > SLACK_AGENT_SESSIONS_BROWSER_TTL_MS;
+  return now - state.requestedAt > SLACK_AGENT_SESSIONS_BROWSER_TTL_MS;
 }
 
 export function buildSlackAgentActionValue(value: Record<string, unknown>): string {

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSlackAgentQuestionRequestText,
   clearPendingSlackAgentSessionBrowserRequest,
+  clearSlackAgentSessionsActionState,
   getPendingSlackAgentSessionBrowserRequest,
+  getSlackAgentSessionsActionState,
   setPendingSlackAgentSessionBrowserRequest,
+  setSlackAgentSessionsActionState,
   SLACK_AGENT_SESSIONS_BROWSER_TTL_MS,
 } from './agentCommandState.js';
 
@@ -111,5 +114,51 @@ describe('pending Slack agent session browser requests', () => {
     );
 
     clearPendingSlackAgentSessionBrowserRequest('request-new');
+  });
+});
+
+describe('Slack agent session browser action tokens', () => {
+  it('stores page action payloads behind short tokens', () => {
+    const token = setSlackAgentSessionsActionState(
+      {
+        kind: 'next',
+        payload: {
+          channelId: 'channel-1',
+          userId: 'user-1',
+          workerId: 'worker-a',
+          cursorHistory: ['cursor-1'],
+          nextCursor: 'cursor-2',
+        },
+      },
+      1_000,
+    );
+
+    expect(token).not.toContain('cursor-2');
+    const state = getSlackAgentSessionsActionState(token, 1_001);
+    expect(state?.kind).toBe('next');
+    expect(state?.payload.nextCursor).toBe('cursor-2');
+
+    clearSlackAgentSessionsActionState(token);
+  });
+
+  it('evicts expired action tokens', () => {
+    const token = setSlackAgentSessionsActionState(
+      {
+        kind: 'attach',
+        payload: {
+          channelId: 'channel-1',
+          userId: 'user-1',
+          workerId: 'worker-a',
+          provider: 'acp',
+          providerSessionId: 'provider-session-1',
+          sessionAgentProfileKey: 'build',
+        },
+      },
+      1_000,
+    );
+
+    const expiredAt = 1_000 + SLACK_AGENT_SESSIONS_BROWSER_TTL_MS + 1;
+    expect(getSlackAgentSessionsActionState(token, expiredAt)).toBeUndefined();
+    expect(getSlackAgentSessionsActionState(token, expiredAt)).toBeUndefined();
   });
 });
