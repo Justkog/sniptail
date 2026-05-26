@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleAskStart } from './commands/ask.js';
 import { handleAskSelection } from './actions/askSelection.js';
 import { askSelectionByUser, DISCORD_SELECTION_CAPTURED_MESSAGE } from '../state.js';
@@ -19,8 +19,13 @@ vi.mock('@sniptail/core/logger.js', () => ({
 describe('Discord ask attachment flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
     askSelectionByUser.clear();
     refreshRepoAllowlistMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('preserves command attachments through repo selection and disables the selector reply', async () => {
@@ -172,13 +177,15 @@ describe('Discord ask attachment flow', () => {
       },
     } as never;
 
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     const webhookEditMessage = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const reply = vi.fn().mockResolvedValue(undefined);
     askSelectionByUser.set('U1', {
       repoKeys: [],
-      requestedAt: Date.now() - 16 * 60 * 1000,
+      requestedAt: Date.now(),
       selectorMessageId: 'M1',
     });
+    vi.advanceTimersByTime(16 * 60 * 1000);
 
     const selectionInteraction = {
       user: { id: 'U1' },

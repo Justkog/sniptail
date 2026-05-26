@@ -445,9 +445,7 @@ function escapeDiscordCodeBlock(value: string): string {
 }
 
 function buildAgentSessionPreviewText(event: CoreBotEvent<'agent.session.previewed'>): string {
-  const lines = [
-    '**Last message from attached session**',
-  ];
+  const lines = ['**Last message from attached session**'];
 
   if (event.payload.errorMessage || !event.payload.message) {
     lines.push(

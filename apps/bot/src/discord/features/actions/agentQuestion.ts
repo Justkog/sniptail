@@ -14,8 +14,9 @@ import {
 import { enqueueWorkerMailboxEvent } from '@sniptail/core/queue/queue.js';
 import type { QueueTransportRuntime } from '@sniptail/core/queue/queueTransportTypes.js';
 import type { BotAgentQuestionRequestPayload } from '@sniptail/core/types/bot-event.js';
-import { type WorkerEvent } from '@sniptail/core/types/worker-event.js';
+import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import type { BotConfig } from '@sniptail/core/config/config.js';
+import { LRUCache } from 'lru-cache';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import {
   buildAgentInteractionResolveWorkerEvent,
@@ -28,17 +29,42 @@ type PendingDiscordAgentQuestion = BotAgentQuestionRequestPayload & {
   selections: Map<number, string[]>;
 };
 
-const pendingDiscordAgentQuestions = new Map<string, PendingDiscordAgentQuestion>();
+const AGENT_QUESTION_STATE_MAX_ENTRIES = 1000;
+const MIN_AGENT_QUESTION_STATE_TTL_MS = 1;
+const pendingDiscordAgentQuestions = new LRUCache<string, PendingDiscordAgentQuestion>({
+  max: AGENT_QUESTION_STATE_MAX_ENTRIES,
+  ttl: MIN_AGENT_QUESTION_STATE_TTL_MS,
+  ttlAutopurge: true,
+  perf: { now: () => Date.now() },
+});
 
 function questionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
 }
 
+function ttlUntilExpiresAt(expiresAt: string, now = Date.now()): number | undefined {
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    return undefined;
+  }
+  const ttl = expiresAtMs - now;
+  return ttl > 0 ? ttl : undefined;
+}
+
 export function setPendingDiscordAgentQuestion(payload: BotAgentQuestionRequestPayload): void {
-  pendingDiscordAgentQuestions.set(questionKey(payload.sessionId, payload.interactionId), {
-    ...payload,
-    selections: new Map(),
-  });
+  const ttl = ttlUntilExpiresAt(payload.expiresAt);
+  if (!ttl) {
+    pendingDiscordAgentQuestions.delete(questionKey(payload.sessionId, payload.interactionId));
+    return;
+  }
+  pendingDiscordAgentQuestions.set(
+    questionKey(payload.sessionId, payload.interactionId),
+    {
+      ...payload,
+      selections: new Map(),
+    },
+    { ttl },
+  );
 }
 
 export function clearPendingDiscordAgentQuestion(sessionId: string, interactionId: string): void {
@@ -49,7 +75,16 @@ function getPendingDiscordAgentQuestion(
   sessionId: string,
   interactionId: string,
 ): PendingDiscordAgentQuestion | undefined {
-  return pendingDiscordAgentQuestions.get(questionKey(sessionId, interactionId));
+  const key = questionKey(sessionId, interactionId);
+  const pending = pendingDiscordAgentQuestions.get(key);
+  if (!pending) {
+    return undefined;
+  }
+  if (!ttlUntilExpiresAt(pending.expiresAt)) {
+    pendingDiscordAgentQuestions.delete(key);
+    return undefined;
+  }
+  return pending;
 }
 
 function getMessageThreadId(message: ButtonInteraction['message']): string | undefined {

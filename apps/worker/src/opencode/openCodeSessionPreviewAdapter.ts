@@ -51,10 +51,10 @@ function findLatestAssistantMessage(
   };
 }
 
-function readOpenCodeMessageCreatedAt(message: OpenCodeAssistantSessionMessage): string | undefined {
-  const timestamp =
-    message.info.time?.created ??
-    message.info.time?.completed;
+function readOpenCodeMessageCreatedAt(
+  message: OpenCodeAssistantSessionMessage,
+): string | undefined {
+  const timestamp = message.info.time?.created ?? message.info.time?.completed;
   if (!Number.isFinite(timestamp)) {
     debug('OpenCode preview message did not include usable time metadata');
     return undefined;

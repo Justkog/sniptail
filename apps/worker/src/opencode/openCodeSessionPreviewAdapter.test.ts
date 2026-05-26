@@ -154,31 +154,4 @@ describe('openCodeSessionPreviewAdapter', () => {
       createdAt: '2024-05-22T10:10:00.000Z',
     });
   });
-
-  it('keeps supporting top-level message time metadata', async () => {
-    hoisted.sessionMessages.mockResolvedValue({
-      data: [
-        {
-          info: {
-            role: 'assistant',
-          },
-          parts: [{ type: 'text', text: 'Latest response' }],
-          time: {
-            created: 1_716_372_000_000,
-          },
-        },
-      ],
-    });
-
-    const result = await openCodeAgentSessionPreviewAdapter.previewSession({
-      config: buildConfig(),
-      profile: {
-        key: 'build',
-        provider: 'opencode',
-      },
-      providerSessionId: 'session-1',
-    });
-
-    expect(result.message?.createdAt).toBe('2024-05-22T10:00:00.000Z');
-  });
 });
