@@ -11,6 +11,7 @@ export type SlackIds = {
     implement: string;
     run: string;
     agent: string;
+    agentSessions: string;
     bootstrap: string;
     clearBefore: string;
     usage: string;
@@ -50,6 +51,9 @@ export type SlackIds = {
     agentQuestionReject: string;
     agentQuestionCustom: string;
     agentQuestionCustomSubmit: string;
+    agentSessionsPrevious: string;
+    agentSessionsNext: string;
+    agentSessionsAttach: string;
   };
 };
 
@@ -67,6 +71,7 @@ export function buildSlackIds(botName: string): SlackIds {
       implement: `/${commandPrefix}-implement`,
       run: `/${commandPrefix}-run`,
       agent: `/${commandPrefix}-agent`,
+      agentSessions: `/${commandPrefix}-agent-sessions`,
       bootstrap: `/${commandPrefix}-bootstrap`,
       clearBefore: `/${commandPrefix}-clear-before`,
       usage: `/${commandPrefix}-usage`,
@@ -106,6 +111,9 @@ export function buildSlackIds(botName: string): SlackIds {
       agentQuestionReject: `${commandPrefix}-agent-question-reject`,
       agentQuestionCustom: `${commandPrefix}-agent-question-custom`,
       agentQuestionCustomSubmit: `${commandPrefix}-agent-question-custom-submit`,
+      agentSessionsPrevious: `${commandPrefix}-agent-sessions-previous`,
+      agentSessionsNext: `${commandPrefix}-agent-sessions-next`,
+      agentSessionsAttach: `${commandPrefix}-agent-sessions-attach`,
     },
   };
 }

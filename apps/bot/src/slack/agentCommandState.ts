@@ -1,4 +1,8 @@
 import type {
+  AgentSessionListFilters,
+  AgentSessionSummary,
+} from '@sniptail/core/agent-sessions/listing.js';
+import type {
   BotAgentPermissionRequestPayload,
   BotAgentPermissionUpdatePayload,
   BotAgentQuestionRequestPayload,
@@ -12,6 +16,56 @@ type PendingSlackAgentQuestion = BotAgentQuestionRequestPayload & {
 };
 
 const pendingSlackAgentQuestions = new Map<string, PendingSlackAgentQuestion>();
+const pendingSlackAgentSessionBrowsers = new Map<string, PendingSlackAgentSessionBrowserRequest>();
+
+export const SLACK_AGENT_SESSIONS_BROWSER_TTL_MS = 15 * 60 * 1000;
+
+export type PendingSlackAgentSessionBrowserRequest = {
+  requestId: string;
+  channelId: string;
+  userId: string;
+  workspaceId?: string;
+  sourceThreadId?: string;
+  workerId: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+  currentCursor?: string;
+  cursorHistory: string[];
+  requestedAt: number;
+};
+
+type PendingSlackAgentSessionBrowserRequestInput = Omit<
+  PendingSlackAgentSessionBrowserRequest,
+  'requestedAt'
+> & {
+  requestedAt?: number;
+};
+
+export type SlackAgentSessionsBrowserActionPayload = {
+  channelId: string;
+  userId: string;
+  workerId: string;
+  workspaceId?: string;
+  sourceThreadId?: string;
+  agentProfileKey?: string;
+  filters?: AgentSessionListFilters;
+};
+
+export type SlackAgentSessionsPageActionPayload = SlackAgentSessionsBrowserActionPayload & {
+  currentCursor?: string;
+  cursorHistory: string[];
+  previousCursor?: string;
+  nextCursor?: string;
+};
+
+export type SlackAgentSessionsAttachActionPayload = SlackAgentSessionsBrowserActionPayload & {
+  provider: AgentSessionSummary['provider'];
+  providerSessionId: string;
+  sessionAgentProfileKey: string;
+  workspaceKey?: string;
+  cwd?: string;
+  title?: string;
+};
 
 function questionKey(sessionId: string, interactionId: string): string {
   return `${sessionId}:${interactionId}`;
@@ -33,6 +87,51 @@ export function getPendingSlackAgentQuestion(
 
 export function clearPendingSlackAgentQuestion(sessionId: string, interactionId: string): void {
   pendingSlackAgentQuestions.delete(questionKey(sessionId, interactionId));
+}
+
+export function setPendingSlackAgentSessionBrowserRequest(
+  payload: PendingSlackAgentSessionBrowserRequestInput,
+  now = Date.now(),
+): void {
+  evictExpiredPendingSlackAgentSessionBrowsers(now);
+  pendingSlackAgentSessionBrowsers.set(payload.requestId, {
+    ...payload,
+    requestedAt: payload.requestedAt ?? now,
+  });
+}
+
+export function getPendingSlackAgentSessionBrowserRequest(
+  requestId: string,
+  now = Date.now(),
+): PendingSlackAgentSessionBrowserRequest | undefined {
+  const pending = pendingSlackAgentSessionBrowsers.get(requestId);
+  if (!pending) {
+    return undefined;
+  }
+  if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+    pendingSlackAgentSessionBrowsers.delete(requestId);
+    return undefined;
+  }
+  return pending;
+}
+
+export function clearPendingSlackAgentSessionBrowserRequest(requestId: string): void {
+  pendingSlackAgentSessionBrowsers.delete(requestId);
+}
+
+function evictExpiredPendingSlackAgentSessionBrowsers(now: number): void {
+  for (const [requestId, pending] of pendingSlackAgentSessionBrowsers) {
+    if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+      pendingSlackAgentSessionBrowsers.delete(requestId);
+    }
+  }
+}
+
+function isPendingSlackAgentSessionBrowserExpired(
+  pending: Pick<PendingSlackAgentSessionBrowserRequest, 'requestedAt'>,
+  now: number,
+): boolean {
+  return now - pending.requestedAt > SLACK_AGENT_SESSIONS_BROWSER_TTL_MS;
 }
 
 export function buildSlackAgentActionValue(value: Record<string, unknown>): string {

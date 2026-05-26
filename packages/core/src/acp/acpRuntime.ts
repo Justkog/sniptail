@@ -8,6 +8,8 @@ import {
   type ContentBlock,
   type Implementation,
   type InitializeResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
   type LoadSessionResponse,
   type NewSessionResponse,
   type PromptCapabilities,
@@ -76,6 +78,7 @@ export type AcpRuntimeHandle = {
   capabilities: AgentCapabilities;
   agentInfo?: Implementation;
   sessionId?: string;
+  listSessions(params: ListSessionsRequest): Promise<ListSessionsResponse>;
   createSession(options?: AcpSessionStartOptions): Promise<NewSessionResponse>;
   loadSession(sessionId: string, options?: AcpSessionStartOptions): Promise<LoadSessionResponse>;
   prompt(options: AcpPromptOptions): Promise<PromptResponse>;
@@ -125,6 +128,13 @@ async function loadAcpSession(
   params: Parameters<ClientSideConnection['loadSession']>[0],
 ): Promise<LoadSessionResponse> {
   return (await connection.loadSession(params)) as unknown as LoadSessionResponse;
+}
+
+async function listAcpSessions(
+  connection: ClientSideConnection,
+  params: ListSessionsRequest,
+): Promise<ListSessionsResponse> {
+  return (await connection.listSessions(params)) as unknown as ListSessionsResponse;
 }
 
 async function promptAcpSession(
@@ -524,6 +534,20 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
     connection,
     capabilities: initialized.agentCapabilities ?? {},
     ...(runtimeAgentInfo ? { agentInfo: runtimeAgentInfo } : {}),
+    async listSessions(params) {
+      if (!initialized.agentCapabilities?.sessionCapabilities?.list) {
+        throw wrapRuntimeError(
+          options,
+          'ACP agent does not support session/list.',
+          runtimeAgentInfo,
+        );
+      }
+      try {
+        return await listAcpSessions(connection, params);
+      } catch (err) {
+        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      }
+    },
     async createSession(sessionOptions) {
       let session: NewSessionResponse;
       try {

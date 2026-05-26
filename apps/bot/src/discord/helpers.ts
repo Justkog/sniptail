@@ -29,6 +29,7 @@ type DiscordInteractionReplyOptions = {
   interactionToken: string;
   interactionApplicationId: string;
   text: string;
+  components?: unknown[];
 };
 
 type DiscordReactionOptions = {
@@ -145,7 +146,17 @@ export async function editDiscordInteractionReply(
 ) {
   await client.rest.patch(
     Routes.webhookMessage(options.interactionApplicationId, options.interactionToken, '@original'),
-    { body: { content: options.text } },
+    {
+      body: {
+        content: options.text,
+        ...(options.components !== undefined
+          ? {
+              components:
+                options.components as NonNullable<MessageCreateOptions['components']>,
+            }
+          : {}),
+      },
+    },
   );
 }
 

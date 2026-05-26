@@ -30,6 +30,10 @@ import { handleRepoAddAdmin } from './features/commands/repoAddAdmin.js';
 import { handleRepoRemoveAdmin } from './features/commands/repoRemoveAdmin.js';
 import { handleUsage } from './features/commands/usage.js';
 import { handleAgentAutocomplete, handleAgentStart } from './features/commands/agent.js';
+import {
+  handleDiscordAgentSessionsAutocomplete,
+  handleDiscordAgentSessionsCommand,
+} from './features/commands/discordAgentSessionsCommand.js';
 import { handleAskSelection } from './features/actions/askSelection.js';
 import { handleDiscordExploreSelection } from './features/actions/discordExploreSelectionAction.js';
 import { handlePlanSelection } from './features/actions/planSelection.js';
@@ -45,6 +49,10 @@ import {
   handleAgentQuestionSelect,
 } from './features/actions/agentQuestion.js';
 import { handleAgentStopButton } from './features/actions/agentStop.js';
+import {
+  handleDiscordAgentSessionsButton,
+  parseDiscordAgentSessionsCustomId,
+} from './features/actions/discordAgentSessionButtons.js';
 import {
   handleBootstrapExtrasContinue,
   handleBootstrapExtrasSelection,
@@ -141,10 +149,19 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isAutocomplete()) return;
-    if (interaction.commandName !== commandNames.agent) return;
+    if (
+      interaction.commandName !== commandNames.agent &&
+      interaction.commandName !== commandNames.agentSessions
+    ) {
+      return;
+    }
 
     try {
-      await handleAgentAutocomplete(interaction);
+      if (interaction.commandName === commandNames.agentSessions) {
+        await handleDiscordAgentSessionsAutocomplete(interaction);
+      } else {
+        await handleAgentAutocomplete(interaction);
+      }
     } catch (err) {
       logger.error({ err, command: interaction.commandName }, 'Discord autocomplete failed');
       await interaction.respond([]);
@@ -409,6 +426,23 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
       return;
     }
 
+    if (interaction.commandName === commandNames.agentSessions) {
+      try {
+        await handleDiscordAgentSessionsCommand(interaction, config, queueRuntime, permissions);
+      } catch (err) {
+        logger.error({ err, command: interaction.commandName }, 'Discord command failed');
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply('Something went wrong handling that command.');
+        } else {
+          await interaction.reply({
+            content: 'Something went wrong handling that command.',
+            ephemeral: true,
+          });
+        }
+      }
+      return;
+    }
+
     await interaction.deferReply({ ephemeral: true });
 
     try {
@@ -453,6 +487,18 @@ export function registerDiscordHandlers(context: DiscordHandlerContext): void {
         await handleAgentStopButton(
           interaction,
           parsedAgentStop.sessionId,
+          config,
+          queueRuntime,
+          permissions,
+        );
+        return;
+      }
+
+      const parsedAgentSessions = parseDiscordAgentSessionsCustomId(interaction.customId);
+      if (parsedAgentSessions) {
+        await handleDiscordAgentSessionsButton(
+          interaction,
+          parsedAgentSessions,
           config,
           queueRuntime,
           permissions,
