@@ -18,6 +18,8 @@ type PendingSlackAgentQuestion = BotAgentQuestionRequestPayload & {
 const pendingSlackAgentQuestions = new Map<string, PendingSlackAgentQuestion>();
 const pendingSlackAgentSessionBrowsers = new Map<string, PendingSlackAgentSessionBrowserRequest>();
 
+export const SLACK_AGENT_SESSIONS_BROWSER_TTL_MS = 15 * 60 * 1000;
+
 export type PendingSlackAgentSessionBrowserRequest = {
   requestId: string;
   channelId: string;
@@ -29,6 +31,14 @@ export type PendingSlackAgentSessionBrowserRequest = {
   filters?: AgentSessionListFilters;
   currentCursor?: string;
   cursorHistory: string[];
+  requestedAt: number;
+};
+
+type PendingSlackAgentSessionBrowserRequestInput = Omit<
+  PendingSlackAgentSessionBrowserRequest,
+  'requestedAt'
+> & {
+  requestedAt?: number;
 };
 
 export type SlackAgentSessionsBrowserActionPayload = {
@@ -80,19 +90,48 @@ export function clearPendingSlackAgentQuestion(sessionId: string, interactionId:
 }
 
 export function setPendingSlackAgentSessionBrowserRequest(
-  payload: PendingSlackAgentSessionBrowserRequest,
+  payload: PendingSlackAgentSessionBrowserRequestInput,
+  now = Date.now(),
 ): void {
-  pendingSlackAgentSessionBrowsers.set(payload.requestId, payload);
+  evictExpiredPendingSlackAgentSessionBrowsers(now);
+  pendingSlackAgentSessionBrowsers.set(payload.requestId, {
+    ...payload,
+    requestedAt: payload.requestedAt ?? now,
+  });
 }
 
 export function getPendingSlackAgentSessionBrowserRequest(
   requestId: string,
+  now = Date.now(),
 ): PendingSlackAgentSessionBrowserRequest | undefined {
-  return pendingSlackAgentSessionBrowsers.get(requestId);
+  const pending = pendingSlackAgentSessionBrowsers.get(requestId);
+  if (!pending) {
+    return undefined;
+  }
+  if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+    pendingSlackAgentSessionBrowsers.delete(requestId);
+    return undefined;
+  }
+  return pending;
 }
 
 export function clearPendingSlackAgentSessionBrowserRequest(requestId: string): void {
   pendingSlackAgentSessionBrowsers.delete(requestId);
+}
+
+function evictExpiredPendingSlackAgentSessionBrowsers(now: number): void {
+  for (const [requestId, pending] of pendingSlackAgentSessionBrowsers) {
+    if (isPendingSlackAgentSessionBrowserExpired(pending, now)) {
+      pendingSlackAgentSessionBrowsers.delete(requestId);
+    }
+  }
+}
+
+function isPendingSlackAgentSessionBrowserExpired(
+  pending: Pick<PendingSlackAgentSessionBrowserRequest, 'requestedAt'>,
+  now: number,
+): boolean {
+  return now - pending.requestedAt > SLACK_AGENT_SESSIONS_BROWSER_TTL_MS;
 }
 
 export function buildSlackAgentActionValue(value: Record<string, unknown>): string {
