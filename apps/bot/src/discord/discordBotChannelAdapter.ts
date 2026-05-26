@@ -436,12 +436,8 @@ function matchesPendingDiscordBrowserRequest(
   );
 }
 
-function truncateDiscordLine(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}...`;
-}
-
 function truncateDiscordMessage(value: string, maxLength = DISCORD_MESSAGE_CONTENT_LIMIT): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 4)}...`;
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`;
 }
 
 function escapeDiscordCodeBlock(value: string): string {
@@ -515,7 +511,7 @@ function buildDiscordAgentSessionsBrowserMessage(
   const components: unknown[] = [];
   for (const [index, session] of event.payload.sessions.entries()) {
     const rowLines = [
-      `**${index + 1}. ${truncateDiscordLine(session.title?.trim() || 'Untitled session', 80)}**`,
+      `**${index + 1}. ${truncateDiscordMessage(session.title?.trim() || 'Untitled session', 80)}**`,
       `Provider: \`${session.provider}\` | Profile: \`${session.agentProfileKey}\``,
       `Session ID: \`${session.id}\``,
       buildDiscordAgentSessionTimestamp(session),
@@ -524,11 +520,11 @@ function buildDiscordAgentSessionsBrowserMessage(
         : session.cwd
           ? `CWD: \`${session.cwd}\``
           : undefined,
-      session.project ? `Project: ${truncateDiscordLine(session.project, 100)}` : undefined,
+      session.project ? `Project: ${truncateDiscordMessage(session.project, 100)}` : undefined,
       session.roots?.length
         ? `Roots: ${session.roots.map((root) => `\`${root}\``).join(', ')}`
         : undefined,
-      session.description ? truncateDiscordLine(session.description, 160) : undefined,
+      session.description ? truncateDiscordMessage(session.description, 160) : undefined,
     ].filter((line) => line !== undefined);
     lines.push('', ...rowLines);
 
@@ -617,7 +613,7 @@ function buildDiscordAgentSessionsBrowserMessage(
   }
 
   return {
-    text: truncateDiscordLine(lines.join('\n'), DISCORD_MESSAGE_CONTENT_LIMIT),
+    text: truncateDiscordMessage(lines.join('\n')),
     components,
   };
 }
