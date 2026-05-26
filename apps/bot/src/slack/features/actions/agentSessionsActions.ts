@@ -449,7 +449,7 @@ export function registerAgentSessionsActions(context: SlackHandlerContext) {
 
 export function buildSlackAgentSessionsPageValue(
   payload: SlackAgentSessionsPageActionPayload,
-  kind: 'previous' | 'next' = payload.previousCursor && !payload.nextCursor ? 'previous' : 'next',
+  kind: 'previous' | 'next',
 ): string {
   return setSlackAgentSessionsActionState({ kind, payload });
 }

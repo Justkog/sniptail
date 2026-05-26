@@ -5,8 +5,10 @@ import {
   type AggregatedWorkspaceCapability,
 } from '@sniptail/core/agent-capabilities/agentCapabilities.js';
 import { loadAggregatedAgentCapabilitySnapshot } from '@sniptail/core/registry/registryCapabilities.js';
+import { LRUCache } from 'lru-cache';
 
 const AGENT_METADATA_CACHE_TTL_MS = 5_000;
+const AGENT_METADATA_CACHE_KEY = 'metadata';
 
 export type AgentCommandWorkspaceMetadata = Pick<
   AggregatedWorkspaceCapability,
@@ -37,17 +39,16 @@ export type AgentCommandMetadata = {
   activeSessionCounts: Record<string, number>;
 };
 
-type CachedMetadata = {
-  metadata: AgentCommandMetadata;
-  expiresAtMs: number;
-};
-
 type Choice = {
   name: string;
   value: string;
 };
 
-let cachedMetadata: CachedMetadata | undefined;
+const cachedMetadata = new LRUCache<string, AgentCommandMetadata>({
+  max: 1,
+  ttl: AGENT_METADATA_CACHE_TTL_MS,
+  perf: { now: () => Date.now() },
+});
 let pendingMetadataLoad: Promise<AgentCommandMetadata> | undefined;
 
 function normalizeOptionalToken(value: string | undefined): string | undefined {
@@ -121,16 +122,18 @@ function buildMetadata(
 }
 
 export function clearAgentCommandMetadata(): void {
-  cachedMetadata = undefined;
+  cachedMetadata.clear();
   pendingMetadataLoad = undefined;
 }
 
 export async function loadAgentCommandMetadata(
   options: { forceRefresh?: boolean } = {},
 ): Promise<AgentCommandMetadata> {
-  const nowMs = Date.now();
-  if (!options.forceRefresh && cachedMetadata && cachedMetadata.expiresAtMs > nowMs) {
-    return cachedMetadata.metadata;
+  if (!options.forceRefresh) {
+    const metadata = cachedMetadata.get(AGENT_METADATA_CACHE_KEY);
+    if (metadata) {
+      return metadata;
+    }
   }
   if (!options.forceRefresh && pendingMetadataLoad) {
     return pendingMetadataLoad;
@@ -138,10 +141,7 @@ export async function loadAgentCommandMetadata(
 
   pendingMetadataLoad = (async () => {
     const metadata = buildMetadata(await loadAggregatedAgentCapabilitySnapshot());
-    cachedMetadata = {
-      metadata,
-      expiresAtMs: Date.now() + AGENT_METADATA_CACHE_TTL_MS,
-    };
+    cachedMetadata.set(AGENT_METADATA_CACHE_KEY, metadata);
     return metadata;
   })();
 

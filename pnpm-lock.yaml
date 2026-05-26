@@ -65,6 +65,9 @@ importers:
       grammy:
         specifier: ^1.38.3
         version: 1.42.0
+      lru-cache:
+        specifier: ^11.5.0
+        version: 11.5.0
     optionalDependencies:
       bufferutil:
         specifier: ^4.1.0
@@ -99,6 +102,9 @@ importers:
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
+      lru-cache:
+        specifier: ^11.5.0
+        version: 11.5.0
 
   packages/cli:
     dependencies:
@@ -1937,6 +1943,10 @@ packages:
 
   lodash@4.17.23:
     resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
+
+  lru-cache@11.5.0:
+    resolution: {integrity: sha512-5YgH9UJd7wVb9hIouI2adWpgqrrICkt070Dnj8EUY1+B4B2P9eRLPAkAAo6NICA7CEhOIeBHl46u9zSNpNu7zA==}
+    engines: {node: 20 || >=22}
 
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
@@ -4258,6 +4268,8 @@ snapshots:
   lodash.snakecase@4.1.1: {}
 
   lodash@4.17.23: {}
+
+  lru-cache@11.5.0: {}
 
   luxon@3.7.2: {}
 

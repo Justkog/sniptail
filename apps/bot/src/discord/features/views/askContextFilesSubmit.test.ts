@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
 import type { fetchDiscordThreadContext } from '../../threadContext.js';
@@ -62,6 +62,7 @@ vi.mock('../../lib/discordContextFiles.js', async () => {
 describe('handleAskModalSubmit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
     askSelectionByUser.clear();
     enqueueJobMock.mockResolvedValue(undefined);
     saveJobQueuedMock.mockResolvedValue(undefined);
@@ -82,6 +83,10 @@ describe('handleAskModalSubmit', () => {
         },
       },
     ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function makeQueueRuntime() {
@@ -178,11 +183,13 @@ describe('handleAskModalSubmit', () => {
   });
 
   it('expires stale modal selections before queueing the job', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     askSelectionByUser.set('U1', {
       repoKeys: ['repo-a'],
-      requestedAt: Date.now() - 16 * 60 * 1000,
+      requestedAt: Date.now(),
       selectorMessageId: 'M1',
     });
+    vi.advanceTimersByTime(16 * 60 * 1000);
 
     const reply = vi.fn<(payload: { content: string; ephemeral: boolean }) => Promise<void>>();
     reply.mockResolvedValue(undefined);

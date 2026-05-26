@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEvent } from '@sniptail/core/types/worker-event.js';
 import {
   clearPendingDiscordAgentQuestion,
@@ -172,6 +172,8 @@ const permissions = {};
 describe('handleAgentQuestion interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     clearPendingDiscordAgentQuestion('session-1', 'interaction-1');
     hoisted.loadAgentSession.mockResolvedValue(buildSession());
     hoisted.authorizeDiscordOperationAndRespond.mockResolvedValue(true);
@@ -180,6 +182,11 @@ describe('handleAgentQuestion interactions', () => {
       ok: true,
       targetWorkerId: 'worker-a',
     });
+  });
+
+  afterEach(() => {
+    clearPendingDiscordAgentQuestion('session-1', 'interaction-1');
+    vi.useRealTimers();
   });
 
   it('enqueues ordered answers for a single-question select', async () => {
@@ -215,6 +222,45 @@ describe('handleAgentQuestion interactions', () => {
       content: '**Question requested**\n\nQuestion answer selected by <@user-2>.',
       components: [],
     });
+  });
+
+  it('expires pending questions using the event expiresAt value', async () => {
+    setQuestion({ expiresAt: '2026-01-01T00:01:00.000Z' });
+    vi.setSystemTime(new Date('2026-01-01T00:01:00.001Z'));
+    const interaction = buildInteraction({ values: ['1'] });
+
+    await handleAgentQuestionSelect(
+      interaction as never,
+      { sessionId: 'session-1', interactionId: 'interaction-1', questionIndex: 0 },
+      config as never,
+      queueRuntime as never,
+      permissions as never,
+    );
+
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'This question request is no longer pending.',
+      ephemeral: true,
+    });
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not store already expired questions', async () => {
+    setQuestion({ expiresAt: '2025-12-31T23:59:59.000Z' });
+    const interaction = buildInteraction({ values: ['1'] });
+
+    await handleAgentQuestionSelect(
+      interaction as never,
+      { sessionId: 'session-1', interactionId: 'interaction-1', questionIndex: 0 },
+      config as never,
+      queueRuntime as never,
+      permissions as never,
+    );
+
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'This question request is no longer pending.',
+      ephemeral: true,
+    });
+    expect(hoisted.enqueueWorkerMailboxEvent).not.toHaveBeenCalled();
   });
 
   it('records multi-question selections and submits merged answers', async () => {
