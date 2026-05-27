@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
-import { extractAcpAssistantText, formatAcpEvent, summarizeAcpEvent } from './acpEventMapping.js';
+import {
+  extractAcpAssistantText,
+  extractAcpTextMessageChunk,
+  formatAcpEvent,
+  summarizeAcpEvent,
+} from './acpEventMapping.js';
 
 function buildNotification(update: SessionNotification['update']): SessionNotification {
   return {
@@ -17,6 +22,23 @@ describe('ACP event mapping', () => {
     });
 
     expect(extractAcpAssistantText(notification)).toBe('hello world');
+    expect(extractAcpTextMessageChunk(notification)).toEqual({
+      role: 'agent',
+      text: 'hello world',
+    });
+  });
+
+  it('extracts user text from user message chunks', () => {
+    const notification = buildNotification({
+      sessionUpdate: 'user_message_chunk',
+      content: { type: 'text', text: 'please continue' },
+    });
+
+    expect(extractAcpTextMessageChunk(notification)).toEqual({
+      role: 'user',
+      text: 'please continue',
+    });
+    expect(extractAcpAssistantText(notification)).toBeUndefined();
   });
 
   it('ignores non-text agent message chunks for assistant output', () => {
@@ -26,6 +48,7 @@ describe('ACP event mapping', () => {
     });
 
     expect(extractAcpAssistantText(notification)).toBeUndefined();
+    expect(extractAcpTextMessageChunk(notification)).toBeUndefined();
   });
 
   it('does not expose thought chunks as assistant output', () => {
@@ -35,6 +58,7 @@ describe('ACP event mapping', () => {
     });
 
     expect(extractAcpAssistantText(notification)).toBeUndefined();
+    expect(extractAcpTextMessageChunk(notification)).toBeUndefined();
   });
 
   it('keeps thought chunks out of summary logs', () => {
