@@ -43,7 +43,26 @@ type AggregateProfilePageResult = {
   hasMore: boolean;
 };
 
+type ExplicitProfileCursorScope = {
+  workerId: string;
+  pageSize: number;
+  filters?: AgentSessionListFilters;
+  profileKey: string;
+  provider: AgentSessionListProvider;
+};
+
+type ExplicitProfileCursorPayload = {
+  version: 1;
+  mode: 'profile';
+  initialPage?: true;
+  previousCursor?: string;
+  scope: ExplicitProfileCursorScope;
+  cursorState?: AgentSessionListAdapterPageState;
+  bufferedSessions: AgentSessionSummary[];
+};
+
 const AGGREGATE_CURSOR_PREFIX = 'sniptail-agent-sessions-v1.';
+const EXPLICIT_PROFILE_CURSOR_PREFIX = 'sniptail-agent-session-profile-v1.';
 
 export type ListAgentSessionsForWorkerInput = {
   config: WorkerConfig;
@@ -86,12 +105,24 @@ function buildInvalidAggregateCursorMessage(): string {
   return 'Session list cursor is invalid or expired. Refresh the session list.';
 }
 
+function buildInvalidCursorMessage(): string {
+  return 'Session list cursor is invalid or expired. Refresh the session list.';
+}
+
 function isAggregateCursor(cursor: string): boolean {
   return cursor.startsWith(AGGREGATE_CURSOR_PREFIX);
 }
 
 function encodeAggregateCursor(payload: AggregateCursorPayload): string {
   return `${AGGREGATE_CURSOR_PREFIX}${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')}`;
+}
+
+function isExplicitProfileCursor(cursor: string): boolean {
+  return cursor.startsWith(EXPLICIT_PROFILE_CURSOR_PREFIX);
+}
+
+function encodeExplicitProfileCursor(payload: ExplicitProfileCursorPayload): string {
+  return `${EXPLICIT_PROFILE_CURSOR_PREFIX}${Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')}`;
 }
 
 function decodeAggregateCursor(cursor: string): AggregateCursorPayload {
@@ -139,6 +170,54 @@ function decodeAggregateCursor(cursor: string): AggregateCursorPayload {
     },
     ...(typeof parsed.previousCursor === 'string' ? { previousCursor: parsed.previousCursor } : {}),
     profileStates: parsed.profileStates,
+    bufferedSessions: parsed.bufferedSessions,
+  };
+}
+
+function decodeExplicitProfileCursor(cursor: string): ExplicitProfileCursorPayload {
+  if (!isExplicitProfileCursor(cursor)) {
+    throw new Error('cursor-prefix');
+  }
+
+  const encodedPayload = cursor.slice(EXPLICIT_PROFILE_CURSOR_PREFIX.length);
+  if (!encodedPayload) {
+    throw new Error('cursor-format');
+  }
+
+  const parsed = JSON.parse(
+    Buffer.from(encodedPayload, 'base64url').toString('utf8'),
+  ) as Partial<ExplicitProfileCursorPayload>;
+  if (parsed.version !== 1 || parsed.mode !== 'profile') {
+    throw new Error('cursor-version');
+  }
+  if (!parsed.scope || typeof parsed.scope !== 'object') {
+    throw new Error('cursor-scope');
+  }
+  if (
+    typeof parsed.scope.workerId !== 'string' ||
+    typeof parsed.scope.pageSize !== 'number' ||
+    typeof parsed.scope.profileKey !== 'string' ||
+    !isListCapableProvider(parsed.scope.provider)
+  ) {
+    throw new Error('cursor-scope');
+  }
+  if (!Array.isArray(parsed.bufferedSessions)) {
+    throw new Error('cursor-buffered-sessions');
+  }
+
+  return {
+    version: 1,
+    mode: 'profile',
+    ...(parsed.initialPage === true ? { initialPage: true } : {}),
+    scope: {
+      workerId: parsed.scope.workerId,
+      pageSize: parsed.scope.pageSize,
+      ...(parsed.scope.filters ? { filters: parsed.scope.filters } : {}),
+      profileKey: parsed.scope.profileKey,
+      provider: parsed.scope.provider,
+    },
+    ...(typeof parsed.previousCursor === 'string' ? { previousCursor: parsed.previousCursor } : {}),
+    ...(parsed.cursorState ? { cursorState: parsed.cursorState } : {}),
     bufferedSessions: parsed.bufferedSessions,
   };
 }
@@ -296,7 +375,22 @@ function buildAggregateCursorScope(
   };
 }
 
-function scopesMatch(left: AggregateCursorScope, right: AggregateCursorScope): boolean {
+function buildExplicitProfileCursorScope(
+  payload: AgentSessionListEventPayload,
+  profile: ListCapableInteractiveAgentProfile,
+  resolvedWorkspace: ResolvedAgentWorkspace | undefined,
+): ExplicitProfileCursorScope {
+  const normalizedFilters = normalizeFiltersForScope(payload.filters, resolvedWorkspace);
+  return {
+    workerId: payload.workerId,
+    pageSize: payload.pageSize,
+    ...(normalizedFilters ? { filters: normalizedFilters } : {}),
+    profileKey: profile.key,
+    provider: profile.provider,
+  };
+}
+
+function scopesMatch<T>(left: T, right: T): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
@@ -337,6 +431,26 @@ function buildCurrentPageAggregateCursor(
   });
 }
 
+function buildCurrentPageExplicitProfileCursor(
+  input: {
+    scope: ExplicitProfileCursorScope;
+    initialPage?: true;
+    cursorState?: AgentSessionListAdapterPageState;
+    bufferedSessions?: AgentSessionSummary[];
+  },
+  previousCursor?: string,
+): string {
+  return encodeExplicitProfileCursor({
+    version: 1,
+    mode: 'profile',
+    ...(input.initialPage ? { initialPage: true } : {}),
+    scope: input.scope,
+    ...(previousCursor ? { previousCursor } : {}),
+    ...(input.cursorState ? { cursorState: input.cursorState } : {}),
+    bufferedSessions: input.bufferedSessions ?? [],
+  });
+}
+
 function resolveAggregateNextState(
   result: AgentSessionListAdapterResult,
   currentState: AgentSessionListAdapterPageState | undefined,
@@ -371,6 +485,12 @@ async function listForExplicitProfile(input: {
       errorMessage: buildUnsupportedCodexMessage(),
     };
   }
+  if (!isListCapableProfile(input.profile)) {
+    return {
+      sessions: [],
+      errorMessage: buildUnsupportedProviderMessage(input.profile),
+    };
+  }
 
   const adapter = getAgentSessionListAdapter(input.profile.provider, input.adapters);
   if (!adapter) {
@@ -380,19 +500,82 @@ async function listForExplicitProfile(input: {
     };
   }
 
-  try {
-    const result = await adapter.listSessions({
-      config: input.config,
-      profile: input.profile,
-      pageSize: input.payload.pageSize,
-      ...(input.payload.cursor ? { cursor: input.payload.cursor } : {}),
-      ...(input.payload.filters ? { filters: input.payload.filters } : {}),
-      ...(input.resolvedWorkspace ? { resolvedWorkspace: input.resolvedWorkspace } : {}),
+  const scope = buildExplicitProfileCursorScope(
+    input.payload,
+    input.profile,
+    input.resolvedWorkspace,
+  );
+  let decodedCursor: ExplicitProfileCursorPayload | undefined;
+  if (input.payload.cursor) {
+    try {
+      decodedCursor = decodeExplicitProfileCursor(input.payload.cursor);
+    } catch {
+      return {
+        sessions: [],
+        errorMessage: buildInvalidCursorMessage(),
+      };
+    }
+
+    if (!scopesMatch(decodedCursor.scope, scope)) {
+      return {
+        sessions: [],
+        errorMessage: buildInvalidCursorMessage(),
+      };
+    }
+  }
+
+  const effectiveDecodedCursor = decodedCursor?.initialPage ? undefined : decodedCursor;
+  const currentPageCursor =
+    input.payload.cursor ??
+    buildCurrentPageExplicitProfileCursor({
+      scope,
+      initialPage: true,
     });
+
+  const sessions: AgentSessionSummary[] = effectiveDecodedCursor?.bufferedSessions
+    ? [...effectiveDecodedCursor.bufferedSessions]
+    : [];
+  let cursorState = effectiveDecodedCursor?.cursorState;
+  let hasMore = Boolean(cursorState);
+
+  try {
+    if (!effectiveDecodedCursor || sessions.length < input.payload.pageSize) {
+      const result = await adapter.listSessions({
+        config: input.config,
+        profile: input.profile,
+        pageSize: input.payload.pageSize,
+        ...(input.payload.filters ? { filters: input.payload.filters } : {}),
+        ...(input.resolvedWorkspace ? { resolvedWorkspace: input.resolvedWorkspace } : {}),
+        ...(cursorState ? { cursorState } : {}),
+      });
+      const pageResult = resolveAggregateNextState(result, cursorState);
+      sessions.push(...normalizeAdapterSessions({ sessions: pageResult.sessions }, input.profile));
+      cursorState = pageResult.nextState;
+      hasMore = pageResult.hasMore;
+    }
+
+    sessions.sort(compareSessionSummary);
+    const pageSessions = sessions.slice(0, input.payload.pageSize);
+    const bufferedSessions = sessions.slice(input.payload.pageSize);
+    const nextCursorNeeded = bufferedSessions.length > 0 || hasMore;
+
     return {
-      sessions: normalizeAdapterSessions(result, input.profile),
-      ...(result.previousCursor ? { previousCursor: result.previousCursor } : {}),
-      ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
+      sessions: pageSessions,
+      ...(effectiveDecodedCursor?.previousCursor
+        ? { previousCursor: effectiveDecodedCursor.previousCursor }
+        : {}),
+      ...(nextCursorNeeded
+        ? {
+            nextCursor: buildCurrentPageExplicitProfileCursor(
+              {
+                scope,
+                ...(cursorState ? { cursorState } : {}),
+                bufferedSessions,
+              },
+              currentPageCursor,
+            ),
+          }
+        : {}),
     };
   } catch (err) {
     return {

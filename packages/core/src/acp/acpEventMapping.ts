@@ -12,6 +12,11 @@ type EventSummary = {
   isError: boolean;
 };
 
+export type AcpTextMessageChunk = {
+  role: 'agent' | 'user';
+  text: string;
+};
+
 function summarizeRawPayload(payload: unknown): string {
   if (payload === undefined) return '';
   const serialized = JSON.stringify(payload);
@@ -70,10 +75,28 @@ export function formatAcpEvent(notification: SessionNotification): string {
   return `[acp] ${new Date().toISOString()} ${JSON.stringify(notification)}\n`;
 }
 
-export function extractAcpAssistantText(notification: SessionNotification): string | undefined {
+export function extractAcpTextMessageChunk(
+  notification: SessionNotification,
+): AcpTextMessageChunk | undefined {
   const update = notification.update;
-  if (update.sessionUpdate !== 'agent_message_chunk') return undefined;
-  return update.content.type === 'text' ? update.content.text : undefined;
+  if (
+    update.sessionUpdate !== 'agent_message_chunk' &&
+    update.sessionUpdate !== 'user_message_chunk'
+  ) {
+    return undefined;
+  }
+  if (update.content.type !== 'text') {
+    return undefined;
+  }
+  return {
+    role: update.sessionUpdate === 'agent_message_chunk' ? 'agent' : 'user',
+    text: update.content.text,
+  };
+}
+
+export function extractAcpAssistantText(notification: SessionNotification): string | undefined {
+  const chunk = extractAcpTextMessageChunk(notification);
+  return chunk?.role === 'agent' ? chunk.text : undefined;
 }
 
 export function summarizeAcpEvent(notification: SessionNotification): EventSummary | null {

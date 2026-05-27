@@ -48,6 +48,7 @@ const DEFAULT_CLIENT_CAPABILITIES: ClientCapabilities = {
 export type AcpSessionStartOptions = {
   cwd: string;
   additionalDirectories?: string[];
+  applySessionOverrides?: boolean;
 };
 
 export type AcpPromptOptions = {
@@ -583,10 +584,12 @@ export async function launchAcpRuntime(options: AcpRuntimeOptions): Promise<AcpR
       }
       sessionId = existingSessionId;
       handle.sessionId = existingSessionId;
-      try {
-        await applySessionOverrides(connection, options.launch, existingSessionId, session);
-      } catch (err) {
-        throw wrapRuntimeError(options, err, runtimeAgentInfo);
+      if (sessionOptions?.applySessionOverrides !== false) {
+        try {
+          await applySessionOverrides(connection, options.launch, existingSessionId, session);
+        } catch (err) {
+          throw wrapRuntimeError(options, err, runtimeAgentInfo);
+        }
       }
       return session;
     },

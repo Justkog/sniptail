@@ -558,6 +558,71 @@ describe('ACP runtime wrapper', () => {
     });
   });
 
+  it('applies session overrides by default when loading an existing session', async () => {
+    const { connection } = queueRuntime();
+    connection.loadSession.mockResolvedValue({
+      sessionId: 'existing-session',
+      modes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'build', name: 'Build' },
+        ],
+      },
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: {
+        command: ['mock-acp'],
+        profile: 'build',
+      },
+    });
+    await runtime.loadSession('existing-session', {
+      cwd: '/tmp/work',
+    });
+
+    expect(connection.setSessionMode).toHaveBeenCalledWith({
+      sessionId: 'existing-session',
+      modeId: 'build',
+    });
+  });
+
+  it('can skip session overrides when loading an existing session', async () => {
+    const { connection } = queueRuntime();
+    connection.loadSession.mockResolvedValue({
+      sessionId: 'existing-session',
+      modes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'build', name: 'Build' },
+        ],
+      },
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: {
+        command: ['mock-acp'],
+        profile: 'build',
+      },
+    });
+    await runtime.loadSession('existing-session', {
+      cwd: '/tmp/work',
+      applySessionOverrides: false,
+    });
+
+    expect(connection.loadSession).toHaveBeenCalledWith({
+      sessionId: 'existing-session',
+      cwd: '/tmp/work',
+      mcpServers: [],
+    });
+    expect(connection.setSessionMode).not.toHaveBeenCalled();
+    expect(connection.unstable_setSessionModel).not.toHaveBeenCalled();
+    expect(connection.setSessionConfigOption).not.toHaveBeenCalled();
+  });
+
   it('throws when loading a session without session/load capability', async () => {
     const { connection } = queueRuntime();
     connection.initialize.mockResolvedValue({
