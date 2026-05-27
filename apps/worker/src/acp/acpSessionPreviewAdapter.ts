@@ -10,7 +10,7 @@ const debug = debugFor('acp:session-preview');
 
 function normalizePreviewText(text: string): string | undefined {
   const trimmed = text.trim();
-  return trimmed ? text : undefined;
+  return trimmed ? trimmed : undefined;
 }
 
 export const acpAgentSessionPreviewAdapter: AgentSessionPreviewAdapter = {
