@@ -101,10 +101,6 @@ function buildNoListCapableProfilesMessage(workerId: string): string {
   return `Worker \`${workerId}\` has no configured agent profiles that support session listing.`;
 }
 
-function buildInvalidAggregateCursorMessage(): string {
-  return 'Session list cursor is invalid or expired. Refresh the session list.';
-}
-
 function buildInvalidCursorMessage(): string {
   return 'Session list cursor is invalid or expired. Refresh the session list.';
 }
@@ -642,14 +638,14 @@ export async function listAgentSessionsForWorker({
     } catch {
       return {
         sessions: [],
-        errorMessage: buildInvalidAggregateCursorMessage(),
+        errorMessage: buildInvalidCursorMessage(),
       };
     }
 
     if (!scopesMatch(decodedCursor.scope, scope)) {
       return {
         sessions: [],
-        errorMessage: buildInvalidAggregateCursorMessage(),
+        errorMessage: buildInvalidCursorMessage(),
       };
     }
   }
