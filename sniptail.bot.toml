@@ -5,12 +5,12 @@
 [core]
 # Queue transport driver: "redis" or "inproc".
 # Optional. Default: "redis". Use "inproc" with `sniptail local` only.
-queue_driver = "redis"
+queue_driver = "inproc"
 
 [registry]
 # Registry backend: "sqlite", "pg", or "redis".
 # Optional. Default: "redis". Example: "redis"
-db = "redis"
+db = "sqlite"
 
 # Path to the shared registry file/directory (used for sqlite).
 # Required when db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/registry"

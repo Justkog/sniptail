@@ -116,7 +116,10 @@ export function registerLocalUnifiedCommand(program: Command) {
 
       await runRuntime({
         app: 'local',
-        entry: join('dist', 'localProcessRuntime.js'),
+        entrypoint: {
+          source: join('src', 'localProcessRuntime.ts'),
+          dist: join('dist', 'localProcessRuntime.js'),
+        },
         configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
         ...(options.workerConfig ? { configPath: options.workerConfig } : {}),
         ...(options.env ? { envPath: options.env } : {}),

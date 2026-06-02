@@ -1,5 +1,6 @@
 export {
   loadBotConfig,
+  loadBotPermissionsConfig,
   loadCoreConfig,
   loadWorkerConfig,
   resetConfigCaches,
