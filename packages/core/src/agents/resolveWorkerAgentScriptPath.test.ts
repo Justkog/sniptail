@@ -5,9 +5,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolveWorkerAgentScriptPath } from './resolveWorkerAgentScriptPath.js';
 
 const originalCwd = process.cwd();
+const originalSniptailRoot = process.env.SNIPTAIL_ROOT;
 
 afterEach(() => {
   process.chdir(originalCwd);
+  if (originalSniptailRoot === undefined) {
+    delete process.env.SNIPTAIL_ROOT;
+  } else {
+    process.env.SNIPTAIL_ROOT = originalSniptailRoot;
+  }
 });
 
 function createScript(rootDir: string, relativePath: string): string {

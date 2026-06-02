@@ -64,6 +64,7 @@ import { normalizeRunActionId } from '../repos/runActions.js';
 let coreConfigCache: CoreConfig | null = null;
 let botConfigCache: BotConfig | null = null;
 let workerConfigCache: WorkerConfig | null = null;
+let botPermissionsConfigCache: PermissionsConfig | null = null;
 
 const LEGACY_REGISTRY_ENV_KEYS = [
   'JOB_REGISTRY_DB',
@@ -92,6 +93,7 @@ export function resetConfigCaches() {
   coreConfigCache = null;
   botConfigCache = null;
   workerConfigCache = null;
+  botPermissionsConfigCache = null;
 }
 
 const ALLOWED_MODEL_REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
@@ -1046,6 +1048,14 @@ function parsePermissionsConfig(permissionsToml: TomlTable | undefined): Permiss
     groupCacheTtlSeconds,
     rules,
   };
+}
+
+export function loadBotPermissionsConfig(): PermissionsConfig {
+  if (botPermissionsConfigCache) return botPermissionsConfigCache;
+  const toml = loadTomlConfig(BOT_CONFIG_PATH_ENV, DEFAULT_BOT_CONFIG_PATH, 'bot');
+  const permissionsToml = getTomlTable(toml.permissions, 'permissions');
+  botPermissionsConfigCache = parsePermissionsConfig(permissionsToml);
+  return botPermissionsConfigCache;
 }
 
 export function loadCoreConfig(): CoreConfig {

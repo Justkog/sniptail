@@ -2,7 +2,13 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadBotConfig, loadCoreConfig, loadWorkerConfig, resetConfigCaches } from './env.js';
+import {
+  loadBotConfig,
+  loadBotPermissionsConfig,
+  loadCoreConfig,
+  loadWorkerConfig,
+  resetConfigCaches,
+} from './env.js';
 import { logger } from '../logger.js';
 import { applyRequiredEnv } from '../../tests/helpers/env.js';
 import { PERMISSION_ACTIONS } from '../permissions/permissionsActionCatalog.js';
@@ -143,6 +149,56 @@ describe('config loaders', () => {
     expect(config.permissions.approvalTtlSeconds).toBe(7200);
     expect(config.permissions.groupCacheTtlSeconds).toBe(45);
     expect(config.permissions.rules[0]?.id).toBe('clear-before-rule');
+  });
+
+  it('loads permissions config without requiring enabled channel secrets', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+      SLACK_BOT_TOKEN: undefined,
+      SLACK_APP_TOKEN: undefined,
+      SLACK_SIGNING_SECRET: undefined,
+    });
+
+    writeBotConfig([
+      '[channels.slack]',
+      'enabled = true',
+      '',
+      '[permissions]',
+      'default_effect = "deny"',
+      '',
+      '[[permissions.rules]]',
+      'id = "ask-approval"',
+      'effect = "require_approval"',
+      'actions = ["jobs.ask"]',
+      'subjects = ["user:*"]',
+      'approver_subjects = ["group:slack:S_APPROVERS"]',
+    ]);
+
+    const permissions = loadBotPermissionsConfig();
+
+    expect(permissions.defaultEffect).toBe('deny');
+    expect(permissions.rules[0]?.id).toBe('ask-approval');
+    expect(() => loadBotConfig()).toThrow('Missing required env var: SLACK_BOT_TOKEN');
+  });
+
+  it('uses existing permission parser errors in permissions-only config loading', () => {
+    applyRequiredEnv({
+      SNIPTAIL_BOT_CONFIG_PATH: undefined,
+    });
+
+    writeBotConfig([
+      '[permissions]',
+      'default_effect = "allow"',
+      '',
+      '[[permissions.rules]]',
+      'id = "bad-rule"',
+      'effect = "deny"',
+      'actions = ["not.real"]',
+    ]);
+
+    expect(() => loadBotPermissionsConfig()).toThrow(
+      'Invalid permissions.rules[0].actions entry "not.real" in TOML. Unknown permission action.',
+    );
   });
 
   it('treats omitted rule actions as all actions for allow/deny effects', () => {
