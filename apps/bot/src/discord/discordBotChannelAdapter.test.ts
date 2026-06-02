@@ -310,6 +310,60 @@ describe('DiscordBotChannelAdapter question formatting', () => {
     expect(buttonLabels).toContain('Next');
   });
 
+  it('caps listed session rows to Discord-safe page size', async () => {
+    const adapter = new DiscordBotChannelAdapter();
+    setPendingDiscordAgentSessionBrowserRequest({
+      requestId: 'request-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      interactionApplicationId: 'app-1',
+      interactionToken: 'token-1',
+      workerId: 'worker-a',
+      filters: {
+        workspaceKey: 'snatch',
+      },
+      cursorHistory: [],
+      requestedAt: Date.now(),
+    });
+
+    await adapter.handleEvent(
+      buildSessionsListedEvent({
+        filters: {
+          workspaceKey: 'snatch',
+        },
+        sessions: Array.from({ length: 50 }, (_value, index) => ({
+          id: `provider-session-${index + 1}`,
+          provider: 'acp',
+          agentProfileKey: 'build',
+          workspaceKey: 'snatch',
+          title: `ACP session ${index + 1}`,
+          updatedAt: `2026-01-01T00:${String(index).padStart(2, '0')}:00.000Z`,
+        })),
+      }),
+      { discordClient: {} as never },
+    );
+
+    const editCalls = hoisted.editDiscordInteractionReply.mock.calls as Array<
+      [unknown, DiscordInteractionReplyUpdate]
+    >;
+    const [, reply] = editCalls[0] ?? [];
+    const buttonLabels =
+      reply.components?.flatMap(
+        (row) =>
+          row.components
+            ?.map((component) => component.label)
+            .filter((label) => label !== undefined) ?? [],
+      ) ?? [];
+    const attachLabels = buttonLabels.filter((label) => label.startsWith('Attach '));
+
+    expect(reply.components).toHaveLength(5);
+    expect(attachLabels).toEqual(['Attach 1', 'Attach 2', 'Attach 3', 'Attach 4']);
+    expect(reply.text).toContain('ACP session 4');
+    expect(reply.text).not.toContain('ACP session 5');
+    expect(buttonLabels).toContain('Next');
+  });
+
   it('ignores listed sessions whose filters do not match pending scope', async () => {
     const adapter = new DiscordBotChannelAdapter();
     setPendingDiscordAgentSessionBrowserRequest({

@@ -18,6 +18,14 @@ import {
   resolveInputPath,
   removeRepoCatalogEntryFromInput,
 } from '../repos/repoCatalogMutationService.js';
+import {
+  inspectRepoCatalogEntryFromInput,
+  type RepoCatalogInspectResult,
+} from '../repos/repoCatalogInspectionService.js';
+import {
+  validateRepoCatalogEntryFromInput,
+  type RepoCatalogValidateResult,
+} from '../repos/repoCatalogValidationService.js';
 
 function printUsage(): void {
   process.stderr.write(
@@ -27,6 +35,8 @@ function printUsage(): void {
       'Commands:',
       '  add <repoKey>      Add or update a repository catalog entry',
       '  list               List active repository catalog entries',
+      '  inspect <repoKey>  Inspect one active repository catalog entry',
+      '  validate <repoKey> Validate one active repository catalog entry',
       '  remove <repoKey>   Deactivate a repository catalog entry',
       '  sync-file          Write DB catalog entries to an allowlist JSON file',
       '  sync-run-actions   Sync per-repo run action metadata from .sniptail/run',
@@ -36,6 +46,8 @@ function printUsage(): void {
       '  repos add payments --ssh-url git@gitlab.com:org/payments.git --project-id 12345',
       '  repos add local-tools --local-path /srv/repos/local-tools',
       '  repos list --json',
+      '  repos inspect my-api',
+      '  repos validate my-api',
       '  repos remove my-api --yes',
       '  repos sync-file',
       '  repos sync-run-actions',
@@ -174,6 +186,106 @@ async function handleList(args: string[]): Promise<void> {
     projectId: entry.projectId !== undefined ? String(entry.projectId) : '',
   }));
   process.stdout.write(`${formatRows(rows)}\n`);
+}
+
+function formatInspectLines(payload: RepoCatalogInspectResult): string {
+  const { summary } = payload;
+  const lines = [
+    `repoKey: ${summary.repoKey}`,
+    `provider: ${summary.provider}`,
+    `baseBranch: ${summary.baseBranch}`,
+    `sourceType: ${summary.sourceType}`,
+    `source: ${summary.source}`,
+  ];
+  if (summary.projectId !== undefined) {
+    lines.push(`projectId: ${summary.projectId}`);
+  }
+  const runActions = summary.runActionIds.length ? summary.runActionIds.join(', ') : 'none';
+  lines.push(`runActions: ${summary.runActionCount} (${runActions})`);
+  if (summary.runMetadataSyncedAt) {
+    lines.push(`runMetadataSyncedAt: ${summary.runMetadataSyncedAt}`);
+  }
+  if (summary.runMetadataSourceRef) {
+    lines.push(`runMetadataSourceRef: ${summary.runMetadataSourceRef}`);
+  }
+  return lines.join('\n');
+}
+
+async function handleInspect(args: string[]): Promise<void> {
+  const parsed = parseArgs({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: {
+      json: { type: 'boolean', default: false },
+    },
+  });
+
+  if (parsed.positionals.length !== 1) {
+    throw new Error('Usage: repos inspect <repoKey> [--json]');
+  }
+
+  loadWorkerConfig();
+  const asJson = Boolean(parsed.values.json);
+  const payload = await inspectRepoCatalogEntryFromInput(parsed.positionals[0] ?? '');
+
+  if (asJson) {
+    writeJson(payload);
+    return;
+  }
+
+  if (payload.normalizedFrom) {
+    process.stdout.write(`Using normalized repo key: ${payload.repoKey}\n`);
+  }
+  process.stdout.write(`${formatInspectLines(payload)}\n`);
+}
+
+function formatValidateLines(payload: RepoCatalogValidateResult): string {
+  const { summary } = payload;
+  const lines = [
+    `repoKey: ${summary.repoKey}`,
+    `provider: ${summary.provider}`,
+    `baseBranch: ${summary.baseBranch}`,
+    `sourceType: ${summary.sourceType}`,
+    `source: ${summary.source}`,
+    `status: ${summary.status}`,
+  ];
+  for (const check of payload.checks) {
+    lines.push(`${check.status} ${check.id}: ${check.message}`);
+  }
+  return lines.join('\n');
+}
+
+async function handleValidate(args: string[]): Promise<void> {
+  const parsed = parseArgs({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: {
+      json: { type: 'boolean', default: false },
+    },
+  });
+
+  if (parsed.positionals.length !== 1) {
+    throw new Error('Usage: repos validate <repoKey> [--json]');
+  }
+
+  loadWorkerConfig();
+  const asJson = Boolean(parsed.values.json);
+  const payload = await validateRepoCatalogEntryFromInput(parsed.positionals[0] ?? '');
+
+  if (asJson) {
+    writeJson(payload);
+  } else {
+    if (payload.normalizedFrom) {
+      process.stdout.write(`Using normalized repo key: ${payload.repoKey}\n`);
+    }
+    process.stdout.write(`${formatValidateLines(payload)}\n`);
+  }
+
+  if (payload.summary.status === 'failed') {
+    process.exitCode = 1;
+  }
 }
 
 async function confirmRemoval(repoKey: string): Promise<boolean> {
@@ -347,6 +459,12 @@ async function main(): Promise<void> {
       return;
     case 'list':
       await handleList(args);
+      return;
+    case 'inspect':
+      await handleInspect(args);
+      return;
+    case 'validate':
+      await handleValidate(args);
       return;
     case 'remove':
       await handleRemove(args);

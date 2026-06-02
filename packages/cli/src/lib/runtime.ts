@@ -1,10 +1,18 @@
-import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { join, normalize, resolve, sep } from 'node:path';
 import { runNode, runNodeCapture, type RunNodeCaptureResult } from './exec.js';
 import { pathExists, pathIsDirectory, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
 
+type RuntimeEntrypoint = {
+  source: string;
+  dist: string;
+};
+
+type RuntimeEntrypointMode = 'source' | 'dist';
+
 type RuntimeOptions = {
   app: 'bot' | 'worker' | 'local';
-  entry: string;
+  entrypoint: RuntimeEntrypoint;
   configEnvVar: 'SNIPTAIL_BOT_CONFIG_PATH' | 'SNIPTAIL_WORKER_CONFIG_PATH';
   configPath?: string;
   envPath?: string;
@@ -13,14 +21,42 @@ type RuntimeOptions = {
   dryRun?: boolean;
   args?: string[];
   envOverrides?: NodeJS.ProcessEnv;
+  launcherModuleUrl?: string;
 };
 
 type ResolvedRuntime = {
   root: string;
   appDir: string;
   entryPath: string;
+  entrypointMode: RuntimeEntrypointMode;
   envPath?: string;
 };
+
+function normalizePathSegments(path: string): string {
+  return normalize(path).split(sep).join('/');
+}
+
+function inferEntrypointModeFromModuleUrl(moduleUrl: string): RuntimeEntrypointMode | undefined {
+  const modulePath = normalizePathSegments(fileURLToPath(moduleUrl));
+  if (modulePath.includes('/packages/cli/src/')) {
+    return 'source';
+  }
+  if (modulePath.includes('/packages/cli/dist/')) {
+    return 'dist';
+  }
+  return undefined;
+}
+
+function resolveEntrypointMode(moduleUrl: string): RuntimeEntrypointMode {
+  const override = process.env.SNIPTAIL_RUNTIME_ENTRYPOINT_MODE?.trim();
+  if (override) {
+    if (override === 'source' || override === 'dist') {
+      return override;
+    }
+    throw new Error('Invalid SNIPTAIL_RUNTIME_ENTRYPOINT_MODE. Expected "source" or "dist".');
+  }
+  return inferEntrypointModeFromModuleUrl(moduleUrl) ?? 'dist';
+}
 
 export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
   const baseCwd = resolve(options.cwd ?? process.cwd());
@@ -29,9 +65,13 @@ export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
     ...(options.root ? { root: options.root } : {}),
   });
   const appDir = join(root, 'apps', options.app);
-  const entryPath = join(appDir, options.entry);
+  const entrypointMode = resolveEntrypointMode(options.launcherModuleUrl ?? import.meta.url);
+  const entryPath = join(appDir, options.entrypoint[entrypointMode]);
 
   if (!pathExists(entryPath)) {
+    if (entrypointMode === 'source') {
+      throw new Error(`${options.app} source entrypoint not found at ${entryPath}.`);
+    }
     throw new Error(`${options.app} build not found at ${entryPath}. Run "pnpm run build" first.`);
   }
 
@@ -48,6 +88,7 @@ export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
     root,
     appDir,
     entryPath,
+    entrypointMode,
     ...(envPath ? { envPath } : {}),
   };
 }

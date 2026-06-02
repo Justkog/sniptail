@@ -14,7 +14,7 @@ job_work_root = "$HOME/.sniptail/jobs"
 
 # Queue transport driver: "redis" or "inproc".
 # Optional. Default: "redis". Use "inproc" with `sniptail local` only.
-queue_driver = "redis"
+queue_driver = "inproc"
 
 [registry]
 # Path to the shared registry file/directory (used for sqlite).
@@ -23,7 +23,7 @@ path = "$HOME/.sniptail/registry"
 
 # Registry backend: "sqlite", "pg", or "redis".
 # Optional. Default: "redis". Example: "redis"
-db = "redis"
+db = "sqlite"
 
 # Shared registry namespace.
 # Optional. Default: "default". Example: "prod"

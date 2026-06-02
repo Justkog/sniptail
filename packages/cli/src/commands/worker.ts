@@ -27,7 +27,10 @@ export function registerWorkerCommand(program: Command) {
       });
       await runRuntime({
         app: 'worker',
-        entry: join('dist', 'index.js'),
+        entrypoint: {
+          source: join('src', 'index.ts'),
+          dist: join('dist', 'index.js'),
+        },
         configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
         ...(options.config ? { configPath: options.config } : {}),
         ...(options.env ? { envPath: options.env } : {}),

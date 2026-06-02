@@ -17,6 +17,7 @@ import {
 } from './helpers.js';
 import {
   buildDiscordAgentSessionTimestamp,
+  DISCORD_AGENT_SESSIONS_PAGE_SIZE,
   discordAgentSessionFiltersEqual,
 } from './discordAgentSessionBrowserShared.js';
 import {
@@ -502,7 +503,8 @@ function buildDiscordAgentSessionsBrowserMessage(
   }
 
   const components: unknown[] = [];
-  for (const [index, session] of event.payload.sessions.entries()) {
+  const renderedSessions = event.payload.sessions.slice(0, DISCORD_AGENT_SESSIONS_PAGE_SIZE);
+  for (const [index, session] of renderedSessions.entries()) {
     const rowLines = [
       `**${index + 1}. ${truncateDiscordMessage(session.title?.trim() || 'Untitled session', 80)}**`,
       `Provider: \`${session.provider}\` | Profile: \`${session.agentProfileKey}\``,

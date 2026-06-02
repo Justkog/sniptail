@@ -3,6 +3,7 @@ import type {
   AgentSessionSummary,
 } from '@sniptail/core/agent-sessions/listing.js';
 import type { WorkerConfig } from '@sniptail/core/config/types.js';
+import { acpAgentSessionPreviewAdapter } from '../acp/acpSessionPreviewAdapter.js';
 import { openCodeAgentSessionPreviewAdapter } from '../opencode/openCodeSessionPreviewAdapter.js';
 import type { ResolvedAgentWorkspace } from './workspaceResolver.js';
 import type { InteractiveAgentProfile } from './interactiveAgentTypes.js';
@@ -37,6 +38,7 @@ export type AgentSessionPreviewAdapterRegistry = Partial<
 >;
 
 export const AGENT_SESSION_PREVIEW_ADAPTERS: AgentSessionPreviewAdapterRegistry = {
+  acp: acpAgentSessionPreviewAdapter,
   opencode: openCodeAgentSessionPreviewAdapter,
 };
 

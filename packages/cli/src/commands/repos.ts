@@ -25,6 +25,14 @@ type ReposListOptions = RuntimeOptions & {
   json?: boolean;
 };
 
+type ReposInspectOptions = RuntimeOptions & {
+  json?: boolean;
+};
+
+type ReposValidateOptions = RuntimeOptions & {
+  json?: boolean;
+};
+
 type ReposRemoveOptions = RuntimeOptions & {
   yes?: boolean;
   json?: boolean;
@@ -51,7 +59,10 @@ function appendRuntimeOptions(command: Command): Command {
 async function runReposRuntime(options: RuntimeOptions, args: string[]): Promise<void> {
   await runRuntime({
     app: 'worker',
-    entry: join('dist', 'cli', 'repos.js'),
+    entrypoint: {
+      source: join('src', 'cli', 'repos.ts'),
+      dist: join('dist', 'cli', 'repos.js'),
+    },
     configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
     ...(options.config ? { configPath: options.config } : {}),
     ...(options.env ? { envPath: options.env } : {}),
@@ -103,6 +114,32 @@ export function registerReposCommand(program: Command) {
       .action(async (options: ReposListOptions) => {
         const args = ['list'];
         if (options.provider) args.push('--provider', options.provider);
+        if (options.json) args.push('--json');
+
+        await runReposRuntime(options, args);
+      }),
+  );
+
+  appendRuntimeOptions(
+    repos
+      .command('inspect <repoKey>')
+      .description('Inspect one active repository catalog entry')
+      .option('--json', 'Print JSON output')
+      .action(async (repoKey: string, options: ReposInspectOptions) => {
+        const args = ['inspect', repoKey];
+        if (options.json) args.push('--json');
+
+        await runReposRuntime(options, args);
+      }),
+  );
+
+  appendRuntimeOptions(
+    repos
+      .command('validate <repoKey>')
+      .description('Validate one active repository catalog entry')
+      .option('--json', 'Print JSON output')
+      .action(async (repoKey: string, options: ReposValidateOptions) => {
+        const args = ['validate', repoKey];
         if (options.json) args.push('--json');
 
         await runReposRuntime(options, args);

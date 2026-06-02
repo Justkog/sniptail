@@ -31,7 +31,10 @@ export function registerBotCommand(program: Command) {
       }
       await runRuntime({
         app: 'bot',
-        entry: join('dist', 'index.js'),
+        entrypoint: {
+          source: join('src', 'index.ts'),
+          dist: join('dist', 'index.js'),
+        },
         configEnvVar: 'SNIPTAIL_BOT_CONFIG_PATH',
         ...(options.config ? { configPath: options.config } : {}),
         ...(options.env ? { envPath: options.env } : {}),

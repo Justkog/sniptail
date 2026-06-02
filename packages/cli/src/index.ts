@@ -5,10 +5,12 @@ import { Command } from 'commander';
 import { registerBotCommand } from './commands/bot.js';
 import { registerDbCommand } from './commands/db.js';
 import { registerLocalUnifiedCommand } from './commands/localUnified.js';
+import { registerPermissionsCommand } from './commands/permissionsCommand.js';
 import { registerRunJobCommand } from './commands/run-job.js';
 import { registerReposCommand } from './commands/repos.js';
 import { registerSlackManifestCommand } from './commands/slack-manifest.js';
 import { registerWorkerCommand } from './commands/worker.js';
+import { stripPackageScriptSeparator } from './lib/argv.js';
 
 function resolveVersion(): string {
   try {
@@ -30,12 +32,13 @@ registerBotCommand(program);
 registerWorkerCommand(program);
 registerRunJobCommand(program);
 registerReposCommand(program);
+registerPermissionsCommand(program);
 registerDbCommand(program);
 registerSlackManifestCommand(program);
 registerLocalUnifiedCommand(program);
 
 try {
-  await program.parseAsync(process.argv);
+  await program.parseAsync(stripPackageScriptSeparator(process.argv));
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`Error: ${message}\n`);

@@ -18,6 +18,8 @@ REPO="${SNIPTAIL_REPO:-Justkog/sniptail}"
 VERSION="${SNIPTAIL_VERSION:-latest}"
 INSTALL_ROOT="${SNIPTAIL_INSTALL_ROOT:-$HOME/.sniptail}"
 BIN_DIR="${SNIPTAIL_BIN_DIR:-$HOME/.local/bin}"
+CONFIG_DIR="${SNIPTAIL_CONFIG_DIR:-${INSTALL_ROOT}/config}"
+CONFIG_EXISTING="${SNIPTAIL_CONFIG_EXISTING:-}"
 LOCAL_TARBALL="${SNIPTAIL_TARBALL:-}"
 
 # Token for private repos (supports several common env var names)
@@ -30,6 +32,115 @@ fi
 
 api_get() {
   curl -fsSL "${curl_auth_args[@]}" "$1"
+}
+
+has_tty() {
+  [[ -t 1 ]] && { true < /dev/tty > /dev/tty; } 2>/dev/null
+}
+
+choose_config_policy() {
+  local requested="${CONFIG_EXISTING}"
+
+  if [[ -z "${requested}" ]]; then
+    if has_tty; then
+      requested="prompt"
+    else
+      requested="new"
+    fi
+  fi
+
+  case "${requested}" in
+    preserve|new|replace)
+      printf '%s\n' "${requested}"
+      return
+      ;;
+    prompt)
+      if ! has_tty; then
+        printf '%s\n' "new"
+        return
+      fi
+
+      printf '\nExisting Sniptail config found in %s.\n' "${CONFIG_DIR}" > /dev/tty
+      printf 'Choose how to handle existing config files:\n' > /dev/tty
+      printf '  1) Preserve existing files\n' > /dev/tty
+      printf '  2) Preserve existing files and write release templates as .new files\n' > /dev/tty
+      printf '  3) Back up existing files and replace them with release templates\n' > /dev/tty
+      printf 'Selection [2]: ' > /dev/tty
+
+      local answer
+      IFS= read -r answer < /dev/tty || answer=""
+      case "${answer}" in
+        1) printf '%s\n' "preserve" ;;
+        3) printf '%s\n' "replace" ;;
+        *) printf '%s\n' "new" ;;
+      esac
+      ;;
+    *)
+      fail "Invalid SNIPTAIL_CONFIG_EXISTING: ${requested}. Use prompt, preserve, new, or replace."
+      ;;
+  esac
+}
+
+has_existing_config() {
+  [[ -e "${CONFIG_DIR}/sniptail.bot.toml" ]] \
+    || [[ -e "${CONFIG_DIR}/sniptail.worker.toml" ]] \
+    || [[ -e "${CONFIG_DIR}/.env" ]]
+}
+
+install_config_file() {
+  local source_path="$1"
+  local target_path="$2"
+  local policy="$3"
+
+  if [[ ! -f "${source_path}" ]]; then
+    fail "Missing config template in release: ${source_path}"
+  fi
+
+  if [[ ! -e "${target_path}" ]]; then
+    cp "${source_path}" "${target_path}"
+    log "Created ${target_path}"
+    return
+  fi
+
+  case "${policy}" in
+    preserve)
+      log "Preserved existing ${target_path}"
+      ;;
+    new)
+      if cmp -s "${source_path}" "${target_path}"; then
+        log "Preserved existing ${target_path}"
+      else
+        cp "${source_path}" "${target_path}.new"
+        log "Preserved existing ${target_path}; wrote ${target_path}.new"
+      fi
+      ;;
+    replace)
+      local backup_path="${target_path}.bak.$(date +%Y%m%d%H%M%S).$$"
+      mv "${target_path}" "${backup_path}"
+      cp "${source_path}" "${target_path}"
+      log "Replaced ${target_path}; backup: ${backup_path}"
+      ;;
+    *)
+      fail "Invalid config policy: ${policy}"
+      ;;
+  esac
+}
+
+install_config_files() {
+  local policy="new"
+
+  mkdir -p "${CONFIG_DIR}"
+
+  if has_existing_config; then
+    policy="$(choose_config_policy)"
+  fi
+
+  log "Config directory: ${CONFIG_DIR}"
+  log "Existing config policy: ${policy}"
+
+  install_config_file "${INSTALL_ROOT}/current/sniptail.bot.toml" "${CONFIG_DIR}/sniptail.bot.toml" "${policy}"
+  install_config_file "${INSTALL_ROOT}/current/sniptail.worker.toml" "${CONFIG_DIR}/sniptail.worker.toml" "${policy}"
+  install_config_file "${INSTALL_ROOT}/current/.env.example" "${CONFIG_DIR}/.env" "${policy}"
 }
 
 
@@ -86,7 +197,7 @@ if [[ -z "${LOCAL_TARBALL}" ]]; then
   log "Selected ${TAG} for ${OS}/${ARCH}"
 fi
 
-mkdir -p "${INSTALL_ROOT}" "${BIN_DIR}"
+mkdir -p "${INSTALL_ROOT}" "${BIN_DIR}" "${CONFIG_DIR}"
 log "Install root: ${INSTALL_ROOT}"
 log "CLI link path: ${BIN_DIR}/sniptail"
 
@@ -211,11 +322,16 @@ tar -xf "${TARBALL_PATH}" -C "${INSTALL_ROOT}"
 log "Updating current -> ${RELEASE_DIR}"
 ln -sfn "${INSTALL_ROOT}/${RELEASE_DIR}" "${INSTALL_ROOT}/current"
 
+install_config_files
+
 log "Writing launcher script"
 LAUNCHER_TMP="${BIN_DIR}/.sniptail-launcher.$$"
 cat > "${LAUNCHER_TMP}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+export DOTENV_CONFIG_PATH="\${DOTENV_CONFIG_PATH:-${CONFIG_DIR}/.env}"
+export SNIPTAIL_BOT_CONFIG_PATH="\${SNIPTAIL_BOT_CONFIG_PATH:-${CONFIG_DIR}/sniptail.bot.toml}"
+export SNIPTAIL_WORKER_CONFIG_PATH="\${SNIPTAIL_WORKER_CONFIG_PATH:-${CONFIG_DIR}/sniptail.worker.toml}"
 exec "${INSTALL_ROOT}/current/bin/sniptail" "\$@"
 EOF
 chmod +x "${LAUNCHER_TMP}"
