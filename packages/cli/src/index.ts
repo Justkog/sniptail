@@ -9,6 +9,7 @@ import { registerRunJobCommand } from './commands/run-job.js';
 import { registerReposCommand } from './commands/repos.js';
 import { registerSlackManifestCommand } from './commands/slack-manifest.js';
 import { registerWorkerCommand } from './commands/worker.js';
+import { stripPackageScriptSeparator } from './lib/argv.js';
 
 function resolveVersion(): string {
   try {
@@ -35,7 +36,7 @@ registerSlackManifestCommand(program);
 registerLocalUnifiedCommand(program);
 
 try {
-  await program.parseAsync(process.argv);
+  await program.parseAsync(stripPackageScriptSeparator(process.argv));
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`Error: ${message}\n`);

@@ -23,7 +23,10 @@ export function registerRunJobCommand(program: Command) {
       const resolvedJobPath = resolve(baseCwd, String(jobPath));
       await runRuntime({
         app: 'worker',
-        entry: join('dist', 'cli', 'run-job.js'),
+        entrypoint: {
+          source: join('src', 'cli', 'run-job.ts'),
+          dist: join('dist', 'cli', 'run-job.js'),
+        },
         configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
         ...(options.config ? { configPath: options.config } : {}),
         ...(options.env ? { envPath: options.env } : {}),

@@ -91,6 +91,8 @@ First add the repository:
 ```bash
 sniptail repos add sniptail --ssh-url git@github.com:Justkog/sniptail.git
 sniptail repos list
+sniptail repos inspect sniptail
+sniptail repos validate sniptail
 ```
 
 ```text

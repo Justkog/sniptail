@@ -36,7 +36,10 @@ async function runDbRuntime(options: RuntimeOptions, args: string[]): Promise<vo
   const scope = parseScope(options.scope);
   await runRuntime({
     app: 'worker',
-    entry: join('dist', 'cli', 'db.js'),
+    entrypoint: {
+      source: join('src', 'cli', 'db.ts'),
+      dist: join('dist', 'cli', 'db.js'),
+    },
     configEnvVar: scope === 'bot' ? 'SNIPTAIL_BOT_CONFIG_PATH' : 'SNIPTAIL_WORKER_CONFIG_PATH',
     ...(options.config ? { configPath: options.config } : {}),
     ...(options.env ? { envPath: options.env } : {}),

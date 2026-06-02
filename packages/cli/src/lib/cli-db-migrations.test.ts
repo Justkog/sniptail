@@ -68,6 +68,10 @@ describe('db migration helpers', () => {
     expect(hoisted.runRuntimeCapture).toHaveBeenCalledWith(
       expect.objectContaining({
         app: 'worker',
+        entrypoint: {
+          source: 'src/cli/db.ts',
+          dist: 'dist/cli/db.js',
+        },
         args: ['status', '--json', '--scope', 'worker'],
       }),
     );
