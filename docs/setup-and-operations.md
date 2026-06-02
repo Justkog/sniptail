@@ -54,10 +54,11 @@ This installs into `~/.sniptail` and links the CLI into `~/.local/bin`.
 
 #### 2) Configure environment variables
 
-Start from `.env.example` (from the repo, or `~/.sniptail/current/.env.example` if you installed via `install.sh`) and set at least:
+The installer initializes persistent config under `~/.sniptail/config`.
+Edit `~/.sniptail/config/.env` and set at least:
 
 ```bash
-cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
+$EDITOR ~/.sniptail/config/.env
 ```
 
 - Slack (only if enabled):
@@ -73,12 +74,26 @@ cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
 #### 3) Choose queue transport (inproc or redis)
 
 Sniptail uses two TOML config files so the bot and worker can be run on different machines.
-By default, the installer runs Sniptail with the config files located in the install root:
+By default, the installer runs Sniptail with persistent config files under `~/.sniptail/config`:
 
 - `sniptail.bot.toml`
 - `sniptail.worker.toml`
+- `.env`
 
-If you installed via `install.sh`, these live at `~/.sniptail/current/sniptail.bot.toml` and `~/.sniptail/current/sniptail.worker.toml`.
+If you installed via `install.sh`, these live at `~/.sniptail/config/sniptail.bot.toml`, `~/.sniptail/config/sniptail.worker.toml`, and `~/.sniptail/config/.env`.
+The CLI launcher points `SNIPTAIL_BOT_CONFIG_PATH`, `SNIPTAIL_WORKER_CONFIG_PATH`, and `DOTENV_CONFIG_PATH` at those files unless you set those variables yourself.
+
+When config files already exist during an upgrade, the installer prompts if `/dev/tty` is available. Without a terminal, it preserves existing files and writes changed release templates as `.new` files. You can choose the policy explicitly:
+
+```bash
+SNIPTAIL_CONFIG_EXISTING=preserve curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+SNIPTAIL_CONFIG_EXISTING=new curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+SNIPTAIL_CONFIG_EXISTING=replace curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
+```
+
+- `preserve`: leave existing config files unchanged.
+- `new`: leave existing config files unchanged and write release templates as `.new` files when they differ.
+- `replace`: move existing config files to timestamped `.bak.*` files, then install the release templates.
 
 Queue transport defaults to Redis (`[core].queue_driver = "redis"`).
 
@@ -98,7 +113,7 @@ For distributed mode, keep Redis queue transport:
 
 Optional: if you want the registry to use a different Redis than the queue, set `SNIPTAIL_REGISTRY_REDIS_URL` (or set `[registry].redis_url` in TOML).
 
-If you want to keep the TOML files somewhere else (for example so upgrades don't overwrite them), pass `--config` or set:
+If you want to keep the TOML files somewhere else, pass `--config` or set:
 
 - `SNIPTAIL_BOT_CONFIG_PATH`
 - `SNIPTAIL_WORKER_CONFIG_PATH`
@@ -176,6 +191,8 @@ sniptail repos add my-api --ssh-url git@github.com:org/my-api.git
 sniptail repos add payments --ssh-url git@gitlab.com:org/payments.git --project-id 12345
 sniptail repos add local-tools --local-path /srv/repos/local-tools
 sniptail repos list
+sniptail repos inspect my-api
+sniptail repos validate my-api
 ```
 
 Slack and Discord can also mutate the catalog directly with `/...-repo-add` and `/...-repo-remove`. Those commands enqueue a worker-side catalog update, so they use the same DB-backed catalog and optional allowlist file sync as the CLI.

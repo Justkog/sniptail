@@ -32,10 +32,9 @@ Sniptail local Codex, Copilot, OpenCode, and ACP-backed runs always execute the 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Justkog/sniptail/main/install.sh | bash
-cp ~/.sniptail/current/.env.example ~/.sniptail/current/.env
 ```
 
-Edit `~/.sniptail/current/.env` and set at least:
+Edit `~/.sniptail/config/.env` and set at least:
 
 - `DISCORD_BOT_TOKEN`
 
@@ -43,7 +42,7 @@ Need help creating a basic Discord bot/token? See `docs/discord-bot-setup.md`.
 
 ### 2) Enable Discord in bot config
 
-Edit `~/.sniptail/current/sniptail.bot.toml` and set:
+Edit `~/.sniptail/config/sniptail.bot.toml` and set:
 
 ```toml
 [channels.discord]
