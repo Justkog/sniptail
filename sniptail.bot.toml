@@ -8,13 +8,13 @@
 queue_driver = "inproc"
 
 [registry]
+# Path to the shared registry file/directory (used for sqlite).
+# Required when db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/registry"
+path = "$HOME/.sniptail/registry"
+
 # Registry backend: "sqlite", "pg", or "redis".
 # Optional. Default: "redis". Example: "redis"
 db = "sqlite"
-
-# Path to the shared registry file/directory (used for sqlite).
-# Required when db="sqlite". Ignored for "pg" and "redis". No default. Example: "$HOME/.sniptail/registry"
-# path = "$HOME/.sniptail/registry"
 
 # Shared registry namespace.
 # Optional. Default: "default". Example: "prod"
