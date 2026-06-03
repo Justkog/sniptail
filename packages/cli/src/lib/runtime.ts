@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, normalize, resolve, sep } from 'node:path';
+import dotenv from 'dotenv';
 import { runNode, runNodeCapture, type RunNodeCaptureResult } from './exec.js';
 import { pathExists, pathIsDirectory, resolveOptionalPath, resolveSniptailRoot } from './paths.js';
 
@@ -58,6 +60,29 @@ function resolveEntrypointMode(moduleUrl: string): RuntimeEntrypointMode {
   return inferEntrypointModeFromModuleUrl(moduleUrl) ?? 'dist';
 }
 
+function buildChildEnv(
+  options: RuntimeOptions,
+  root: string,
+  envPath: string | undefined,
+  baseCwd: string,
+): NodeJS.ProcessEnv {
+  const parsedEnv = envPath && pathExists(envPath) ? dotenv.parse(readFileSync(envPath)) : {};
+
+  const childEnv: NodeJS.ProcessEnv = {
+    SNIPTAIL_ROOT: root,
+    ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
+    ...parsedEnv,
+    ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
+    ...(options.envOverrides ? options.envOverrides : {}),
+  };
+
+  if (envPath && pathExists(envPath)) {
+    childEnv.DOTENV_CONFIG_PATH = envPath;
+  }
+
+  return childEnv;
+}
+
 export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
   const baseCwd = resolve(options.cwd ?? process.cwd());
   const root = resolveSniptailRoot({
@@ -96,17 +121,7 @@ export function resolveRuntime(options: RuntimeOptions): ResolvedRuntime {
 export async function runRuntime(options: RuntimeOptions): Promise<void> {
   const { root, appDir, entryPath, envPath } = resolveRuntime(options);
   const baseCwd = resolve(options.cwd ?? process.cwd());
-
-  const childEnv: NodeJS.ProcessEnv = {
-    SNIPTAIL_ROOT: root,
-    ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
-    ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
-    ...(options.envOverrides ? options.envOverrides : {}),
-  };
-
-  if (envPath && pathExists(envPath)) {
-    childEnv.DOTENV_CONFIG_PATH = envPath;
-  }
+  const childEnv = buildChildEnv(options, root, envPath, baseCwd);
 
   await runNode(entryPath, {
     cwd: appDir,
@@ -119,17 +134,7 @@ export async function runRuntime(options: RuntimeOptions): Promise<void> {
 export async function runRuntimeCapture(options: RuntimeOptions): Promise<RunNodeCaptureResult> {
   const { root, appDir, entryPath, envPath } = resolveRuntime(options);
   const baseCwd = resolve(options.cwd ?? process.cwd());
-
-  const childEnv: NodeJS.ProcessEnv = {
-    SNIPTAIL_ROOT: root,
-    ...(options.dryRun ? { SNIPTAIL_DRY_RUN: '1' } : {}),
-    ...(options.configPath ? { [options.configEnvVar]: resolve(baseCwd, options.configPath) } : {}),
-    ...(options.envOverrides ? options.envOverrides : {}),
-  };
-
-  if (envPath && pathExists(envPath)) {
-    childEnv.DOTENV_CONFIG_PATH = envPath;
-  }
+  const childEnv = buildChildEnv(options, root, envPath, baseCwd);
 
   return runNodeCapture(entryPath, {
     cwd: appDir,
