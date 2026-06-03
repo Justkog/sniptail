@@ -19,6 +19,7 @@
     "check": "pnpm run lint && prettier . --ignore-path ../../.prettierignore --check"
   },
   "dependencies": {
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "dotenv": "^17.2.3"
   }
 }
