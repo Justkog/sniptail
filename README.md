@@ -153,12 +153,6 @@ If your agent only supports single-file skills, fetch `SKILL.md` at minimum, but
 
 Sniptail is meant to grow along three axes: where requests come from, which coding agent executes them, and which Git service receives the results. Today, its omnichannel layer is implemented for Slack, Discord, and Telegram, alongside Codex, GitHub Copilot, OpenCode, and ACP-backed agent runtimes plus GitHub/GitLab integrations. The goal is to make each layer pluggable so other platforms can be added without rewriting the whole stack.
 
-> **Sniptail is source-available, self-hostable, and free to use and modify.**
->
-> We are actively working on **Sniptail Cloud**, a hosted and managed offering for teams that want to use Sniptail without running bots, queues, or workers themselves.
->
-> Sniptail Cloud is **not available yet**. If you're interested in early access or updates, you can join the waitlist here: **[\[link\]](https://forms.gle/r5XiMVScEniHkcTVA)**
-
 Roadmap detail tables are in `docs/project-roadmap.md`.
 
 ## How it works (high level)
