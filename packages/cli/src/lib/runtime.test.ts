@@ -1,8 +1,14 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveRuntime } from './runtime.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolveRuntime, runRuntime, runRuntimeCapture } from './runtime.js';
+import { runNode, runNodeCapture } from './exec.js';
+
+vi.mock('./exec.js', () => ({
+  runNode: vi.fn(async () => undefined),
+  runNodeCapture: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })),
+}));
 
 const originalMode = process.env.SNIPTAIL_RUNTIME_ENTRYPOINT_MODE;
 const originalRoot = process.env.SNIPTAIL_ROOT;
@@ -30,6 +36,40 @@ function runtimeOptions(root: string, launcherModuleUrl: string) {
     configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH' as const,
   };
 }
+
+describe('runtime env loading', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('passes parsed .env values into the child env for runRuntime', async () => {
+    const root = makeRoot(['apps/worker/dist/cli/repos.js', '.env']);
+    writeFileSync(join(root, '.env'), 'SNIPTAIL_TEST_VALUE=from-dotenv\n', 'utf8');
+
+    await runRuntime(runtimeOptions(root, `file://${root}/packages/cli/dist/lib/runtime.js`));
+
+    const runNodeMock = vi.mocked(runNode);
+    expect(runNodeMock).toHaveBeenCalledTimes(1);
+    expect(runNodeMock.mock.calls[0]?.[1]?.env).toMatchObject({
+      SNIPTAIL_ROOT: root,
+      SNIPTAIL_TEST_VALUE: 'from-dotenv',
+    });
+  });
+
+  it('passes parsed .env values into the child env for runRuntimeCapture', async () => {
+    const root = makeRoot(['apps/worker/dist/cli/repos.js', '.env']);
+    writeFileSync(join(root, '.env'), 'SNIPTAIL_CAPTURE_VALUE=from-capture\n', 'utf8');
+
+    await runRuntimeCapture(runtimeOptions(root, `file://${root}/packages/cli/dist/lib/runtime.js`));
+
+    const runNodeCaptureMock = vi.mocked(runNodeCapture);
+    expect(runNodeCaptureMock).toHaveBeenCalledTimes(1);
+    expect(runNodeCaptureMock.mock.calls[0]?.[1]?.env).toMatchObject({
+      SNIPTAIL_ROOT: root,
+      SNIPTAIL_CAPTURE_VALUE: 'from-capture',
+    });
+  });
+});
 
 describe('resolveRuntime entrypoint mode', () => {
   beforeEach(() => {
