@@ -488,17 +488,28 @@ function extractWorkerPreflightError(stderr: string, stdout: string): string {
 async function checkWorkerPreflights(paths: ResolvedDoctorPaths): Promise<DoctorCheck[]> {
   if (!paths.workerConfigPath) return [];
 
-  const result = await runRuntimeCapture({
-    app: 'worker',
-    entrypoint: {
-      source: join('src', 'cli', 'doctor-preflight.ts'),
-      dist: join('dist', 'cli', 'doctor-preflight.js'),
-    },
-    configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
-    configPath: paths.workerConfigPath,
-    envPath: paths.envPath,
-    cwd: paths.cwd,
-  });
+  let result: Awaited<ReturnType<typeof runRuntimeCapture>>;
+  try {
+    result = await runRuntimeCapture({
+      app: 'worker',
+      entrypoint: {
+        source: join('src', 'cli', 'doctor-preflight.ts'),
+        dist: join('dist', 'cli', 'doctor-preflight.js'),
+      },
+      configEnvVar: 'SNIPTAIL_WORKER_CONFIG_PATH',
+      configPath: paths.workerConfigPath,
+      envPath: paths.envPath,
+      cwd: paths.cwd,
+    });
+  } catch (error) {
+    return [
+      {
+        status: 'fail',
+        area: 'worker preflight',
+        message: sanitizePreflightMessage(getErrorMessage(error)),
+      },
+    ];
+  }
 
   if (result.exitCode !== 0) {
     return [
