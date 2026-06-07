@@ -244,7 +244,29 @@ To sync a single repo key:
 sniptail repos sync-run-actions --repo my-api
 ```
 
-#### 7) Run runtimes
+#### 7) Preflight with doctor
+
+Before starting or restarting Sniptail, run the doctor check for the role hosted on the current machine:
+
+```bash
+sniptail doctor --scope bot
+sniptail doctor --scope worker
+```
+
+On a single-machine local setup, run the local doctor check before applying automatic migrations:
+
+```bash
+sniptail doctor --scope local
+sniptail local --migrate-if-needed
+```
+
+In v1, doctor does not validate repository remotes. Remote validation remains a manual operator action:
+
+```bash
+sniptail repos validate <repoKey>
+```
+
+#### 8) Run runtimes
 
 Single-machine local mode:
 

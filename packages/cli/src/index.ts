@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { registerBotCommand } from './commands/bot.js';
 import { registerDbCommand } from './commands/db.js';
+import { registerDoctorCommand } from './commands/doctor.js';
 import { registerLocalUnifiedCommand } from './commands/localUnified.js';
 import { registerPermissionsCommand } from './commands/permissionsCommand.js';
 import { registerRunJobCommand } from './commands/run-job.js';
@@ -34,6 +35,7 @@ registerRunJobCommand(program);
 registerReposCommand(program);
 registerPermissionsCommand(program);
 registerDbCommand(program);
+registerDoctorCommand(program);
 registerSlackManifestCommand(program);
 registerLocalUnifiedCommand(program);
 
