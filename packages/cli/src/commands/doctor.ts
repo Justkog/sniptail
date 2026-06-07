@@ -434,7 +434,7 @@ function sanitizeMigrationErrorMessage(error: unknown, config: CoreConfig): stri
 
 function sanitizePreflightMessage(message: string): string {
   return message
-    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gu, '$1[redacted]@')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*:[^\s/@]+@/giu, '$1[redacted]@')
     .replace(
       /([?&](?:token|access_token|api_key|apikey|password|secret)=)[^&\s]+/giu,
       '$1[redacted]',
