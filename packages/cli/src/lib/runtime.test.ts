@@ -6,8 +6,8 @@ import { resolveRuntime, runRuntime, runRuntimeCapture } from './runtime.js';
 import { runNode, runNodeCapture } from './exec.js';
 
 vi.mock('./exec.js', () => ({
-  runNode: vi.fn(async () => undefined),
-  runNodeCapture: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })),
+  runNode: vi.fn(() => undefined),
+  runNodeCapture: vi.fn(() => ({ exitCode: 0, stdout: '', stderr: '' })),
 }));
 
 const originalMode = process.env.SNIPTAIL_RUNTIME_ENTRYPOINT_MODE;
@@ -60,7 +60,9 @@ describe('runtime env loading', () => {
     const root = makeRoot(['apps/worker/dist/cli/repos.js', '.env']);
     writeFileSync(join(root, '.env'), 'SNIPTAIL_CAPTURE_VALUE=from-capture\n', 'utf8');
 
-    await runRuntimeCapture(runtimeOptions(root, `file://${root}/packages/cli/dist/lib/runtime.js`));
+    await runRuntimeCapture(
+      runtimeOptions(root, `file://${root}/packages/cli/dist/lib/runtime.js`),
+    );
 
     const runNodeCaptureMock = vi.mocked(runNodeCapture);
     expect(runNodeCaptureMock).toHaveBeenCalledTimes(1);
