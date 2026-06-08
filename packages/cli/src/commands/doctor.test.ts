@@ -86,6 +86,15 @@ function writeTempFile(dir: string, name: string, content = ''): string {
   return path;
 }
 
+function createInstallRoot(): string {
+  const root = createTempDir();
+  mkdirSync(join(root, 'scripts'), { recursive: true });
+  mkdirSync(join(root, 'apps', 'worker'), { recursive: true });
+  writeFileSync(join(root, 'scripts', 'register-loaders.mjs'), '', 'utf8');
+  writeTempFile(root, 'sniptail.worker.toml');
+  return root;
+}
+
 function migrationStatus(overrides: Partial<MigrationStatus> = {}): MigrationStatus {
   return {
     driver: 'sqlite',
@@ -191,6 +200,7 @@ async function runDoctorCommand(args: string[]): Promise<void> {
     else if (option === '--env') options.env = value;
     else if (option === '--bot-config') options.botConfig = value;
     else if (option === '--worker-config') options.workerConfig = value;
+    else if (option === '--config-dir') options.configDir = value;
     else if (option === '--root') options.root = value;
     else if (option === '--cwd') options.cwd = value;
     else throw new Error(`Unsupported doctor test option: ${option}`);
@@ -262,12 +272,12 @@ describe('doctor command', () => {
       [{ registryDriver?: string }, { rootDir?: string }]
     >;
     expect(migrationCalls[0]?.[0].registryDriver).toBe('sqlite');
-    // expect(migrationCalls[0]?.[1].rootDir).toBe(resolve(process.cwd(), '../..'));
     expect(process.exitCode).toBe(0);
   });
 
   it('runs in explicit worker scope', async () => {
     const cwd = createTempDir();
+    const installRoot = createInstallRoot();
     writeTempFile(cwd, '.env.local', 'REDIS_URL=redis://localhost:6379\n');
     writeTempFile(cwd, 'worker.toml', validWorkerToml(cwd));
 
@@ -278,6 +288,8 @@ describe('doctor command', () => {
       'worker.toml',
       '--env',
       '.env.local',
+      '--root',
+      installRoot,
       '--cwd',
       cwd,
     ]);
@@ -300,6 +312,7 @@ describe('doctor command', () => {
           configPath?: string;
           envPath?: string;
           cwd?: string;
+          root?: string;
         },
       ]
     >;
@@ -307,11 +320,17 @@ describe('doctor command', () => {
     expect(preflightCalls[0]?.[0].entrypoint?.source).toBe('src/cli/doctor-preflight.ts');
     expect(preflightCalls[0]?.[0].configEnvVar).toBe('SNIPTAIL_WORKER_CONFIG_PATH');
     expect(preflightCalls[0]?.[0].configPath).toBe(join(cwd, 'worker.toml'));
+    expect(preflightCalls[0]?.[0].root).toBe(installRoot);
+    const migrationCalls = hoisted.getDbMigrationStatus.mock.calls as Array<
+      [{ registryDriver?: string }, { rootDir?: string }]
+    >;
+    expect(migrationCalls[0]?.[1].rootDir).toBe(installRoot);
     expect(process.exitCode).toBe(0);
   });
 
   it('runs in explicit local scope', async () => {
     const cwd = createTempDir();
+    const installRoot = createInstallRoot();
     writeTempFile(cwd, '.env.local', 'REDIS_URL=redis://localhost:6379\n');
     writeTempFile(cwd, 'bot.toml', validBotToml(cwd));
     writeTempFile(cwd, 'worker.toml', validWorkerToml(cwd));
@@ -325,6 +344,8 @@ describe('doctor command', () => {
       'worker.toml',
       '--env',
       '.env.local',
+      '--root',
+      installRoot,
       '--cwd',
       cwd,
     ]);
@@ -341,6 +362,18 @@ describe('doctor command', () => {
     expect(stdout).toContain('ok      db/worker        Database migrations are up to date');
     expect(hoisted.getDbMigrationStatus).toHaveBeenCalledTimes(2);
     expect(hoisted.runRuntimeCapture).toHaveBeenCalledTimes(1);
+    const migrationCalls = hoisted.getDbMigrationStatus.mock.calls as Array<
+      [{ registryDriver?: string }, { rootDir?: string }]
+    >;
+    expect(migrationCalls.every((call) => call[1].rootDir === installRoot)).toBe(true);
+    const preflightCalls = hoisted.runRuntimeCapture.mock.calls as Array<
+      [
+        {
+          root?: string;
+        },
+      ]
+    >;
+    expect(preflightCalls[0]?.[0].root).toBe(installRoot);
     expect(process.exitCode).toBe(0);
   });
 
@@ -414,14 +447,14 @@ describe('doctor command', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('expands root as a config directory shorthand', async () => {
+  it('expands config-dir as a config directory shorthand', async () => {
     const cwd = createTempDir();
     const configRoot = join(cwd, 'configs');
     mkdirSync(configRoot);
     writeTempFile(configRoot, 'sniptail.bot.toml', validBotToml(configRoot));
     writeTempFile(configRoot, 'sniptail.worker.toml', validWorkerToml(configRoot));
 
-    await runDoctorCommand(['--root', 'configs', '--cwd', cwd]);
+    await runDoctorCommand(['--config-dir', 'configs', '--cwd', cwd]);
 
     expect(stdout).toContain('Scope: local');
     expect(stdout).toContain(`Env: ${join(configRoot, '.env')}`);
@@ -1028,27 +1061,27 @@ describe('doctor command', () => {
     expect(stdout).toContain('fail    worker preflight  worker probe failed');
   });
 
-  it('rejects root mixed with explicit file paths', async () => {
+  it('rejects config-dir mixed with explicit file paths', async () => {
     const cwd = createTempDir();
     const configRoot = join(cwd, 'configs');
     mkdirSync(configRoot);
 
     await expect(
-      runDoctorCommand(['--root', 'configs', '--env', '.env.local', '--cwd', cwd]),
-    ).rejects.toThrow('--root cannot be combined');
+      runDoctorCommand(['--config-dir', 'configs', '--env', '.env.local', '--cwd', cwd]),
+    ).rejects.toThrow('--config-dir cannot be combined');
     await expect(
-      runDoctorCommand(['--root', 'configs', '--bot-config', 'bot.toml', '--cwd', cwd]),
-    ).rejects.toThrow('--root cannot be combined');
+      runDoctorCommand(['--config-dir', 'configs', '--bot-config', 'bot.toml', '--cwd', cwd]),
+    ).rejects.toThrow('--config-dir cannot be combined');
     await expect(
-      runDoctorCommand(['--root', 'configs', '--worker-config', 'worker.toml', '--cwd', cwd]),
-    ).rejects.toThrow('--root cannot be combined');
+      runDoctorCommand(['--config-dir', 'configs', '--worker-config', 'worker.toml', '--cwd', cwd]),
+    ).rejects.toThrow('--config-dir cannot be combined');
   });
 
-  it('rejects a missing root directory', async () => {
+  it('rejects a missing config-dir directory', async () => {
     const cwd = createTempDir();
 
-    await expect(runDoctorCommand(['--root', 'missing', '--cwd', cwd])).rejects.toThrow(
-      '--root must point to an existing directory',
+    await expect(runDoctorCommand(['--config-dir', 'missing', '--cwd', cwd])).rejects.toThrow(
+      '--config-dir must point to an existing directory',
     );
   });
 
@@ -1098,6 +1131,7 @@ describe('doctor command', () => {
     expect(stdout).toContain('--env <path>');
     expect(stdout).toContain('--bot-config <path>');
     expect(stdout).toContain('--worker-config <path>');
+    expect(stdout).toContain('--config-dir <path>');
     expect(stdout).toContain('--root <path>');
     expect(stdout).not.toContain('--cwd');
   });

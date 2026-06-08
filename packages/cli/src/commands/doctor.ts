@@ -28,6 +28,7 @@ type DoctorOptions = {
   env?: string;
   botConfig?: string;
   workerConfig?: string;
+  configDir?: string;
   root?: string;
   cwd?: string;
 };
@@ -37,6 +38,7 @@ type ResolvedDoctorPaths = {
   cwd: string;
   envPath: string;
   envExplicit: boolean;
+  root?: string;
   botConfigPath?: string;
   botConfigExplicit: boolean;
   workerConfigPath?: string;
@@ -77,10 +79,12 @@ function pathIsFile(path: string): boolean {
   }
 }
 
-function ensureRootIsExclusive(options: DoctorOptions): void {
-  if (!options.root) return;
+function ensureConfigDirIsExclusive(options: DoctorOptions): void {
+  if (!options.configDir) return;
   if (options.env || options.botConfig || options.workerConfig) {
-    throw new Error('--root cannot be combined with --env, --bot-config, or --worker-config.');
+    throw new Error(
+      '--config-dir cannot be combined with --env, --bot-config, or --worker-config.',
+    );
   }
 }
 
@@ -91,15 +95,15 @@ function resolveDoctorFilePaths(options: DoctorOptions): {
 } {
   const baseCwd = resolve(options.cwd ?? process.cwd());
 
-  if (options.root) {
-    const configRoot = resolve(baseCwd, options.root);
-    if (!pathIsDirectory(configRoot)) {
-      throw new Error(`--root must point to an existing directory: ${configRoot}`);
+  if (options.configDir) {
+    const configDir = resolve(baseCwd, options.configDir);
+    if (!pathIsDirectory(configDir)) {
+      throw new Error(`--config-dir must point to an existing directory: ${configDir}`);
     }
     return {
-      envPath: resolve(configRoot, '.env'),
-      botConfigPath: resolve(configRoot, 'sniptail.bot.toml'),
-      workerConfigPath: resolve(configRoot, 'sniptail.worker.toml'),
+      envPath: resolve(configDir, '.env'),
+      botConfigPath: resolve(configDir, 'sniptail.bot.toml'),
+      workerConfigPath: resolve(configDir, 'sniptail.worker.toml'),
     };
   }
 
@@ -133,7 +137,7 @@ function validateScopeOptions(scope: DoctorScope, options: DoctorOptions): void 
 }
 
 function resolveDoctorPaths(options: DoctorOptions): ResolvedDoctorPaths | undefined {
-  ensureRootIsExclusive(options);
+  ensureConfigDirIsExclusive(options);
   const paths = resolveDoctorFilePaths(options);
   const scope = options.scope ? parseScope(options.scope) : inferScope(options, paths);
   if (!scope) return undefined;
@@ -145,6 +149,7 @@ function resolveDoctorPaths(options: DoctorOptions): ResolvedDoctorPaths | undef
     cwd: resolve(options.cwd ?? process.cwd()),
     envPath: paths.envPath,
     envExplicit: Boolean(options.env),
+    ...(options.root ? { root: options.root } : {}),
     ...(scope === 'bot' || scope === 'local'
       ? { botConfigPath: paths.botConfigPath, botConfigExplicit: Boolean(options.botConfig) }
       : { botConfigExplicit: false }),
@@ -500,6 +505,7 @@ async function checkWorkerPreflights(paths: ResolvedDoctorPaths): Promise<Doctor
       configPath: paths.workerConfigPath,
       envPath: paths.envPath,
       cwd: paths.cwd,
+      ...(paths.root ? { root: paths.root } : {}),
     });
   } catch (error) {
     return [
@@ -538,12 +544,16 @@ async function checkDbMigrations(
   scope: 'bot' | 'worker',
   config: CoreConfig,
   cwd: string,
+  root?: string,
 ): Promise<DoctorCheck> {
   const area = `db/${scope}`;
   const target = getRegistryTargetKey(config);
 
   try {
-    const rootDir = resolveSniptailRoot({ cwd });
+    const rootDir = resolveSniptailRoot({
+      cwd,
+      ...(root ? { root } : {}),
+    });
     const status = await getCoreDbMigrationStatus(config, { rootDir });
     if (status.driver === 'redis') {
       return {
@@ -628,13 +638,13 @@ async function runResolvedDoctorChecks(
     if (paths.scope === 'bot' || paths.scope === 'local') {
       checks.push(() => {
         if (!botConfig || !localDbConfigMatches) return [];
-        return checkDbMigrations('bot', botConfig, paths.cwd);
+        return checkDbMigrations('bot', botConfig, paths.cwd, paths.root);
       });
     }
     if (paths.scope === 'worker' || paths.scope === 'local') {
       checks.push(() => {
         if (!workerConfig || !localDbConfigMatches) return [];
-        return checkDbMigrations('worker', workerConfig, paths.cwd);
+        return checkDbMigrations('worker', workerConfig, paths.cwd, paths.root);
       });
       checks.push(() => {
         if (!workerConfig || !localDbConfigMatches) return [];
@@ -702,6 +712,7 @@ export function registerDoctorCommand(program: Command): void {
     .option('--env <path>', 'Path to .env file')
     .option('--bot-config <path>', 'Path to sniptail.bot.toml')
     .option('--worker-config <path>', 'Path to sniptail.worker.toml')
-    .option('--root <path>', 'Alternate Sniptail configuration directory')
+    .option('--config-dir <path>', 'Alternate Sniptail configuration directory')
+    .option('--root <path>', 'Sniptail install root')
     .action(async (options: Omit<DoctorOptions, 'cwd'>) => runDoctor(options));
 }
