@@ -207,5 +207,3 @@ You are free to:
 You may not:
 - Offer Sniptail as a hosted or managed service to third parties
 - Provide Sniptail as part of a commercial SaaS offering without permission
-
-If you are interested in a hosted or managed version, see `docs/sniptail-cloud-faq.md`.
