@@ -54,7 +54,6 @@ export const NOOP_TELEMETRY: SniptailTelemetry = {
   async shutdown() {},
 };
 
-let warnedMissingProjectKey = false;
 
 export function bucketTelemetryDuration(durationMs: number): TelemetryDurationBucket {
   if (durationMs < 1_000) return '<1s';
