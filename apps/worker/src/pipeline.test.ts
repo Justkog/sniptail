@@ -821,6 +821,7 @@ describe('worker/pipeline runJob', () => {
     const writeFileMock = vi.mocked(writeFile);
     const appendFileMock = vi.mocked(appendFile);
     const ensureCloneMock = vi.mocked(ensureClone);
+    const captureTelemetry = vi.fn();
 
     const job = {
       jobId: 'job-mention',
@@ -843,13 +844,33 @@ describe('worker/pipeline runJob', () => {
     appendFileMock.mockResolvedValue(undefined);
 
     const botQueue = {} as QueuePublisher<BotEvent>;
-    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry);
+    const result = await runJob(new BullMqBotEventSink(botQueue), job, registry, {
+      capture: captureTelemetry,
+      shutdown: () => Promise.resolve(),
+    });
 
     expect(result).toEqual({
       jobId: 'job-mention',
       status: 'ok',
       summary: 'Hello there!',
     });
+    expect(captureTelemetry).toHaveBeenCalledTimes(1);
+    const telemetryEvent = captureTelemetry.mock.calls[0]?.[0] as {
+      name: string;
+      commandCategory: string;
+      providerType: string;
+      channelProvider: string;
+      status: string;
+      durationBucket: string;
+    };
+    expect(telemetryEvent).toMatchObject({
+      name: 'sniptail_command_completed',
+      commandCategory: 'mention',
+      providerType: 'codex',
+      channelProvider: 'slack',
+      status: 'success',
+    });
+    expect(['<1s', '1-10s']).toContain(telemetryEvent.durationBucket);
     expect(runAgentMock).toHaveBeenCalledWith(
       job,
       '/tmp/sniptail/repo-cache',

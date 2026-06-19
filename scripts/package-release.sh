@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/package-release.sh --version <version> [--os <linux|darwin>] [--arch <x64|arm64>] [--output-dir <dir>] [--release-dir <dir>]
+Usage: scripts/package-release.sh --version <version> [--commit <sha>] [--os <linux|darwin>] [--arch <x64|arm64>] [--output-dir <dir>] [--release-dir <dir>]
 
 Builds a release tarball with production dependencies included.
 EOF
@@ -36,7 +36,7 @@ detect_arch() {
 }
 
 main() {
-  local project_root version os_name arch output_dir release_dir name stage_root tarball_path sha_path pnpm_virtual_store
+  local project_root version release_commit os_name arch output_dir release_dir name stage_root tarball_path sha_path pnpm_virtual_store
   local sea_config_path sea_blob_path node_bin local_runtime_entry size_before_kb size_after_kb reclaimed_kb
   local non_runtime_file_count non_runtime_dir_count native_dir_count
   local bufferutil_keep_prebuild
@@ -45,6 +45,7 @@ main() {
 
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   version=""
+  release_commit=""
   os_name=""
   arch=""
   output_dir="${project_root}"
@@ -54,6 +55,10 @@ main() {
     case "$1" in
       --version)
         version="${2:-}"
+        shift 2
+        ;;
+      --commit)
+        release_commit="${2:-}"
         shift 2
         ;;
       --os)
@@ -114,6 +119,14 @@ main() {
     exit 1
   fi
 
+  if [[ -z "${release_commit}" ]]; then
+    release_commit="$(git rev-parse HEAD 2>/dev/null || true)"
+  fi
+  if [[ -z "${release_commit}" ]]; then
+    echo "Unable to resolve the release commit. Pass --commit <sha>." >&2
+    exit 1
+  fi
+
   if [[ -z "${os_name}" ]]; then
     os_name="$(detect_os)"
   fi
@@ -161,6 +174,7 @@ main() {
   cp apps/worker/package.json "${stage_root}/apps/worker/"
   cp apps/local/package.json "${stage_root}/apps/local/"
   cp packages/core/package.json "${stage_root}/packages/core/"
+  cp packages/core/release-info.json "${stage_root}/packages/core/"
   cp packages/cli/package.json "${stage_root}/packages/cli/"
   cp -R apps/bot/dist "${stage_root}/apps/bot/"
   cp -R apps/worker/dist "${stage_root}/apps/worker/"
@@ -169,6 +183,12 @@ main() {
   cp -R packages/core/dist "${stage_root}/packages/core/"
   cp -R packages/core/drizzle "${stage_root}/packages/core/"
   cp -R packages/cli/dist "${stage_root}/packages/cli/"
+
+  log "Stamping staged release metadata for ${version}"
+  node packages/core/dist/releaseInfoWriter.js \
+    "${stage_root}/packages/core/release-info.json" \
+    "${version}" \
+    "${release_commit}"
 
   log "Stamping staged CLI version to ${version}"
   node -e '

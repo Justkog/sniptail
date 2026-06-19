@@ -3,6 +3,10 @@
 # Comments note: default value, whether optional, and an example.
 
 [core]
+# Anonymous usage telemetry.
+# Optional. Default: true. Set false or use SNIPTAIL_TELEMETRY_DISABLED=1 to disable.
+# telemetry = false
+
 # Queue transport driver: "redis" or "inproc".
 # Optional. Default: "redis". Use "inproc" with `sniptail local` only.
 queue_driver = "inproc"

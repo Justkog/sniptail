@@ -3,6 +3,10 @@
 # Comments note: default value, whether optional, and an example.
 
 [core]
+# Anonymous usage telemetry.
+# Optional. Default: true. Set false or use SNIPTAIL_TELEMETRY_DISABLED=1 to disable.
+# telemetry = false
+
 # Path to the repo allowlist JSON file.
 # Optional. No default. Example: "$HOME/.sniptail/allowlist.json"
 # When set, worker startup can seed an empty registry catalog from this file.

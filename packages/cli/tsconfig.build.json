@@ -2,6 +2,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
     "paths": {
       "@sniptail/core": ["packages/core/dist/index.d.ts"],
       "@sniptail/core/*.js": ["packages/core/dist/*.d.ts"],

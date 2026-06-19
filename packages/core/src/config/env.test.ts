@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -97,6 +97,32 @@ describe('config loaders', () => {
     expect(config.permissions.defaultEffect).toBe('allow');
     expect(config.permissions.rules).toEqual([]);
     expect(config.agentCommand).toEqual({});
+    expect(config.telemetryEnabled).toBe(true);
+  });
+
+  it('disables telemetry through the environment kill switch', () => {
+    applyRequiredEnv({ SNIPTAIL_TELEMETRY_DISABLED: '1' });
+
+    expect(loadBotConfig().telemetryEnabled).toBe(false);
+    expect(loadWorkerConfig().telemetryEnabled).toBe(false);
+  });
+
+  it('disables telemetry through core TOML configuration', () => {
+    writeBotConfig([]);
+    const configPath = process.env.SNIPTAIL_BOT_CONFIG_PATH as string;
+    const configToml = readFileSync(configPath, 'utf8').replace(
+      '[core]',
+      '[core]\ntelemetry = false',
+    );
+    writeFileSync(configPath, configToml, 'utf8');
+
+    expect(loadBotConfig().telemetryEnabled).toBe(false);
+  });
+
+  it('gives the environment telemetry kill switch precedence over TOML', () => {
+    applyRequiredEnv({ SNIPTAIL_TELEMETRY_DISABLED: '1' });
+
+    expect(loadBotConfig().telemetryEnabled).toBe(false);
   });
 
   it('parses permission rules from TOML', () => {

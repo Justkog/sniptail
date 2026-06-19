@@ -29,12 +29,18 @@ import type {
   InteractiveAgentProfile,
   RunInteractiveAgentTurnInput,
 } from './interactiveAgentTypes.js';
+import {
+  bucketTelemetryDuration,
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 export type RunAgentSessionStartOptions = {
   event: CoreWorkerEvent<'agent.session.start'>;
   config: WorkerConfig;
   notifier: Notifier;
   botEvents: BotEventSink;
+  telemetry?: SniptailTelemetry;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -43,6 +49,7 @@ export type RunAgentSessionMessageOptions = {
   config: WorkerConfig;
   notifier: Notifier;
   botEvents: BotEventSink;
+  telemetry?: SniptailTelemetry;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -161,15 +168,29 @@ function buildCodexNonImageContextNote(
   ].join('\n');
 }
 
-async function runAgentTurnLoop(input: RunInteractiveAgentTurnInput) {
+async function runAgentTurnLoop(input: RunInteractiveAgentTurnInput, telemetry: SniptailTelemetry) {
   let nextTurn: AgentSessionTurn | undefined = input.turn;
 
   while (nextTurn) {
     const adapter = getInteractiveAgentAdapter(nextTurn.profile.provider);
-    await adapter.runTurn({
-      ...input,
-      turn: nextTurn,
-    });
+    const startedAt = Date.now();
+    let status: 'success' | 'failure' = 'failure';
+    try {
+      await adapter.runTurn({
+        ...input,
+        turn: nextTurn,
+      });
+      status = 'success';
+    } finally {
+      telemetry.capture({
+        name: 'sniptail_command_completed',
+        commandCategory: 'agent_session',
+        providerType: nextTurn.profile.provider,
+        channelProvider: nextTurn.response.provider,
+        status,
+        durationBucket: bucketTelemetryDuration(Date.now() - startedAt),
+      });
+    }
 
     const queued = finishAgentPromptTurn(nextTurn.sessionId);
     if (!queued) {
@@ -235,6 +256,7 @@ export async function runAgentSessionStart({
   config,
   notifier,
   botEvents,
+  telemetry = NOOP_TELEMETRY,
   env = process.env,
 }: RunAgentSessionStartOptions): Promise<void> {
   const { sessionId, response, workspaceKey, agentProfileKey, prompt, cwd, contextFiles } =
@@ -300,22 +322,25 @@ export async function runAgentSessionStart({
         : materialized.attachments;
     tempContextDirectory = materialized.directory;
 
-    await runAgentTurnLoop({
-      turn: {
-        sessionId,
-        response,
-        prompt: codexNote ? `${prompt}${codexNote}` : prompt,
-        workspaceKey: session.workspaceKey,
-        profile,
-        ...((session.cwd ?? cwd) ? { cwd: session.cwd ?? cwd } : {}),
-        ...(filteredAttachments?.length ? { currentTurnAttachments: filteredAttachments } : {}),
-        ...(tempContextDirectory ? { additionalDirectories: [tempContextDirectory] } : {}),
+    await runAgentTurnLoop(
+      {
+        turn: {
+          sessionId,
+          response,
+          prompt: codexNote ? `${prompt}${codexNote}` : prompt,
+          workspaceKey: session.workspaceKey,
+          profile,
+          ...((session.cwd ?? cwd) ? { cwd: session.cwd ?? cwd } : {}),
+          ...(filteredAttachments?.length ? { currentTurnAttachments: filteredAttachments } : {}),
+          ...(tempContextDirectory ? { additionalDirectories: [tempContextDirectory] } : {}),
+        },
+        config,
+        notifier,
+        botEvents,
+        env,
       },
-      config,
-      notifier,
-      botEvents,
-      env,
-    });
+      telemetry,
+    );
   } catch (err) {
     clearAgentPromptTurn(sessionId);
     throw err;
@@ -336,6 +361,7 @@ export async function runAgentSessionMessage({
   config,
   notifier,
   botEvents,
+  telemetry = NOOP_TELEMETRY,
   env = process.env,
 }: RunAgentSessionMessageOptions): Promise<void> {
   const { sessionId, response, message, messageId, mode = 'run' } = event.payload;
@@ -454,19 +480,22 @@ export async function runAgentSessionMessage({
     ...(messageId ? { messageId } : {}),
   });
 
-  await runAgentTurnLoop({
-    turn: {
-      sessionId,
-      response,
-      prompt: message,
-      workspaceKey: session.workspaceKey,
-      profile,
-      ...(session.cwd ? { cwd: session.cwd } : {}),
-      codingAgentSessionId: session.codingAgentSessionId,
+  await runAgentTurnLoop(
+    {
+      turn: {
+        sessionId,
+        response,
+        prompt: message,
+        workspaceKey: session.workspaceKey,
+        profile,
+        ...(session.cwd ? { cwd: session.cwd } : {}),
+        codingAgentSessionId: session.codingAgentSessionId,
+      },
+      config,
+      notifier,
+      botEvents,
+      env,
     },
-    config,
-    notifier,
-    botEvents,
-    env,
-  });
+    telemetry,
+  );
 }

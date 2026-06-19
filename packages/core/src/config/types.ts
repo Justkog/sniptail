@@ -89,6 +89,7 @@ export type QueueDriver = 'redis' | 'inproc';
 export type RegistryDriver = 'sqlite' | 'pg' | 'redis';
 
 export type CoreConfig = {
+  telemetryEnabled: boolean;
   repoAllowlistPath?: string;
   repoAllowlist: Record<string, RepoConfig>;
   jobWorkRoot?: string;

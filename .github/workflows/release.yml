@@ -296,6 +296,7 @@ jobs:
         run: |
           scripts/package-release.sh \
             --version "${{ needs.resolve.outputs.release_tag }}" \
+            --commit "${{ github.sha }}" \
             --os "${{ matrix.os_name }}" \
             --arch "${{ matrix.arch }}"
 
@@ -312,6 +313,33 @@ jobs:
 
           if [[ ! -f "${stage_root}/apps/local/dist/localProcessRuntime.js" ]]; then
             echo "Missing packaged local runtime entry at ${stage_root}/apps/local/dist/localProcessRuntime.js"
+            exit 1
+          fi
+
+          expected_version="${{ needs.resolve.outputs.release_tag }}"
+          expected_version="${expected_version#v}"
+          expected_commit="${GITHUB_SHA:0:7}"
+          node -e '
+            const fs = require("node:fs");
+            const [path, expectedVersion, expectedCommit] = process.argv.slice(1);
+            const info = JSON.parse(fs.readFileSync(path, "utf8"));
+            if (info.name !== "sniptail") throw new Error(`Unexpected release name: ${info.name}`);
+            if (info.version !== expectedVersion) throw new Error(`Unexpected release version: ${info.version}`);
+            if (info.commit !== expectedCommit) throw new Error(`Unexpected release commit: ${info.commit}`);
+            if (new Date(info.buildDate).toISOString() !== info.buildDate) {
+              throw new Error(`Invalid release build date: ${info.buildDate}`);
+            }
+          ' "${stage_root}/packages/core/release-info.json" "${expected_version}" "${expected_commit}"
+
+          actual_version="$("${stage_root}/bin/sniptail" --version)"
+          if [[ "${actual_version}" != "${expected_version}" ]]; then
+            echo "Unexpected packaged version: ${actual_version}"
+            exit 1
+          fi
+
+          overridden_version="$(SNIPTAIL_VERSION=9.8.7 "${stage_root}/bin/sniptail" --version)"
+          if [[ "${overridden_version}" != "9.8.7" ]]; then
+            echo "SNIPTAIL_VERSION did not override packaged version: ${overridden_version}"
             exit 1
           fi
 
