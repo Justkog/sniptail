@@ -131,11 +131,11 @@ export async function createSniptailTelemetry(
         }
       },
       shutdown() {
-        shutdownPromise ??= client._shutdown(TELEMETRY_SHUTDOWN_TIMEOUT_MS).catch((err) => {
+        shutdownPromise ??= client.shutdown(TELEMETRY_SHUTDOWN_TIMEOUT_MS).catch((err) => {
           logger.debug({ err }, 'Failed to flush anonymous telemetry');
         });
         return shutdownPromise;
-      },
+      }
     };
   } catch (err) {
     logger.debug({ err }, 'Failed to initialize anonymous telemetry');
