@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   config: {
+    telemetryEnabled: false,
     repoAllowlist: {},
     jobWorkRoot: '/tmp/jobs',
     queueDriver: 'inproc',
@@ -409,6 +410,7 @@ describe('workerRuntimeLauncher', () => {
     expect(runJob).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ jobId: 'job-targeted-1', type: 'ask' }),
+      expect.anything(),
       expect.anything(),
     );
   });

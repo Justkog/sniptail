@@ -6,6 +6,11 @@ import type {
   QueueTransportRuntime,
 } from '@sniptail/core/queue/queueTransportTypes.js';
 import { hostname } from 'node:os';
+import {
+  createSniptailTelemetry,
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 import { createSlackApp } from './slack/app.js';
 import { startDiscordBot } from './discord/app.js';
 import { startTelegramBot } from './telegram/app.js';
@@ -17,12 +22,23 @@ export type BotRuntimeHandle = {
 
 export type StartBotRuntimeOptions = {
   queueRuntime?: QueueTransportRuntime;
+  telemetry?: SniptailTelemetry | false;
+  captureRuntimeStarted?: boolean;
 };
 
 export async function startBotRuntime(
   options: StartBotRuntimeOptions = {},
 ): Promise<BotRuntimeHandle> {
   const config = loadBotConfig();
+  const telemetryEnabled = config.telemetryEnabled && options.telemetry !== false;
+  const ownsTelemetry = telemetryEnabled && options.telemetry === undefined;
+  const telemetry = !telemetryEnabled
+    ? NOOP_TELEMETRY
+    : typeof options.telemetry === 'object'
+      ? options.telemetry
+      : ownsTelemetry
+        ? await createSniptailTelemetry({ enabled: true, runtimeMode: 'bot' })
+        : NOOP_TELEMETRY;
   if (config.queueDriver === 'inproc' && !options.queueRuntime) {
     throw new Error(
       'queue_driver="inproc" requires a shared local runtime. Use "sniptail local" instead of running "sniptail bot" directly.',
@@ -100,6 +116,12 @@ export async function startBotRuntime(
       ...(discordClient ? { discordClient } : {}),
       ...(telegramBot ? { telegramBot } : {}),
     });
+    if (options.captureRuntimeStarted !== false) {
+      telemetry.capture({
+        name: 'sniptail_runtime_started',
+        channelProviders: config.enabledChannels,
+      });
+    }
   } catch (err) {
     if (botEventConsumer) {
       await botEventConsumer.close();
@@ -117,6 +139,9 @@ export async function startBotRuntime(
     }
     if (closeQueueRuntimeOnShutdown) {
       await queueRuntime.close();
+    }
+    if (ownsTelemetry) {
+      await telemetry.shutdown();
     }
     throw err;
   }
@@ -142,6 +167,9 @@ export async function startBotRuntime(
       }
       if (closeQueueRuntimeOnShutdown) {
         await queueRuntime.close();
+      }
+      if (ownsTelemetry) {
+        await telemetry.shutdown();
       }
     },
   };

@@ -4,10 +4,14 @@ import { logger } from '@sniptail/core/logger.js';
 import { createQueueTransportRuntime } from '@sniptail/core/queue/queueTransportFactory.js';
 import { startBotRuntime } from '@sniptail/bot/runtime';
 import { startWorkerRuntime } from '@sniptail/worker/runtime';
+import {
+  createSniptailTelemetry,
+  NOOP_TELEMETRY,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
-function validateLocalConfig(): void {
+function validateLocalConfig() {
   const botConfig = loadBotConfig();
   const workerConfig = loadWorkerConfig();
 
@@ -44,10 +48,16 @@ function validateLocalConfig(): void {
       ].join(' '),
     );
   }
+
+  return { botConfig, workerConfig };
 }
 
 async function main() {
-  validateLocalConfig();
+  const { botConfig, workerConfig } = validateLocalConfig();
+  const telemetry =
+    botConfig.telemetryEnabled && workerConfig.telemetryEnabled
+      ? await createSniptailTelemetry({ enabled: true, runtimeMode: 'local' })
+      : NOOP_TELEMETRY;
 
   const queueRuntime = createQueueTransportRuntime({ driver: 'inproc' });
   let workerRuntime: Awaited<ReturnType<typeof startWorkerRuntime>> | undefined;
@@ -67,6 +77,7 @@ async function main() {
       }
       logger.info('Closing local queue runtime');
       await queueRuntime.close();
+      await telemetry.shutdown();
       logger.info('Closed local unified runtime');
     })();
     return shutdownPromise;
@@ -97,8 +108,20 @@ async function main() {
   };
 
   try {
-    workerRuntime = await startWorkerRuntime({ queueRuntime });
-    botRuntime = await startBotRuntime({ queueRuntime });
+    workerRuntime = await startWorkerRuntime({
+      queueRuntime,
+      telemetry,
+      captureRuntimeStarted: false,
+    });
+    botRuntime = await startBotRuntime({
+      queueRuntime,
+      telemetry,
+      captureRuntimeStarted: false,
+    });
+    telemetry.capture({
+      name: 'sniptail_runtime_started',
+      channelProviders: botConfig.enabledChannels,
+    });
   } catch (err) {
     if (botRuntime) {
       await botRuntime.close();
@@ -107,6 +130,7 @@ async function main() {
       await workerRuntime.close();
     }
     await queueRuntime.close();
+    await telemetry.shutdown();
     throw err;
   }
 

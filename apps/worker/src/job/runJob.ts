@@ -35,6 +35,12 @@ import { commitRepoChanges } from '../repos/commit.js';
 import { runAgentJob } from '../agents/runAgent.js';
 import { enforceJobCleanup } from './cleanup.js';
 import { buildRunJobFailureSnippet, runRunJob } from './runActionJob.js';
+import {
+  bucketTelemetryDuration,
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+  type TelemetryCommandCategory,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 const config = loadWorkerConfig();
 const branchPrefix = toGitBranchPrefix(config.botName);
@@ -259,7 +265,7 @@ async function publishRepoChanges(options: {
   };
 }
 
-export async function runJob(
+async function runJobInternal(
   events: BotEventSink,
   job: JobSpec,
   registry: JobRegistry,
@@ -690,6 +696,34 @@ export async function runJob(
     // await rm(paths.root, { recursive: true, force: true });
     await enforceJobCleanup(registry).catch((err) => {
       logger.warn({ err, jobId: job.jobId }, 'Failed to enforce job cleanup');
+    });
+  }
+}
+
+function toTelemetryCommandCategory(type: JobSpec['type']): TelemetryCommandCategory {
+  return type.toLowerCase() as TelemetryCommandCategory;
+}
+
+export async function runJob(
+  events: BotEventSink,
+  job: JobSpec,
+  registry: JobRegistry,
+  telemetry: SniptailTelemetry = NOOP_TELEMETRY,
+): Promise<JobResult> {
+  const startedAt = Date.now();
+  let status: 'success' | 'failure' = 'failure';
+  try {
+    const result = await runJobInternal(events, job, registry);
+    status = result.status === 'ok' ? 'success' : 'failure';
+    return result;
+  } finally {
+    telemetry.capture({
+      name: 'sniptail_command_completed',
+      commandCategory: toTelemetryCommandCategory(job.type),
+      providerType: job.type === 'RUN' ? 'none' : (job.agent ?? config.primaryAgent),
+      channelProvider: job.channel.provider,
+      status,
+      durationBucket: bucketTelemetryDuration(Date.now() - startedAt),
     });
   }
 }
