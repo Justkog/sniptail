@@ -143,6 +143,3 @@ export async function createSniptailTelemetry(
   }
 }
 
-export function resetTelemetryStateForTests(): void {
-  warnedMissingProjectKey = false;
-}
