@@ -8,7 +8,7 @@ vi.mock('posthog-node', () => ({
   PostHog: vi.fn(function MockPostHog() {
     return {
       capture,
-      _shutdown: shutdown,
+      shutdown,
     };
   }),
 }));
