@@ -19,6 +19,11 @@ import { assertGitCommitIdentityPreflight } from './git/gitPreflight.js';
 import { assertLocalAgentPreflight } from './preflight/agentPreflight.js';
 import { createWorkerMailboxPriorityLane } from './queue/workerMailboxPriorityLane.js';
 import { syncRunActionMetadata } from './repos/syncRunActionMetadata.js';
+import {
+  createSniptailTelemetry,
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 export type WorkerRuntimeHandle = {
   close(): Promise<void>;
@@ -26,6 +31,8 @@ export type WorkerRuntimeHandle = {
 
 export type StartWorkerRuntimeOptions = {
   queueRuntime?: QueueTransportRuntime;
+  telemetry?: SniptailTelemetry | false;
+  captureRuntimeStarted?: boolean;
 };
 
 function getWorkerMailboxQueueName(workerId: string): string {
@@ -46,6 +53,15 @@ export async function startWorkerRuntime(
   options: StartWorkerRuntimeOptions = {},
 ): Promise<WorkerRuntimeHandle> {
   const config = loadWorkerConfig();
+  const telemetryEnabled = config.telemetryEnabled && options.telemetry !== false;
+  const ownsTelemetry = telemetryEnabled && options.telemetry === undefined;
+  const telemetry = !telemetryEnabled
+    ? NOOP_TELEMETRY
+    : typeof options.telemetry === 'object'
+      ? options.telemetry
+      : ownsTelemetry
+        ? await createSniptailTelemetry({ enabled: true, runtimeMode: 'worker' })
+        : NOOP_TELEMETRY;
   if (config.queueDriver === 'inproc' && !options.queueRuntime) {
     throw new Error(
       'queue_driver="inproc" requires a shared local runtime. Use "sniptail local" instead of running "sniptail worker" directly.',
@@ -123,7 +139,7 @@ export async function startWorkerRuntime(
     concurrency: config.jobConcurrency,
     handler: async (job) => {
       logger.info({ jobId: job.data.jobId }, 'Worker picked up job');
-      await managedJobLane.runShared(() => runJob(botEvents, job.data, jobRegistry));
+      await managedJobLane.runShared(() => runJob(botEvents, job.data, jobRegistry, telemetry));
     },
     onFailed: (job, err) => {
       logger.error({ jobId: job?.data?.jobId, err }, 'Job failed');
@@ -151,7 +167,7 @@ export async function startWorkerRuntime(
         await managedJobLane.pauseShared().catch((err) => {
           logger.warn({ err, workerId: config.workerId }, 'Failed to pause shared jobs');
         });
-        await managedJobLane.runMailbox(() => runJob(botEvents, job.data, jobRegistry));
+        await managedJobLane.runMailbox(() => runJob(botEvents, job.data, jobRegistry, telemetry));
       },
       onFailed: async (job, err) => {
         logger.error(
@@ -247,7 +263,7 @@ export async function startWorkerRuntime(
             logger.warn({ err, workerId: config.workerId }, 'Failed to pause shared worker events');
           });
           await workerEventLane!.runMailbox(() =>
-            handleWorkerEvent(job.data, jobRegistry, botEvents),
+            handleWorkerEvent(job.data, jobRegistry, botEvents, telemetry),
           );
         },
         onFailed: async (job, err) => {
@@ -293,11 +309,11 @@ export async function startWorkerRuntime(
         );
         if (workerEventLane) {
           await workerEventLane.runShared(() =>
-            handleWorkerEvent(job.data, jobRegistry, botEvents),
+            handleWorkerEvent(job.data, jobRegistry, botEvents, telemetry),
           );
           return;
         }
-        await handleWorkerEvent(job.data, jobRegistry, botEvents);
+        await handleWorkerEvent(job.data, jobRegistry, botEvents, telemetry);
       },
       onFailed: (job, err) => {
         logger.error({ requestId: job?.data?.requestId, err }, 'Worker event failed');
@@ -333,6 +349,10 @@ export async function startWorkerRuntime(
     });
   }
 
+  if (options.captureRuntimeStarted !== false) {
+    telemetry.capture({ name: 'sniptail_runtime_started' });
+  }
+
   return {
     async close() {
       const activeConsumers = consumers.splice(0, consumers.length);
@@ -342,6 +362,9 @@ export async function startWorkerRuntime(
       await workerCapabilityPublisher.close();
       if (closeQueueRuntimeOnShutdown) {
         await queueRuntime.close();
+      }
+      if (ownsTelemetry) {
+        await telemetry.shutdown();
       }
     },
   };

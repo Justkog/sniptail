@@ -19,6 +19,10 @@ import {
   addRepoCatalogEntryFromInput,
   removeRepoCatalogEntryFromInput,
 } from './repos/repoCatalogMutationService.js';
+import {
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 const config = loadWorkerConfig();
 
@@ -44,11 +48,12 @@ export async function handleWorkerEvent(
   event: WorkerEvent,
   registry: JobRegistry,
   botEvents: BotEventSink,
+  telemetry: SniptailTelemetry = NOOP_TELEMETRY,
 ): Promise<void> {
   const notifier = createNotifier(botEvents);
   switch (event.type) {
     case 'repos.bootstrap': {
-      await runBootstrap(botEvents, event.payload);
+      await runBootstrap(botEvents, event.payload, telemetry);
       return;
     }
     case 'jobs.clear': {
@@ -145,7 +150,7 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.start': {
-      void runAgentSessionStart({ event, config, notifier, botEvents }).catch((err) => {
+      void runAgentSessionStart({ event, config, notifier, botEvents, telemetry }).catch((err) => {
         logger.error(
           { err, sessionId: event.payload.sessionId },
           'Background agent session prompt failed',
@@ -154,12 +159,14 @@ export async function handleWorkerEvent(
       return;
     }
     case 'agent.session.message': {
-      void runAgentSessionMessage({ event, config, notifier, botEvents }).catch((err) => {
-        logger.error(
-          { err, sessionId: event.payload.sessionId },
-          'Background agent session follow-up failed',
-        );
-      });
+      void runAgentSessionMessage({ event, config, notifier, botEvents, telemetry }).catch(
+        (err) => {
+          logger.error(
+            { err, sessionId: event.payload.sessionId },
+            'Background agent session follow-up failed',
+          );
+        },
+      );
       return;
     }
     case 'agent.prompt.stop': {

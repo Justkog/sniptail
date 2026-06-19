@@ -12,6 +12,11 @@ import type { ChannelRef } from '@sniptail/core/types/channel.js';
 import type { BotEventSink } from './channels/botEventSink.js';
 import { resolveWorkerChannelAdapter } from './channels/workerChannelAdapters.js';
 import { createNotifier } from './channels/createNotifier.js';
+import {
+  bucketTelemetryDuration,
+  NOOP_TELEMETRY,
+  type SniptailTelemetry,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 const config = loadWorkerConfig();
 
@@ -34,7 +39,13 @@ function buildRepoDisplay(
   return `${repoLabel} (${repoUrl})`;
 }
 
-export async function runBootstrap(events: BotEventSink, request: BootstrapRequest): Promise<void> {
+export async function runBootstrap(
+  events: BotEventSink,
+  request: BootstrapRequest,
+  telemetry: SniptailTelemetry = NOOP_TELEMETRY,
+): Promise<void> {
+  const startedAt = Date.now();
+  let status: 'success' | 'failure' = 'failure';
   const responseChannel = request.channel.channelId;
   const userPrefix = formatUserMention(request.channel.userId);
   const notifier = createNotifier(events);
@@ -116,11 +127,21 @@ export async function runBootstrap(events: BotEventSink, request: BootstrapReque
       repoKey: request.repoKey,
     });
     await notifier.postMessage(channelRef, rendered.text, rendered.options);
+    status = 'success';
   } catch (err) {
     logger.error({ err, requestId: request.requestId }, 'Failed to bootstrap repository');
     await notifier.postMessage(
       channelRef,
       `${userPrefix}Failed to create repository: ${(err as Error).message}`,
     );
+  } finally {
+    telemetry.capture({
+      name: 'sniptail_command_completed',
+      commandCategory: 'bootstrap',
+      providerType: 'none',
+      channelProvider: request.channel.provider,
+      status,
+      durationBucket: bucketTelemetryDuration(Date.now() - startedAt),
+    });
   }
 }

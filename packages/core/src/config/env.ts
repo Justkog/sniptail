@@ -275,6 +275,13 @@ function loadCoreConfigFromToml(
   const repoAllowlistPath = resolvePathValue('REPO_ALLOWLIST_PATH', coreToml?.repo_allowlist_path, {
     required: false,
   });
+  const telemetryConfigured = parseTomlOptionalBoolean(coreToml?.telemetry, 'core.telemetry');
+  const telemetryDisabled = resolveOptionalFlagFromSources(
+    'SNIPTAIL_TELEMETRY_DISABLED',
+    undefined,
+    false,
+  );
+  const telemetryEnabled = !telemetryDisabled && telemetryConfigured !== false;
   const queueDriver = resolveQueueDriver(coreToml?.queue_driver);
   const registryDriver = resolveRegistryDriver(registryToml?.db);
   const registryPgUrl = resolveRegistryPgUrl(registryDriver, registryToml?.pg_url);
@@ -297,6 +304,7 @@ function loadCoreConfigFromToml(
     );
   }
   return {
+    telemetryEnabled,
     ...(repoAllowlistPath ? { repoAllowlistPath } : {}),
     repoAllowlist: {},
     queueDriver,

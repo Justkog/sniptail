@@ -10,6 +10,10 @@ import { runJob } from '../pipeline.js';
 import { assertDockerPreflight } from '../docker/dockerPreflight.js';
 import { assertGitCommitIdentityPreflight } from '../git/gitPreflight.js';
 import { assertLocalAgentPreflight } from '../preflight/agentPreflight.js';
+import {
+  createSniptailTelemetry,
+  NOOP_TELEMETRY,
+} from '@sniptail/core/telemetry/sniptailTelemetry.js';
 
 function printUsage() {
   process.stderr.write('Usage: run-job <path-to-job.json>\\n');
@@ -42,11 +46,15 @@ async function main() {
   await assertLocalAgentPreflight(config, selectedAgent);
   await assertGitCommitIdentityPreflight();
 
+  const telemetry = config.telemetryEnabled
+    ? await createSniptailTelemetry({ enabled: true, runtimeMode: 'cli' })
+    : NOOP_TELEMETRY;
+  telemetry.capture({ name: 'sniptail_runtime_started' });
   const events = new StdoutBotEventSink();
   const registry = new CollectingJobRegistry({ seedJob: job });
   let resultStatus: 'ok' | 'failed' | undefined;
   try {
-    const result = await runJob(events, job, registry);
+    const result = await runJob(events, job, registry, telemetry);
     resultStatus = result.status;
     if (result.status !== 'ok') {
       process.exitCode = 1;
@@ -69,6 +77,7 @@ async function main() {
         process.stdout.once('drain', resolve);
       });
     }
+    await telemetry.shutdown();
   }
 }
 

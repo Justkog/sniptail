@@ -64,6 +64,7 @@ export function applyRequiredEnv(overrides: Record<string, string | undefined> =
     'SNIPTAIL_REGISTRY_NAMESPACE',
     'PRIMARY_AGENT',
     'SNIPTAIL_CHANNELS',
+    'SNIPTAIL_TELEMETRY_DISABLED',
     'DISCORD_BOT_TOKEN',
     'DISCORD_APP_ID',
     'DISCORD_GUILD_ID',
