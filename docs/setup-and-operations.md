@@ -28,18 +28,6 @@ When ACP is used, Sniptail launches the configured ACP stdio command from the wo
 
 ## Installation
 
-### Anonymous telemetry
-
-Anonymous telemetry is enabled by default. Disable it for every Sniptail process with:
-
-```bash
-SNIPTAIL_TELEMETRY_DISABLED=1
-```
-
-Alternatively, set `telemetry = false` in the `[core]` section of both bot and worker TOML files. In `sniptail local`, telemetry is disabled if either configuration disables it.
-
-The PostHog project ingestion key and host are part of the Sniptail build and are not operator credentials. Do not add a PostHog personal API key. See [anonymous-telemetry.md](anonymous-telemetry.md) for the complete data policy.
-
 ### Operators (prebuilt release + `sniptail` CLI)
 
 This path is intended for people who want to run Sniptail, not hack on it locally. You'll use `install.sh` + the `sniptail` CLI (no `pnpm` required).
@@ -414,6 +402,18 @@ SNIPTAIL_TARBALL=/path/to/sniptail-vX.Y.Z-linux-x64.tar.xz ./install.sh
 - Follow-ups, stop/steer controls, permission decisions, and question answers are routed back to the owner worker mailbox.
 - If the owner worker becomes stale, the session remains active with a stale-owner condition until the worker returns or an operator clears the session.
 - Startup diagnostics for mailbox-enabled workers include worker ID, queue driver, registry driver, registry namespace, mailbox queue name, and active session count.
+
+### Anonymous telemetry
+
+Anonymous telemetry is enabled by default. You can choose to disable it for every Sniptail process with:
+
+```bash
+SNIPTAIL_TELEMETRY_DISABLED=1
+```
+
+Alternatively, set `telemetry = false` in the `[core]` section of both bot and worker TOML files. In `sniptail local`, telemetry is disabled if either configuration disables it.
+
+The PostHog project ingestion key and host are part of the Sniptail build and are not operator credentials. Do not add a PostHog personal API key. See [anonymous-telemetry.md](anonymous-telemetry.md) for the complete data policy.
 
 ## Debug logging
 
