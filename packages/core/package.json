@@ -34,7 +34,7 @@
     "bullmq": "^5.51.0",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
-    "handlebars": "^4.7.9",
+    "handlebars": "^4.7.10",
     "pg": "^8.16.3",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.3",
