@@ -56,11 +56,13 @@ export async function fetchDiscordThreadContext(
     if (!channel || !channel.isTextBased()) return undefined;
     if (requireThread && !channel.isThread()) return undefined;
     const messages = await channel.messages.fetch({ limit: 50 });
-    const filtered = Array.from(messages.values())
+    const allHistory = Array.from(messages.values())
       .filter((message) => message.id !== excludeMessageId)
-      // .filter((message) => message.content && !message.author?.bot)
-      .slice(0, maxThreadHistoryMessages)
       .reverse();
+    const allFiltered = allHistory.filter((message) => message.content);
+    const filtered = allFiltered
+      // .filter((message) => message.content && !message.author?.bot)
+      .slice(-maxThreadHistoryMessages);
 
     const snapshotMessages = filtered
       .map((message) => {
@@ -88,6 +90,7 @@ export async function fetchDiscordThreadContext(
           threadId: channelId,
           messages: [],
           rendered: '',
+          coversThreadRoot: messages.size < 50 && allHistory.length === 0,
           cursor: {
             provider: 'discord',
             channelId,
@@ -101,6 +104,11 @@ export async function fetchDiscordThreadContext(
     const joined = renderDiscordThreadContext(snapshotMessages);
     const rendered = truncateDiscordThreadContext(joined);
     if (!structured) return rendered;
+    const coversThreadRoot =
+      messages.size < 50 &&
+      allHistory.length <= maxThreadHistoryMessages &&
+      snapshotMessages.length === allHistory.length &&
+      joined.length <= maxThreadHistoryChars;
     const cursorSource = excludeMessageId ?? snapshotMessages.at(-1)?.externalId;
     const cursor: JobThreadContextCursor | undefined = cursorSource
       ? {
@@ -118,6 +126,7 @@ export async function fetchDiscordThreadContext(
       threadId: channelId,
       messages: snapshotMessages,
       rendered,
+      coversThreadRoot,
       ...(cursor ? { cursor } : {}),
     };
     return { rendered, snapshot };

@@ -75,7 +75,7 @@ export async function runAgentJob(options: {
   const context = buildContinuationContext(
     job,
     getAgentThreadContextCursor(continuation.sourceJob, agentId),
-    latestChannel,
+    Boolean(agentThreadId),
   );
   const resolvedPrompt =
     promptOverride ??

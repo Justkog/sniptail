@@ -46,6 +46,7 @@ function buildJob(): JobSpec {
         },
       ],
       rendered: 'U1: old\nU2: new',
+      coversThreadRoot: true,
       cursor: buildCursor('111.200'),
     },
   };
@@ -58,7 +59,7 @@ describe('buildContinuationContext', () => {
     expect(result.mode).toBe('delta');
     expect(result.rendered).toBe('U2: new');
     expect(result.messageCount).toBe(1);
-    expect(result.cursor?.messageId).toBe('111.300');
+    expect(result.cursor?.messageId).toBe('111.200');
   });
 
   it('uses a full bounded fallback when a provider cursor is unavailable', () => {
@@ -67,6 +68,7 @@ describe('buildContinuationContext', () => {
     expect(result.mode).toBe('full');
     expect(result.reason).toBe('missing_cursor');
     expect(result.rendered).toBe('U1: old\nU2: new');
+    expect(result.cursor?.messageId).toBe('111.200');
   });
 
   it('uses a full fallback for a cursor from another channel thread', () => {
@@ -87,6 +89,67 @@ describe('buildContinuationContext', () => {
     expect(result.mode).toBe('full');
     expect(result.reason).toBe('legacy_snapshot_missing');
     expect(result.rendered).toBe('U2: legacy context');
-    expect(result.cursor?.messageId).toBe('111.300');
+    expect(result.cursor?.messageId).toBe('111.100');
+  });
+
+  it('retains the verified cursor when the retained snapshot has an unknown gap', () => {
+    const job = buildJob();
+    if (!job.threadContextSnapshot) throw new Error('Expected thread snapshot');
+    job.threadContextSnapshot = {
+      ...job.threadContextSnapshot,
+      messages: [job.threadContextSnapshot.messages[1]!],
+      rendered: 'U2: new',
+      coversThreadRoot: false,
+    };
+
+    const result = buildContinuationContext(job, buildCursor('111.050'));
+
+    expect(result.mode).toBe('full');
+    expect(result.reason).toBe('uncertain_coverage');
+    expect(result.rendered).toBe('U2: new');
+    expect(result.cursor?.messageId).toBe('111.050');
+  });
+
+  it('does not treat a cursor match inside an incomplete snapshot as sufficient coverage', () => {
+    const job = buildJob();
+    if (!job.threadContextSnapshot) throw new Error('Expected thread snapshot');
+    job.threadContextSnapshot = {
+      ...job.threadContextSnapshot,
+      coversThreadRoot: false,
+    };
+
+    const result = buildContinuationContext(job, buildCursor('111.100'));
+
+    expect(result.mode).toBe('full');
+    expect(result.reason).toBe('uncertain_coverage');
+    expect(result.rendered).toBe('U1: old\nU2: new');
+    expect(result.cursor?.messageId).toBe('111.100');
+  });
+
+  it('does not advance past new messages omitted by the character cap', () => {
+    const job = buildJob();
+    if (!job.threadContextSnapshot) throw new Error('Expected thread snapshot');
+    job.threadContextSnapshot = {
+      ...job.threadContextSnapshot,
+      messages: [
+        job.threadContextSnapshot.messages[0]!,
+        {
+          externalId: '111.200',
+          orderKey: '111.200',
+          author: 'U2',
+          text: 'x'.repeat(5000),
+        },
+      ],
+      rendered: `...${'x'.repeat(4000)}`,
+      coversThreadRoot: false,
+      cursor: buildCursor('111.200'),
+    };
+
+    const result = buildContinuationContext(job, buildCursor('111.100'));
+
+    expect(result.mode).toBe('full');
+    expect(result.reason).toBe('uncertain_coverage');
+    expect(result.rendered).toBe(`...${'x'.repeat(4000)}`);
+    expect(result.cursor?.messageId).toBe('111.100');
   });
 });

@@ -851,6 +851,7 @@ describe('worker/pipeline runJob', () => {
           },
         ],
         rendered: 'U2: Earlier context',
+        coversThreadRoot: true,
         cursor: {
           provider: 'slack' as const,
           channelId: 'C1',
@@ -940,8 +941,8 @@ describe('worker/pipeline runJob', () => {
         provider: 'slack',
         channelId: 'C1',
         threadId: '123.456',
-        messageId: '123.500',
-        orderKey: '123.500',
+        messageId: '123.450',
+        orderKey: '123.450',
       },
     });
     expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');

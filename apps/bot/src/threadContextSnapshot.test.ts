@@ -29,6 +29,7 @@ describe('structured thread context snapshots', () => {
       '111.100',
       '111.200',
     ]);
+    expect(result?.snapshot.coversThreadRoot).toBe(true);
     expect(result?.snapshot.cursor?.messageId).toBe('111.300');
   });
 
@@ -68,6 +69,7 @@ describe('structured thread context snapshots', () => {
 
     expect(result?.rendered).toBe('user-1: old request\nuser-2: new context');
     expect(result?.snapshot.messages.map((message) => message.externalId)).toEqual(['100', '200']);
+    expect(result?.snapshot.coversThreadRoot).toBe(true);
     expect(result?.snapshot.cursor?.messageId).toBe('300');
   });
 });

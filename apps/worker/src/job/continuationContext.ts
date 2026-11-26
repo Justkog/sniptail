@@ -1,4 +1,3 @@
-import type { ChannelContext } from '@sniptail/core/types/channel.js';
 import type {
   AgentId,
   JobSpec,
@@ -13,7 +12,12 @@ export type ContinuationContextMode = 'delta' | 'full' | 'empty';
 
 export type ContinuationContextResult = {
   mode: ContinuationContextMode;
-  reason: 'cursor' | 'missing_cursor' | 'incompatible_cursor' | 'legacy_snapshot_missing';
+  reason:
+    | 'cursor'
+    | 'missing_cursor'
+    | 'incompatible_cursor'
+    | 'uncertain_coverage'
+    | 'legacy_snapshot_missing';
   rendered?: string;
   messageCount: number;
   cursor?: JobThreadContextCursor;
@@ -27,23 +31,6 @@ function sameChannel(left: JobThreadContextCursor, right: JobThreadContextSnapsh
   );
 }
 
-function compareNumericParts(left: string, right: string): number {
-  const [leftWhole, leftFraction = ''] = left.split('.', 2);
-  const [rightWhole, rightFraction = ''] = right.split('.', 2);
-  const wholeComparison = BigInt(leftWhole || '0') - BigInt(rightWhole || '0');
-  if (wholeComparison !== 0n) return wholeComparison < 0n ? -1 : 1;
-  const width = Math.max(leftFraction.length, rightFraction.length);
-  return leftFraction.padEnd(width, '0').localeCompare(rightFraction.padEnd(width, '0'));
-}
-
-function compareOrderKeys(left: string, right: string): number {
-  try {
-    return compareNumericParts(left, right);
-  } catch {
-    return left.localeCompare(right);
-  }
-}
-
 function truncate(rendered: string): string {
   if (rendered.length <= maxContinuationHistoryChars) return rendered;
   return `...${rendered.slice(-maxContinuationHistoryChars)}`;
@@ -53,50 +40,30 @@ function render(messages: JobThreadContextMessage[]): string {
   return messages.map((message) => `${message.author}: ${message.text}`).join('\n');
 }
 
-function buildCursorFromChannel(
-  job: JobSpec,
-  snapshot: JobThreadContextSnapshot | undefined,
-  channel: ChannelContext,
-): JobThreadContextCursor | undefined {
-  const messageId = channel.requestMessageId;
-  if (messageId) {
-    return {
-      provider: snapshot?.provider ?? channel.provider,
-      channelId: snapshot?.channelId ?? channel.channelId,
-      threadId: snapshot?.threadId ?? channel.threadId ?? channel.channelId,
-      messageId,
-      orderKey: messageId,
-    };
-  }
-  return snapshot?.cursor;
-}
-
-export function buildCurrentContinuationCursor(
-  job: JobSpec,
-  channel: ChannelContext = job.channel,
-): JobThreadContextCursor | undefined {
-  return buildCursorFromChannel(job, job.threadContextSnapshot, channel);
-}
-
 export function buildContinuationContext(
   job: JobSpec,
   sourceCursor: JobThreadContextCursor | undefined,
-  currentChannel: ChannelContext = job.channel,
+  providerSessionResumed = true,
 ): ContinuationContextResult {
   const snapshot = job.threadContextSnapshot;
-  const cursor = buildCurrentContinuationCursor(job, currentChannel);
 
   if (!snapshot) {
+    const retainSourceCursor =
+      providerSessionResumed &&
+      sourceCursor?.provider === job.channel.provider &&
+      sourceCursor.channelId === job.channel.channelId &&
+      sourceCursor.threadId === (job.channel.threadId ?? job.channel.channelId);
     return {
       mode: job.threadContext ? 'full' : 'empty',
       reason: 'legacy_snapshot_missing',
       ...(job.threadContext ? { rendered: job.threadContext } : {}),
       messageCount: job.threadContext ? 1 : 0,
-      ...(cursor ? { cursor } : {}),
+      ...(retainSourceCursor && sourceCursor ? { cursor: sourceCursor } : {}),
     };
   }
 
   if (!sourceCursor) {
+    const cursor = snapshot.coversThreadRoot ? snapshot.cursor : undefined;
     return {
       mode: snapshot.rendered ? 'full' : 'empty',
       reason: 'missing_cursor',
@@ -112,20 +79,53 @@ export function buildContinuationContext(
       reason: 'incompatible_cursor',
       ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
       messageCount: snapshot.messages.length,
-      ...(cursor ? { cursor } : {}),
     };
   }
 
-  const messages = snapshot.messages.filter(
-    (message) => compareOrderKeys(message.orderKey, sourceCursor.orderKey) > 0,
+  if (!snapshot.coversThreadRoot) {
+    return {
+      mode: snapshot.rendered ? 'full' : 'empty',
+      reason: 'uncertain_coverage',
+      ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
+      messageCount: snapshot.messages.length,
+      cursor: sourceCursor,
+    };
+  }
+
+  const sourceIndex = snapshot.messages.findIndex(
+    (message) => message.externalId === sourceCursor.messageId,
   );
-  const rendered = render(messages);
+  const sourceMatchesSnapshotCursor =
+    snapshot.cursor?.messageId === sourceCursor.messageId &&
+    snapshot.cursor?.orderKey === sourceCursor.orderKey;
+  if (sourceIndex < 0 && !sourceMatchesSnapshotCursor) {
+    return {
+      mode: snapshot.rendered ? 'full' : 'empty',
+      reason: 'cursor',
+      ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
+      messageCount: snapshot.messages.length,
+      ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
+    };
+  }
+
+  const messages = sourceIndex >= 0 ? snapshot.messages.slice(sourceIndex + 1) : [];
+  const delta = render(messages);
+  if (delta.length > maxContinuationHistoryChars) {
+    return {
+      mode: snapshot.rendered ? 'full' : 'empty',
+      reason: 'uncertain_coverage',
+      ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
+      messageCount: messages.length,
+      ...(sourceCursor ? { cursor: sourceCursor } : {}),
+    };
+  }
+  const rendered = truncate(delta);
   return {
     mode: rendered ? 'delta' : 'empty',
     reason: 'cursor',
     ...(rendered ? { rendered: truncate(rendered) } : {}),
     messageCount: messages.length,
-    ...(cursor ? { cursor } : {}),
+    ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
   };
 }
 

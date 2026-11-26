@@ -58,6 +58,7 @@ export type JobThreadContextSnapshot = {
   threadId: string;
   messages: JobThreadContextMessage[];
   rendered: string;
+  coversThreadRoot?: boolean;
   cursor?: JobThreadContextCursor;
 };
 

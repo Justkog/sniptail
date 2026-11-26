@@ -310,13 +310,20 @@ describe('runAgentJob', () => {
           threadId: 'thread-1',
           messages: [
             {
+              externalId: '111.100',
+              orderKey: '111.100',
+              author: 'U1',
+              text: 'old context',
+            },
+            {
               externalId: '111.150',
               orderKey: '111.150',
               author: 'U2',
               text: 'new context',
             },
           ],
-          rendered: 'U2: new context',
+          rendered: 'U1: old context\nU2: new context',
+          coversThreadRoot: true,
           cursor: {
             provider: 'slack',
             channelId: 'C123',
@@ -341,13 +348,20 @@ describe('runAgentJob', () => {
         threadId: 'thread-1',
         messages: [
           {
+            externalId: '111.100',
+            orderKey: '111.100',
+            author: 'U1',
+            text: 'old context',
+          },
+          {
             externalId: '111.150',
             orderKey: '111.150',
             author: 'U2',
             text: 'new context',
           },
         ],
-        rendered: 'U2: new context',
+        rendered: 'U1: old context\nU2: new context',
+        coversThreadRoot: true,
         cursor: {
           provider: 'slack',
           channelId: 'C123',
@@ -389,6 +403,6 @@ describe('runAgentJob', () => {
     expect(options?.promptOverride).toContain('Continue the existing ASK task');
     expect(options?.promptOverride).toContain('New channel messages');
     expect(options?.promptOverride).not.toContain('Repositories are located under the job root:');
-    expect(result.threadContextCursor?.messageId).toBe('111.200');
+    expect(result.threadContextCursor?.messageId).toBe('111.150');
   });
 });

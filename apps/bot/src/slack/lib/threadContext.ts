@@ -67,6 +67,10 @@ export async function fetchSlackThreadContext(
     const messages =
       (
         response as {
+          has_more?: boolean;
+          response_metadata?: {
+            next_cursor?: string;
+          };
           messages?: Array<{
             ts?: string;
             text?: string;
@@ -76,9 +80,9 @@ export async function fetchSlackThreadContext(
           }>;
         }
       ).messages ?? [];
-    const filtered = messages
-      .filter((message) => message.ts && message.text)
-      .filter((message) => message.ts !== excludeTs)
+    const allHistory = messages.filter((message) => message.ts && message.ts !== excludeTs);
+    const allFiltered = allHistory.filter((message) => message.text);
+    const filtered = allFiltered
       // .filter((message) => message.subtype !== 'bot_message')
       .slice(-maxThreadHistoryMessages);
     const snapshotMessages = filtered
@@ -107,6 +111,10 @@ export async function fetchSlackThreadContext(
           threadId: threadTs,
           messages: [],
           rendered: '',
+          coversThreadRoot:
+            !response.has_more &&
+            !response.response_metadata?.next_cursor &&
+            allHistory.length === 0,
           cursor: {
             provider: 'slack',
             channelId,
@@ -120,6 +128,12 @@ export async function fetchSlackThreadContext(
     const joined = renderSlackThreadContext(snapshotMessages);
     const rendered = truncateSlackThreadContext(joined);
     if (!structured) return rendered;
+    const coversThreadRoot =
+      !response.has_more &&
+      !response.response_metadata?.next_cursor &&
+      allHistory.length <= maxThreadHistoryMessages &&
+      snapshotMessages.length === allHistory.length &&
+      joined.length <= maxThreadHistoryChars;
     const cursorMessage = messages.find((message) => message.ts === excludeTs && message.ts);
     const cursorSource = cursorMessage?.ts ?? snapshotMessages.at(-1);
     const cursor: JobThreadContextCursor | undefined =
@@ -147,6 +161,7 @@ export async function fetchSlackThreadContext(
       threadId: threadTs,
       messages: snapshotMessages,
       rendered,
+      coversThreadRoot,
       ...(cursor ? { cursor } : {}),
     };
     return { rendered, snapshot };
