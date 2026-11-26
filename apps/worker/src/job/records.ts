@@ -1,12 +1,10 @@
 import { logger } from '@sniptail/core/logger.js';
 import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
 import type { JobRegistry } from './jobRegistry.js';
 
 export type AgentContinuation = {
   threadId?: string;
-  sourceRecord?: JobRecord;
   sourceJob?: JobSpec;
 };
 
@@ -46,7 +44,6 @@ export async function resolveAgentContinuation(
       if (resumeThreadId) {
         return {
           threadId: resumeThreadId,
-          ...(record ? { sourceRecord: record } : {}),
           ...(record?.job ? { sourceJob: record.job } : {}),
         };
       }
@@ -69,7 +66,6 @@ export async function resolveAgentContinuation(
     const resolvedThreadId = record?.job ? getAgentThreadId(record.job, agentId) : undefined;
     return {
       ...(resolvedThreadId ? { threadId: resolvedThreadId } : {}),
-      ...(record ? { sourceRecord: record } : {}),
       ...(record?.job ? { sourceJob: record.job } : {}),
     };
   } catch (err) {

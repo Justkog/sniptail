@@ -7,6 +7,7 @@ import {
   buildReviewPrompt,
 } from './prompts/index.js';
 import type { JobSpec, JobType } from '../types/job.js';
+import { toSlackCommandPrefix } from '../utils/slack.js';
 
 export type LineagePromptWarning =
   | {
@@ -108,24 +109,22 @@ function renderLineageWarnings(warnings: LineagePromptWarning[]): string {
   return buildLineageWarningSections(warnings).join('\n\n');
 }
 
-function continuationModeContract(type: JobType, sameMode: boolean, gitRef: string): string {
-  if (sameMode) {
-    return `Continue the existing ${type} task and preserve its established output contract.`;
-  }
-
+function continuationModeContract(type: JobType, botName: string, gitRef: string): string {
   switch (type) {
     case 'ASK':
-      return 'Switch to ASK mode: answer directly with repository evidence, state unsupported conclusions, explain verification, and write artifacts/report.md.';
+      return 'ASK mode: treat repository contents as the source of truth. Do not modify repo files; only write artifacts/report.md. Answer directly with evidence, state what is unsupported, and explain how to verify.';
     case 'EXPLORE':
-      return 'Switch to EXPLORE mode: present viable options, tradeoffs, risks, repository evidence, a recommendation, and write artifacts/report.md.';
+      return 'EXPLORE mode: treat repository contents as the source of truth. Do not modify repo files; only write artifacts/report.md. Present viable options, tradeoffs, risks, repository evidence, and a concrete recommendation without forcing a strict plan format.';
     case 'IMPLEMENT':
-      return 'Switch to IMPLEMENT mode: make only the requested minimal code changes, add tests only when explicitly requested, add docs when needed, and leave the repositories ready to commit.';
+      return 'IMPLEMENT mode: implement the requested changes with minimal diffs, add tests only when explicitly requested, add docs when needed, and leave the repositories ready to commit.';
     case 'PLAN':
-      return 'Switch to PLAN mode: inspect first, ask 1-3 blocking questions instead of writing a plan if intent is ambiguous, then write artifacts/plan.md with summary, assumptions, steps, files, verification, and risks.';
+      return 'PLAN mode: treat repository contents as the source of truth. Do not modify repo files; only write artifacts/plan.md. If intent is ambiguous or required choices are unresolved, ask 1-3 focused questions in a numbered list only, then stop without plan content. Otherwise write one unified plan covering summary, assumptions, steps, files, verification, risks, and mitigations.';
     case 'REVIEW':
-      return `Switch to REVIEW mode: do not modify repositories; compare the current branch with base ref ${gitRef}, assess risks and recommendations, and write artifacts/report.md.`;
-    case 'MENTION':
-      return 'Switch to MENTION mode: reply concisely and use repository files only when the request clearly needs them.';
+      return `REVIEW mode: do not modify repo files; only write artifacts/report.md. Compare the current branch with base ref ${gitRef}; note if a branch or diff is absent, assess risks and recommendations, and cite relevant files or symbols.`;
+    case 'MENTION': {
+      const commandPrefix = toSlackCommandPrefix(botName);
+      return `MENTION mode: reply in a friendly, non-technical way by default and keep it concise. Use repository files only when clearly needed; otherwise answer from general knowledge. If the user asks what you can do, mention /${commandPrefix}-ask, /${commandPrefix}-explore, /${commandPrefix}-implement, and /${commandPrefix}-usage.`;
+    }
     case 'RUN':
       return 'Continue with the requested run action.';
     default:
@@ -136,25 +135,15 @@ function continuationModeContract(type: JobType, sameMode: boolean, gitRef: stri
 export function buildContinuationPromptForJob(input: {
   job: JobSpec;
   botName: string;
-  previousJobType?: JobType;
   workDir: string;
   threadContext?: string;
   threadContextMode: 'delta' | 'full' | 'empty';
   lineageWarnings?: LineagePromptWarning[];
 }): string {
-  const {
-    job,
-    botName,
-    previousJobType,
-    workDir,
-    threadContext,
-    threadContextMode,
-    lineageWarnings = [],
-  } = input;
-  const sameMode = previousJobType === job.type;
+  const { job, botName, workDir, threadContext, threadContextMode, lineageWarnings = [] } = input;
   const sections = [
     `You are ${botName}.`,
-    continuationModeContract(job.type, sameMode, job.gitRef),
+    continuationModeContract(job.type, botName, job.gitRef),
     `Use this working directory for the current turn: ${workDir}`,
   ];
 

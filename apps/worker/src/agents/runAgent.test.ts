@@ -400,7 +400,10 @@ describe('runAgentJob', () => {
       | { promptOverride?: string; resumeThreadId?: string }
       | undefined;
     expect(options?.resumeThreadId).toBe('thread-1');
-    expect(options?.promptOverride).toContain('Continue the existing ASK task');
+    expect(options?.promptOverride).toContain('ASK mode:');
+    expect(options?.promptOverride).toContain(
+      'Do not modify repo files; only write artifacts/report.md.',
+    );
     expect(options?.promptOverride).toContain('New channel messages');
     expect(options?.promptOverride).not.toContain('Repositories are located under the job root:');
     expect(result.threadContextCursor?.messageId).toBe('111.150');

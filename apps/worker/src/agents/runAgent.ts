@@ -83,7 +83,6 @@ export async function runAgentJob(options: {
       ? buildContinuationPromptForJob({
           job,
           botName: config.botName,
-          ...(continuation.sourceJob?.type ? { previousJobType: continuation.sourceJob.type } : {}),
           workDir,
           ...(context.rendered ? { threadContext: context.rendered } : {}),
           threadContextMode: context.mode,
