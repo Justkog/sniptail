@@ -28,6 +28,7 @@ export async function persistUploadSpec(job: JobSpec): Promise<string | null> {
       ...jobSpec,
       requestText: undefined,
       threadContext: undefined,
+      threadContextSnapshot: undefined,
     };
     const sanitizedContextFiles = contextFiles?.map((file) => ({
       originalName: file.originalName,

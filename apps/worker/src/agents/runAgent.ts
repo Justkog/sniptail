@@ -1,13 +1,22 @@
 import { AGENT_DESCRIPTORS } from '@sniptail/core/agents/agentRegistry.js';
-import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
+import type { AgentId, JobSpec, JobThreadContextCursor } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { loadWorkerConfig } from '@sniptail/core/config/config.js';
 import type { buildJobPaths } from '@sniptail/core/jobs/utils.js';
 import { resolve } from 'node:path';
-import { resolveAgentThreadId, resolveMentionWorkingDirectory } from '../job/records.js';
+import { resolveAgentContinuation, resolveMentionWorkingDirectory } from '../job/records.js';
 import type { JobRegistry } from '../job/jobRegistry.js';
 import { appendAgentEventLog, type MaterializedJobContextFile } from '../job/artifacts.js';
 import type { Notifier } from '../channels/notifier.js';
+import {
+  buildContinuationContext,
+  getAgentThreadContextCursor,
+} from '../job/continuationContext.js';
+import {
+  buildContinuationPromptForJob,
+  buildPromptForJobWithLineageWarnings,
+  type LineagePromptWarning,
+} from '@sniptail/core/agents/buildPrompt.js';
 
 type WorkerConfig = ReturnType<typeof loadWorkerConfig>;
 type JobPaths = ReturnType<typeof buildJobPaths>;
@@ -15,6 +24,7 @@ type JobPaths = ReturnType<typeof buildJobPaths>;
 type RunAgentResult = {
   agentId: AgentId;
   result: { threadId?: string; finalResponse?: string };
+  threadContextCursor?: JobThreadContextCursor;
 };
 
 export async function runAgentJob(options: {
@@ -26,6 +36,7 @@ export async function runAgentJob(options: {
   notifier: Notifier;
   currentTurnContextFiles?: MaterializedJobContextFile[];
   promptOverride?: string;
+  lineageWarnings?: LineagePromptWarning[];
   addRequestReaction?: boolean;
 }): Promise<RunAgentResult> {
   const {
@@ -37,6 +48,7 @@ export async function runAgentJob(options: {
     notifier,
     currentTurnContextFiles,
     promptOverride,
+    lineageWarnings = [],
     addRequestReaction = true,
   } = options;
 
@@ -46,12 +58,53 @@ export async function runAgentJob(options: {
 
   logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
 
-  const agentThreadId = await resolveAgentThreadId(job, agentId, registry);
+  const continuation = await resolveAgentContinuation(job, agentId, registry);
+  const agentThreadId = continuation.threadId;
   const mentionWorkDir = await resolveMentionWorkingDirectory(
     job,
     config.repoCacheRoot,
     registry,
     config.jobWorkRoot,
+  );
+  const workDir = job.type === 'MENTION' ? mentionWorkDir : paths.root;
+  const latestRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
+    logger.warn({ err, jobId: job.jobId }, 'Failed to load job record before agent run');
+    return undefined;
+  });
+  const latestChannel = latestRecord?.job?.channel ?? job.channel;
+  const context = buildContinuationContext(
+    job,
+    getAgentThreadContextCursor(continuation.sourceJob, agentId),
+    latestChannel,
+  );
+  const resolvedPrompt =
+    promptOverride ??
+    (agentThreadId
+      ? buildContinuationPromptForJob({
+          job,
+          botName: config.botName,
+          ...(continuation.sourceJob?.type ? { previousJobType: continuation.sourceJob.type } : {}),
+          workDir,
+          ...(context.rendered ? { threadContext: context.rendered } : {}),
+          threadContextMode: context.mode,
+          lineageWarnings,
+        })
+      : buildPromptForJobWithLineageWarnings(job, config.botName, lineageWarnings));
+
+  logger.info(
+    {
+      jobId: job.jobId,
+      agent: agentId,
+      resumed: Boolean(agentThreadId),
+      threadContextMode: context.mode,
+      threadContextReason: context.reason,
+      threadContextMessageCount: context.messageCount,
+      promptLength: resolvedPrompt.length,
+    },
+    'Built coding-agent turn prompt',
+  );
+  const shouldOverrideProviderPrompt = Boolean(
+    promptOverride || agentThreadId || lineageWarnings.length,
   );
   const modelOverride = descriptor.resolveModelConfig(config, job.type);
   const additionalDirectories = Array.from(
@@ -67,11 +120,6 @@ export async function runAgentJob(options: {
   }));
 
   if (addRequestReaction) {
-    const latestRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to load job record before agent run');
-      return undefined;
-    });
-    const latestChannel = latestRecord?.job?.channel ?? job.channel;
     if (latestChannel.requestMessageId) {
       const reactionName = latestChannel.provider === 'discord' ? '💭' : 'thought_balloon';
       try {
@@ -90,48 +138,48 @@ export async function runAgentJob(options: {
     }
   }
 
-  const agentResult = await agent.run(
-    job,
-    job.type === 'MENTION' ? mentionWorkDir : paths.root,
-    env,
-    {
-      botName: config.botName,
-      ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
-      ...(promptOverride ? { promptOverride } : {}),
-      ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
-      ...(modelOverride ? { model: modelOverride.model } : {}),
-      ...(modelOverride?.modelProvider ? { modelProvider: modelOverride.modelProvider } : {}),
-      ...(modelOverride?.modelReasoningEffort
-        ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
-        : {}),
-      ...(additionalDirectories.length ? { additionalDirectories } : {}),
-      onEvent: async (event) => {
-        if (agent.formatEvent) {
-          try {
-            await appendAgentEventLog(paths.logFile, agent.formatEvent(event));
-          } catch (err) {
-            logger.warn({ err }, 'Failed to append agent event to log');
-          }
+  const agentResult = await agent.run(job, workDir, env, {
+    botName: config.botName,
+    ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
+    ...(shouldOverrideProviderPrompt ? { promptOverride: resolvedPrompt } : {}),
+    includeResumeWorkDirNote: false,
+    ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
+    ...(modelOverride ? { model: modelOverride.model } : {}),
+    ...(modelOverride?.modelProvider ? { modelProvider: modelOverride.modelProvider } : {}),
+    ...(modelOverride?.modelReasoningEffort
+      ? { modelReasoningEffort: modelOverride.modelReasoningEffort }
+      : {}),
+    ...(additionalDirectories.length ? { additionalDirectories } : {}),
+    onEvent: async (event) => {
+      if (agent.formatEvent) {
+        try {
+          await appendAgentEventLog(paths.logFile, agent.formatEvent(event));
+        } catch (err) {
+          logger.warn({ err }, 'Failed to append agent event to log');
         }
+      }
 
-        const summary = agent.summarizeEvent ? agent.summarizeEvent(event) : null;
-        if (!summary) return;
+      const summary = agent.summarizeEvent ? agent.summarizeEvent(event) : null;
+      if (!summary) return;
 
-        if (summary.isError) {
-          logger.error({ jobId: job.jobId }, summary.text);
-        } else {
-          logger.info({ jobId: job.jobId }, summary.text);
-        }
-      },
-      ...descriptor.buildRunOptions(config),
-      ...(job.type === 'MENTION'
-        ? {
-            sandboxMode: 'read-only' as const,
-            approvalPolicy: 'on-request' as const,
-          }
-        : {}),
+      if (summary.isError) {
+        logger.error({ jobId: job.jobId }, summary.text);
+      } else {
+        logger.info({ jobId: job.jobId }, summary.text);
+      }
     },
-  );
+    ...descriptor.buildRunOptions(config),
+    ...(job.type === 'MENTION'
+      ? {
+          sandboxMode: 'read-only' as const,
+          approvalPolicy: 'on-request' as const,
+        }
+      : {}),
+  });
 
-  return { agentId, result: agentResult };
+  return {
+    agentId,
+    result: agentResult,
+    ...(context.cursor ? { threadContextCursor: context.cursor } : {}),
+  };
 }

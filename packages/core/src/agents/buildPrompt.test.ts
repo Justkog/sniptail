@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildPromptForJob,
+  buildContinuationPromptForJob,
   buildPromptForJobWithLineageWarnings,
   type LineagePromptWarning,
 } from './buildPrompt.js';
@@ -79,5 +80,39 @@ describe('buildPromptForJobWithLineageWarnings', () => {
     expect(prompt).toContain('Previous recorded SHA: 1111111');
     expect(prompt).toContain('Cached branch SHA: 2222222');
     expect(prompt).toContain('New publish branch: sniptail/implement-job');
+  });
+});
+
+describe('buildContinuationPromptForJob', () => {
+  it('uses the existing mode contract for same-mode continuation turns', () => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob('ASK'),
+      botName: 'sniptail',
+      previousJobType: 'ASK',
+      workDir: '/tmp/job-root/job-2',
+      threadContext: 'U2: only the new context',
+      threadContextMode: 'delta',
+    });
+
+    expect(prompt).toContain('Continue the existing ASK task');
+    expect(prompt).toContain('New channel messages since the previous provider turn:');
+    expect(prompt).toContain('U2: only the new context');
+    expect(prompt).not.toContain('ask prompt');
+    expect(prompt.match(/working directory/g)).toHaveLength(1);
+  });
+
+  it('includes the new output contract for mode transitions', () => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob('REVIEW'),
+      botName: 'sniptail',
+      previousJobType: 'IMPLEMENT',
+      workDir: '/tmp/job-root/job-3',
+      threadContextMode: 'empty',
+    });
+
+    expect(prompt).toContain('Switch to REVIEW mode');
+    expect(prompt).toContain('compare the current branch with base ref main');
+    expect(prompt).toContain('write artifacts/report.md');
+    expect(prompt).not.toContain('New channel messages');
   });
 });

@@ -36,6 +36,31 @@ export type JobContextFile = {
   source?: JobContextFileSource;
 };
 
+export type JobThreadContextMessage = {
+  externalId: string;
+  orderKey: string;
+  author: string;
+  text: string;
+};
+
+export type JobThreadContextCursor = {
+  provider: ChannelContext['provider'];
+  channelId: string;
+  threadId: string;
+  messageId: string;
+  orderKey: string;
+};
+
+export type JobThreadContextSnapshot = {
+  version: 1;
+  provider: ChannelContext['provider'];
+  channelId: string;
+  threadId: string;
+  messages: JobThreadContextMessage[];
+  rendered: string;
+  cursor?: JobThreadContextCursor;
+};
+
 export type RunJobInput = {
   actionId: string;
   params?: Record<string, RunActionParamValue>;
@@ -51,7 +76,9 @@ export type JobSpec = {
   channel: ChannelContext;
   agent?: AgentId;
   agentThreadIds?: Partial<Record<AgentId, string>>;
+  agentThreadContextCursors?: Partial<Record<AgentId, JobThreadContextCursor>>;
   threadContext?: string;
+  threadContextSnapshot?: JobThreadContextSnapshot;
   resumeFromJobId?: string;
   contextFiles?: JobContextFile[];
   settings?: JobSettings;

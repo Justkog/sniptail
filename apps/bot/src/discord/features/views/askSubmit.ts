@@ -7,7 +7,7 @@ import { askSelectionByUser, deleteDiscordSelectionReply } from '../../state.js'
 import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
-import { fetchDiscordThreadContext } from '../../threadContext.js';
+import { fetchDiscordThreadContext, normalizeThreadContextResult } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
@@ -73,11 +73,14 @@ export async function handleAskModalSubmit(
   const requestText = interaction.fields.getTextInputValue('question').trim();
   const resumeFromInput = interaction.fields.getTextInputValue('resume_from').trim();
   const resumeFromJobId = resumeFromInput || undefined;
-  const threadContext = await fetchDiscordThreadContext(
-    interaction.client,
-    interaction.channelId!,
-    undefined,
-    true,
+  const { threadContext, threadContextSnapshot } = normalizeThreadContextResult(
+    await fetchDiscordThreadContext(
+      interaction.client,
+      interaction.channelId!,
+      undefined,
+      true,
+      true,
+    ),
   );
 
   const result = await submitNormalizedJobRequest({
@@ -91,6 +94,7 @@ export async function handleAskModalSubmit(
       channel: buildInteractionChannelContext(interaction),
       ...(contextFiles ? { contextFiles } : {}),
       ...(threadContext ? { threadContext } : {}),
+      ...(threadContextSnapshot ? { threadContextSnapshot } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
     },
     authorize: async (job) =>

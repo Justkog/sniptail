@@ -61,6 +61,9 @@ export function registerReviewFromJobAction({
       },
       resumeFromJobId: jobId,
       ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
+      ...(record?.job?.threadContextSnapshot
+        ? { threadContextSnapshot: record.job.threadContextSnapshot }
+        : {}),
     };
 
     const authorized = await authorizeSlackOperationAndRespond({

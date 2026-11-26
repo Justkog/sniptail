@@ -32,6 +32,7 @@ export function buildNormalizedJobRequest(
     agent: input.agent ?? config.primaryAgent,
     channel: input.channel,
     ...(input.threadContext ? { threadContext: input.threadContext } : {}),
+    ...(input.threadContextSnapshot ? { threadContextSnapshot: input.threadContextSnapshot } : {}),
     ...(input.contextFiles ? { contextFiles: input.contextFiles } : {}),
     ...(input.resumeFromJobId ? { resumeFromJobId: input.resumeFromJobId } : {}),
     ...(input.settings ? { settings: input.settings } : {}),

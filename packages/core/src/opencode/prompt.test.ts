@@ -495,6 +495,27 @@ describe('OpenCode prompt helpers', () => {
     );
   });
 
+  it('passes a compact resumed prompt through without adding another resume note', async () => {
+    await runOpenCode(
+      buildJob(),
+      '/tmp/new-workdir',
+      {},
+      {
+        resumeThreadId: 'session-existing',
+        promptOverride: 'Continue ASK with the new request only.',
+        includeResumeWorkDirNote: false,
+      },
+    );
+
+    expect(hoisted.client.session.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: 'session-existing',
+        directory: '/tmp/new-workdir',
+        parts: [{ type: 'text', text: 'Continue ASK with the new request only.' }],
+      }),
+    );
+  });
+
   it('falls back to session messages when prompt response has no text', async () => {
     hoisted.client.session.prompt.mockResolvedValue({ data: { parts: [] } });
     hoisted.client.session.messages.mockResolvedValue({

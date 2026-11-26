@@ -4,9 +4,15 @@ import { toGitBranchPrefix } from '@sniptail/core/git/branch.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
-import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
+import type {
+  AgentId,
+  JobResult,
+  JobThreadContextCursor,
+  MergeRequestResult,
+  JobSpec,
+} from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
-import { buildPromptForJobWithLineageWarnings } from '@sniptail/core/agents/buildPrompt.js';
+import type { LineagePromptWarning } from '@sniptail/core/agents/buildPrompt.js';
 import { buildImplementArtifactsPrompt } from '@sniptail/core/agents/prompts/index.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
@@ -141,8 +147,9 @@ function buildCommitMessage(
 async function recordAgentThreadId(
   registry: JobRegistry,
   job: JobSpec,
-  agentId: string,
+  agentId: AgentId,
   threadId: string,
+  threadContextCursor?: JobThreadContextCursor,
 ): Promise<void> {
   const existingRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
     logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
@@ -157,6 +164,14 @@ async function recordAgentThreadId(
           ...(existingJob.agentThreadIds ?? {}),
           [agentId]: threadId,
         },
+        ...(threadContextCursor
+          ? {
+              agentThreadContextCursors: {
+                ...(existingJob.agentThreadContextCursors ?? {}),
+                [agentId]: threadContextCursor,
+              },
+            }
+          : {}),
       },
     })
     .catch((err) => {
@@ -409,14 +424,13 @@ async function runJobInternal(
       });
     }
 
-    const promptOverride =
-      (job.type === 'ASK' ||
-        job.type === 'EXPLORE' ||
-        job.type === 'PLAN' ||
-        job.type === 'IMPLEMENT') &&
-      lineage.promptWarnings.length > 0
-        ? buildPromptForJobWithLineageWarnings(job, config.botName, lineage.promptWarnings)
-        : undefined;
+    const lineageWarnings: LineagePromptWarning[] =
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN' ||
+      job.type === 'IMPLEMENT'
+        ? lineage.promptWarnings
+        : [];
 
     const agentRun = await runAgentJob({
       job,
@@ -426,12 +440,18 @@ async function runJobInternal(
       registry,
       notifier,
       currentTurnContextFiles,
-      ...(promptOverride ? { promptOverride } : {}),
+      ...(lineageWarnings.length ? { lineageWarnings } : {}),
     });
     const primaryFinalResponse = agentRun.result.finalResponse?.trim() ?? '';
 
     if (agentRun.result.threadId) {
-      await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);
+      await recordAgentThreadId(
+        registry,
+        job,
+        agentRun.agentId,
+        agentRun.result.threadId,
+        agentRun.threadContextCursor,
+      );
     }
 
     if (job.type === 'MENTION') {

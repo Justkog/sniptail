@@ -9,6 +9,7 @@ export type NormalizedJobRequestInput = {
   agent?: JobSpec['agent'];
   channel: ChannelContext;
   threadContext?: string;
+  threadContextSnapshot?: JobSpec['threadContextSnapshot'];
   contextFiles?: JobContextFile[];
   resumeFromJobId?: string;
   settings?: JobSpec['settings'];

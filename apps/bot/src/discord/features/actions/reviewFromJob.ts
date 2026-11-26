@@ -54,6 +54,9 @@ export async function handleReviewFromJobButton(
     },
     resumeFromJobId: jobId,
     ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
+    ...(record?.job?.threadContextSnapshot
+      ? { threadContextSnapshot: record.job.threadContextSnapshot }
+      : {}),
   };
 
   const authorized = await authorizeDiscordOperationAndRespond({

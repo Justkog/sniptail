@@ -133,6 +133,28 @@ describe('runCodex', () => {
     expect(threadOptions?.sandboxMode).toBeUndefined();
   });
 
+  it('passes a compact resumed prompt through without adding another resume note', async () => {
+    await runCodex(
+      buildJob('ASK'),
+      '/tmp/new-workdir',
+      {},
+      {
+        resumeThreadId: 'thread-existing',
+        promptOverride: 'Continue ASK with the new request only.',
+        includeResumeWorkDirNote: false,
+      },
+    );
+
+    expect(hoisted.resumeThread).toHaveBeenCalledWith(
+      'thread-existing',
+      expect.objectContaining({ workingDirectory: '/tmp/new-workdir' }),
+    );
+    expect(hoisted.runStreamed).toHaveBeenCalledWith(
+      'Continue ASK with the new request only.',
+      expect.any(Object),
+    );
+  });
+
   it('lets explicit sandbox and approval options override config.profile defaults', async () => {
     await runCodex(
       buildJob('ASK'),

@@ -282,6 +282,7 @@ vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_job: unknown, _botName: string, _warnings: unknown[]) => 'prompt with lineage warning',
   ),
+  buildContinuationPromptForJob: vi.fn(() => 'compact continuation prompt'),
 }));
 
 vi.mock('@sniptail/core/agents/prompts/index.js', () => ({
@@ -829,7 +830,35 @@ describe('worker/pipeline runJob', () => {
       repoKeys: [],
       gitRef: 'main',
       requestText: 'Hello',
-      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+      channel: {
+        provider: 'slack',
+        channelId: 'C1',
+        userId: 'U1',
+        threadId: '123.456',
+        requestMessageId: '123.500',
+      },
+      threadContextSnapshot: {
+        version: 1 as const,
+        provider: 'slack' as const,
+        channelId: 'C1',
+        threadId: '123.456',
+        messages: [
+          {
+            externalId: '123.450',
+            orderKey: '123.450',
+            author: 'U2',
+            text: 'Earlier context',
+          },
+        ],
+        rendered: 'U2: Earlier context',
+        cursor: {
+          provider: 'slack' as const,
+          channelId: 'C1',
+          threadId: '123.456',
+          messageId: '123.450',
+          orderKey: '123.450',
+        },
+      },
     };
 
     loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
@@ -901,6 +930,19 @@ describe('worker/pipeline runJob', () => {
       status: 'running',
       ownerWorkerId: 'worker-a',
       ownerWorkerLabel: 'Worker A',
+    });
+    const cursorPersistencePatch = updateJobRecordMock.mock.calls
+      .map((call) => call[1] as { job?: Record<string, unknown> })
+      .find((patch) => patch.job?.agentThreadIds !== undefined);
+    expect(cursorPersistencePatch?.job?.agentThreadIds).toEqual({ codex: 'thread-1' });
+    expect(cursorPersistencePatch?.job?.agentThreadContextCursors).toEqual({
+      codex: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: '123.456',
+        messageId: '123.500',
+        orderKey: '123.500',
+      },
     });
     expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(

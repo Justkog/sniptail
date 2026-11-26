@@ -33,11 +33,9 @@ export type OpenCodePromptRunOptions = Omit<
   onAssistantMessage?: (text: string, event: OpenCodeEvent) => void | Promise<void>;
 };
 
-function buildPrompt(job: JobSpec, workDir: string, options: AgentRunOptions): string {
+function buildPrompt(job: JobSpec, options: AgentRunOptions): string {
   const botName = options.botName?.trim() || 'Sniptail';
-  const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
-  if (!options.resumeThreadId) return basePrompt;
-  return `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`;
+  return options.promptOverride ?? buildPromptForJob(job, botName);
 }
 
 function buildPromptParts(prompt: string, attachments?: AgentAttachment[]) {
@@ -166,7 +164,12 @@ export async function runOpenCode(
   env: NodeJS.ProcessEnv,
   options: AgentRunOptions = {},
 ): Promise<AgentRunResult> {
-  return runOpenCodePrompt(buildPrompt(job, workDir, options), workDir, env, {
+  const basePrompt = buildPrompt(job, options);
+  const prompt =
+    options.resumeThreadId && options.includeResumeWorkDirNote !== false
+      ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
+      : basePrompt;
+  return runOpenCodePrompt(prompt, workDir, env, {
     ...options,
     runtimeId: job.jobId,
     ...(options.resumeThreadId ? { sessionId: options.resumeThreadId } : {}),
