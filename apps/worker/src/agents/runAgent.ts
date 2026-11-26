@@ -36,6 +36,7 @@ export async function runAgentJob(options: {
   notifier: Notifier;
   currentTurnContextFiles?: MaterializedJobContextFile[];
   promptOverride?: string;
+  resumeThreadId?: string;
   lineageWarnings?: LineagePromptWarning[];
   addRequestReaction?: boolean;
 }): Promise<RunAgentResult> {
@@ -48,6 +49,7 @@ export async function runAgentJob(options: {
     notifier,
     currentTurnContextFiles,
     promptOverride,
+    resumeThreadId,
     lineageWarnings = [],
     addRequestReaction = true,
   } = options;
@@ -58,7 +60,9 @@ export async function runAgentJob(options: {
 
   logger.info({ jobId: job.jobId, repoKeys: job.repoKeys, agent: agentId }, 'Running agent');
 
-  const continuation = await resolveAgentContinuation(job, agentId, registry);
+  const continuation = resumeThreadId
+    ? { threadId: resumeThreadId }
+    : await resolveAgentContinuation(job, agentId, registry);
   const agentThreadId = continuation.threadId;
   const mentionWorkDir = await resolveMentionWorkingDirectory(
     job,

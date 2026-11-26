@@ -1328,7 +1328,30 @@ describe('worker/pipeline runJob', () => {
       gitRef: 'main',
       requestText: 'Implement feature',
       resumeFromJobId: 'job-1',
-      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      threadContextSnapshot: {
+        version: 1 as const,
+        provider: 'slack' as const,
+        channelId: 'C1',
+        threadId: 'C1',
+        messages: [
+          {
+            externalId: '170.000',
+            orderKey: '170.000',
+            author: 'U2',
+            text: 'Prior implementation context',
+          },
+        ],
+        rendered: 'U2: Prior implementation context',
+        coversThreadRoot: true,
+        cursor: {
+          provider: 'slack' as const,
+          channelId: 'C1',
+          threadId: 'C1',
+          messageId: '170.000',
+          orderKey: '170.000',
+        },
+      },
     };
 
     loadJobRecordMock.mockResolvedValue({
@@ -1460,6 +1483,40 @@ describe('worker/pipeline runJob', () => {
         promptOverride: 'prompt with lineage warning',
       }),
     );
+    const artifactOptions = runAgentMock.mock.calls[1]?.[3] as
+      | { resumeThreadId?: string; promptOverride?: string }
+      | undefined;
+    expect(artifactOptions?.resumeThreadId).toBe('thread-implement-resumed');
+    expect(artifactOptions?.promptOverride).toBe('implement artifacts prompt');
+
+    const agentStatePatches = updateJobRecordMock.mock.calls
+      .map((call) => call[1] as { job?: Record<string, unknown> })
+      .filter((patch) => patch.job?.agentThreadIds !== undefined);
+    expect(agentStatePatches).toHaveLength(2);
+    expect(agentStatePatches[0]?.job?.agentThreadIds).toEqual({
+      codex: 'thread-implement-resumed',
+    });
+    expect(agentStatePatches[0]?.job?.agentThreadContextCursors).toEqual({
+      codex: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: 'C1',
+        messageId: '170.000',
+        orderKey: '170.000',
+      },
+    });
+    expect(agentStatePatches[1]?.job?.agentThreadIds).toEqual({
+      codex: 'thread-implement-artifacts',
+    });
+    expect(agentStatePatches[1]?.job?.agentThreadContextCursors).toEqual({
+      codex: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: 'C1',
+        messageId: '170.000',
+        orderKey: '170.000',
+      },
+    });
 
     const commitCall = commitAndPushMock.mock.calls[0]?.[0];
     expect(commitCall).toEqual(

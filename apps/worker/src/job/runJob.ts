@@ -156,23 +156,30 @@ async function recordAgentThreadId(
     return undefined;
   });
   const existingJob = existingRecord?.job ?? job;
+  const nextJob: JobSpec = {
+    ...existingJob,
+    agentThreadIds: {
+      ...(existingJob.agentThreadIds ?? {}),
+      [agentId]: threadId,
+    },
+  };
+  const existingThreadId = existingJob.agentThreadIds?.[agentId];
+  const nextThreadContextCursors = {
+    ...(existingJob.agentThreadContextCursors ?? {}),
+  };
+  if (threadContextCursor) {
+    nextThreadContextCursors[agentId] = threadContextCursor;
+  } else if (existingThreadId !== threadId) {
+    delete nextThreadContextCursors[agentId];
+  }
+  if (Object.keys(nextThreadContextCursors).length) {
+    nextJob.agentThreadContextCursors = nextThreadContextCursors;
+  } else {
+    delete nextJob.agentThreadContextCursors;
+  }
   await registry
     .updateJobRecord(job.jobId, {
-      job: {
-        ...existingJob,
-        agentThreadIds: {
-          ...(existingJob.agentThreadIds ?? {}),
-          [agentId]: threadId,
-        },
-        ...(threadContextCursor
-          ? {
-              agentThreadContextCursors: {
-                ...(existingJob.agentThreadContextCursors ?? {}),
-                [agentId]: threadContextCursor,
-              },
-            }
-          : {}),
-      },
+      job: nextJob,
     })
     .catch((err) => {
       logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
@@ -558,7 +565,7 @@ async function runJobInternal(
     }
 
     let followupFinalResponse = '';
-    if (job.type === 'IMPLEMENT') {
+    if (job.type === 'IMPLEMENT' && agentRun.result.threadId) {
       try {
         const followupRun = await runAgentJob({
           job,
@@ -568,6 +575,7 @@ async function runJobInternal(
           registry,
           notifier,
           promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+          resumeThreadId: agentRun.result.threadId,
           addRequestReaction: false,
         });
         followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
@@ -577,6 +585,7 @@ async function runJobInternal(
             job,
             followupRun.agentId,
             followupRun.result.threadId,
+            agentRun.threadContextCursor,
           );
         }
       } catch (err) {
@@ -585,6 +594,11 @@ async function runJobInternal(
           'IMPLEMENT follow-up artifact generation failed; continuing with synthesized artifacts',
         );
       }
+    } else if (job.type === 'IMPLEMENT') {
+      logger.warn(
+        { jobId: job.jobId },
+        'Skipping IMPLEMENT artifact follow-up because the primary agent session id is missing',
+      );
     }
 
     const summary = await readJobSummary(paths).catch((err) => {
