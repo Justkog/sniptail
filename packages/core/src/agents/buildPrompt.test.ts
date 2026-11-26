@@ -111,7 +111,9 @@ describe('buildContinuationPromptForJob', () => {
     });
 
     expect(prompt).toContain('REVIEW mode: do not modify repo files');
+    expect(prompt).toContain('For each repository');
     expect(prompt).toContain('base ref main');
+    expect(prompt).toContain('summarize the changes, potential risks, and recommendations');
     expect(prompt).toContain('only write artifacts/report.md');
     expect(prompt).not.toContain('New channel messages');
   });
@@ -125,6 +127,8 @@ describe('buildContinuationPromptForJob', () => {
     });
 
     expect(prompt).toContain('Do not modify repo files; only write artifacts/plan.md.');
+    expect(prompt).toContain('inspect the repository, thread history, and available context files');
+    expect(prompt).toContain('do not ask for information already present there');
     expect(prompt).toContain('ask 1-3 focused questions in a numbered list only');
     expect(prompt).toContain('risks, and mitigations');
   });

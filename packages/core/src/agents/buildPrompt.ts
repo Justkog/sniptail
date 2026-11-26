@@ -118,9 +118,9 @@ function continuationModeContract(type: JobType, botName: string, gitRef: string
     case 'IMPLEMENT':
       return 'IMPLEMENT mode: implement the requested changes with minimal diffs, add tests only when explicitly requested, add docs when needed, and leave the repositories ready to commit.';
     case 'PLAN':
-      return 'PLAN mode: treat repository contents as the source of truth. Do not modify repo files; only write artifacts/plan.md. If intent is ambiguous or required choices are unresolved, ask 1-3 focused questions in a numbered list only, then stop without plan content. Otherwise write one unified plan covering summary, assumptions, steps, files, verification, risks, and mitigations.';
+      return 'PLAN mode: treat repository contents as the source of truth. Do not modify repo files; only write artifacts/plan.md. Before asking questions, inspect the repository, thread history, and available context files; do not ask for information already present there. If intent is ambiguous or required choices are unresolved, ask 1-3 focused questions in a numbered list only, then stop without plan content. Otherwise write one unified plan covering summary, assumptions, steps, files, verification, risks, and mitigations.';
     case 'REVIEW':
-      return `REVIEW mode: do not modify repo files; only write artifacts/report.md. Compare the current branch with base ref ${gitRef}; note if a branch or diff is absent, assess risks and recommendations, and cite relevant files or symbols.`;
+      return `REVIEW mode: do not modify repo files; only write artifacts/report.md. For each repository, compare the current branch with base ref ${gitRef}, note if a branch or diff is absent, summarize the changes, potential risks, and recommendations, and cite relevant files or symbols.`;
     case 'MENTION': {
       const commandPrefix = toSlackCommandPrefix(botName);
       return `MENTION mode: reply in a friendly, non-technical way by default and keep it concise. Use repository files only when clearly needed; otherwise answer from general knowledge. If the user asks what you can do, mention /${commandPrefix}-ask, /${commandPrefix}-explore, /${commandPrefix}-implement, and /${commandPrefix}-usage.`;
