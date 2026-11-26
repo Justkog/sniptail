@@ -25,6 +25,7 @@ import {
   copyArtifactsFromResumedJob,
   copyContextFromResumedJob,
   copyJobRootSeed,
+  clearJobOutputArtifacts,
   ensureJobDirectories,
   materializeJobContextFiles,
   readJobArtifact,
@@ -341,15 +342,19 @@ async function runJobInternal(
       paths.logFile,
       redactionPatterns,
     );
+    await clearJobOutputArtifacts(paths, job.type);
     if (job.resumeFromJobId) {
-      await copyArtifactsFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
-        (err) => {
-          logger.warn(
-            { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
-            'Failed to copy artifacts from resumed job',
-          );
-        },
-      );
+      await copyArtifactsFromResumedJob(
+        job.resumeFromJobId,
+        config.jobWorkRoot,
+        paths,
+        job.type,
+      ).catch((err) => {
+        logger.warn(
+          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+          'Failed to copy artifacts from resumed job',
+        );
+      });
       await copyContextFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
         (err) => {
           logger.warn(
@@ -579,13 +584,17 @@ async function runJobInternal(
           addRequestReaction: false,
         });
         followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
-        if (followupRun.result.threadId) {
-          await recordAgentThreadId(
-            registry,
-            job,
-            followupRun.agentId,
-            followupRun.result.threadId,
-            agentRun.threadContextCursor,
+        if (
+          followupRun.result.threadId &&
+          followupRun.result.threadId !== agentRun.result.threadId
+        ) {
+          logger.warn(
+            {
+              jobId: job.jobId,
+              primaryAgentThreadId: agentRun.result.threadId,
+              artifactAgentThreadId: followupRun.result.threadId,
+            },
+            'IMPLEMENT artifact turn returned a different agent session; retaining the primary session',
           );
         }
       } catch (err) {

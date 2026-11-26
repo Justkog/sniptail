@@ -505,12 +505,14 @@ describe('worker/pipeline helpers', () => {
     );
   });
 
-  it('copyArtifactsFromResumedJob copies regular files and skips job-spec', async () => {
+  it('copyArtifactsFromResumedJob copies lineage files but not the current output files', async () => {
     const readdirMock = vi.mocked(readdir);
     const copyFileMock = vi.mocked(copyFile);
 
     readdirMock.mockResolvedValueOnce([
       createDirent('plan.md', true),
+      createDirent('summary.md', true),
+      createDirent('change-metadata.json', true),
       createDirent('job-spec.json', true),
       createDirent('attachments', false),
     ] as never);
@@ -520,6 +522,7 @@ describe('worker/pipeline helpers', () => {
       'job-prev',
       '/tmp/sniptail/job-root',
       createJobPaths('job-next'),
+      'IMPLEMENT',
     );
 
     expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/artifacts', {
@@ -1492,7 +1495,7 @@ describe('worker/pipeline runJob', () => {
     const agentStatePatches = updateJobRecordMock.mock.calls
       .map((call) => call[1] as { job?: Record<string, unknown> })
       .filter((patch) => patch.job?.agentThreadIds !== undefined);
-    expect(agentStatePatches).toHaveLength(2);
+    expect(agentStatePatches).toHaveLength(1);
     expect(agentStatePatches[0]?.job?.agentThreadIds).toEqual({
       codex: 'thread-implement-resumed',
     });
@@ -1505,19 +1508,6 @@ describe('worker/pipeline runJob', () => {
         orderKey: '170.000',
       },
     });
-    expect(agentStatePatches[1]?.job?.agentThreadIds).toEqual({
-      codex: 'thread-implement-artifacts',
-    });
-    expect(agentStatePatches[1]?.job?.agentThreadContextCursors).toEqual({
-      codex: {
-        provider: 'slack',
-        channelId: 'C1',
-        threadId: 'C1',
-        messageId: '170.000',
-        orderKey: '170.000',
-      },
-    });
-
     const commitCall = commitAndPushMock.mock.calls[0]?.[0];
     expect(commitCall).toEqual(
       expect.objectContaining({
