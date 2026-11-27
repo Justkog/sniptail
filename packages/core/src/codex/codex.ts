@@ -41,6 +41,7 @@ export type CodexRunOptions = {
   configProfile?: string;
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
+  includeResumeWorkDirNote?: boolean;
   codex?: {
     onTurnReady?: (runtime: CodexTurnRuntime) => void | Promise<void>;
   };
@@ -151,9 +152,10 @@ export async function runCodex(
 
   const botName = options.botName?.trim() || 'Sniptail';
   const basePrompt = options.promptOverride ?? buildPromptForJob(job, botName);
-  const prompt = options.resumeThreadId
-    ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
-    : basePrompt;
+  const prompt =
+    options.resumeThreadId && options.includeResumeWorkDirNote !== false
+      ? `${basePrompt}\n\nResume note: Use the new working directory for this run: ${workDir}`
+      : basePrompt;
   await publishTurnRuntime(options.resumeThreadId);
   const { events } = await thread.runStreamed(
     buildCodexInput(prompt, workDir, options.currentTurnAttachments),

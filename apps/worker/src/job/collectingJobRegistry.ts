@@ -1,4 +1,5 @@
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { JobRecord, JobRecordPatch } from '@sniptail/core/jobs/registry.js';
+import { applyJobRecordPatch } from '@sniptail/core/jobs/registryRecordUpdate.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobSpec, JobType } from '@sniptail/core/types/job.js';
 import type { JobRegistrySnapshot, SnapshottingJobRegistry } from './jobRegistry.js';
@@ -33,17 +34,12 @@ export class CollectingJobRegistry implements SnapshottingJobRegistry {
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
-  async updateJobRecord(jobId: string, patch: Partial<JobRecord>): Promise<JobRecord | undefined> {
+  async updateJobRecord(jobId: string, patch: JobRecordPatch): Promise<JobRecord | undefined> {
     const existing = this.records.get(jobId);
     if (!existing) {
       throw new Error(`Job record not found for ${jobId}`);
     }
-    const updated: JobRecord = {
-      ...existing,
-      ...patch,
-      job: patch.job ?? existing.job,
-      updatedAt: this.now().toISOString(),
-    };
+    const updated = applyJobRecordPatch(existing, patch, this.now().toISOString());
     this.records.set(jobId, updated);
     return updated;
   }

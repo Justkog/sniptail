@@ -2,6 +2,7 @@ import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import type { PgJobRegistryClient } from '../db/index.js';
 import { jobs as pgJobs } from '../db/pg/schema.js';
 import { logger } from '../logger.js';
+import { updateStoredJobRecord } from './registryRecordUpdate.js';
 import type {
   JobRecord,
   JobRecordCleanupQuery,
@@ -155,6 +156,25 @@ export function createPgJobRegistryStore(client: PgJobRegistryClient): JobRegist
         target: pgJobs.jobId,
         set: { record },
       });
+    },
+    updateRecord(key, update) {
+      return updateStoredJobRecord(
+        async () => {
+          const result = await client.pool.query<{ record: string }>(
+            'SELECT record::text AS record FROM jobs WHERE job_id = $1',
+            [key],
+          );
+          return result.rows[0]?.record;
+        },
+        async (previous, next) => {
+          const result = await client.pool.query(
+            'UPDATE jobs SET record = $3::jsonb WHERE job_id = $1 AND record = $2::jsonb',
+            [key, previous, next],
+          );
+          return result.rowCount === 1;
+        },
+        update,
+      );
     },
     async conditionalUpdateRecord(
       key: string,

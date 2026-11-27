@@ -3,6 +3,7 @@ import { logger } from '@sniptail/core/logger.js';
 import type { JobSpec } from '@sniptail/core/types/job.js';
 import type { SlackHandlerContext } from '../context.js';
 import { postMessage } from '../../helpers.js';
+import { fetchSlackThreadContext } from '../../lib/threadContext.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { saveAndEnqueueManagedJob } from '../../../job-requests/enqueueManagedJob.js';
@@ -45,6 +46,9 @@ export function registerReviewFromJobAction({
     }
 
     const effectiveThreadId = threadId ?? record?.job?.channel?.threadId;
+    const threadContext = effectiveThreadId
+      ? await fetchSlackThreadContext(app.client, channelId, effectiveThreadId, undefined, true)
+      : undefined;
     const job: JobSpec = {
       jobId: createJobId('review'),
       type: 'REVIEW',
@@ -60,7 +64,7 @@ export function registerReviewFromJobAction({
         ...(effectiveThreadId ? { threadId: effectiveThreadId } : {}),
       },
       resumeFromJobId: jobId,
-      ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
+      ...threadContext,
     };
 
     const authorized = await authorizeSlackOperationAndRespond({
@@ -120,15 +124,16 @@ export function registerReviewFromJobAction({
       ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
     });
 
-    if (!effectiveThreadId && ackResponse?.ts) {
+    const ackThreadId = ackResponse?.ts;
+    if (!effectiveThreadId && ackThreadId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
-            threadId: ackResponse.ts,
+            ...currentJob.channel,
+            threadId: ackThreadId,
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record review job thread timestamp');
       });

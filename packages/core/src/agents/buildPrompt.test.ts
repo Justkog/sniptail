@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildPromptForJob,
+  buildContinuationPromptForJob,
   buildPromptForJobWithLineageWarnings,
   type LineagePromptWarning,
 } from './buildPrompt.js';
@@ -79,5 +80,97 @@ describe('buildPromptForJobWithLineageWarnings', () => {
     expect(prompt).toContain('Previous recorded SHA: 1111111');
     expect(prompt).toContain('Cached branch SHA: 2222222');
     expect(prompt).toContain('New publish branch: sniptail/implement-job');
+  });
+});
+
+describe('buildContinuationPromptForJob', () => {
+  it('repeats the complete current ASK contract on continuation turns', () => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob('ASK'),
+      botName: 'sniptail',
+      workDir: '/tmp/job-root/job-2',
+      threadContext: 'U2: only the new context',
+      threadContextMode: 'delta',
+    });
+
+    expect(prompt).toContain('ASK mode:');
+    expect(prompt).toContain('Do not modify repo files; only write artifacts/report.md.');
+    expect(prompt).toContain('state what is unsupported');
+    expect(prompt).toContain('New channel messages since the previous provider turn:');
+    expect(prompt).toContain('U2: only the new context');
+    expect(prompt).not.toContain('ask prompt');
+    expect(prompt.match(/working directory/g)).toHaveLength(1);
+  });
+
+  it('includes the current REVIEW output contract and base ref', () => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob('REVIEW'),
+      botName: 'sniptail',
+      workDir: '/tmp/job-root/job-3',
+      threadContextMode: 'empty',
+    });
+
+    expect(prompt).toContain('REVIEW mode: do not modify repo files');
+    expect(prompt).toContain('For each repository');
+    expect(prompt).toContain('base ref main');
+    expect(prompt).toContain('summarize the changes, potential risks, and recommendations');
+    expect(prompt).toContain('only write artifacts/report.md');
+    expect(prompt).not.toContain('New channel messages');
+  });
+
+  it('includes the complete PLAN clarification and artifact contract', () => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob('PLAN'),
+      botName: 'sniptail',
+      workDir: '/tmp/job-root/job-4',
+      threadContextMode: 'empty',
+    });
+
+    expect(prompt).toContain('Do not modify repo files; only write artifacts/plan.md.');
+    expect(prompt).toContain('inspect the repository, thread history, and available context files');
+    expect(prompt).toContain('do not ask for information already present there');
+    expect(prompt).toContain('ask 1-3 focused questions in a numbered list only');
+    expect(prompt).toContain('risks, and mitigations');
+  });
+
+  it.each([
+    {
+      type: 'EXPLORE' as const,
+      expected: [
+        'EXPLORE mode:',
+        'Do not modify repo files; only write artifacts/report.md.',
+        'Present viable options, tradeoffs, risks',
+      ],
+    },
+    {
+      type: 'IMPLEMENT' as const,
+      expected: [
+        'IMPLEMENT mode:',
+        'minimal diffs',
+        'add tests only when explicitly requested',
+        'leave the repositories ready to commit',
+      ],
+    },
+    {
+      type: 'MENTION' as const,
+      expected: [
+        'MENTION mode:',
+        'friendly, non-technical way',
+        'Use repository files only when clearly needed',
+        '/sniptail-ask',
+        '/sniptail-usage',
+      ],
+    },
+  ])('repeats the essential $type contract', ({ type, expected }) => {
+    const prompt = buildContinuationPromptForJob({
+      job: buildJob(type),
+      botName: 'sniptail',
+      workDir: '/tmp/job-root/job-5',
+      threadContextMode: 'empty',
+    });
+
+    for (const fragment of expected) {
+      expect(prompt).toContain(fragment);
+    }
   });
 });

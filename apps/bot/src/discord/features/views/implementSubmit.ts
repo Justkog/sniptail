@@ -8,7 +8,7 @@ import { buildInteractionChannelContext } from '../../lib/channel.js';
 import { postDiscordJobAcceptance } from '../../lib/threads.js';
 import { loadDiscordContextFiles } from '../../lib/discordContextFiles.js';
 import { parseCommaList } from '../../../slack/lib/parsing.js';
-import { fetchDiscordThreadContext } from '../../threadContext.js';
+import { fetchDiscordThreadContext, normalizeThreadContextResult } from '../../threadContext.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
@@ -70,11 +70,14 @@ export async function handleImplementModalSubmit(
   const reviewers = reviewersInput ? parseCommaList(reviewersInput) : undefined;
   const labels = labelsInput ? parseCommaList(labelsInput) : undefined;
   const resumeFromJobId = resumeFromInput || undefined;
-  const threadContext = await fetchDiscordThreadContext(
-    interaction.client,
-    interaction.channelId!,
-    undefined,
-    true,
+  const { threadContext, threadContextSnapshot } = normalizeThreadContextResult(
+    await fetchDiscordThreadContext(
+      interaction.client,
+      interaction.channelId!,
+      undefined,
+      true,
+      true,
+    ),
   );
 
   const result = await submitNormalizedJobRequest({
@@ -88,6 +91,7 @@ export async function handleImplementModalSubmit(
       channel: buildInteractionChannelContext(interaction),
       ...(contextFiles ? { contextFiles } : {}),
       ...(threadContext ? { threadContext } : {}),
+      ...(threadContextSnapshot ? { threadContextSnapshot } : {}),
       ...(resumeFromJobId ? { resumeFromJobId } : {}),
       ...((reviewers || labels) && {
         settings: {

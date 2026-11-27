@@ -9,7 +9,11 @@ import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { fetchDiscordThreadContext, stripDiscordMentions } from '../../threadContext.js';
+import {
+  fetchDiscordThreadContext,
+  normalizeThreadContextResult,
+  stripDiscordMentions,
+} from '../../threadContext.js';
 import { buildChannelContext } from '../../lib/channel.js';
 import { dedupe } from '../../../slack/lib/dedupe.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
@@ -74,10 +78,8 @@ export async function handleMention(
     logger.warn({ err, messageId: message.id }, 'Failed to add Discord mention reaction');
   }
 
-  const threadContext = await fetchDiscordThreadContext(
-    message.client,
-    message.channelId,
-    message.id,
+  const { threadContext, threadContextSnapshot } = normalizeThreadContextResult(
+    await fetchDiscordThreadContext(message.client, message.channelId, message.id, false, true),
   );
   const strippedText = stripDiscordMentions(message.content);
   const requestText =
@@ -94,8 +96,12 @@ export async function handleMention(
     gitRef,
     requestText,
     agent: config.primaryAgent,
-    channel: buildChannelContext(message),
+    channel: {
+      ...buildChannelContext(message),
+      requestMessageId: message.id,
+    },
     ...(threadContext ? { threadContext } : {}),
+    ...(threadContextSnapshot ? { threadContextSnapshot } : {}),
   };
 
   const authorized = await authorizeDiscordOperationAndRespond({

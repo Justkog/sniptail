@@ -411,15 +411,15 @@ export function registerRunSubmitView({
       }
     }
 
-    if (!metadata?.threadId && ackResponse?.ts) {
+    if (!metadata?.threadId && ackThreadId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
-            threadId: ackResponse.ts,
+            ...currentJob.channel,
+            threadId: ackThreadId,
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job thread timestamp');
       });

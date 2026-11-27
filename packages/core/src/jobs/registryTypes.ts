@@ -24,6 +24,11 @@ export type JobRecord = {
   openQuestions?: string[];
 };
 
+export type JobRecordPatch = Omit<Partial<JobRecord>, 'job'> & {
+  // Transform the stored job. The callback can run again if another writer changes the record.
+  job?: JobSpec | ((job: JobSpec) => JobSpec);
+};
+
 export type JobRecordThreadLookup = {
   provider: ChannelProvider;
   channelId: string;
@@ -47,6 +52,7 @@ export interface JobRegistryStore {
   countJobRecordsByTypes(types: JobType[]): Promise<number>;
   listJobRecordsForCleanup(input: JobRecordCleanupQuery): Promise<JobRecord[]>;
   upsertRecord(key: string, record: JobRecord): Promise<void>;
+  updateRecord(key: string, update: (record: JobRecord) => JobRecord): Promise<JobRecord | undefined>;
   /**
    * Atomically updates the record at `key` only if the currently stored
    * record has `status` equal to `condition.statusEquals`.

@@ -90,10 +90,10 @@ export async function postDiscordJobAcceptance(
 
     if (threadTarget.threadId || requestMessageId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
+            ...currentJob.channel,
             ...(threadTarget.threadId
               ? {
                   channelId: threadTarget.channel.id,
@@ -102,7 +102,7 @@ export async function postDiscordJobAcceptance(
               : {}),
             ...(requestMessageId ? { requestMessageId } : {}),
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record Discord request message context');
       });

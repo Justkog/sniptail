@@ -49,6 +49,7 @@ export type AgentRunOptions = {
   model?: string;
   modelProvider?: string;
   modelReasoningEffort?: ModelReasoningEffort;
+  includeResumeWorkDirNote?: boolean;
   copilotIdleRetries?: number;
   copilotIdleTimeoutMs?: number;
   codex?: {
