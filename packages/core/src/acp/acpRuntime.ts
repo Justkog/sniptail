@@ -239,6 +239,17 @@ function flattenSelectOptions(
   );
 }
 
+function findSelectValue(
+  config: Extract<SessionConfigOption, { type: 'select' }>,
+  requestedValue: string,
+): SessionConfigSelectOption | undefined {
+  const requested = normalizeMatch(requestedValue);
+  return flattenSelectOptions(config.options).find(
+    (option) =>
+      normalizeMatch(option.value) === requested || normalizeMatch(option.name) === requested,
+  );
+}
+
 function findSelectOption(
   configOptions: SessionConfigOption[] | undefined,
   matchesConfig: (option: Extract<SessionConfigOption, { type: 'select' }>) => boolean,
@@ -247,13 +258,9 @@ function findSelectOption(
   config: Extract<SessionConfigOption, { type: 'select' }>;
   value: string;
 } {
-  const requested = normalizeMatch(requestedValue);
   for (const config of configOptions ?? []) {
     if (!isSelectOption(config) || !matchesConfig(config)) continue;
-    const selected = flattenSelectOptions(config.options).find(
-      (option) =>
-        normalizeMatch(option.value) === requested || normalizeMatch(option.name) === requested,
-    );
+    const selected = findSelectValue(config, requestedValue);
     if (selected) {
       return { config, value: selected.value };
     }
@@ -392,16 +399,34 @@ async function applySessionOverrides(
   sessionId: string,
   session: AcpSessionResponse,
 ): Promise<void> {
+  let configOptions = session.configOptions ?? undefined;
   if (launch.profile) {
-    const requested = normalizeMatch(launch.profile);
-    const mode = session.modes?.availableModes.find(
-      (candidate) =>
-        normalizeMatch(candidate.id) === requested || normalizeMatch(candidate.name) === requested,
-    );
-    if (!mode) {
-      throw new Error(`ACP profile is not supported by this agent: ${launch.profile}`);
+    const modeConfig = configOptions
+      ?.filter(isSelectOption)
+      .find((option) => option.id === 'mode' || option.category === 'mode');
+    if (modeConfig) {
+      const selected = findSelectValue(modeConfig, launch.profile);
+      if (!selected) {
+        throw new Error(`ACP profile is not supported by this agent: ${launch.profile}`);
+      }
+      const response = await setAcpSessionConfigOption(connection, {
+        sessionId,
+        configId: modeConfig.id,
+        value: selected.value,
+      });
+      configOptions = response.configOptions;
+    } else {
+      const requested = normalizeMatch(launch.profile);
+      const mode = session.modes?.availableModes.find(
+        (candidate) =>
+          normalizeMatch(candidate.id) === requested ||
+          normalizeMatch(candidate.name) === requested,
+      );
+      if (!mode) {
+        throw new Error(`ACP profile is not supported by this agent: ${launch.profile}`);
+      }
+      await connection.setSessionMode({ sessionId, modeId: mode.id });
     }
-    await connection.setSessionMode({ sessionId, modeId: mode.id });
   }
 
   if (launch.model) {
@@ -417,7 +442,6 @@ async function applySessionOverrides(
     await connection.unstable_setSessionModel({ sessionId, modelId: model.modelId });
   }
 
-  let configOptions = session.configOptions ?? undefined;
   if (launch.modelProvider) {
     const selected = findSelectOption(configOptions, isProviderOption, launch.modelProvider);
     const response = await setAcpSessionConfigOption(connection, {
