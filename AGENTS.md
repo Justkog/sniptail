@@ -17,6 +17,12 @@
 
 - Prefer optional properties/parameters when something may be absent; avoid explicit nullable types like `foo: string | null` unless null has a distinct meaning.
 
+## Testing guideline
+
+- Avoid nesting Vitest asymmetric matchers (`expect.objectContaining`, `expect.arrayContaining`, `expect.stringContaining`, etc.) inside object literals passed to other matchers when TypeScript ESLint is enabled, because these helpers can be typed as `any` and trigger `@typescript-eslint/no-unsafe-assignment`.
+- Prefer capturing mock calls with an explicit tuple/object type, then assert fields directly with `toBe`, `toEqual`, `toMatchObject`, `toContain`, or small typed helper predicates.
+- If an asymmetric matcher is still the clearest option, assign it to an `unknown`-typed constant before using it.
+
 ## File naming guideline
 
 - Do not create or rename files so that two files share the same basename in this repository.
