@@ -2,11 +2,9 @@ import type {
   AgentId,
   JobSpec,
   JobThreadContextCursor,
-  JobThreadContextMessage,
   JobThreadContextSnapshot,
 } from '@sniptail/core/types/job.js';
-
-const maxContinuationHistoryChars = 4000;
+import { boundThreadContextMessages } from '@sniptail/core/channels/threadContextSnapshot.js';
 
 export type ContinuationContextMode = 'delta' | 'full' | 'empty';
 
@@ -29,15 +27,6 @@ function sameChannel(left: JobThreadContextCursor, right: JobThreadContextSnapsh
     left.channelId === right.channelId &&
     left.threadId === right.threadId
   );
-}
-
-function truncate(rendered: string): string {
-  if (rendered.length <= maxContinuationHistoryChars) return rendered;
-  return `...${rendered.slice(-maxContinuationHistoryChars)}`;
-}
-
-function render(messages: JobThreadContextMessage[]): string {
-  return messages.map((message) => `${message.author}: ${message.text}`).join('\n');
 }
 
 export function buildContinuationContext(
@@ -109,8 +98,8 @@ export function buildContinuationContext(
   }
 
   const messages = sourceIndex >= 0 ? snapshot.messages.slice(sourceIndex + 1) : [];
-  const delta = render(messages);
-  if (delta.length > maxContinuationHistoryChars) {
+  const boundedDelta = boundThreadContextMessages(messages);
+  if (boundedDelta.truncated) {
     return {
       mode: snapshot.rendered ? 'full' : 'empty',
       reason: 'uncertain_coverage',
@@ -119,11 +108,10 @@ export function buildContinuationContext(
       ...(sourceCursor ? { cursor: sourceCursor } : {}),
     };
   }
-  const rendered = truncate(delta);
   return {
-    mode: rendered ? 'delta' : 'empty',
+    mode: boundedDelta.rendered ? 'delta' : 'empty',
     reason: 'cursor',
-    ...(rendered ? { rendered: truncate(rendered) } : {}),
+    ...(boundedDelta.rendered ? { rendered: boundedDelta.rendered } : {}),
     messageCount: messages.length,
     ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
   };

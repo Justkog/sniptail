@@ -24,13 +24,13 @@ describe('structured thread context snapshots', () => {
       true,
     );
 
-    expect(result?.rendered).toBe('U1: old request\nU2: new context');
-    expect(result?.snapshot.messages.map((message) => message.externalId)).toEqual([
+    expect(result?.threadContext).toBe('U1: old request\nU2: new context');
+    expect(result?.threadContextSnapshot.messages.map((message) => message.externalId)).toEqual([
       '111.100',
       '111.200',
     ]);
-    expect(result?.snapshot.coversThreadRoot).toBe(true);
-    expect(result?.snapshot.cursor?.messageId).toBe('111.300');
+    expect(result?.threadContextSnapshot.coversThreadRoot).toBe(true);
+    expect(result?.threadContextSnapshot.cursor?.messageId).toBe('111.300');
   });
 
   it('preserves the legacy Slack string return mode', async () => {
@@ -67,9 +67,39 @@ describe('structured thread context snapshots', () => {
 
     const result = await fetchDiscordThreadContext(client as never, 'thread-1', '300', true, true);
 
-    expect(result?.rendered).toBe('user-1: old request\nuser-2: new context');
-    expect(result?.snapshot.messages.map((message) => message.externalId)).toEqual(['100', '200']);
-    expect(result?.snapshot.coversThreadRoot).toBe(true);
-    expect(result?.snapshot.cursor?.messageId).toBe('300');
+    expect(result?.threadContext).toBe('user-1: old request\nuser-2: new context');
+    expect(result?.threadContextSnapshot.messages.map((message) => message.externalId)).toEqual([
+      '100',
+      '200',
+    ]);
+    expect(result?.threadContextSnapshot.coversThreadRoot).toBe(true);
+    expect(result?.threadContextSnapshot.cursor?.messageId).toBe('300');
+  });
+
+  it('applies the character cap to structured message bodies too', async () => {
+    const client = {
+      conversations: {
+        replies: vi.fn().mockResolvedValue({
+          messages: [{ ts: '111.100', user: 'U1', text: 'x'.repeat(6_000) }],
+        }),
+      },
+    };
+
+    const result = await fetchSlackThreadContext(
+      client as never,
+      'C1',
+      'thread-1',
+      undefined,
+      true,
+    );
+    const snapshot = result?.threadContextSnapshot;
+    const structuredRendered = snapshot?.messages
+      .map((message) => `${message.author}: ${message.text}`)
+      .join('\n');
+
+    expect(result?.threadContext.length).toBeLessThanOrEqual(4_000);
+    expect(structuredRendered).toBe(result?.threadContext);
+    expect(snapshot?.messages[0]?.text.length).toBeLessThan(6_000);
+    expect(snapshot?.coversThreadRoot).toBe(false);
   });
 });

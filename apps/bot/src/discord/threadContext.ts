@@ -1,17 +1,12 @@
 import type { Client } from 'discord.js';
 import { logger } from '@sniptail/core/logger.js';
-import type { JobThreadContextCursor, JobThreadContextSnapshot } from '@sniptail/core/types/job.js';
-import { normalizeThreadContextResult as normalizeSlackThreadContextResult } from '../slack/lib/threadContext.js';
+import {
+  buildThreadContextSnapshot,
+  type ThreadContextSnapshotData,
+} from '@sniptail/core/channels/threadContextSnapshot.js';
+export { normalizeThreadContextResult } from '@sniptail/core/channels/threadContextSnapshot.js';
 
-const maxThreadHistoryMessages = 20;
-const maxThreadHistoryChars = 4000;
-
-export type DiscordThreadContextData = {
-  rendered: string;
-  snapshot: JobThreadContextSnapshot;
-};
-
-export const normalizeThreadContextResult = normalizeSlackThreadContextResult;
+export type DiscordThreadContextData = ThreadContextSnapshotData;
 
 export function stripDiscordMentions(text: string): string {
   return text
@@ -20,15 +15,6 @@ export function stripDiscordMentions(text: string): string {
     .replace(/<#\d+>/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function truncateDiscordThreadContext(rendered: string): string {
-  if (rendered.length <= maxThreadHistoryChars) return rendered;
-  return `...${rendered.slice(-maxThreadHistoryChars)}`;
-}
-
-export function renderDiscordThreadContext(messages: JobThreadContextSnapshot['messages']): string {
-  return messages.map((message) => `${message.author}: ${message.text}`).join('\n');
 }
 
 export function fetchDiscordThreadContext(
@@ -59,12 +45,9 @@ export async function fetchDiscordThreadContext(
     const allHistory = Array.from(messages.values())
       .filter((message) => message.id !== excludeMessageId)
       .reverse();
-    const allFiltered = allHistory.filter((message) => message.content);
-    const filtered = allFiltered
+    const snapshotMessages = allHistory
+      .filter((message) => message.content)
       // .filter((message) => message.content && !message.author?.bot)
-      .slice(-maxThreadHistoryMessages);
-
-    const snapshotMessages = filtered
       .map((message) => {
         const author = message.author?.username ?? message.author?.id ?? 'unknown';
         const text = stripDiscordMentions(message.content ?? '').trim();
@@ -78,58 +61,23 @@ export async function fetchDiscordThreadContext(
       })
       .filter((message): message is NonNullable<typeof message> => Boolean(message));
 
-    if (!snapshotMessages.length) {
-      if (!structured) return undefined;
-      if (!excludeMessageId) return undefined;
-      return {
-        rendered: '',
-        snapshot: {
-          version: 1,
-          provider: 'discord',
-          channelId,
-          threadId: channelId,
-          messages: [],
-          rendered: '',
-          coversThreadRoot: messages.size < 50 && allHistory.length === 0,
-          cursor: {
-            provider: 'discord',
-            channelId,
-            threadId: channelId,
-            messageId: excludeMessageId,
-            orderKey: excludeMessageId,
-          },
-        },
-      };
-    }
-    const joined = renderDiscordThreadContext(snapshotMessages);
-    const rendered = truncateDiscordThreadContext(joined);
-    if (!structured) return rendered;
-    const coversThreadRoot =
-      messages.size < 50 &&
-      allHistory.length <= maxThreadHistoryMessages &&
-      snapshotMessages.length === allHistory.length &&
-      joined.length <= maxThreadHistoryChars;
-    const cursorSource = excludeMessageId ?? snapshotMessages.at(-1)?.externalId;
-    const cursor: JobThreadContextCursor | undefined = cursorSource
-      ? {
-          provider: 'discord',
-          channelId,
-          threadId: channelId,
-          messageId: cursorSource,
-          orderKey: cursorSource,
-        }
-      : undefined;
-    const snapshot: JobThreadContextSnapshot = {
-      version: 1,
+    const data = buildThreadContextSnapshot({
       provider: 'discord',
       channelId,
       threadId: channelId,
       messages: snapshotMessages,
-      rendered,
-      coversThreadRoot,
-      ...(cursor ? { cursor } : {}),
-    };
-    return { rendered, snapshot };
+      coversAvailableHistory: messages.size < 50 && snapshotMessages.length === allHistory.length,
+      ...(excludeMessageId
+        ? {
+            cursorMessage: {
+              messageId: excludeMessageId,
+              orderKey: excludeMessageId,
+            },
+          }
+        : {}),
+    });
+    if (!data) return undefined;
+    return structured ? data : data.threadContext || undefined;
   } catch (err) {
     logger.warn({ err, channelId }, 'Failed to fetch Discord thread history');
     return undefined;
