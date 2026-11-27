@@ -998,6 +998,12 @@ describe('worker/pipeline runJob', () => {
         orderKey: '123.450',
       },
     });
+    const movedJob = updateAgentState({
+      ...updatedJob,
+      channel: { ...updatedJob.channel, threadId: '123.999' },
+    });
+    expect(movedJob.agentThreadIds).toEqual({ codex: 'thread-1' });
+    expect(movedJob.agentThreadContextCursors).toBeUndefined();
     expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-mention',

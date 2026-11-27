@@ -8,6 +8,7 @@ import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { saveAndEnqueueManagedJob } from '../../../job-requests/enqueueManagedJob.js';
 import { authorizeDiscordOperationAndRespond } from '../../permissions/discordPermissionGuards.js';
+import { fetchDiscordThreadContext } from '../../threadContext.js';
 import type { PermissionsRuntimeService } from '../../../permissions/permissionsRuntimeService.js';
 
 export async function handleReviewFromJobButton(
@@ -36,6 +37,9 @@ export async function handleReviewFromJobButton(
   const threadId = interaction.channel?.isThread()
     ? interaction.channelId
     : record?.job?.channel?.threadId;
+  const threadContext = threadId
+    ? await fetchDiscordThreadContext(interaction.client, threadId, undefined, true, true)
+    : undefined;
 
   const job: JobSpec = {
     jobId: createJobId('review'),
@@ -53,10 +57,7 @@ export async function handleReviewFromJobButton(
       ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
     },
     resumeFromJobId: jobId,
-    ...(record?.job?.threadContext ? { threadContext: record.job.threadContext } : {}),
-    ...(record?.job?.threadContextSnapshot
-      ? { threadContextSnapshot: record.job.threadContextSnapshot }
-      : {}),
+    ...threadContext,
   };
 
   const authorized = await authorizeDiscordOperationAndRespond({

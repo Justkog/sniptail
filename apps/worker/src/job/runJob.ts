@@ -35,6 +35,7 @@ import {
   writeJobSpecArtifact,
 } from './artifacts.js';
 import { resolveThreadId } from './records.js';
+import { matchesThreadContextDestination } from './continuationContext.js';
 import type { JobRegistry } from './jobRegistry.js';
 import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
@@ -156,9 +157,16 @@ async function recordAgentThreadId(
     .updateJobRecord(jobId, {
       job: (existingJob) => {
         const agentThreadContextCursors = { ...existingJob.agentThreadContextCursors };
-        if (threadContextCursor) {
+        const existingCursor = agentThreadContextCursors[agentId];
+        if (
+          threadContextCursor &&
+          matchesThreadContextDestination(threadContextCursor, existingJob.channel)
+        ) {
           agentThreadContextCursors[agentId] = threadContextCursor;
-        } else if (existingJob.agentThreadIds?.[agentId] !== threadId) {
+        } else if (
+          existingJob.agentThreadIds?.[agentId] !== threadId ||
+          (existingCursor && !matchesThreadContextDestination(existingCursor, existingJob.channel))
+        ) {
           delete agentThreadContextCursors[agentId];
         }
 

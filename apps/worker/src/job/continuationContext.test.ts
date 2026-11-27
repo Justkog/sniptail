@@ -79,7 +79,49 @@ describe('buildContinuationContext', () => {
     expect(result.rendered).toBe('U1: old\nU2: new');
   });
 
-  it('preserves legacy rendered context and establishes a cursor from the request message', () => {
+  it('ignores a copied review snapshot and its legacy text after the destination changes', () => {
+    const job = { ...buildJob(), type: 'REVIEW' as const, threadContext: 'U1: old\nU2: new' };
+    const destination = { ...job.channel, threadId: 'thread-other' };
+
+    const result = buildContinuationContext(job, buildCursor('111.100'), true, destination);
+
+    expect(result).toEqual({ mode: 'empty', reason: 'incompatible_snapshot', messageCount: 0 });
+    expect(buildContinuationContext(job, undefined, false, destination)).toEqual(result);
+  });
+
+  it('preserves the destination cursor when a copied review snapshot points elsewhere', () => {
+    const job = { ...buildJob(), type: 'REVIEW' as const };
+    const cursor = buildCursor('111.100', 'thread-other');
+    const destination = { ...job.channel, threadId: cursor.threadId };
+
+    const result = buildContinuationContext(job, cursor, true, destination);
+
+    expect(result.mode).toBe('empty');
+    expect(result.cursor).toEqual(cursor);
+  });
+
+  it('matches Discord snapshots to the destination thread even with a parent channel ID', () => {
+    const job = buildJob();
+    if (!job.threadContextSnapshot) throw new Error('Expected thread snapshot');
+    const cursor = { ...buildCursor('111.200'), provider: 'discord', channelId: 'thread-1' };
+    job.threadContextSnapshot = {
+      ...job.threadContextSnapshot,
+      provider: cursor.provider,
+      channelId: cursor.channelId,
+      cursor,
+    };
+
+    const result = buildContinuationContext(job, undefined, false, {
+      provider: 'discord',
+      channelId: 'parent-1',
+      threadId: 'thread-1',
+    });
+
+    expect(result.mode).toBe('full');
+    expect(result.cursor).toEqual(cursor);
+  });
+
+  it('preserves legacy rendered context and retains the previous cursor', () => {
     const job = buildJob();
     delete job.threadContextSnapshot;
     job.threadContext = 'U2: legacy context';

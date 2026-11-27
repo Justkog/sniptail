@@ -1,8 +1,5 @@
-import type {
-  JobSpec,
-  JobThreadContextCursor,
-  JobThreadContextSnapshot,
-} from '@sniptail/core/types/job.js';
+import type { ChannelRef } from '@sniptail/core/types/channel.js';
+import type { JobSpec, JobThreadContextCursor } from '@sniptail/core/types/job.js';
 import { boundThreadContextMessages } from '@sniptail/core/channels/threadContextSnapshot.js';
 
 export type ContinuationContextMode = 'delta' | 'full' | 'empty';
@@ -13,6 +10,7 @@ export type ContinuationContextResult = {
     | 'cursor'
     | 'missing_cursor'
     | 'incompatible_cursor'
+    | 'incompatible_snapshot'
     | 'uncertain_coverage'
     | 'legacy_snapshot_missing';
   rendered?: string;
@@ -20,11 +18,16 @@ export type ContinuationContextResult = {
   cursor?: JobThreadContextCursor;
 };
 
-function sameChannel(left: JobThreadContextCursor, right: JobThreadContextSnapshot): boolean {
+export function matchesThreadContextDestination(
+  context: Pick<JobThreadContextCursor, 'provider' | 'channelId' | 'threadId'>,
+  destination: ChannelRef,
+): boolean {
+  const threadId = destination.threadId ?? destination.channelId;
+  const channelId = destination.provider === 'discord' ? threadId : destination.channelId;
   return (
-    left.provider === right.provider &&
-    left.channelId === right.channelId &&
-    left.threadId === right.threadId
+    context.provider === destination.provider &&
+    context.channelId === channelId &&
+    context.threadId === threadId
   );
 }
 
@@ -32,26 +35,41 @@ export function buildContinuationContext(
   job: JobSpec,
   sourceCursor: JobThreadContextCursor | undefined,
   providerSessionResumed = true,
+  destination: ChannelRef = job.channel,
 ): ContinuationContextResult {
   const snapshot = job.threadContextSnapshot;
+  const destinationCursor =
+    providerSessionResumed &&
+    sourceCursor &&
+    matchesThreadContextDestination(sourceCursor, destination)
+      ? sourceCursor
+      : undefined;
 
   if (!snapshot) {
-    const retainSourceCursor =
-      providerSessionResumed &&
-      sourceCursor?.provider === job.channel.provider &&
-      sourceCursor.channelId === job.channel.channelId &&
-      sourceCursor.threadId === (job.channel.threadId ?? job.channel.channelId);
     return {
       mode: job.threadContext ? 'full' : 'empty',
       reason: 'legacy_snapshot_missing',
       ...(job.threadContext ? { rendered: job.threadContext } : {}),
       messageCount: job.threadContext ? 1 : 0,
-      ...(retainSourceCursor && sourceCursor ? { cursor: sourceCursor } : {}),
+      ...(destinationCursor ? { cursor: destinationCursor } : {}),
     };
   }
 
-  if (!sourceCursor) {
-    const cursor = snapshot.coversThreadRoot ? snapshot.cursor : undefined;
+  if (!matchesThreadContextDestination(snapshot, destination)) {
+    return {
+      mode: 'empty',
+      reason: 'incompatible_snapshot',
+      messageCount: 0,
+      ...(destinationCursor ? { cursor: destinationCursor } : {}),
+    };
+  }
+
+  const snapshotCursor =
+    snapshot.cursor && matchesThreadContextDestination(snapshot.cursor, destination)
+      ? snapshot.cursor
+      : undefined;
+  if (!providerSessionResumed || !sourceCursor) {
+    const cursor = snapshot.coversThreadRoot ? snapshotCursor : undefined;
     return {
       mode: snapshot.rendered ? 'full' : 'empty',
       reason: 'missing_cursor',
@@ -61,7 +79,7 @@ export function buildContinuationContext(
     };
   }
 
-  if (!sameChannel(sourceCursor, snapshot)) {
+  if (!destinationCursor) {
     return {
       mode: snapshot.rendered ? 'full' : 'empty',
       reason: 'incompatible_cursor',
@@ -76,23 +94,23 @@ export function buildContinuationContext(
       reason: 'uncertain_coverage',
       ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
       messageCount: snapshot.messages.length,
-      cursor: sourceCursor,
+      cursor: destinationCursor,
     };
   }
 
   const sourceIndex = snapshot.messages.findIndex(
-    (message) => message.externalId === sourceCursor.messageId,
+    (message) => message.externalId === destinationCursor.messageId,
   );
   const sourceMatchesSnapshotCursor =
-    snapshot.cursor?.messageId === sourceCursor.messageId &&
-    snapshot.cursor?.orderKey === sourceCursor.orderKey;
+    snapshotCursor?.messageId === destinationCursor.messageId &&
+    snapshotCursor?.orderKey === destinationCursor.orderKey;
   if (sourceIndex < 0 && !sourceMatchesSnapshotCursor) {
     return {
       mode: snapshot.rendered ? 'full' : 'empty',
       reason: 'cursor',
       ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
       messageCount: snapshot.messages.length,
-      ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
+      ...(snapshotCursor ? { cursor: snapshotCursor } : {}),
     };
   }
 
@@ -104,7 +122,7 @@ export function buildContinuationContext(
       reason: 'uncertain_coverage',
       ...(snapshot.rendered ? { rendered: snapshot.rendered } : {}),
       messageCount: messages.length,
-      ...(sourceCursor ? { cursor: sourceCursor } : {}),
+      cursor: destinationCursor,
     };
   }
   return {
@@ -112,6 +130,6 @@ export function buildContinuationContext(
     reason: 'cursor',
     ...(boundedDelta.rendered ? { rendered: boundedDelta.rendered } : {}),
     messageCount: messages.length,
-    ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
+    ...(snapshotCursor ? { cursor: snapshotCursor } : {}),
   };
 }
