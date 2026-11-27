@@ -60,14 +60,14 @@ export async function fetchDiscordThreadContext(
         };
       })
       .filter((message): message is NonNullable<typeof message> => Boolean(message));
-
+    const triggerPresent = excludeMessageId ? messages.has(excludeMessageId) : false;
     const data = buildThreadContextSnapshot({
       provider: 'discord',
       channelId,
       threadId: channelId,
       messages: snapshotMessages,
       coversAvailableHistory: messages.size < 50 && snapshotMessages.length === allHistory.length,
-      ...(excludeMessageId
+      ...(triggerPresent && excludeMessageId
         ? {
             cursorMessage: {
               messageId: excludeMessageId,

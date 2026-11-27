@@ -73,6 +73,7 @@ export async function fetchSlackThreadContext(
         };
       })
       .filter((message): message is NonNullable<typeof message> => Boolean(message));
+    const triggerMessage = messages.find((message) => message.ts === excludeTs);
     const data = buildThreadContextSnapshot({
       provider: 'slack',
       channelId,
@@ -82,11 +83,11 @@ export async function fetchSlackThreadContext(
         !response.has_more &&
         !response.response_metadata?.next_cursor &&
         snapshotMessages.length === allHistory.length,
-      ...(excludeTs
+      ...(triggerMessage?.ts
         ? {
             cursorMessage: {
-              messageId: excludeTs,
-              orderKey: excludeTs,
+              messageId: triggerMessage.ts,
+              orderKey: triggerMessage.ts,
             },
           }
         : {}),

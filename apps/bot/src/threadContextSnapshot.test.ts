@@ -102,4 +102,45 @@ describe('structured thread context snapshots', () => {
     expect(snapshot?.messages[0]?.text.length).toBeLessThan(6_000);
     expect(snapshot?.coversThreadRoot).toBe(false);
   });
+
+  it('keeps the newest retained Slack cursor when the trigger is absent', async () => {
+    const client = {
+      conversations: {
+        replies: vi.fn().mockResolvedValue({
+          messages: [{ ts: '111.200', user: 'U2', text: 'new context' }],
+        }),
+      },
+    };
+
+    const result = await fetchSlackThreadContext(
+      client as never,
+      'C1',
+      'thread-1',
+      '111.300',
+      true,
+    );
+
+    expect(result?.threadContextSnapshot.cursor?.messageId).toBe('111.200');
+  });
+
+  it('keeps the newest retained Discord cursor when the trigger is absent', async () => {
+    const messages = new Map([
+      ['200', { id: '200', content: 'new context', author: { username: 'user-2' } }],
+    ]);
+    const client = {
+      channels: {
+        fetch: vi.fn().mockResolvedValue({
+          isTextBased: () => true,
+          isThread: () => true,
+          messages: {
+            fetch: vi.fn().mockResolvedValue(messages),
+          },
+        }),
+      },
+    };
+
+    const result = await fetchDiscordThreadContext(client as never, 'thread-1', '300', true, true);
+
+    expect(result?.threadContextSnapshot.cursor?.messageId).toBe('200');
+  });
 });
