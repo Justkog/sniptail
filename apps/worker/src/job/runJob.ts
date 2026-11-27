@@ -147,43 +147,35 @@ function buildCommitMessage(
 
 async function recordAgentThreadId(
   registry: JobRegistry,
-  job: JobSpec,
+  jobId: string,
   agentId: AgentId,
   threadId: string,
   threadContextCursor?: JobThreadContextCursor,
 ): Promise<void> {
-  const existingRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
-    return undefined;
-  });
-  const existingJob = existingRecord?.job ?? job;
-  const nextJob: JobSpec = {
-    ...existingJob,
-    agentThreadIds: {
-      ...(existingJob.agentThreadIds ?? {}),
-      [agentId]: threadId,
-    },
-  };
-  const existingThreadId = existingJob.agentThreadIds?.[agentId];
-  const nextThreadContextCursors = {
-    ...(existingJob.agentThreadContextCursors ?? {}),
-  };
-  if (threadContextCursor) {
-    nextThreadContextCursors[agentId] = threadContextCursor;
-  } else if (existingThreadId !== threadId) {
-    delete nextThreadContextCursors[agentId];
-  }
-  if (Object.keys(nextThreadContextCursors).length) {
-    nextJob.agentThreadContextCursors = nextThreadContextCursors;
-  } else {
-    delete nextJob.agentThreadContextCursors;
-  }
   await registry
-    .updateJobRecord(job.jobId, {
-      job: nextJob,
+    .updateJobRecord(jobId, {
+      job: (existingJob) => {
+        const agentThreadContextCursors = { ...existingJob.agentThreadContextCursors };
+        if (threadContextCursor) {
+          agentThreadContextCursors[agentId] = threadContextCursor;
+        } else if (existingJob.agentThreadIds?.[agentId] !== threadId) {
+          delete agentThreadContextCursors[agentId];
+        }
+
+        const nextJob: JobSpec = {
+          ...existingJob,
+          agentThreadIds: { ...existingJob.agentThreadIds, [agentId]: threadId },
+        };
+        if (Object.keys(agentThreadContextCursors).length) {
+          nextJob.agentThreadContextCursors = agentThreadContextCursors;
+        } else {
+          delete nextJob.agentThreadContextCursors;
+        }
+        return nextJob;
+      },
     })
     .catch((err) => {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
+      logger.warn({ err, jobId }, 'Failed to record agent thread id');
     });
 }
 
@@ -459,7 +451,7 @@ async function runJobInternal(
     if (agentRun.result.threadId) {
       await recordAgentThreadId(
         registry,
-        job,
+        job.jobId,
         agentRun.agentId,
         agentRun.result.threadId,
         agentRun.threadContextCursor,

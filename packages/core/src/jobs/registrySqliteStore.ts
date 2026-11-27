@@ -2,6 +2,7 @@ import { eq, inArray, like } from 'drizzle-orm';
 import type { SqliteJobRegistryClient } from '../db/index.js';
 import { jobs as sqliteJobs } from '../db/sqlite/schema.js';
 import { logger } from '../logger.js';
+import { updateStoredJobRecord } from './registryRecordUpdate.js';
 import type {
   JobRecord,
   JobRecordCleanupQuery,
@@ -172,6 +173,19 @@ export function createSqliteJobRegistryStore(client: SqliteJobRegistryClient): J
           target: sqliteJobs.jobId,
           set: { record: serialized },
         });
+    },
+    updateRecord(key, update) {
+      const select = client.raw.prepare<[string], { record: string }>(
+        'SELECT record FROM jobs WHERE job_id = ?',
+      );
+      const replace = client.raw.prepare<[string, string, string]>(
+        'UPDATE jobs SET record = ? WHERE job_id = ? AND record = ?',
+      );
+      return updateStoredJobRecord(
+        () => Promise.resolve(select.get(key)?.record),
+        (previous, next) => Promise.resolve(replace.run(next, key, previous).changes === 1),
+        update,
+      );
     },
     // eslint-disable-next-line @typescript-eslint/require-await
     async conditionalUpdateRecord(

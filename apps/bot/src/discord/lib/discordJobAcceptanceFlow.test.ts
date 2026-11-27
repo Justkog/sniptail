@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { updateJobRecord } from '@sniptail/core/jobs/registry.js';
 import { postDiscordJobAcceptance } from './threads.js';
 
 const { updateJobRecordMock } = vi.hoisted(() => ({
-  updateJobRecordMock: vi.fn(),
+  updateJobRecordMock: vi.fn<typeof updateJobRecord>(),
 }));
 
 vi.mock('@sniptail/core/jobs/registry.js', () => ({
@@ -12,7 +13,6 @@ vi.mock('@sniptail/core/jobs/registry.js', () => ({
 describe('discord/lib postDiscordJobAcceptance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    updateJobRecordMock.mockResolvedValue({});
   });
 
   it('normalizes Discord channel context to the created thread id', async () => {
@@ -58,6 +58,12 @@ describe('discord/lib postDiscordJobAcceptance', () => {
         userId: 'user-1',
       },
     };
+    updateJobRecordMock.mockResolvedValue({
+      job,
+      status: 'queued',
+      createdAt: '2026-05-18T12:00:00.000Z',
+      updatedAt: '2026-05-18T12:00:00.000Z',
+    });
 
     await expect(
       postDiscordJobAcceptance(interaction as never, job, 'Inspect the service', 'sniptail', {
@@ -68,15 +74,18 @@ describe('discord/lib postDiscordJobAcceptance', () => {
       threadId: 'thread-1',
     });
 
-    expect(updateJobRecordMock).toHaveBeenCalledWith('explore-1', {
-      job: {
-        ...job,
-        channel: {
-          ...job.channel,
-          channelId: 'thread-1',
-          threadId: 'thread-1',
-          requestMessageId: 'request-message-1',
-        },
+    const [jobId, patch] = updateJobRecordMock.mock.calls[0] ?? [];
+    expect(jobId).toBe('explore-1');
+    if (typeof patch?.job !== 'function') throw new Error('Expected a job update callback');
+    const agentThreadIds = { codex: 'agent-thread-1' };
+    expect(patch.job({ ...job, agentThreadIds })).toEqual({
+      ...job,
+      agentThreadIds,
+      channel: {
+        ...job.channel,
+        channelId: 'thread-1',
+        threadId: 'thread-1',
+        requestMessageId: 'request-message-1',
       },
     });
   });

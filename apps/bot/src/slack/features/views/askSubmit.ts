@@ -168,16 +168,17 @@ export function registerAskSubmitView({
       }
     }
 
-    if (ackResponse?.ts) {
+    const requestMessageId = ackResponse?.ts;
+    if (requestMessageId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
-            ...(!metadata?.threadId ? { threadId: ackResponse.ts } : {}),
-            requestMessageId: ackResponse.ts,
+            ...currentJob.channel,
+            ...(!metadata?.threadId ? { threadId: requestMessageId } : {}),
+            requestMessageId,
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job request message context');
       });

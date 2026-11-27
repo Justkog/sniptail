@@ -398,7 +398,7 @@ import { resolveAgentContinuation } from './job/records.js';
 function createRegistryMock() {
   return {
     loadJobRecord: vi.fn(),
-    updateJobRecord: vi.fn(),
+    updateJobRecord: vi.fn<JobRegistry['updateJobRecord']>(),
     loadAllJobRecords: vi.fn(),
     deleteJobRecords: vi.fn(),
     markJobForDeletion: vi.fn(),
@@ -979,11 +979,17 @@ describe('worker/pipeline runJob', () => {
       ownerWorkerId: 'worker-a',
       ownerWorkerLabel: 'Worker A',
     });
-    const cursorPersistencePatch = updateJobRecordMock.mock.calls
-      .map((call) => call[1] as { job?: Record<string, unknown> })
-      .find((patch) => patch.job?.agentThreadIds !== undefined);
-    expect(cursorPersistencePatch?.job?.agentThreadIds).toEqual({ codex: 'thread-1' });
-    expect(cursorPersistencePatch?.job?.agentThreadContextCursors).toEqual({
+    const updateAgentState = updateJobRecordMock.mock.calls
+      .map(([, patch]) => patch.job)
+      .find((update) => typeof update === 'function');
+    if (typeof updateAgentState !== 'function') throw new Error('Expected a job update callback');
+    const updatedJob = updateAgentState({
+      ...job,
+      channel: { ...job.channel, requestMessageId: 'new-request-message' },
+    });
+    expect(updatedJob.channel.requestMessageId).toBe('new-request-message');
+    expect(updatedJob.agentThreadIds).toEqual({ codex: 'thread-1' });
+    expect(updatedJob.agentThreadContextCursors).toEqual({
       codex: {
         provider: 'slack',
         channelId: 'C1',
@@ -1537,13 +1543,14 @@ describe('worker/pipeline runJob', () => {
     expect(artifactOptions?.promptOverride).toBe('implement artifacts prompt');
 
     const agentStatePatches = updateJobRecordMock.mock.calls
-      .map((call) => call[1] as { job?: Record<string, unknown> })
-      .filter((patch) => patch.job?.agentThreadIds !== undefined);
+      .map(([, patch]) => patch.job)
+      .filter((update) => typeof update === 'function');
     expect(agentStatePatches).toHaveLength(1);
-    expect(agentStatePatches[0]?.job?.agentThreadIds).toEqual({
+    const updatedJob = agentStatePatches[0]?.(job);
+    expect(updatedJob?.agentThreadIds).toEqual({
       codex: 'thread-implement-resumed',
     });
-    expect(agentStatePatches[0]?.job?.agentThreadContextCursors).toEqual({
+    expect(updatedJob?.agentThreadContextCursors).toEqual({
       codex: {
         provider: 'slack',
         channelId: 'C1',

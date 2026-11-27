@@ -12,7 +12,7 @@ import {
 } from '@sniptail/core/jobs/registry.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { JobRecord, JobRecordPatch } from '@sniptail/core/jobs/registry.js';
 import type { JobRegistry } from './jobRegistry.js';
 
 export class DbJobRegistry implements JobRegistry {
@@ -20,7 +20,7 @@ export class DbJobRegistry implements JobRegistry {
     return loadJobRecordDb(jobId);
   }
 
-  async updateJobRecord(jobId: string, patch: Partial<JobRecord>): Promise<JobRecord | undefined> {
+  async updateJobRecord(jobId: string, patch: JobRecordPatch): Promise<JobRecord | undefined> {
     return updateJobRecordDb(jobId, patch);
   }
 

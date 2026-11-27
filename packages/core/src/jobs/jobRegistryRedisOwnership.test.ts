@@ -40,12 +40,17 @@ const hoisted = vi.hoisted(() => {
       return deleted;
     }
 
-    eval(_script: string, _numKeys: number, key: string, record: string, expectedStatus: string) {
+    eval(script: string, _numKeys: number, key: string, first: string, second: string) {
       const raw = this.values.get(key);
       if (!raw) return 0;
+      if (script.includes('~= ARGV[1]')) {
+        if (raw !== first) return 0;
+        this.values.set(key, second);
+        return 1;
+      }
       const parsed = JSON.parse(raw) as JobRecord;
-      if (parsed.status !== expectedStatus) return 0;
-      this.values.set(key, record);
+      if (parsed.status !== second) return 0;
+      this.values.set(key, first);
       return 1;
     }
   }
@@ -115,5 +120,39 @@ describe('jobs/redis ownership persistence', () => {
 
     await expect(store.loadRecordByKey('job:job-redis')).resolves.toEqual(updated);
     await expect(store.loadAllRecordsByPrefix('job:')).resolves.toEqual([updated]);
+  });
+
+  it('retries overlapping acknowledgement and agent session writes against the latest record', async () => {
+    const store = createRedisJobRegistryStore('redis://unused');
+    const key = 'job:job-redis';
+    const record = buildRecord('job-redis');
+    await store.upsertRecord(key, record);
+    const channel = { ...record.job.channel, requestMessageId: 'request-1' };
+    const agentThreadIds = { codex: 'agent-thread-1' };
+    const agentThreadContextCursors = {
+      codex: {
+        provider: 'discord' as const,
+        channelId: 'C1',
+        threadId: 'T1',
+        messageId: '100',
+        orderKey: '100',
+      },
+    };
+    const acknowledge = vi.fn((current: JobRecord): JobRecord => ({
+      ...current,
+      job: { ...current.job, channel },
+    }));
+    const saveSession = vi.fn((current: JobRecord): JobRecord => ({
+      ...current,
+      job: { ...current.job, agentThreadIds, agentThreadContextCursors },
+    }));
+
+    await Promise.all([store.updateRecord(key, acknowledge), store.updateRecord(key, saveSession)]);
+
+    expect(acknowledge.mock.calls.length + saveSession.mock.calls.length).toBe(3);
+    await expect(store.loadRecordByKey(key)).resolves.toEqual({
+      ...record,
+      job: { ...record.job, channel, agentThreadIds, agentThreadContextCursors },
+    });
   });
 });

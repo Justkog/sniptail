@@ -5,9 +5,10 @@ import { logger } from '../logger.js';
 import type { ChannelProvider } from '../types/channel.js';
 import type { AgentId, JobSpec, JobType } from '../types/job.js';
 import { getJobRegistryStore } from './registryStore.js';
-import type { JobRecord } from './registryTypes.js';
+import { applyJobRecordPatch } from './registryRecordUpdate.js';
+import type { JobRecord, JobRecordPatch } from './registryTypes.js';
 
-export type { JobRecord, JobStatus } from './registryTypes.js';
+export type { JobRecord, JobRecordPatch, JobStatus } from './registryTypes.js';
 
 const JOB_KEY_PREFIX = 'job:';
 
@@ -69,39 +70,21 @@ export async function deleteJobRecords(jobIds: string[]): Promise<void> {
   await Promise.all(jobIds.map((jobId) => removeJobRoot(jobId)));
 }
 
-export async function updateJobRecord(
-  jobId: string,
-  patch: Partial<JobRecord>,
-): Promise<JobRecord> {
-  const existing = await loadJobRecord(jobId);
-  if (!existing) {
+export async function updateJobRecord(jobId: string, patch: JobRecordPatch): Promise<JobRecord> {
+  const store = await getJobRegistryStore();
+  const updated = await store.updateRecord(jobKey(jobId), (record) =>
+    applyJobRecordPatch(record, patch, new Date().toISOString()),
+  );
+  if (!updated) {
     throw new Error(`Job record not found for ${jobId}`);
   }
-  const updated: JobRecord = {
-    ...existing,
-    ...patch,
-    job: patch.job ?? existing.job,
-    updatedAt: new Date().toISOString(),
-  };
-  const store = await getJobRegistryStore();
-  await store.upsertRecord(jobKey(jobId), updated);
   return updated;
 }
 
 export async function markJobForDeletion(jobId: string, ttlMs: number): Promise<JobRecord> {
-  const existing = await loadJobRecord(jobId);
-  if (!existing) {
-    throw new Error(`Job record not found for ${jobId}`);
-  }
   const deleteAt = new Date(Date.now() + ttlMs).toISOString();
-  const updated: JobRecord = {
-    ...existing,
-    deleteAt,
-    updatedAt: new Date().toISOString(),
-  };
+  const updated = await updateJobRecord(jobId, { deleteAt });
   const key = jobKey(jobId);
-  const store = await getJobRegistryStore();
-  await store.upsertRecord(key, updated);
 
   setTimeout(() => {
     getJobRegistryStore()

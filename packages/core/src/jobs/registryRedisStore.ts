@@ -1,6 +1,7 @@
 import { RedisConnection, type RedisClient } from 'bullmq';
 import { logger } from '../logger.js';
 import { createConnectionOptions } from '../queue/queue.js';
+import { updateStoredJobRecord } from './registryRecordUpdate.js';
 import type {
   JobRecord,
   JobRecordCleanupQuery,
@@ -155,6 +156,19 @@ export function createRedisJobRegistryStore(redisUrl: string): JobRegistryStore 
     async upsertRecord(key: string, record: JobRecord): Promise<void> {
       const client = await getClient(connection);
       await client.set(key, JSON.stringify(record));
+    },
+    async updateRecord(key, update) {
+      const client = await getClient(connection);
+      const lua = [
+        'if redis.call("GET", KEYS[1]) ~= ARGV[1] then return 0 end',
+        'redis.call("SET", KEYS[1], ARGV[2])',
+        'return 1',
+      ].join('\n');
+      return updateStoredJobRecord(
+        async () => (await client.get(key)) ?? undefined,
+        async (previous, next) => (await client.eval(lua, 1, key, previous, next)) === 1,
+        update,
+      );
     },
     async conditionalUpdateRecord(
       key: string,

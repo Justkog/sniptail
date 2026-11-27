@@ -1,4 +1,4 @@
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { JobRecord, JobRecordPatch } from '@sniptail/core/jobs/registry.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 
@@ -8,7 +8,7 @@ export type JobRegistrySnapshot = {
 
 export interface JobRegistry {
   loadJobRecord(jobId: string): Promise<JobRecord | undefined>;
-  updateJobRecord(jobId: string, patch: Partial<JobRecord>): Promise<JobRecord | undefined>;
+  updateJobRecord(jobId: string, patch: JobRecordPatch): Promise<JobRecord | undefined>;
   loadAllJobRecords(): Promise<JobRecord[]>;
   deleteJobRecords(jobIds: string[]): Promise<void>;
   markJobForDeletion(jobId: string, ttlMs: number): Promise<JobRecord | undefined>;

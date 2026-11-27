@@ -1,4 +1,4 @@
-import type { JobRecord } from '@sniptail/core/jobs/registry.js';
+import type { JobRecord, JobRecordPatch } from '@sniptail/core/jobs/registry.js';
 import type { ChannelProvider } from '@sniptail/core/types/channel.js';
 import type { AgentId, JobType } from '@sniptail/core/types/job.js';
 import type { JobRegistry } from './jobRegistry.js';
@@ -14,7 +14,7 @@ export class NoopJobRegistry implements JobRegistry {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _jobId: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _patch: Partial<JobRecord>,
+    _patch: JobRecordPatch,
   ): Promise<JobRecord | undefined> {
     return undefined;
   }

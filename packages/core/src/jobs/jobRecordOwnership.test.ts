@@ -22,6 +22,13 @@ const hoisted = vi.hoisted(() => {
       records.set(key, record);
       return Promise.resolve();
     }),
+    updateRecord: vi.fn((key: string, update: (record: JobRecord) => JobRecord) => {
+      const current = records.get(key);
+      if (!current) return Promise.resolve(undefined);
+      const updated = update(current);
+      records.set(key, updated);
+      return Promise.resolve(updated);
+    }),
     conditionalUpdateRecord: vi.fn(() => Promise.resolve(false)),
     deleteRecordsByKeys: vi.fn((keys: string[]) => {
       for (const key of keys) {

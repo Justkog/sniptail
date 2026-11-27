@@ -123,15 +123,16 @@ export function registerReviewFromJobAction({
       ...(effectiveThreadId ? { threadTs: effectiveThreadId } : {}),
     });
 
-    if (!effectiveThreadId && ackResponse?.ts) {
+    const ackThreadId = ackResponse?.ts;
+    if (!effectiveThreadId && ackThreadId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
-            threadId: ackResponse.ts,
+            ...currentJob.channel,
+            threadId: ackThreadId,
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record review job thread timestamp');
       });
