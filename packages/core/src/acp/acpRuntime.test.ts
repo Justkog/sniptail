@@ -406,6 +406,52 @@ describe('ACP runtime wrapper', () => {
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it('sets the mode from config options before prompting and uses the refreshed options', async () => {
+    const { connection } = queueRuntime();
+    const mode = {
+      id: 'mode',
+      name: 'Session Mode',
+      type: 'select',
+      currentValue: 'plan',
+      options: [
+        { value: 'plan', name: 'Plan' },
+        { value: 'build', name: 'Build' },
+      ],
+    };
+    connection.newSession.mockResolvedValue({ sessionId: 'session-1', configOptions: [mode] });
+    connection.setSessionConfigOption.mockResolvedValueOnce({
+      configOptions: [
+        { ...mode, currentValue: 'build' },
+        {
+          id: 'provider',
+          name: 'Provider',
+          type: 'select',
+          currentValue: 'openai',
+          options: [
+            { value: 'openai', name: 'OpenAI' },
+            { value: 'anthropic', name: 'Anthropic' },
+          ],
+        },
+      ],
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'], profile: 'build', modelProvider: 'Anthropic' },
+    });
+    await runtime.createSession();
+    await runtime.prompt({ prompt: 'Please inspect the repo.' });
+
+    expect(connection.setSessionConfigOption.mock.calls).toEqual([
+      [{ sessionId: 'session-1', configId: 'mode', value: 'build' }],
+      [{ sessionId: 'session-1', configId: 'provider', value: 'anthropic' }],
+    ]);
+    expect(connection.setSessionConfigOption.mock.invocationCallOrder[1]).toBeLessThan(
+      connection.prompt.mock.invocationCallOrder[0],
+    );
+    expect(connection.setSessionMode).not.toHaveBeenCalled();
+  });
+
   it('falls back to resource links for attachments when the agent only supports baseline prompt blocks', async () => {
     const { connection } = queueRuntime();
     connection.initialize.mockResolvedValue({
@@ -588,6 +634,55 @@ describe('ACP runtime wrapper', () => {
     });
   });
 
+  it.each([false, true])(
+    'selects the grouped config mode on load (legacy modes advertised: %s)',
+    async (advertiseLegacyModes) => {
+      const { connection } = queueRuntime();
+      connection.loadSession.mockResolvedValue({
+        ...(advertiseLegacyModes
+          ? {
+              modes: {
+                currentModeId: 'build',
+                availableModes: [{ id: 'build', name: 'Build Mode' }],
+              },
+            }
+          : {}),
+        configOptions: [
+          {
+            id: 'agent',
+            name: 'Agent',
+            category: 'mode',
+            type: 'select',
+            currentValue: 'plan',
+            options: [
+              {
+                group: 'primary',
+                name: 'Primary agents',
+                options: [
+                  { value: 'plan', name: 'Plan' },
+                  { value: 'primary-build', name: 'Build Mode' },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const runtime = await launchAcpRuntime({
+        cwd: '/tmp/work',
+        launch: { command: ['mock-acp'], profile: 'build_mode' },
+      });
+      await runtime.loadSession('existing-session');
+
+      expect(connection.setSessionConfigOption).toHaveBeenCalledExactlyOnceWith({
+        sessionId: 'existing-session',
+        configId: 'agent',
+        value: 'primary-build',
+      });
+      expect(connection.setSessionMode).not.toHaveBeenCalled();
+    },
+  );
+
   it('can skip session overrides when loading an existing session', async () => {
     const { connection } = queueRuntime();
     connection.loadSession.mockResolvedValue({
@@ -599,6 +694,18 @@ describe('ACP runtime wrapper', () => {
           { id: 'build', name: 'Build' },
         ],
       },
+      configOptions: [
+        {
+          id: 'mode',
+          name: 'Session Mode',
+          type: 'select',
+          currentValue: 'ask',
+          options: [
+            { value: 'ask', name: 'Ask' },
+            { value: 'build', name: 'Build' },
+          ],
+        },
+      ],
     });
 
     const runtime = await launchAcpRuntime({
@@ -801,6 +908,34 @@ describe('ACP runtime wrapper', () => {
     await expect(runtime.createSession()).rejects.toThrow(
       'ACP profile is not supported by this agent: build',
     );
+  });
+
+  it('rejects a profile available only in the legacy list when there is a mode config option', async () => {
+    const { connection } = queueRuntime();
+    connection.newSession.mockResolvedValue({
+      sessionId: 'session-1',
+      modes: { currentModeId: 'build', availableModes: [{ id: 'build', name: 'Build' }] },
+      configOptions: [
+        {
+          id: 'mode',
+          name: 'Session Mode',
+          type: 'select',
+          currentValue: 'plan',
+          options: [{ value: 'plan', name: 'Plan' }],
+        },
+      ],
+    });
+
+    const runtime = await launchAcpRuntime({
+      cwd: '/tmp/work',
+      launch: { command: ['mock-acp'], profile: 'build' },
+    });
+
+    await expect(runtime.createSession()).rejects.toThrow(
+      'ACP profile is not supported by this agent: build',
+    );
+    expect(connection.setSessionConfigOption).not.toHaveBeenCalled();
+    expect(connection.setSessionMode).not.toHaveBeenCalled();
   });
 
   it('includes early process stderr when initialization fails', async () => {
