@@ -54,7 +54,6 @@ export const NOOP_TELEMETRY: SniptailTelemetry = {
   async shutdown() {},
 };
 
-
 export function bucketTelemetryDuration(durationMs: number): TelemetryDurationBucket {
   if (durationMs < 1_000) return '<1s';
   if (durationMs < 10_000) return '1-10s';
@@ -135,11 +134,10 @@ export async function createSniptailTelemetry(
           logger.debug({ err }, 'Failed to flush anonymous telemetry');
         });
         return shutdownPromise;
-      }
+      },
     };
   } catch (err) {
     logger.debug({ err }, 'Failed to initialize anonymous telemetry');
     return NOOP_TELEMETRY;
   }
 }
-
