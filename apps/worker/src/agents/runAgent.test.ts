@@ -442,4 +442,69 @@ describe('runAgentJob', () => {
     expect(runOptions?.resumeThreadId).toBe('thread-primary');
     expect(result.threadContextCursor).toBeUndefined();
   });
+
+  it('feeds a structured-only snapshot into the fresh prompt', async () => {
+    const job: JobSpec = {
+      ...buildJob(),
+      threadContextSnapshot: {
+        version: 1,
+        provider: 'slack',
+        channelId: 'C123',
+        threadId: 'thread-1',
+        messages: [
+          {
+            externalId: '111.100',
+            orderKey: '111.100',
+            author: 'U2',
+            text: 'structured history',
+          },
+        ],
+        rendered: 'U2: structured history',
+        coversThreadRoot: true,
+        cursor: {
+          provider: 'slack',
+          channelId: 'C123',
+          threadId: 'thread-1',
+          messageId: '111.100',
+          orderKey: '111.100',
+        },
+      },
+      channel: {
+        ...buildJob().channel,
+        threadId: 'thread-1',
+      },
+    };
+    hoisted.loadJobRecord.mockResolvedValue({ job });
+
+    const result = await runAgentJob({
+      job,
+      config: {
+        primaryAgent: 'codex',
+        botName: 'Sniptail',
+        repoCacheRoot: '/tmp/repo-cache',
+        jobWorkRoot: '/tmp/job-root',
+      } as never,
+      paths: {
+        root: '/tmp/job-root/job-1',
+        reposRoot: '/tmp/job-root/job-1/repos',
+        artifactsRoot: '/tmp/job-root/job-1/artifacts',
+        logsRoot: '/tmp/job-root/job-1/logs',
+        logFile: '/tmp/job-root/job-1/logs/runner.log',
+      },
+      env: {},
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
+    });
+
+    expect(job.threadContext).toBeUndefined();
+    const runOptions = hoisted.run.mock.calls[0]?.[3] as { promptOverride?: string } | undefined;
+    expect(runOptions?.promptOverride).toContain(
+      'Thread history (oldest to newest):\nU2: structured history',
+    );
+    expect(result.threadContextCursor?.messageId).toBe('111.100');
+  });
 });

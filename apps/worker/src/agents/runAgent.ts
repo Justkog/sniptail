@@ -24,6 +24,15 @@ type RunAgentResult = {
   threadContextCursor?: JobThreadContextCursor;
 };
 
+function withEffectiveThreadContext(job: JobSpec, threadContext: string | undefined): JobSpec {
+  const promptJob = { ...job };
+  delete promptJob.threadContext;
+  if (threadContext) {
+    promptJob.threadContext = threadContext;
+  }
+  return promptJob;
+}
+
 export async function runAgentJob(options: {
   job: JobSpec;
   config: WorkerConfig;
@@ -90,7 +99,11 @@ export async function runAgentJob(options: {
           threadContextMode: context?.mode ?? 'empty',
           lineageWarnings,
         })
-      : buildPromptForJobWithLineageWarnings(job, config.botName, lineageWarnings));
+      : buildPromptForJobWithLineageWarnings(
+          withEffectiveThreadContext(job, context?.rendered),
+          config.botName,
+          lineageWarnings,
+        ));
 
   logger.info(
     {
