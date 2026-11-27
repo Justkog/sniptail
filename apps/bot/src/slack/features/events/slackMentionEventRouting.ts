@@ -8,7 +8,11 @@ import { dedupe } from '../../lib/dedupe.js';
 import { createJobId } from '../../../lib/jobs.js';
 import { auditJobRequest } from '../../../lib/requestAudit.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { fetchSlackThreadContext, stripSlackMentions } from '../../lib/threadContext.js';
+import {
+  fetchSlackThreadContext,
+  normalizeThreadContextResult,
+  stripSlackMentions,
+} from '../../lib/threadContext.js';
 import { refreshRepoAllowlist } from '../../../lib/repoAllowlist.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 
@@ -56,7 +60,10 @@ export async function queueSlackMentionJob(
     return false;
   }
 
-  const threadContext = await fetchSlackThreadContext(client, channelId, threadId, eventTs);
+  const normalizedThreadContext = normalizeThreadContextResult(
+    await fetchSlackThreadContext(client, channelId, threadId, eventTs, true),
+  );
+  const { threadContext, threadContextSnapshot } = normalizedThreadContext;
   const strippedText = stripSlackMentions(text);
   const requestText =
     strippedText ||
@@ -76,9 +83,11 @@ export async function queueSlackMentionJob(
       provider: 'slack',
       channelId,
       userId,
+      ...(eventTs ? { requestMessageId: eventTs } : {}),
       ...(threadId ? { threadId } : {}),
     },
     ...(threadContext ? { threadContext } : {}),
+    ...(threadContextSnapshot ? { threadContextSnapshot } : {}),
   };
 
   const authorized = await authorizeSlackOperationAndRespond({

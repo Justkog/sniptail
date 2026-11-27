@@ -279,9 +279,10 @@ vi.mock('@sniptail/core/agents/agentRegistry.js', () => {
 
 vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
   buildPromptForJobWithLineageWarnings: vi.fn(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_job: unknown, _botName: string, _warnings: unknown[]) => 'prompt with lineage warning',
+    (_job: unknown, _botName: string, warnings: unknown[]) =>
+      warnings.length ? 'prompt with lineage warning' : 'base prompt',
   ),
+  buildContinuationPromptForJob: vi.fn(() => 'compact continuation prompt'),
 }));
 
 vi.mock('@sniptail/core/agents/prompts/index.js', () => ({
@@ -392,11 +393,12 @@ import {
 } from './pipeline.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
 import type { JobRegistry } from './job/jobRegistry.js';
+import { resolveAgentContinuation } from './job/records.js';
 
 function createRegistryMock() {
   return {
     loadJobRecord: vi.fn(),
-    updateJobRecord: vi.fn(),
+    updateJobRecord: vi.fn<JobRegistry['updateJobRecord']>(),
     loadAllJobRecords: vi.fn(),
     deleteJobRecords: vi.fn(),
     markJobForDeletion: vi.fn(),
@@ -504,12 +506,14 @@ describe('worker/pipeline helpers', () => {
     );
   });
 
-  it('copyArtifactsFromResumedJob copies regular files and skips job-spec', async () => {
+  it('copyArtifactsFromResumedJob copies lineage files but not the current output files', async () => {
     const readdirMock = vi.mocked(readdir);
     const copyFileMock = vi.mocked(copyFile);
 
     readdirMock.mockResolvedValueOnce([
       createDirent('plan.md', true),
+      createDirent('summary.md', true),
+      createDirent('change-metadata.json', true),
       createDirent('job-spec.json', true),
       createDirent('attachments', false),
     ] as never);
@@ -519,6 +523,7 @@ describe('worker/pipeline helpers', () => {
       'job-prev',
       '/tmp/sniptail/job-root',
       createJobPaths('job-next'),
+      'IMPLEMENT',
     );
 
     expect(readdirMock).toHaveBeenCalledWith('/tmp/sniptail/job-root/job-prev/artifacts', {
@@ -704,6 +709,49 @@ describe('worker/pipeline helpers', () => {
     expect(findLatestJobByChannelThreadMock).not.toHaveBeenCalled();
   });
 
+  it('resolveAgentContinuation returns the cursor paired with the resumed session', async () => {
+    const registry = createRegistryMock();
+    registry.loadJobRecord.mockResolvedValueOnce({
+      job: {
+        agentThreadIds: { codex: 'thread-resumed' },
+        agentThreadContextCursors: {
+          codex: {
+            provider: 'slack',
+            channelId: 'C1',
+            threadId: 'thread-1',
+            messageId: '111.100',
+            orderKey: '111.100',
+          },
+        },
+      },
+    } as JobRecord);
+
+    const result = await resolveAgentContinuation(
+      {
+        jobId: 'job-2',
+        type: 'IMPLEMENT',
+        repoKeys: ['repo-1'],
+        gitRef: 'main',
+        requestText: 'Continue',
+        resumeFromJobId: 'job-1',
+        channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      },
+      'codex',
+      registry,
+    );
+
+    expect(result).toEqual({
+      threadId: 'thread-resumed',
+      threadContextCursor: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: 'thread-1',
+        messageId: '111.100',
+        orderKey: '111.100',
+      },
+    });
+  });
+
   it('resolveAgentThreadId falls back to latest thread record', async () => {
     const registry = createRegistryMock();
     const loadJobRecordMock = registry.loadJobRecord;
@@ -829,7 +877,36 @@ describe('worker/pipeline runJob', () => {
       repoKeys: [],
       gitRef: 'main',
       requestText: 'Hello',
-      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+      channel: {
+        provider: 'slack',
+        channelId: 'C1',
+        userId: 'U1',
+        threadId: '123.456',
+        requestMessageId: '123.500',
+      },
+      threadContextSnapshot: {
+        version: 1 as const,
+        provider: 'slack' as const,
+        channelId: 'C1',
+        threadId: '123.456',
+        messages: [
+          {
+            externalId: '123.450',
+            orderKey: '123.450',
+            author: 'U2',
+            text: 'Earlier context',
+          },
+        ],
+        rendered: 'U2: Earlier context',
+        coversThreadRoot: true,
+        cursor: {
+          provider: 'slack' as const,
+          channelId: 'C1',
+          threadId: '123.456',
+          messageId: '123.450',
+          orderKey: '123.450',
+        },
+      },
     };
 
     loadJobRecordMock.mockResolvedValue({ job } as unknown as JobRecord);
@@ -902,6 +979,31 @@ describe('worker/pipeline runJob', () => {
       ownerWorkerId: 'worker-a',
       ownerWorkerLabel: 'Worker A',
     });
+    const updateAgentState = updateJobRecordMock.mock.calls
+      .map(([, patch]) => patch.job)
+      .find((update) => typeof update === 'function');
+    if (typeof updateAgentState !== 'function') throw new Error('Expected a job update callback');
+    const updatedJob = updateAgentState({
+      ...job,
+      channel: { ...job.channel, requestMessageId: 'new-request-message' },
+    });
+    expect(updatedJob.channel.requestMessageId).toBe('new-request-message');
+    expect(updatedJob.agentThreadIds).toEqual({ codex: 'thread-1' });
+    expect(updatedJob.agentThreadContextCursors).toEqual({
+      codex: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: '123.456',
+        messageId: '123.450',
+        orderKey: '123.450',
+      },
+    });
+    const movedJob = updateAgentState({
+      ...updatedJob,
+      channel: { ...updatedJob.channel, threadId: '123.999' },
+    });
+    expect(movedJob.agentThreadIds).toEqual({ codex: 'thread-1' });
+    expect(movedJob.agentThreadContextCursors).toBeUndefined();
     expect(typeof mentionRunningPatch?.workerClaimedAt).toBe('string');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-mention',
@@ -1285,7 +1387,30 @@ describe('worker/pipeline runJob', () => {
       gitRef: 'main',
       requestText: 'Implement feature',
       resumeFromJobId: 'job-1',
-      channel: { provider: 'slack', channelId: 'C1', userId: 'U1', threadId: '123.456' },
+      channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      threadContextSnapshot: {
+        version: 1 as const,
+        provider: 'slack' as const,
+        channelId: 'C1',
+        threadId: 'C1',
+        messages: [
+          {
+            externalId: '170.000',
+            orderKey: '170.000',
+            author: 'U2',
+            text: 'Prior implementation context',
+          },
+        ],
+        rendered: 'U2: Prior implementation context',
+        coversThreadRoot: true,
+        cursor: {
+          provider: 'slack' as const,
+          channelId: 'C1',
+          threadId: 'C1',
+          messageId: '170.000',
+          orderKey: '170.000',
+        },
+      },
     };
 
     loadJobRecordMock.mockResolvedValue({
@@ -1417,7 +1542,29 @@ describe('worker/pipeline runJob', () => {
         promptOverride: 'prompt with lineage warning',
       }),
     );
+    const artifactOptions = runAgentMock.mock.calls[1]?.[3] as
+      | { resumeThreadId?: string; promptOverride?: string }
+      | undefined;
+    expect(artifactOptions?.resumeThreadId).toBe('thread-implement-resumed');
+    expect(artifactOptions?.promptOverride).toBe('implement artifacts prompt');
 
+    const agentStatePatches = updateJobRecordMock.mock.calls
+      .map(([, patch]) => patch.job)
+      .filter((update) => typeof update === 'function');
+    expect(agentStatePatches).toHaveLength(1);
+    const updatedJob = agentStatePatches[0]?.(job);
+    expect(updatedJob?.agentThreadIds).toEqual({
+      codex: 'thread-implement-resumed',
+    });
+    expect(updatedJob?.agentThreadContextCursors).toEqual({
+      codex: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: 'C1',
+        messageId: '170.000',
+        orderKey: '170.000',
+      },
+    });
     const commitCall = commitAndPushMock.mock.calls[0]?.[0];
     expect(commitCall).toEqual(
       expect.objectContaining({
@@ -1564,7 +1711,7 @@ describe('worker/pipeline runJob', () => {
     expect(result.status).toBe('ok');
     const initialAgentOptions = runAgentMock.mock.calls[0]?.[3];
     expect(initialAgentOptions).toBeDefined();
-    expect(initialAgentOptions).not.toHaveProperty('promptOverride');
+    expect(initialAgentOptions?.promptOverride).toBe('base prompt');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-implement-resumed-no-warning',
       expect.objectContaining({

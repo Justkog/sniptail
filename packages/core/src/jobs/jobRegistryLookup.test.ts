@@ -16,6 +16,7 @@ vi.mock('./registryStore.js', () => ({
     countJobRecordsByTypes: vi.fn(),
     listJobRecordsForCleanup: vi.fn(),
     upsertRecord: vi.fn(),
+    updateRecord: vi.fn(),
     conditionalUpdateRecord: vi.fn(),
     deleteRecordsByKeys: vi.fn(),
     deleteRecordByKey: vi.fn(),

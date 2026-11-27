@@ -4,9 +4,15 @@ import { toGitBranchPrefix } from '@sniptail/core/git/branch.js';
 import { buildJobPaths, validateJob } from '@sniptail/core/jobs/utils.js';
 import { logger } from '@sniptail/core/logger.js';
 import type { ChannelRef } from '@sniptail/core/types/channel.js';
-import type { JobResult, MergeRequestResult, JobSpec } from '@sniptail/core/types/job.js';
+import type {
+  AgentId,
+  JobResult,
+  JobThreadContextCursor,
+  MergeRequestResult,
+  JobSpec,
+} from '@sniptail/core/types/job.js';
 import { createRepoReviewRequest, inferRepoProvider } from '@sniptail/core/repos/providers.js';
-import { buildPromptForJobWithLineageWarnings } from '@sniptail/core/agents/buildPrompt.js';
+import type { LineagePromptWarning } from '@sniptail/core/agents/buildPrompt.js';
 import { buildImplementArtifactsPrompt } from '@sniptail/core/agents/prompts/index.js';
 import { toSlackCommandPrefix } from '@sniptail/core/utils/slack.js';
 import { clampText, firstContentLine, wrapText } from '@sniptail/core/utils/text.js';
@@ -19,6 +25,7 @@ import {
   copyArtifactsFromResumedJob,
   copyContextFromResumedJob,
   copyJobRootSeed,
+  clearJobOutputArtifacts,
   ensureJobDirectories,
   materializeJobContextFiles,
   readJobArtifact,
@@ -28,6 +35,7 @@ import {
   writeJobSpecArtifact,
 } from './artifacts.js';
 import { resolveThreadId } from './records.js';
+import { matchesThreadContextDestination } from './continuationContext.js';
 import type { JobRegistry } from './jobRegistry.js';
 import { prepareRepoWorktrees } from '../repos/worktrees.js';
 import { ensureRepoClean, runRepoChecks } from '../repos/checks.js';
@@ -140,27 +148,42 @@ function buildCommitMessage(
 
 async function recordAgentThreadId(
   registry: JobRegistry,
-  job: JobSpec,
-  agentId: string,
+  jobId: string,
+  agentId: AgentId,
   threadId: string,
+  threadContextCursor?: JobThreadContextCursor,
 ): Promise<void> {
-  const existingRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to load job record for agent thread id update');
-    return undefined;
-  });
-  const existingJob = existingRecord?.job ?? job;
   await registry
-    .updateJobRecord(job.jobId, {
-      job: {
-        ...existingJob,
-        agentThreadIds: {
-          ...(existingJob.agentThreadIds ?? {}),
-          [agentId]: threadId,
-        },
+    .updateJobRecord(jobId, {
+      job: (existingJob) => {
+        const agentThreadContextCursors = { ...existingJob.agentThreadContextCursors };
+        const existingCursor = agentThreadContextCursors[agentId];
+        if (
+          threadContextCursor &&
+          matchesThreadContextDestination(threadContextCursor, existingJob.channel)
+        ) {
+          agentThreadContextCursors[agentId] = threadContextCursor;
+        } else if (
+          existingJob.agentThreadIds?.[agentId] !== threadId ||
+          (existingCursor && !matchesThreadContextDestination(existingCursor, existingJob.channel))
+        ) {
+          delete agentThreadContextCursors[agentId];
+        }
+
+        const nextJob: JobSpec = {
+          ...existingJob,
+          agentThreadIds: { ...existingJob.agentThreadIds, [agentId]: threadId },
+        };
+        if (Object.keys(agentThreadContextCursors).length) {
+          nextJob.agentThreadContextCursors = agentThreadContextCursors;
+        } else {
+          delete nextJob.agentThreadContextCursors;
+        }
+        return nextJob;
       },
     })
     .catch((err) => {
-      logger.warn({ err, jobId: job.jobId }, 'Failed to record agent thread id');
+      logger.warn({ err, jobId }, 'Failed to record agent thread id');
     });
 }
 
@@ -319,15 +342,19 @@ async function runJobInternal(
       paths.logFile,
       redactionPatterns,
     );
+    await clearJobOutputArtifacts(paths, job.type);
     if (job.resumeFromJobId) {
-      await copyArtifactsFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
-        (err) => {
-          logger.warn(
-            { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
-            'Failed to copy artifacts from resumed job',
-          );
-        },
-      );
+      await copyArtifactsFromResumedJob(
+        job.resumeFromJobId,
+        config.jobWorkRoot,
+        paths,
+        job.type,
+      ).catch((err) => {
+        logger.warn(
+          { err, jobId: job.jobId, resumeFromJobId: job.resumeFromJobId },
+          'Failed to copy artifacts from resumed job',
+        );
+      });
       await copyContextFromResumedJob(job.resumeFromJobId, config.jobWorkRoot, paths).catch(
         (err) => {
           logger.warn(
@@ -409,14 +436,13 @@ async function runJobInternal(
       });
     }
 
-    const promptOverride =
-      (job.type === 'ASK' ||
-        job.type === 'EXPLORE' ||
-        job.type === 'PLAN' ||
-        job.type === 'IMPLEMENT') &&
-      lineage.promptWarnings.length > 0
-        ? buildPromptForJobWithLineageWarnings(job, config.botName, lineage.promptWarnings)
-        : undefined;
+    const lineageWarnings: LineagePromptWarning[] =
+      job.type === 'ASK' ||
+      job.type === 'EXPLORE' ||
+      job.type === 'PLAN' ||
+      job.type === 'IMPLEMENT'
+        ? lineage.promptWarnings
+        : [];
 
     const agentRun = await runAgentJob({
       job,
@@ -426,12 +452,18 @@ async function runJobInternal(
       registry,
       notifier,
       currentTurnContextFiles,
-      ...(promptOverride ? { promptOverride } : {}),
+      ...(lineageWarnings.length ? { lineageWarnings } : {}),
     });
     const primaryFinalResponse = agentRun.result.finalResponse?.trim() ?? '';
 
     if (agentRun.result.threadId) {
-      await recordAgentThreadId(registry, job, agentRun.agentId, agentRun.result.threadId);
+      await recordAgentThreadId(
+        registry,
+        job.jobId,
+        agentRun.agentId,
+        agentRun.result.threadId,
+        agentRun.threadContextCursor,
+      );
     }
 
     if (job.type === 'MENTION') {
@@ -538,7 +570,7 @@ async function runJobInternal(
     }
 
     let followupFinalResponse = '';
-    if (job.type === 'IMPLEMENT') {
+    if (job.type === 'IMPLEMENT' && agentRun.result.threadId) {
       try {
         const followupRun = await runAgentJob({
           job,
@@ -548,15 +580,21 @@ async function runJobInternal(
           registry,
           notifier,
           promptOverride: buildImplementArtifactsPrompt(job, config.botName),
+          resumeThreadId: agentRun.result.threadId,
           addRequestReaction: false,
         });
         followupFinalResponse = followupRun.result.finalResponse?.trim() ?? '';
-        if (followupRun.result.threadId) {
-          await recordAgentThreadId(
-            registry,
-            job,
-            followupRun.agentId,
-            followupRun.result.threadId,
+        if (
+          followupRun.result.threadId &&
+          followupRun.result.threadId !== agentRun.result.threadId
+        ) {
+          logger.warn(
+            {
+              jobId: job.jobId,
+              primaryAgentThreadId: agentRun.result.threadId,
+              artifactAgentThreadId: followupRun.result.threadId,
+            },
+            'IMPLEMENT artifact turn returned a different agent session; retaining the primary session',
           );
         }
       } catch (err) {
@@ -565,6 +603,11 @@ async function runJobInternal(
           'IMPLEMENT follow-up artifact generation failed; continuing with synthesized artifacts',
         );
       }
+    } else if (job.type === 'IMPLEMENT') {
+      logger.warn(
+        { jobId: job.jobId },
+        'Skipping IMPLEMENT artifact follow-up because the primary agent session id is missing',
+      );
     }
 
     const summary = await readJobSummary(paths).catch((err) => {

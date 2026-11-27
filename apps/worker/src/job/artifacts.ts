@@ -1,12 +1,30 @@
 import { constants } from 'node:fs';
-import { appendFile, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, parse } from 'node:path';
 import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
-import type { JobContextFileSource, JobSpec } from '@sniptail/core/types/job.js';
+import type { JobContextFileSource, JobSpec, JobType } from '@sniptail/core/types/job.js';
 import { logger } from '@sniptail/core/logger.js';
 import { runCommand } from '@sniptail/core/runner/commandRunner.js';
 
 type JobPaths = ReturnType<typeof buildJobPaths>;
+
+function getJobOutputArtifactNames(jobType: JobType): string[] {
+  switch (jobType) {
+    case 'ASK':
+    case 'EXPLORE':
+    case 'REVIEW':
+      return ['report.md'];
+    case 'PLAN':
+      return ['plan.md'];
+    case 'IMPLEMENT':
+      return ['summary.md', 'change-metadata.json'];
+    case 'MENTION':
+    case 'RUN':
+      return [];
+    default:
+      return [];
+  }
+}
 
 export type MaterializedJobContextFile = {
   path: string;
@@ -144,6 +162,7 @@ export async function copyArtifactsFromResumedJob(
   resumeFromJobId: string,
   jobWorkRoot: string,
   paths: JobPaths,
+  jobType?: JobType,
 ): Promise<void> {
   const sourceArtifactsRoot = buildJobPaths(jobWorkRoot, resumeFromJobId).artifactsRoot;
   const sourceEntries = await readdir(sourceArtifactsRoot, { withFileTypes: true }).catch((err) => {
@@ -152,10 +171,12 @@ export async function copyArtifactsFromResumedJob(
     }
     throw err;
   });
+  const excludedOutputArtifacts = new Set(jobType ? getJobOutputArtifactNames(jobType) : []);
 
   for (const sourceEntry of sourceEntries) {
     if (!sourceEntry.isFile()) continue;
     if (sourceEntry.name === 'job-spec.json') continue;
+    if (excludedOutputArtifacts.has(sourceEntry.name)) continue;
     const sourcePath = join(sourceArtifactsRoot, sourceEntry.name);
     const destinationPath = join(paths.artifactsRoot, sourceEntry.name);
     await copyFile(sourcePath, destinationPath, constants.COPYFILE_EXCL).catch((err) => {
@@ -165,6 +186,14 @@ export async function copyArtifactsFromResumedJob(
       throw err;
     });
   }
+}
+
+export async function clearJobOutputArtifacts(paths: JobPaths, jobType: JobType): Promise<void> {
+  await Promise.all(
+    getJobOutputArtifactNames(jobType).map((fileName) =>
+      rm(join(paths.artifactsRoot, fileName), { force: true }),
+    ),
+  );
 }
 
 export async function copyContextFromResumedJob(

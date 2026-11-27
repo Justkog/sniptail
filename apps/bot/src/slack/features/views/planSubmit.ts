@@ -7,7 +7,7 @@ import type { SlackHandlerContext } from '../context.js';
 import { loadSlackModalContextFiles, postMessage, uploadFile } from '../../helpers.js';
 import { persistUploadSpec, truncateRequestSummary } from '../../../lib/jobs.js';
 import { resolveDefaultBaseBranch } from '../../../lib/repoBaseBranch.js';
-import { fetchSlackThreadContext } from '../../lib/threadContext.js';
+import { fetchSlackThreadContext, normalizeThreadContextResult } from '../../lib/threadContext.js';
 import { authorizeSlackOperationAndRespond } from '../../permissions/slackPermissionGuards.js';
 import { submitNormalizedJobRequest } from '../../../job-requests/engine.js';
 
@@ -61,10 +61,18 @@ export function registerPlanSubmitView({
       return;
     }
 
-    const threadContext =
+    const { threadContext, threadContextSnapshot } =
       metadata?.threadId && metadata?.channelId
-        ? await fetchSlackThreadContext(client, metadata.channelId, metadata.threadId)
-        : undefined;
+        ? normalizeThreadContextResult(
+            await fetchSlackThreadContext(
+              client,
+              metadata.channelId,
+              metadata.threadId,
+              undefined,
+              true,
+            ),
+          )
+        : {};
     const result = await submitNormalizedJobRequest({
       config,
       queueRuntime,
@@ -80,6 +88,7 @@ export function registerPlanSubmitView({
           ...(metadata?.threadId ? { threadId: metadata.threadId } : {}),
         },
         ...(threadContext ? { threadContext } : {}),
+        ...(threadContextSnapshot ? { threadContextSnapshot } : {}),
         ...(contextFiles ? { contextFiles } : {}),
         ...(resumeFromJobId ? { resumeFromJobId } : {}),
       },
@@ -166,16 +175,17 @@ export function registerPlanSubmitView({
       }
     }
 
-    if (ackResponse?.ts) {
+    const requestMessageId = ackResponse?.ts;
+    if (requestMessageId) {
       await updateJobRecord(job.jobId, {
-        job: {
-          ...job,
+        job: (currentJob) => ({
+          ...currentJob,
           channel: {
-            ...job.channel,
-            ...(!metadata?.threadId ? { threadId: ackResponse.ts } : {}),
-            requestMessageId: ackResponse.ts,
+            ...currentJob.channel,
+            ...(!metadata?.threadId ? { threadId: requestMessageId } : {}),
+            requestMessageId,
           },
-        },
+        }),
       }).catch((err) => {
         logger.warn({ err, jobId: job.jobId }, 'Failed to record job request message context');
       });
