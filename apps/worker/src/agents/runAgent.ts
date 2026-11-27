@@ -8,10 +8,7 @@ import { resolveAgentContinuation, resolveMentionWorkingDirectory } from '../job
 import type { JobRegistry } from '../job/jobRegistry.js';
 import { appendAgentEventLog, type MaterializedJobContextFile } from '../job/artifacts.js';
 import type { Notifier } from '../channels/notifier.js';
-import {
-  buildContinuationContext,
-  getAgentThreadContextCursor,
-} from '../job/continuationContext.js';
+import { buildContinuationContext } from '../job/continuationContext.js';
 import {
   buildContinuationPromptForJob,
   buildPromptForJobWithLineageWarnings,
@@ -71,16 +68,17 @@ export async function runAgentJob(options: {
     config.jobWorkRoot,
   );
   const workDir = job.type === 'MENTION' ? mentionWorkDir : paths.root;
-  const latestRecord = await registry.loadJobRecord(job.jobId).catch((err) => {
-    logger.warn({ err, jobId: job.jobId }, 'Failed to load job record before agent run');
-    return undefined;
-  });
+  const latestRecord = addRequestReaction
+    ? await registry.loadJobRecord(job.jobId).catch((err) => {
+        logger.warn({ err, jobId: job.jobId }, 'Failed to load job record before agent run');
+        return undefined;
+      })
+    : undefined;
   const latestChannel = latestRecord?.job?.channel ?? job.channel;
-  const context = buildContinuationContext(
-    job,
-    getAgentThreadContextCursor(continuation.sourceJob, agentId),
-    Boolean(agentThreadId),
-  );
+  const context =
+    promptOverride === undefined
+      ? buildContinuationContext(job, continuation.threadContextCursor, Boolean(agentThreadId))
+      : undefined;
   const resolvedPrompt =
     promptOverride ??
     (agentThreadId
@@ -88,8 +86,8 @@ export async function runAgentJob(options: {
           job,
           botName: config.botName,
           workDir,
-          ...(context.rendered ? { threadContext: context.rendered } : {}),
-          threadContextMode: context.mode,
+          ...(context?.rendered ? { threadContext: context.rendered } : {}),
+          threadContextMode: context?.mode ?? 'empty',
           lineageWarnings,
         })
       : buildPromptForJobWithLineageWarnings(job, config.botName, lineageWarnings));
@@ -99,15 +97,18 @@ export async function runAgentJob(options: {
       jobId: job.jobId,
       agent: agentId,
       resumed: Boolean(agentThreadId),
-      threadContextMode: context.mode,
-      threadContextReason: context.reason,
-      threadContextMessageCount: context.messageCount,
+      promptSource:
+        promptOverride !== undefined ? 'override' : agentThreadId ? 'continuation' : 'fresh',
+      ...(context
+        ? {
+            threadContextMode: context.mode,
+            threadContextReason: context.reason,
+            threadContextMessageCount: context.messageCount,
+          }
+        : {}),
       promptLength: resolvedPrompt.length,
     },
     'Built coding-agent turn prompt',
-  );
-  const shouldOverrideProviderPrompt = Boolean(
-    promptOverride || agentThreadId || lineageWarnings.length,
   );
   const modelOverride = descriptor.resolveModelConfig(config, job.type);
   const additionalDirectories = Array.from(
@@ -144,7 +145,7 @@ export async function runAgentJob(options: {
   const agentResult = await agent.run(job, workDir, env, {
     botName: config.botName,
     ...(agentThreadId ? { resumeThreadId: agentThreadId } : {}),
-    ...(shouldOverrideProviderPrompt ? { promptOverride: resolvedPrompt } : {}),
+    promptOverride: resolvedPrompt,
     includeResumeWorkDirNote: false,
     ...(currentTurnAttachments.length ? { currentTurnAttachments } : {}),
     ...(modelOverride ? { model: modelOverride.model } : {}),
@@ -183,6 +184,6 @@ export async function runAgentJob(options: {
   return {
     agentId,
     result: agentResult,
-    ...(context.cursor ? { threadContextCursor: context.cursor } : {}),
+    ...(context?.cursor ? { threadContextCursor: context.cursor } : {}),
   };
 }

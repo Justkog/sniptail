@@ -279,8 +279,8 @@ vi.mock('@sniptail/core/agents/agentRegistry.js', () => {
 
 vi.mock('@sniptail/core/agents/buildPrompt.js', () => ({
   buildPromptForJobWithLineageWarnings: vi.fn(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_job: unknown, _botName: string, _warnings: unknown[]) => 'prompt with lineage warning',
+    (_job: unknown, _botName: string, warnings: unknown[]) =>
+      warnings.length ? 'prompt with lineage warning' : 'base prompt',
   ),
   buildContinuationPromptForJob: vi.fn(() => 'compact continuation prompt'),
 }));
@@ -393,6 +393,7 @@ import {
 } from './pipeline.js';
 import { BullMqBotEventSink } from './channels/botEventSink.js';
 import type { JobRegistry } from './job/jobRegistry.js';
+import { resolveAgentContinuation } from './job/records.js';
 
 function createRegistryMock() {
   return {
@@ -706,6 +707,49 @@ describe('worker/pipeline helpers', () => {
     await expect(resolveAgentThreadId(job, 'codex', registry)).resolves.toBe('thread-resumed');
     expect(loadJobRecordMock).toHaveBeenCalledWith('job-1');
     expect(findLatestJobByChannelThreadMock).not.toHaveBeenCalled();
+  });
+
+  it('resolveAgentContinuation returns the cursor paired with the resumed session', async () => {
+    const registry = createRegistryMock();
+    registry.loadJobRecord.mockResolvedValueOnce({
+      job: {
+        agentThreadIds: { codex: 'thread-resumed' },
+        agentThreadContextCursors: {
+          codex: {
+            provider: 'slack',
+            channelId: 'C1',
+            threadId: 'thread-1',
+            messageId: '111.100',
+            orderKey: '111.100',
+          },
+        },
+      },
+    } as JobRecord);
+
+    const result = await resolveAgentContinuation(
+      {
+        jobId: 'job-2',
+        type: 'IMPLEMENT',
+        repoKeys: ['repo-1'],
+        gitRef: 'main',
+        requestText: 'Continue',
+        resumeFromJobId: 'job-1',
+        channel: { provider: 'slack', channelId: 'C1', userId: 'U1' },
+      },
+      'codex',
+      registry,
+    );
+
+    expect(result).toEqual({
+      threadId: 'thread-resumed',
+      threadContextCursor: {
+        provider: 'slack',
+        channelId: 'C1',
+        threadId: 'thread-1',
+        messageId: '111.100',
+        orderKey: '111.100',
+      },
+    });
   });
 
   it('resolveAgentThreadId falls back to latest thread record', async () => {
@@ -1654,7 +1698,7 @@ describe('worker/pipeline runJob', () => {
     expect(result.status).toBe('ok');
     const initialAgentOptions = runAgentMock.mock.calls[0]?.[3];
     expect(initialAgentOptions).toBeDefined();
-    expect(initialAgentOptions).not.toHaveProperty('promptOverride');
+    expect(initialAgentOptions?.promptOverride).toBe('base prompt');
     expect(updateJobRecordMock).toHaveBeenCalledWith(
       'job-implement-resumed-no-warning',
       expect.objectContaining({

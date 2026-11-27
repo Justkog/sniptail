@@ -1,11 +1,11 @@
 import { logger } from '@sniptail/core/logger.js';
 import { buildJobPaths } from '@sniptail/core/jobs/utils.js';
-import type { AgentId, JobSpec } from '@sniptail/core/types/job.js';
+import type { AgentId, JobSpec, JobThreadContextCursor } from '@sniptail/core/types/job.js';
 import type { JobRegistry } from './jobRegistry.js';
 
 export type AgentContinuation = {
   threadId?: string;
-  sourceJob?: JobSpec;
+  threadContextCursor?: JobThreadContextCursor;
 };
 
 export async function resolveThreadId(
@@ -28,6 +28,22 @@ function getAgentThreadId(job: JobSpec, agentId: AgentId): string | undefined {
   return undefined;
 }
 
+function getAgentThreadContextCursor(
+  job: JobSpec,
+  agentId: AgentId,
+): JobThreadContextCursor | undefined {
+  return job.agentThreadContextCursors?.[agentId];
+}
+
+function buildAgentContinuation(job: JobSpec, agentId: AgentId): AgentContinuation {
+  const threadId = getAgentThreadId(job, agentId);
+  const threadContextCursor = getAgentThreadContextCursor(job, agentId);
+  return {
+    ...(threadId ? { threadId } : {}),
+    ...(threadContextCursor ? { threadContextCursor } : {}),
+  };
+}
+
 export async function resolveAgentContinuation(
   job: JobSpec,
   agentId: AgentId,
@@ -35,17 +51,14 @@ export async function resolveAgentContinuation(
 ): Promise<AgentContinuation> {
   const jobThreadId = getAgentThreadId(job, agentId);
   if (jobThreadId) {
-    return { threadId: jobThreadId, sourceJob: job };
+    return buildAgentContinuation(job, agentId);
   }
   if (job.resumeFromJobId) {
     try {
       const record = await registry.loadJobRecord(job.resumeFromJobId);
       const resumeThreadId = record?.job ? getAgentThreadId(record.job, agentId) : undefined;
       if (resumeThreadId) {
-        return {
-          threadId: resumeThreadId,
-          ...(record?.job ? { sourceJob: record.job } : {}),
-        };
+        return record?.job ? buildAgentContinuation(record.job, agentId) : {};
       }
     } catch (err) {
       logger.warn(
@@ -64,10 +77,7 @@ export async function resolveAgentContinuation(
       agentId,
     );
     const resolvedThreadId = record?.job ? getAgentThreadId(record.job, agentId) : undefined;
-    return {
-      ...(resolvedThreadId ? { threadId: resolvedThreadId } : {}),
-      ...(record?.job ? { sourceJob: record.job } : {}),
-    };
+    return resolvedThreadId && record?.job ? buildAgentContinuation(record.job, agentId) : {};
   } catch (err) {
     logger.warn({ err, jobId: job.jobId, agentId }, 'Failed to resolve agent thread id');
     return {};

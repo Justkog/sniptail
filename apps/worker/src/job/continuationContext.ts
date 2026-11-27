@@ -1,5 +1,4 @@
 import type {
-  AgentId,
   JobSpec,
   JobThreadContextCursor,
   JobThreadContextSnapshot,
@@ -115,11 +114,4 @@ export function buildContinuationContext(
     messageCount: messages.length,
     ...(snapshot.cursor ? { cursor: snapshot.cursor } : {}),
   };
-}
-
-export function getAgentThreadContextCursor(
-  job: JobSpec | undefined,
-  agentId: AgentId,
-): JobThreadContextCursor | undefined {
-  return job?.agentThreadContextCursors?.[agentId];
 }

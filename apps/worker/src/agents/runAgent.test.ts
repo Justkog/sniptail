@@ -128,6 +128,8 @@ describe('runAgentJob', () => {
         ],
       }),
     );
+    const runOptions = hoisted.run.mock.calls[0]?.[3] as { promptOverride?: string } | undefined;
+    expect(runOptions?.promptOverride).toContain('You are Sniptail (ASK mode).');
   });
 
   it('keeps current-turn attachments reachable when mention jobs run from another directory', async () => {
@@ -281,18 +283,12 @@ describe('runAgentJob', () => {
   it('sends a compact continuation prompt and persists its next cursor', async () => {
     hoisted.resolveAgentContinuation.mockResolvedValue({
       threadId: 'thread-1',
-      sourceJob: {
-        ...buildJob(),
-        type: 'ASK',
-        agentThreadContextCursors: {
-          codex: {
-            provider: 'slack',
-            channelId: 'C123',
-            threadId: 'thread-1',
-            messageId: '111.100',
-            orderKey: '111.100',
-          },
-        },
+      threadContextCursor: {
+        provider: 'slack',
+        channelId: 'C123',
+        threadId: 'thread-1',
+        messageId: '111.100',
+        orderKey: '111.100',
       },
     });
     hoisted.loadJobRecord.mockResolvedValue({
@@ -407,5 +403,43 @@ describe('runAgentJob', () => {
     expect(options?.promptOverride).toContain('New channel messages');
     expect(options?.promptOverride).not.toContain('Repositories are located under the job root:');
     expect(result.threadContextCursor?.messageId).toBe('111.150');
+  });
+
+  it('passes an exact prompt without resolving channel context', async () => {
+    const result = await runAgentJob({
+      job: buildJob(),
+      config: {
+        primaryAgent: 'codex',
+        botName: 'Sniptail',
+        repoCacheRoot: '/tmp/repo-cache',
+        jobWorkRoot: '/tmp/job-root',
+      } as never,
+      paths: {
+        root: '/tmp/job-root/job-1',
+        reposRoot: '/tmp/job-root/job-1/repos',
+        artifactsRoot: '/tmp/job-root/job-1/artifacts',
+        logsRoot: '/tmp/job-root/job-1/logs',
+        logFile: '/tmp/job-root/job-1/logs/runner.log',
+      },
+      env: {},
+      registry: {
+        loadJobRecord: hoisted.loadJobRecord,
+      } as never,
+      notifier: {
+        addReaction: hoisted.addReaction,
+      } as never,
+      promptOverride: 'Generate implementation artifacts only.',
+      resumeThreadId: 'thread-primary',
+      addRequestReaction: false,
+    });
+
+    expect(hoisted.resolveAgentContinuation).not.toHaveBeenCalled();
+    expect(hoisted.loadJobRecord).not.toHaveBeenCalled();
+    const runOptions = hoisted.run.mock.calls[0]?.[3] as
+      | { promptOverride?: string; resumeThreadId?: string }
+      | undefined;
+    expect(runOptions?.promptOverride).toBe('Generate implementation artifacts only.');
+    expect(runOptions?.resumeThreadId).toBe('thread-primary');
+    expect(result.threadContextCursor).toBeUndefined();
   });
 });
